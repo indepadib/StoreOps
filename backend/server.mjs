@@ -10,6 +10,7 @@ import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, listDataEnti
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
+import { listIncidents, incidentById, createIncident, addAction, completeAction, addEvidence, mediaById, resolveIncident, reopenIncident, incidentStats } from './services/incidents.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -23,7 +24,7 @@ function cors(req,res){
   }
 }
 function json(req,res,status,data){cors(req,res);res.writeHead(status,{'content-type':'application/json; charset=utf-8','cache-control':'no-store'});res.end(JSON.stringify(data));}
-function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',c=>{d+=c;if(d.length>2e6)reject(Object.assign(new Error('Payload too large'),{status:413}))});req.on('end',()=>{try{resolve(d?JSON.parse(d):{})}catch(e){reject(Object.assign(new Error('JSON invalide'),{status:400}))}});req.on('error',reject)})}
+function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',c=>{d+=c;if(d.length>8e6)reject(Object.assign(new Error('Payload trop volumineux'),{status:413}))});req.on('end',()=>{try{resolve(d?JSON.parse(d):{})}catch(e){reject(Object.assign(new Error('JSON invalide'),{status:400}))}});req.on('error',reject)})}
 function requireStore(user,storeId){if(!canAccessStore(user,storeId)){const e=new Error('Accès interdit à ce magasin.');e.status=403;throw e}}
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 function dlcStage(expiry){const d=Math.ceil((new Date(expiry+'T23:59:59')-new Date())/86400000);if(d<0)return {stage:'EXPIRED',label:'Expirée',severity:'CRITICAL'};if(d<=1)return {stage:'J1',label:`J-${Math.max(d,0)}`,severity:'CRITICAL'};if(d<=3)return {stage:'J3',label:`J-${d}`,severity:'HIGH'};if(d<=7)return {stage:'J7',label:`J-${d}`,severity:'MEDIUM'};return {stage:'OK',label:`J-${d}`,severity:'LOW'}}
@@ -33,27 +34,43 @@ function ensureQuality(user,storeId){if(!canManageQuality(user,storeId)) throw O
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health') return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.4',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health') return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.4.2',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
 
   const session=await sessionFromRequest(req); const user=session.user;
   if(path==='/api/session') return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 ORDER BY role,name`).all():[]});
-  if(path==='/api/config') return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.4'});
+  if(path==='/api/config') return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.4.2'});
   if(path==='/api/dynamics/health'){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403});return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403});const rows=await listDataEntities(url.searchParams.get('q')||'');return json(req,res,200,rows)}
+  let p;
   if(path==='/api/stores'){
     const rows=user.role==='ops_director'?db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all():db.prepare(`SELECT * FROM stores WHERE id=? AND active=1`).all(user.store_id);
     return json(req,res,200,rows);
   }
 
-  let p=route(path,'/api/products/:ean'); if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
+  p=route(path,'/api/stores/:storeId/assignees'); if(p){requireStore(user,p.storeId);ensureManage(user,p.storeId);const rows=db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 AND (role='ops_director' OR (role='store_manager' AND store_id=?)) ORDER BY role,name`).all(p.storeId);return json(req,res,200,rows)}
+
+  p=route(path,'/api/products/:ean'); if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
   p=route(path,'/api/quality-profiles/:category'); if(p){const profile=qualityProfileFor(p.category);return json(req,res,200,profile)}
+
+  p=route(path,'/api/stores/:storeId/incidents'); if(p){
+    requireStore(user,p.storeId);
+    if(req.method==='GET'){const status=(url.searchParams.get('status')||'OPEN').toUpperCase();return json(req,res,200,{stats:incidentStats(p.storeId),items:listIncidents(p.storeId,status)})}
+    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);const created=createIncident({storeId:p.storeId,user,title:b.title,description:b.description,category:b.category,criticality:b.criticality,blockingLevel:b.blockingLevel,assignedTo:b.assignedTo,dueAt:b.dueAt,requiresEvidence:!!b.requiresEvidence});return json(req,res,201,created)}
+  }
+  p=route(path,'/api/incidents/:incidentId'); if(p && req.method==='GET'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);return json(req,res,200,incident)}
+  p=route(path,'/api/incidents/:incidentId/actions'); if(p && req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,201,addAction({incidentId:p.incidentId,user,title:b.title,note:b.note,assignedTo:b.assignedTo,dueAt:b.dueAt}))}
+  p=route(path,'/api/incidents/:incidentId/actions/:actionId/complete'); if(p && req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,200,completeAction({incidentId:p.incidentId,actionId:p.actionId,user,note:b.note}))}
+  p=route(path,'/api/incidents/:incidentId/evidence'); if(p && req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,201,addEvidence({incidentId:p.incidentId,user,dataUrl:b.dataUrl,fileName:b.fileName,caption:b.caption}))}
+  p=route(path,'/api/incidents/:incidentId/resolve'); if(p && req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,200,resolveIncident({incidentId:p.incidentId,user,resolutionNote:b.resolutionNote}))}
+  p=route(path,'/api/incidents/:incidentId/reopen'); if(p && req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,200,reopenIncident({incidentId:p.incidentId,user,note:b.note}))}
+  p=route(path,'/api/media/:mediaId'); if(p && req.method==='GET'){const media=mediaById(p.mediaId);if(!media)return json(req,res,404,{error:'Preuve introuvable'});requireStore(user,media.store_id);cors(req,res);res.writeHead(200,{'content-type':media.mime_type,'content-disposition':`inline; filename="${String(media.file_name||'preuve').replaceAll('"','')}"`,'cache-control':'private, max-age=300'});return res.end(media.bytes)}
 
   p=route(path,'/api/stores/:storeId/dashboard'); if(p){
     requireStore(user,p.storeId); const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()); const opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');
     const dlcs=db.prepare(`SELECT * FROM dlc_records WHERE store_id=? AND status='ACTIVE' ORDER BY expiry_date`).all(p.storeId).map(x=>({...x,risk:dlcStage(x.expiry_date)}));
-    const incidents=db.prepare(`SELECT * FROM incidents WHERE store_id=? AND status='OPEN' ORDER BY created_at DESC`).all(p.storeId);
+    const incidentSummary=incidentStats(p.storeId);
     const quality=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(p.storeId,day.business_date);
-    return json(req,res,200,{day,opening,closing,dlcAtRisk:dlcs.filter(x=>x.risk.stage!=='OK').length,incidents:incidents.length,criticalIncidents:incidents.filter(x=>x.criticality==='CRITICAL').length,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidents.length*6-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
+    return json(req,res,200,{day,opening,closing,dlcAtRisk:dlcs.filter(x=>x.risk.stage!=='OK').length,incidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidentSummary.open*6-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
   }
 
   p=route(path,'/api/stores/:storeId/tasks'); if(p){
@@ -93,7 +110,7 @@ async function api(req,res,url){
       const decision=rejected===0?'ACCEPT':accepted===0?'REJECT':'PARTIAL';const id=uid('qc');
       db.prepare(`INSERT INTO quality_controls(id,store_id,context,po_number,ean,product_name,category,ordered_qty,delivered_qty,accepted_qty,rejected_qty,temperature,temperature_status,packaging_status,appearance_status,expiry_date,lot_ref,decision,comment,controlled_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,p.storeId,b.context||'Contrôle ponctuel',b.poNumber||null,b.ean,product.name,product.category||'Autre',b.orderedQty??null,delivered,accepted,rejected,b.temperature??null,evaluation.temperatureStatus,b.packagingStatus||'NA',b.appearanceStatus||'NA',b.expiryDate||null,b.lotRef||null,decision,b.comment||null,user.id);
       if(b.expiryDate && accepted>0){const did=uid('dlc');db.prepare(`INSERT INTO dlc_records(id,store_id,ean,product_name,expiry_date,quantity,zone,lot_ref,comment,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(did,p.storeId,b.ean,product.name,b.expiryDate,accepted,b.zone||'Réserve',b.lotRef||null,`Créée depuis contrôle qualité ${id}`,user.id)}
-      if(decision!=='ACCEPT'||evaluation.issues.length){const inc=uid('inc');db.prepare(`INSERT INTO incidents(id,store_id,title,category,criticality,blocking_level,source_type,source_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)`).run(inc,p.storeId,`Non-conformité qualité · ${product.name}`,'QUALITY',evaluation.temperatureStatus==='NOK'?'CRITICAL':'HIGH','NONE','QUALITY_CONTROL',id,user.id)}
+      if(decision!=='ACCEPT'||evaluation.issues.length){const inc=createIncident({storeId:p.storeId,user,title:`Non-conformité qualité · ${product.name}`,description:evaluation.issues.join(' · ')||b.comment||'Contrôle qualité non conforme',category:'QUALITY',criticality:evaluation.temperatureStatus==='NOK'?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'QUALITY_CONTROL',sourceId:id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Traiter la non-conformité qualité',note:b.comment||'',assignedTo:user.role==='store_manager'?user.id:null})}
       audit({storeId:p.storeId,userId:user.id,action:'QUALITY_CONTROL_CREATED',entityType:'QUALITY_CONTROL',entityId:id,details:{ean:b.ean,decision,issues:evaluation.issues,delivered,accepted,rejected}});return json(req,res,201,{id,decision,issues:evaluation.issues,qualityProfile:evaluation.profile});
     }
   }
@@ -109,7 +126,7 @@ async function api(req,res,url){
     db.prepare(`INSERT INTO quality_controls(id,store_id,context,po_number,ean,product_name,category,ordered_qty,delivered_qty,accepted_qty,rejected_qty,temperature,temperature_status,packaging_status,appearance_status,expiry_date,lot_ref,decision,comment,controlled_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,r.store_id,'Réception',r.po_number,line.ean,line.product_name,line.category||'Autre',line.ordered_qty,delivered,accepted,rejected,b.temperature??null,evaluation.temperatureStatus,b.packagingStatus||'NA',b.appearanceStatus||'NA',b.expiryDate||null,b.lotRef||null,decision,b.comment||null,user.id);
     db.prepare(`UPDATE receipt_lines SET delivered_qty=?,accepted_qty=?,rejected_qty=?,quality_control_id=? WHERE id=?`).run(delivered,accepted,rejected,id,line.id);
     if(b.expiryDate && accepted>0){const did=uid('dlc');db.prepare(`INSERT INTO dlc_records(id,store_id,ean,product_name,expiry_date,quantity,zone,lot_ref,comment,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)`).run(did,r.store_id,line.ean,line.product_name,b.expiryDate,accepted,'Réserve',b.lotRef||null,`Réception ${r.po_number}`,user.id)}
-    if(decision!=='ACCEPT'||evaluation.issues.length){const inc=uid('inc');db.prepare(`INSERT INTO incidents(id,store_id,title,category,criticality,blocking_level,source_type,source_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)`).run(inc,r.store_id,`Non-conformité réception · ${line.product_name}`,'QUALITY',evaluation.temperatureStatus==='NOK'?'CRITICAL':'HIGH','NONE','QUALITY_CONTROL',id,user.id)}
+    if(decision!=='ACCEPT'||evaluation.issues.length){const inc=createIncident({storeId:r.store_id,user,title:`Non-conformité réception · ${line.product_name}`,description:evaluation.issues.join(' · ')||b.comment||'Réception non conforme',category:'RECEPTION',criticality:evaluation.temperatureStatus==='NOK'?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'QUALITY_CONTROL',sourceId:id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Décider du traitement fournisseur / produit',note:b.comment||'',assignedTo:user.role==='store_manager'?user.id:null})}
     audit({storeId:r.store_id,userId:user.id,action:'RECEIPT_LINE_CONTROLLED',entityType:'RECEIPT_LINE',entityId:line.id,details:{decision,issues:evaluation.issues,delivered,accepted,rejected}});return json(req,res,201,{id,decision,issues:evaluation.issues,qualityProfile:evaluation.profile});
   }
   p=route(path,'/api/receipts/:po/post'); if(p && req.method==='POST'){
@@ -133,4 +150,4 @@ function staticFile(req,res,url){
 }
 
 const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,`http://${req.headers.host}`);if(url.pathname.startsWith('/api/'))return await api(req,res,url);return staticFile(req,res,url)}catch(e){console.error(e);return json(req,res,e.status||500,{error:e.message||'Erreur serveur',code:e.code||undefined,details:e.details||undefined})}});
-server.listen(PORT,()=>console.log(`StoreOps V1.4 running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
+server.listen(PORT,()=>console.log(`StoreOps V1.4.2 running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
