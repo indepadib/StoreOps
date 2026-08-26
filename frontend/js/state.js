@@ -1,0 +1,1 @@
+export const app={user:null,users:[],stores:[],storeId:null,page:'today',authMode:'demo',version:'1.4.1'};export const currentStore=()=>app.stores.find(s=>s.id===app.storeId)||null;export const canManage=()=>!!app.user&&['store_manager','ops_director'].includes(app.user.role);export const isDirector=()=>app.user?.role==='ops_director';
