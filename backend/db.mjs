@@ -161,20 +161,64 @@ CREATE TABLE IF NOT EXISTS incidents (
   id TEXT PRIMARY KEY,
   store_id TEXT NOT NULL REFERENCES stores(id),
   title TEXT NOT NULL,
+  description TEXT NULL,
   category TEXT NOT NULL,
   criticality TEXT NOT NULL,
   blocking_level TEXT NOT NULL DEFAULT 'NONE',
   status TEXT NOT NULL DEFAULT 'OPEN',
   source_type TEXT NULL,
   source_id TEXT NULL,
+  assigned_to TEXT NULL REFERENCES users(id),
+  due_at TEXT NULL,
+  requires_evidence INTEGER NOT NULL DEFAULT 0,
+  resolution_note TEXT NULL,
   created_by TEXT NULL REFERENCES users(id),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  resolved_by TEXT NULL REFERENCES users(id),
   resolved_at TEXT NULL
+);
+CREATE TABLE IF NOT EXISTS incident_actions (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  note TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'OPEN' CHECK(status IN ('OPEN','DONE','CANCELLED')),
+  assigned_to TEXT NULL REFERENCES users(id),
+  due_at TEXT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completion_note TEXT NULL,
+  completed_by TEXT NULL REFERENCES users(id),
+  completed_at TEXT NULL
+);
+CREATE TABLE IF NOT EXISTS incident_evidence (
+  id TEXT PRIMARY KEY,
+  incident_id TEXT NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'PHOTO',
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  storage_key TEXT NOT NULL UNIQUE,
+  caption TEXT NULL,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS ix_audit_store_date ON audit_log(store_id,business_date,created_at);
 CREATE INDEX IF NOT EXISTS ix_dlc_store_expiry ON dlc_records(store_id,status,expiry_date);
 CREATE INDEX IF NOT EXISTS ix_quality_store_date ON quality_controls(store_id,created_at);
+CREATE INDEX IF NOT EXISTS ix_incidents_store_status ON incidents(store_id,status,criticality,created_at);
+CREATE INDEX IF NOT EXISTS ix_incident_actions_incident ON incident_actions(incident_id,status,due_at);
 `);
+
+function ensureColumn(table,column,definition){
+  const cols=db.prepare(`PRAGMA table_info(${table})`).all();
+  if(!cols.some(c=>c.name===column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+ensureColumn('incidents','description','TEXT NULL');
+ensureColumn('incidents','assigned_to','TEXT NULL');
+ensureColumn('incidents','due_at','TEXT NULL');
+ensureColumn('incidents','requires_evidence','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('incidents','resolution_note','TEXT NULL');
+ensureColumn('incidents','resolved_by','TEXT NULL');
 
 const stores = [
   ['val-fleuri','Val Fleuri','VF'],
