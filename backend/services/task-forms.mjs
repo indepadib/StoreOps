@@ -1,4 +1,5 @@
-import { db, uid, audit } from '../db.mjs';
+import { db, audit } from '../db.mjs';
+import { createIncident } from './incidents.mjs';
 
 function parse(v,fallback=null){try{return v?JSON.parse(v):fallback}catch{return fallback}}
 function normalizeBoolean(v){return v===true || v==='true' || v===1 || v==='1'}
@@ -62,13 +63,21 @@ export function submitTaskForm({taskId,user,values}){
 
   if(nonconforms.length){
     const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='TASK' AND source_id=? AND status='OPEN' LIMIT 1`).get(task.id);
+    const description=nonconforms.map(x=>x.message).join(' · ');
     if(!existing){
-      const inc=uid('inc');
-      db.prepare(`INSERT INTO incidents(id,store_id,title,category,criticality,blocking_level,source_type,source_id,created_by) VALUES(?,?,?,?,?,?,?,?,?)`)
-        .run(inc,task.store_id,`Contrôle non conforme · ${task.title}`,'OPERATIONS',task.criticality,task.blocking_level,'TASK',task.id,user.id);
+      createIncident({storeId:task.store_id,user,title:`Contrôle non conforme · ${task.title}`,description,category:'OPERATIONS',criticality:task.criticality,blockingLevel:task.blocking_level,sourceType:'TASK',sourceId:task.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:task.criticality==='CRITICAL'||['STORE_OPENING','STORE_CLOSING'].includes(task.blocking_level)});
+    } else {
+      db.prepare(`UPDATE incidents SET description=?,criticality=?,blocking_level=? WHERE id=?`).run(description,task.criticality,task.blocking_level,existing.id);
     }
   } else {
-    db.prepare(`UPDATE incidents SET status='RESOLVED',resolved_at=CURRENT_TIMESTAMP WHERE source_type='TASK' AND source_id=? AND status='OPEN'`).run(task.id);
+    const existing=db.prepare(`SELECT * FROM incidents WHERE source_type='TASK' AND source_id=? AND status='OPEN' LIMIT 1`).get(task.id);
+    if(existing){
+      const openActions=db.prepare(`SELECT COUNT(*) n FROM incident_actions WHERE incident_id=? AND status='OPEN'`).get(existing.id).n;
+      if(!openActions){
+        db.prepare(`UPDATE incidents SET status='RESOLVED',resolution_note='Contrôle redevenu conforme',resolved_by=?,resolved_at=CURRENT_TIMESTAMP WHERE id=?`).run(user.id,existing.id);
+        audit({storeId:task.store_id,businessDate:task.business_date,userId:user.id,action:'INCIDENT_AUTO_RESOLVED',entityType:'INCIDENT',entityId:existing.id,details:{sourceTask:task.id}});
+      }
+    }
   }
   return {ok:!nonconforms.length,taskId:task.id,status:nonconforms.length?'IN_PROGRESS':'COMPLETED',nonconforms,values:normalized};
 }
