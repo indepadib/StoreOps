@@ -1,1 +1,36 @@
-import{api}from'../api.js';import{isDirector}from'../state.js';import{$,status,progress,esc}from'../ui.js';export async function renderNetwork(){if(!isDirector())return;const rows=await api('/api/network'),ready=rows.filter(x=>x.day.opening_status==='OPENED').length,blocked=rows.filter(x=>x.opening.blockers>0&&x.day.opening_status!=='OPENED').length,crit=rows.reduce((s,x)=>s+Number(x.criticalIncidents||0),0),rej=rows.reduce((s,x)=>s+Number(x.qualityRejected||0),0),sorted=[...rows].sort((a,b)=>risk(b)-risk(a));$('#networkContent').innerHTML=`<div class="grid g4"><div class="card"><div class="label">Réseau</div><div class="kpi">${rows.length}</div></div><div class="card"><div class="label">Ouverts / prêts</div><div class="kpi">${ready}</div></div><div class="card"><div class="label">Ouvertures bloquées</div><div class="kpi">${blocked}</div></div><div class="card"><div class="label">Critiques / refus</div><div class="kpi">${crit} / ${rej}</div></div></div><div class="network-section-title"><div><strong>Priorités réseau</strong><span>Les magasins nécessitant le plus d’attention remontent en premier.</span></div></div><div class="network-store-grid">${sorted.map(card).join('')}</div>`}const risk=r=>Number(r.criticalIncidents||0)*100+Number(r.opening.blockers||0)*20+Number(r.openIncidents||0)*8+(r.day.opening_status==='OPENED'?0:10);function card(r){const open=r.day.opening_status==='OPENED',danger=r.criticalIncidents>0||(!open&&r.opening.blockers>0);return`<article class="card network-store ${danger?'critical':''}"><div class="row"><div><div class="label">${esc(r.code||'Magasin')}</div><h3>${esc(r.name)}</h3></div>${status(danger?'À traiter':open?'Ouvert':'En cours',danger?'danger':open?'ok':'warn')}</div><div class="network-process"><div class="row small"><strong>Ouverture</strong><span>${r.opening.percent}%</span></div>${progress(r.opening.percent)}<div class="small muted process-caption">${open?'Validée':r.opening.currentTitle?`Étape : ${esc(r.opening.currentTitle)}`:'À démarrer'}</div><div class="owner-line"><span>Responsable</span><strong>${esc(r.day.opening_owner_name||'Non attribué')}</strong></div></div><div class="network-signals"><div><span>Blocages</span><strong>${r.opening.blockers}</strong></div><div><span>Incidents</span><strong>${r.openIncidents}</strong></div><div><span>Qualité</span><strong>${r.qualityControls}</strong></div><div><span>Refus</span><strong>${r.qualityRejected}</strong></div></div><button class="btn soft wide" data-network-store="${r.id}">Superviser ce magasin</button></article>`}
+import{api}from'../api.js';
+import{isDirector}from'../state.js';
+import{$,status,progress,esc}from'../ui.js';
+
+export async function renderNetwork(){
+  if(!isDirector())return;
+  const base=await api('/api/network');
+  const rows=await Promise.all(base.map(async r=>{try{const inc=await api(`/api/stores/${r.id}/incidents?status=OPEN`);return{...r,sla:inc.stats}}catch{return{...r,sla:{open:r.openIncidents||0,critical:r.criticalIncidents||0,overdue:0,escalated:0,watch:0}}}}));
+  const ready=rows.filter(x=>x.day.opening_status==='OPENED').length,
+    blocked=rows.filter(x=>x.opening.blockers>0&&x.day.opening_status!=='OPENED').length,
+    escalated=rows.reduce((s,x)=>s+Number(x.sla?.escalated||0),0),
+    overdue=rows.reduce((s,x)=>s+Number(x.sla?.overdue||0),0),
+    sorted=[...rows].sort((a,b)=>risk(b)-risk(a));
+  $('#networkContent').innerHTML=`
+  <div class="grid g4">
+    <div class="card"><div class="label">Réseau</div><div class="kpi">${rows.length}</div><div class="small muted">magasins suivis</div></div>
+    <div class="card"><div class="label">Ouverts / prêts</div><div class="kpi">${ready}</div><div class="small muted">ouvertures validées</div></div>
+    <div class="card"><div class="label">SLA en retard</div><div class="kpi">${overdue}</div><div class="small muted">incidents hors délai</div></div>
+    <div class="card"><div class="label">À escalader Direction</div><div class="kpi">${escalated}</div><div class="small muted">priorité d’intervention</div></div>
+  </div>
+  ${blocked?`<div class="banner ban-danger" style="margin-top:14px"><strong>${blocked} ouverture(s) actuellement bloquée(s).</strong> Les magasins concernés remontent en tête de liste.</div>`:''}
+  <div class="network-section-title"><div><strong>Priorités réseau</strong><span>Classement par incident critique, SLA, blocage et progression d’ouverture.</span></div></div>
+  <div class="network-store-grid">${sorted.map(card).join('')}</div>`;
+}
+
+const risk=r=>Number(r.sla?.escalated||0)*250+Number(r.sla?.overdue||0)*140+Number(r.criticalIncidents||0)*100+Number(r.opening.blockers||0)*30+Number(r.openIncidents||0)*8+(r.day.opening_status==='OPENED'?0:10);
+function card(r){
+  const open=r.day.opening_status==='OPENED',danger=Number(r.sla?.escalated||0)>0||Number(r.sla?.overdue||0)>0||r.criticalIncidents>0||(!open&&r.opening.blockers>0);
+  return`<article class="card network-store ${danger?'critical':''}">
+    <div class="row"><div><div class="label">${esc(r.code||'Magasin')}</div><h3>${esc(r.name)}</h3></div>${status(Number(r.sla?.escalated||0)>0?'Escalade':danger?'À traiter':open?'Ouvert':'En cours',danger?'danger':open?'ok':'warn')}</div>
+    <div class="network-process"><div class="row small"><strong>Ouverture</strong><span>${r.opening.percent}%</span></div>${progress(r.opening.percent)}<div class="small muted process-caption">${open?'Validée':r.opening.currentTitle?`Étape : ${esc(r.opening.currentTitle)}`:'À démarrer'}</div><div class="owner-line"><span>Responsable</span><strong>${esc(r.day.opening_owner_name||'Non attribué')}</strong></div></div>
+    <div class="network-signals"><div><span>Blocages</span><strong>${r.opening.blockers}</strong></div><div><span>Incidents</span><strong>${r.openIncidents}</strong></div><div><span>SLA retard</span><strong>${r.sla?.overdue||0}</strong></div><div><span>Escalades</span><strong>${r.sla?.escalated||0}</strong></div></div>
+    ${(r.sla?.watch||0)>0?`<div class="banner ban-info"><strong>${r.sla.watch} incident(s)</strong> approchent de leur échéance SLA.</div>`:''}
+    <button class="btn soft wide" data-network-store="${r.id}">Superviser ce magasin</button>
+  </article>`;
+}
