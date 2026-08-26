@@ -4,7 +4,7 @@ function parse(v,fallback=null){try{return v?JSON.parse(v):fallback}catch{return
 function normalizeBoolean(v){return v===true || v==='true' || v===1 || v==='1'}
 
 export function getTaskForm(taskId){
-  const task=db.prepare(`SELECT t.*,sd.store_id,sd.business_date FROM tasks t JOIN store_days sd ON sd.id=t.store_day_id WHERE t.id=?`).get(taskId);
+  const task=db.prepare(`SELECT t.*,sd.store_id,sd.business_date,sd.opening_status,sd.closing_status FROM tasks t JOIN store_days sd ON sd.id=t.store_day_id WHERE t.id=?`).get(taskId);
   if(!task) return null;
   const fields=db.prepare(`SELECT * FROM task_fields WHERE task_id=? ORDER BY rowid`).all(taskId).map(f=>({...f,options:parse(f.options_json,[]),value:parse(f.value_json,null)}));
   return {task,fields};
@@ -40,7 +40,11 @@ function financialVariances(task,valuesByCode){
 
 export function submitTaskForm({taskId,user,values}){
   const form=getTaskForm(taskId); if(!form) throw Object.assign(new Error('Tâche introuvable'),{status:404});
-  const {task,fields}=form; const normalized={}; const errors=[]; const nonconforms=[];
+  const {task,fields}=form;
+  if(task.group_name==='opening' && task.opening_status==='OPENED') throw Object.assign(new Error('Le parcours d’ouverture est verrouillé après validation finale.'),{status:409});
+  if(task.group_name==='closing' && task.opening_status!=='OPENED') throw Object.assign(new Error('La fermeture ne peut être contrôlée avant l’ouverture officielle du magasin.'),{status:409});
+  if(task.group_name==='closing' && task.closing_status==='CLOSED') throw Object.assign(new Error('Le parcours de fermeture est verrouillé après validation finale.'),{status:409});
+  const normalized={}; const errors=[]; const nonconforms=[];
   for(const f of fields){
     const r=validateField(f,values?.[f.code]);
     if(!r.ok){errors.push(r.message);continue}

@@ -1,0 +1,59 @@
+name: StoreOps CI
+
+on:
+  push:
+    branches:
+      - main
+      - storeops-v1.4-integration
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax check backend and frontend
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r file; do
+            node --check "$file"
+          done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
+
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-ci.db
+        run: |
+          node backend/server.mjs > /tmp/storeops-api.log 2>&1 &
+          echo $! > /tmp/storeops-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-api.log
+          exit 1
+
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-api.pid ]; then
+            kill "$(cat /tmp/storeops-api.pid)" || true
+          fi

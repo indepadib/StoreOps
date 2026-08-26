@@ -1,0 +1,19 @@
+services:
+  storeops-api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8787:8787"
+    environment:
+      NODE_ENV: development
+      AUTH_MODE: demo
+      D365_MODE: simulated
+      PORT: 8787
+      STOREOPS_DB: /data/storeops.db
+      CORS_ORIGINS: http://localhost:8787,http://localhost:8888,https://franprix-storeops.netlify.app
+    volumes:
+      - storeops-data:/data
+
+volumes:
+  storeops-data:

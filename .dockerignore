@@ -1,0 +1,9 @@
+.git
+.github
+**/*.db
+**/*.db-shm
+**/*.db-wal
+backend/uploads
+node_modules
+.DS_Store
+*.log
