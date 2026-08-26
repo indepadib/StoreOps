@@ -37,6 +37,7 @@ jobs:
           D365_MODE: simulated
           PORT: 8787
           STOREOPS_DB: /tmp/storeops-ci.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-media
         run: |
           node backend/server.mjs > /tmp/storeops-api.log 2>&1 &
           echo $! > /tmp/storeops-api.pid
@@ -49,6 +50,11 @@ jobs:
           done
           cat /tmp/storeops-api.log
           exit 1
+
+      - name: Incident and permissions smoke test
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/smoke.mjs
 
       - name: Stop StoreOps API
         if: always()
