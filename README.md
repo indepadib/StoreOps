@@ -1,37 +1,51 @@
-# Franprix StoreOps V1.2
+# Franprix StoreOps V1.3 — Full Stack prototype
 
-Prototype interactif multi-magasins — Franprix Maroc.
+Cette version sépare réellement le frontend et le backend.
 
-## Réseau de démonstration
-- Val Fleuri
-- Trèfle
-- Zeraoui
-- Sindibad
-- Carita
+## Architecture
 
-## Rôles autorisés à piloter les contrôles qualité
-- Responsable magasin : uniquement son magasin
-- Directeur d'exploitation : tous les magasins
+- `frontend/` : SPA légère, thème Franprix, consommant exclusivement l'API REST.
+- `backend/` : API Node.js sans dépendances externes + SQLite natif Node 22 pour la démo.
+- `backend/services/permissions.mjs` : contrôle d'accès serveur.
+- `backend/services/workflow.mjs` : règles ouverture / fermeture et audit.
+- `backend/services/dynamics.mjs` : adaptateur Dynamics simulé à remplacer par OData / Data Events.
+- `backend/storeops.db` : créé automatiquement au premier démarrage.
 
-Les autres profils n'ont aucun droit de création, modification, validation ou clôture sur les réceptions et contrôles qualité.
+## Lancer
 
-## Nouveautés V1.2 — Qualité & réception
-- Réception obligatoirement rattachée à un PO / code interne valide
-- Quantité commandée, livrée, acceptée et refusée par article
-- Contrôle qualité par ligne de réception
-- Contrôle température conditionnel selon le profil produit
-- Contrôle emballage / intégrité
-- Contrôle aspect / fraîcheur
-- DLC et lot saisis manuellement à la réception lorsque requis
-- Création optionnelle automatique du suivi DLC StoreOps pour la quantité acceptée
-- Photo obligatoire en cas de non-conformité
-- Décision Accepté / Partiel / Refusé
-- Incident automatique lors d'une non-conformité
-- Réception système bloquée tant que toutes les lignes n'ont pas été contrôlées
-- Registre Qualité magasin consolidé
-- Contrôles qualité ponctuels hors réception
-- KPI : contrôles, conformes, non-conformes, quantité refusée
-- Vue Directeur d'exploitation enrichie avec les non-conformités qualité par magasin
+```bash
+./start.sh
+```
 
-## Données simulées
-La V1.2 reste un prototype front autonome avec persistance navigateur. Les données Dynamics 365 sont simulées. En production, le catalogue, les PO, prix, stock, promotions, shifts et statuts transactionnels seront récupérés via la couche d'intégration Dynamics.
+Puis ouvrir http://localhost:8787
+
+## Utilisateurs de démo
+
+- Responsable Val Fleuri
+- Responsable Trèfle
+- Responsable Zeraoui
+- Responsable Sindibad
+- Responsable Carita
+- Directeur Exploitation
+- Employé Val Fleuri
+
+Les permissions ne sont plus uniquement visuelles : elles sont vérifiées par l'API.
+
+## Fonctions V1.3
+
+- multi-magasins ;
+- rôles Responsable / Directeur / Employé ;
+- cockpit magasin ;
+- ouverture et fermeture persistées en SQL ;
+- tâches et audit ;
+- DLC manuelle ;
+- réception article par article ;
+- contrôle qualité avec règle livré = accepté + refusé ;
+- création automatique de DLC depuis une réception ;
+- historique qualité ;
+- vue Direction multi-magasins ;
+- adaptateur Dynamics isolé.
+
+## Production cible
+
+La V1.3 utilise SQLite uniquement pour être immédiatement exécutable sans installation. Pour production : PostgreSQL/Azure SQL, Microsoft Entra ID, Azure Blob Storage, API backend hébergée sur Azure App Service/Container Apps, et vrai connecteur Dynamics 365.
