@@ -5,9 +5,11 @@ on:
     branches:
       - main
       - storeops-v1.4-integration
+      - storeops-v1.4.3-quality-governance
   pull_request:
     branches:
       - main
+      - storeops-v1.4-integration
 
 jobs:
   validate:
@@ -51,7 +53,7 @@ jobs:
           cat /tmp/storeops-api.log
           exit 1
 
-      - name: Incident and permissions smoke test
+      - name: Workflow, incident, permissions and governance smoke test
         env:
           STOREOPS_TEST_BASE: http://127.0.0.1:8787
         run: node backend/tests/smoke.mjs
