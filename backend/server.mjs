@@ -58,8 +58,14 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/tasks'); if(p){
     requireStore(user,p.storeId); const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()); const group=url.searchParams.get('group');
-    const rows=group?db.prepare(`SELECT * FROM tasks WHERE store_day_id=? AND group_name=? ORDER BY step_order`).all(day.id,group):db.prepare(`SELECT * FROM tasks WHERE store_day_id=? ORDER BY group_name,step_order`).all(day.id);
-    return json(req,res,200,{day,tasks:rows,opening:processProgress(day.id,'opening'),closing:processProgress(day.id,'closing')});
+    const sqlBase=`SELECT t.*,u.name completed_by_name FROM tasks t LEFT JOIN users u ON u.id=t.completed_by WHERE t.store_day_id=?`;
+    const rows=group?db.prepare(`${sqlBase} AND t.group_name=? ORDER BY t.step_order`).all(day.id,group):db.prepare(`${sqlBase} ORDER BY t.group_name,t.step_order`).all(day.id);
+    const openingOwner=day.opening_owner_id?db.prepare(`SELECT id,name FROM users WHERE id=?`).get(day.opening_owner_id):null;
+    const closingOwner=day.closing_owner_id?db.prepare(`SELECT id,name FROM users WHERE id=?`).get(day.closing_owner_id):null;
+    const processBlock=group==='opening'?'STORE_OPENING':group==='closing'?'STORE_CLOSING':null;
+    const incidents=processBlock?db.prepare(`SELECT i.*,u.name created_by_name FROM incidents i LEFT JOIN users u ON u.id=i.created_by WHERE i.store_id=? AND i.status='OPEN' AND (i.blocking_level=? OR i.source_type='TASK') ORDER BY i.created_at DESC`).all(p.storeId,processBlock):[];
+    const timeline=db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? AND a.business_date=? ORDER BY a.id DESC LIMIT 40`).all(p.storeId,day.business_date);
+    return json(req,res,200,{day:{...day,opening_owner_name:openingOwner?.name||null,closing_owner_name:closingOwner?.name||null},tasks:rows,incidents,timeline,opening:processProgress(day.id,'opening'),closing:processProgress(day.id,'closing')});
   }
   p=route(path,'/api/tasks/:taskId/form'); if(p){const form=getTaskForm(p.taskId);if(!form)return json(req,res,404,{error:'Tâche introuvable'});requireStore(user,form.task.store_id);return json(req,res,200,form)}
   p=route(path,'/api/tasks/:taskId/submit'); if(p && req.method==='POST'){
@@ -114,7 +120,7 @@ async function api(req,res,url){
 
   if(path==='/api/network'){
     if(user.role!=='ops_director')return json(req,res,403,{error:'Réservé au Directeur d’exploitation'});const stores=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all();
-    const rows=stores.map(s=>{const day=ensureStoreDay(s.id);const opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');const incidents=db.prepare(`SELECT COUNT(*) n,SUM(CASE WHEN criticality='CRITICAL' THEN 1 ELSE 0 END) crit FROM incidents WHERE store_id=? AND status='OPEN'`).get(s.id);const last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id);const qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date);return {...s,day,opening,closing,openIncidents:incidents.n||0,criticalIncidents:incidents.crit||0,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}});
+    const rows=stores.map(s=>{const day=ensureStoreDay(s.id);const opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');const incidents=db.prepare(`SELECT COUNT(*) n,SUM(CASE WHEN criticality='CRITICAL' THEN 1 ELSE 0 END) crit FROM incidents WHERE store_id=? AND status='OPEN'`).get(s.id);const last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id);const qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date);const openingOwner=day.opening_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.opening_owner_id)?.name:null;const closingOwner=day.closing_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.closing_owner_id)?.name:null;return {...s,day:{...day,opening_owner_name:openingOwner,closing_owner_name:closingOwner},opening,closing,openIncidents:incidents.n||0,criticalIncidents:incidents.crit||0,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}});
     return json(req,res,200,rows);
   }
   return json(req,res,404,{error:'Route API inconnue'});
