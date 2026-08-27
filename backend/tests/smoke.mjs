@@ -6,7 +6,19 @@ async function call(method,path,user='u-vf',payload){
 }
 function ok(condition,message){if(!condition)throw new Error(message)}
 
-let x=await call('POST','/api/stores/val-fleuri/incidents','u-emp-vf',{title:'Interdit'});
+let x=await call('GET','/api/dlc/config','u-vf');
+ok(x.r.status===200&&x.data.departments?.length===13,'DLC reference config failed');
+x=await call('POST','/api/stores/val-fleuri/dlc','u-emp-vf',{ean:'6111040001111',expiryDate:new Date().toISOString().slice(0,10),quantity:5,department:'Crémerie / PLS'});
+ok(x.r.status===403,'employee must not create DLC controls');
+x=await call('POST','/api/stores/val-fleuri/dlc','u-vf',{ean:'6111040001111',expiryType:'DLC',expiryDate:new Date().toISOString().slice(0,10),quantity:5,unit:'pièce',department:'Crémerie / PLS',family:'Lait frais',zone:'Rayon',lotRef:'SMOKE-DLC'});
+ok(x.r.status===201&&x.data.risk?.stage==='CRITICAL'&&x.data.remaining_quantity===5,'DLC critical evaluation failed');
+const dlcId=x.data.id;
+x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'NO_ACTION',quantity:0});
+ok(x.r.status===409,'invalid action must be blocked for critical DLC');
+x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'DESTROY',quantity:2});
+ok(x.r.status===409,'DLC destruction proof requirement bypassed');
+
+x=await call('POST','/api/stores/val-fleuri/incidents','u-emp-vf',{title:'Interdit'});
 ok(x.r.status===403,'employee must not create incidents');
 
 x=await call('PUT','/api/quality-profiles/Frais','u-vf',{tempMin:1});
@@ -34,6 +46,17 @@ x=await call('POST',`/api/incidents/${incidentId}/resolve`,'u-vf',{resolutionNot
 ok(x.r.status===409,'evidence requirement was bypassed');
 
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7lK0AAAAASUVORK5CYII=';
+x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'DESTROY',quantity:2,dataUrl:'data:image/png;base64,'+png,fileName:'pv-destruction.png',caption:'PV smoke'});
+ok(x.r.status===201&&x.data.remaining_quantity===3&&x.data.evidence.length===1&&x.data.pending_action===true,'DLC partial disposal/evidence failed');
+x=await call('POST',`/api/dlc/${dlcId}/recheck`,'u-vf',{quantity:0,note:'Lot écoulé / sorti'});
+ok(x.r.status===200&&x.data.status==='CLOSED','DLC recheck closure failed');
+x=await call('GET','/api/stores/val-fleuri/dlc?status=ALL','u-vf');
+ok(x.r.status===200&&x.data.items.some(i=>i.id===dlcId&&i.status==='CLOSED'),'DLC register failed');
+x=await call('PUT','/api/dlc/thresholds/Crémerie%20%2F%20PLS','u-vf',{criticalDays:1,alertDays:4,watchDays:8});
+ok(x.r.status===403,'store manager must not change DLC thresholds');
+x=await call('PUT','/api/dlc/thresholds/Crémerie%20%2F%20PLS','u-ops',{criticalDays:1,alertDays:4,watchDays:8});
+ok(x.r.status===200&&Number(x.data.alert_days)===4&&Number(x.data.watch_days)===8,'director DLC threshold update failed');
+
 x=await call('POST',`/api/incidents/${incidentId}/evidence`,'u-vf',{dataUrl:'data:image/png;base64,'+png,fileName:'smoke.png',caption:'preuve'});
 ok(x.r.status===201&&x.data.evidence.length===1,'evidence upload failed');
 x=await call('POST',`/api/incidents/${incidentId}/resolve`,'u-vf',{resolutionNote:'Zone sécurisée et recontrôlée'});
@@ -48,4 +71,4 @@ ok(x.r.status===200&&x.data.stats.overdue>=1&&x.data.stats.escalated>=1,'network
 x=await call('GET','/api/stores/val-fleuri/incidents?status=ALL','u-vf');
 ok(x.r.status===200&&x.data.items.some(i=>i.id===incidentId)&&x.data.items.some(i=>i.id===overdueId),'incident list failed');
 
-console.log('StoreOps V1.4.3 smoke tests passed');
+console.log('StoreOps V1.5 DLC smoke tests passed');
