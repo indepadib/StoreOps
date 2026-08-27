@@ -177,9 +177,9 @@ export function isShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==
 
 export async function mockApi(path,options={}){
  const s=load(),u=user(s),method=(options.method||'GET').toUpperCase(),p=pathOnly(path),q=qs(path),b=body(options);let m;
- if(p==='/api/health')return{ok:true,service:'StoreOps Showcase',version:'1.4.3-showcase',authMode:'demo',dynamicsMode:'simulated',showcase:true};
+ if(p==='/api/health')return{ok:true,service:'StoreOps Showcase',version:'1.5-showcase',authMode:'demo',dynamicsMode:'simulated',showcase:true};
  if(p==='/api/session')return{user:clone(u),authMode:'demo',availableDemoUsers:clone(s.users)};
- if(p==='/api/config')return{authMode:'demo',dynamicsMode:'simulated',version:'1.4.3-showcase',showcase:true};
+ if(p==='/api/config')return{authMode:'demo',dynamicsMode:'simulated',version:'1.5-showcase',showcase:true};
  if(p==='/api/dlc/config'&&method==='GET')return{departments:clone(s.dlcThresholds.map(x=>({...x,families:DLC_FAMILIES[x.department]||[]}))),units:['kg','g','L','pièce','barquette','colis'],expiryTypes:[{code:'DLC',label:'DLC'},{code:'DDM',label:'DDM'}],actions:clone(DLC_ACTIONS)};
  if((m=p.match(/^\/api\/dlc\/thresholds\/(.+)$/))){assertDirector(u);const dept=decodeURIComponent(m[1]),x=s.dlcThresholds.find(y=>y.department===dept);if(!x)throw err('Rayon inconnu',404);const c=Number(b.criticalDays),a=Number(b.alertDays),w=Number(b.watchDays);if(c<0||a<c||w<a)throw err('Seuils invalides : CRITIQUE ≤ ALERTE ≤ À SURVEILLER.',400);Object.assign(x,{critical_days:c,alert_days:a,watch_days:w});save(s);return clone(x)}
  if(p==='/api/stores')return clone(u.role==='ops_director'?s.stores:s.stores.filter(x=>x.id===u.store_id));
