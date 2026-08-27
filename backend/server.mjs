@@ -38,11 +38,11 @@ function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.4.3',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.5',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
 
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 ORDER BY role,name`).all():[]});
-  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.4.3'});
+  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.5'});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
 
