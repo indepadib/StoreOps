@@ -1,4 +1,5 @@
-import { api,health } from './api.js';
+import { api,health,isShowcase } from './api.js';
+import { resetShowcase } from './mock-api.js';
 import { app,currentStore,isDirector } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 import { renderToday } from './pages/today.js';
@@ -11,17 +12,18 @@ import { renderSystem } from './pages/system.js';
 import { renderIncidents,openIncident,closeIncident,completeIncidentAction,viewEvidence } from './pages/incidents.js';
 
 async function bootstrap(){
-  const h=await health();app.authMode=h.authMode||'demo';app.version=h.version||'1.4';
+  const h=await health();app.authMode=h.authMode||'demo';app.version=h.version||'1.4';app.showcase=!!h.showcase;
   if(app.authMode==='entra' && !sessionStorage.getItem('storeops_access_token')) throw new Error('Authentification Entra activée : connecter le frontend MSAL et fournir un access token à StoreOps.');
   const s=await api('/api/session');app.user=s.user;app.users=s.availableDemoUsers||[];renderUserSelect();await loadStores();bind();setPage('today');
 }
 function renderUserSelect(){const el=$('#demoUser');if(app.authMode!=='demo'){el.hidden=true;return}el.hidden=false;el.innerHTML=app.users.map(u=>`<option value="${u.id}" ${u.id===app.user.id?'selected':''}>${u.name}</option>`).join('')}
 async function loadStores(){app.stores=await api('/api/stores');if(!app.storeId||!app.stores.some(s=>s.id===app.storeId))app.storeId=app.stores[0]?.id||null;$('#storeSelect').innerHTML=app.stores.map(s=>`<option value="${s.id}" ${s.id===app.storeId?'selected':''}>${s.name}</option>`).join('');updateHeader()}
-function updateHeader(){const store=currentStore();$('#headerMeta').textContent=`${store?.name||'Réseau'} · ${roleLabel(app.user.role)}`;$('#rolePill').textContent=roleLabel(app.user.role);$('#networkNav').hidden=!isDirector();$('#systemNav').hidden=!isDirector()}
+function updateHeader(){const store=currentStore();$('#headerMeta').textContent=`${store?.name||'Réseau'} · ${roleLabel(app.user.role)}${app.showcase?' · MVP Showcase':''}`;$('#rolePill').textContent=app.showcase?'MVP · '+roleLabel(app.user.role):roleLabel(app.user.role);$('#networkNav').hidden=!isDirector();$('#systemNav').hidden=!isDirector();ensureShowcaseControls()}
+function ensureShowcaseControls(){if(!isShowcase())return;const host=document.querySelector('.top-controls');if(!host||document.querySelector('#resetShowcaseBtn'))return;const b=document.createElement('button');b.id='resetShowcaseBtn';b.className='btn ghost';b.textContent='Réinitialiser démo';b.onclick=()=>{if(confirm('Réinitialiser toutes les données de démonstration ?')){resetShowcase();location.reload()}};host.appendChild(b)}
 export function setPage(page){if((page==='network'||page==='system')&&!isDirector())page='today';app.page=page;$$('.page').forEach(x=>x.classList.remove('active'));$(`#${page}Page`).classList.add('active');$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));renderPage(page)}
 async function renderPage(page){try{if(page==='today')return renderToday();if(page==='opening')return renderProcess('opening');if(page==='closing')return renderProcess('closing');if(page==='dlc')return renderDlc();if(page==='receipts')return renderReceipts();if(page==='quality')return renderQuality();if(page==='incidents')return renderIncidents();if(page==='network')return renderNetwork();if(page==='system')return renderSystem()}catch(e){console.error(e);toast(e.message)}}
 function bind(){
-  $('#demoUser').addEventListener('change',async e=>{localStorage.setItem('storeops_user',e.target.value);const s=await api('/api/session');app.user=s.user;app.users=s.availableDemoUsers||[];renderUserSelect();app.storeId=null;await loadStores();setPage('today');toast('Périmètre appliqué par le backend.')});
+  $('#demoUser').addEventListener('change',async e=>{localStorage.setItem('storeops_user',e.target.value);const s=await api('/api/session');app.user=s.user;app.users=s.availableDemoUsers||[];renderUserSelect();app.storeId=null;await loadStores();setPage('today');toast(app.showcase?'Profil de démonstration appliqué.':'Périmètre appliqué par le backend.')});
   $('#storeSelect').addEventListener('change',e=>{app.storeId=e.target.value;updateHeader();renderPage(app.page)});$('#refreshBtn').onclick=()=>renderPage(app.page);$$('.nav button[data-page]').forEach(b=>b.onclick=()=>setPage(b.dataset.page));
   $('#modalClose').onclick=closeTask;$('#taskModal').addEventListener('click',e=>{if(e.target.id==='taskModal')closeTask()});$('#modalSubmit').onclick=async()=>{try{await submitActiveTask()}catch{}};$('#incidentModalClose').onclick=closeIncident;$('#incidentModal').addEventListener('click',e=>{if(e.target.id==='incidentModal')closeIncident()});
   document.addEventListener('click',async e=>{try{
@@ -36,4 +38,4 @@ function bind(){
     const ns=e.target.closest('[data-network-store]');if(ns){app.storeId=ns.dataset.networkStore;$('#storeSelect').value=app.storeId;updateHeader();setPage('today')}
   }catch(err){console.error(err);toast(err.message)}})
 }
-bootstrap().catch(e=>{console.error(e);document.body.innerHTML=`<div style="padding:30px;font-family:system-ui"><h2>Impossible de charger StoreOps</h2><p>${e.message}</p><p>Si AUTH_MODE=entra est activé, le prochain raccord frontend est MSAL / Entra ID.</p></div>`});
+bootstrap().catch(e=>{console.error(e);document.body.innerHTML=`<div style="padding:30px;font-family:system-ui"><h2>Impossible de charger StoreOps</h2><p>${e.message}</p><p>Le mode Showcase doit fonctionner sans backend. Si ce message apparaît encore, recharge le site après le prochain déploiement.</p></div>`});

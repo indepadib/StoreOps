@@ -1,0 +1,188 @@
+const KEY='storeops_showcase_state_v3';
+
+const clone=v=>JSON.parse(JSON.stringify(v));
+const now=()=>new Date().toISOString().replace('Z','');
+const today=()=>new Date().toISOString().slice(0,10);
+const uid=p=>p+'_'+Math.random().toString(36).slice(2,9);
+const addDays=(n)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const addMinutes=(n)=>{const d=new Date(Date.now()+n*60000);return d.toISOString().replace('Z','')};
+
+const STORES=[
+  {id:'val-fleuri',name:'Val Fleuri',code:'VF',opening_time:'08:00',closing_time:'22:00',active:1},
+  {id:'trefle',name:'Trèfle',code:'TR',opening_time:'08:00',closing_time:'22:00',active:1},
+  {id:'zeraoui',name:'Zeraoui',code:'ZE',opening_time:'08:00',closing_time:'22:00',active:1},
+  {id:'sindibad',name:'Sindibad',code:'SI',opening_time:'08:00',closing_time:'22:00',active:1},
+  {id:'carita',name:'Carita',code:'CA',opening_time:'08:00',closing_time:'22:00',active:1}
+];
+const USERS=[
+  {id:'u-vf',name:'Responsable Val Fleuri',role:'store_manager',store_id:'val-fleuri',active:1},
+  {id:'u-tr',name:'Responsable Trèfle',role:'store_manager',store_id:'trefle',active:1},
+  {id:'u-ze',name:'Responsable Zeraoui',role:'store_manager',store_id:'zeraoui',active:1},
+  {id:'u-si',name:'Responsable Sindibad',role:'store_manager',store_id:'sindibad',active:1},
+  {id:'u-ca',name:'Responsable Carita',role:'store_manager',store_id:'carita',active:1},
+  {id:'u-ops',name:'Directeur Exploitation',role:'ops_director',store_id:null,active:1},
+  {id:'u-emp-vf',name:'Employé Val Fleuri',role:'employee',store_id:'val-fleuri',active:1}
+];
+const PRODUCTS={
+  '6111040001111':{ean:'6111040001111',name:'Lait frais entier 1L',category:'Frais',price:11.9,stock:42},
+  '3274080005003':{ean:'3274080005003',name:'Yaourt nature 4x110g',category:'Frais',price:14.5,stock:28},
+  '3017620422003':{ean:'3017620422003',name:'Nutella 750g',category:'Épicerie',price:79.9,stock:17}
+};
+const PROFILES=[
+  {id:'qp-frais',category:'Frais',label:'Produits frais',temperature_required:1,temp_min:0,temp_max:4,packaging_required:1,appearance_required:1,expiry_required:1,lot_required:0,photo_on_nonconform:1,active:1},
+  {id:'qp-surgele',category:'Surgelé',label:'Produits surgelés',temperature_required:1,temp_min:-30,temp_max:-18,packaging_required:1,appearance_required:1,expiry_required:1,lot_required:0,photo_on_nonconform:1,active:1},
+  {id:'qp-fl',category:'F&L',label:'Fruits & légumes',temperature_required:0,temp_min:null,temp_max:null,packaging_required:1,appearance_required:1,expiry_required:0,lot_required:0,photo_on_nonconform:1,active:1},
+  {id:'qp-epicerie',category:'Épicerie',label:'Épicerie',temperature_required:0,temp_min:null,temp_max:null,packaging_required:1,appearance_required:0,expiry_required:1,lot_required:0,photo_on_nonconform:1,active:1},
+  {id:'qp-default',category:'Autre',label:'Contrôle standard',temperature_required:0,temp_min:null,temp_max:null,packaging_required:1,appearance_required:0,expiry_required:0,lot_required:0,photo_on_nonconform:1,active:1}
+];
+const SLA=[
+  {criticality:'CRITICAL',response_minutes:15,resolution_minutes:30,escalation_minutes:15,active:1},
+  {criticality:'HIGH',response_minutes:60,resolution_minutes:120,escalation_minutes:90,active:1},
+  {criticality:'MEDIUM',response_minutes:120,resolution_minutes:240,escalation_minutes:180,active:1},
+  {criticality:'LOW',response_minutes:240,resolution_minutes:480,escalation_minutes:480,active:1}
+];
+
+const TASK_DEFS={
+ opening:[
+  ['Équipe et prise de poste','Présences, responsable d’ouverture et capacité minimale à ouvrir.','MEDIUM','PROCESS'],
+  ['Sécurité des accès','Contrôle physique des accès, issues et caméras.','CRITICAL','STORE_OPENING'],
+  ['Technique & équipements','Réseau, POS, TPE, imprimantes et balances.','HIGH','PROCESS'],
+  ['Chaîne du froid','Relevés chiffrés froid positif et négatif.','CRITICAL','STORE_OPENING'],
+  ['Surface de vente','Propreté, remplissage, fraîcheur et FEFO.','MEDIUM','PROCESS'],
+  ['Prix, promos & nouveautés','Tous les changements commerciaux du jour sont exécutés.','HIGH','PROCESS'],
+  ['Caisses prêtes','Affectation, fonds et shifts opérationnels.','CRITICAL','STORE_OPENING']
+ ],
+ closing:[
+  ['Tour commerce','Surface remise en état et clients sortis.','MEDIUM','PROCESS'],
+  ['DLC, frais & froid','DLC critiques traitées et températures de fin de journée.','HIGH','PROCESS'],
+  ['Clôture caisses','Shifts, espèces, TPE, CA et statement rapprochés.','CRITICAL','STORE_CLOSING'],
+  ['Stock & réceptions','Réceptions postées et anomalies stock identifiées.','HIGH','PROCESS'],
+  ['Technique','Équipements et éclairage mis en sécurité.','MEDIUM','PROCESS'],
+  ['Sécurité finale','Portes, alarme, réserve et accès sécurisés.','CRITICAL','STORE_CLOSING']
+ ]
+};
+function fieldsFor(group,step){
+ const b=(code,label)=>({id:uid('f'),code,label,input_type:'BOOLEAN',required:1,unit:null,min_value:null,max_value:null,options:null,value:null});
+ const n=(code,label,min,max,unit='°C')=>({id:uid('f'),code,label,input_type:'NUMBER',required:1,unit,min_value:min,max_value:max,options:null,value:null});
+ const t=(code,label,required=0)=>({id:uid('f'),code,label,input_type:'TEXT',required,unit:null,min_value:null,max_value:null,options:null,value:''});
+ const m=(code,label)=>({id:uid('f'),code,label,input_type:'MONEY',required:1,unit:'DH',min_value:null,max_value:null,options:null,value:null});
+ if(group==='opening'&&step===1)return[b('responsable_present','Responsable d’ouverture présent'),b('caissier_present','Au moins un caissier présent'),t('absence_note','Absences / retards / remplacements')];
+ if(group==='opening'&&step===2)return[b('porte_principale','Porte principale sécurisée'),b('porte_secondaire','Porte secondaire sécurisée'),b('issue_secours','Issue de secours accessible'),b('cameras','Caméras opérationnelles')];
+ if(group==='opening'&&step===3)return[b('reseau','Réseau opérationnel'),b('pos','POS opérationnels'),b('tpe','TPE opérationnels'),b('imprimantes','Imprimantes tickets opérationnelles'),b('balances','Balances opérationnelles')];
+ if(group==='opening'&&step===4)return[n('froid_positif','Température froid positif',0,4),n('froid_negatif','Température surgelés',-30,-18)];
+ if(group==='opening'&&step===5)return[b('proprete','Propreté conforme'),b('rayons','Rayons remplis'),b('fraicheur','Fraîcheur F&L conforme'),b('fefo','Rotation FEFO réalisée')];
+ if(group==='opening'&&step===6)return[b('prix','Changements de prix traités'),b('promos','Promotions installées / retirées'),b('nouveaux','Nouveaux articles balisés et mis en rayon')];
+ if(group==='opening'&&step===7)return[b('affectation','Caissiers affectés aux caisses'),b('fonds','Fonds de caisse déclarés'),b('shifts','Shifts Dynamics ouverts')];
+ if(group==='closing'&&step===1)return[b('clients_sortis','Tous les clients sont sortis'),b('surface','Surface remise en état'),b('promos_expirees','Promotions expirées retirées')];
+ if(group==='closing'&&step===2)return[b('dlc','DLC critiques traitées'),n('temp_pos','Température froid positif',0,4),n('temp_neg','Température surgelés',-30,-18)];
+ if(group==='closing'&&step===3)return[m('ca_commercial','CA commercial'),m('ca_comptable','CA comptable'),m('especes_attendues','Espèces attendues'),m('especes_declarees','Espèces déclarées'),m('tpe_systeme','TPE système'),m('tpe_cloture','TPE clôturé'),b('statement','Statement Dynamics contrôlé')];
+ if(group==='closing'&&step===4)return[b('receptions','Toutes les réceptions physiques sont postées'),b('stocks_negatifs','Stocks négatifs contrôlés')];
+ if(group==='closing'&&step===5)return[b('postes','Postes / équipements sécurisés'),b('eclairage','Éclairage hors zones nécessaires')];
+ return[b('portes','Toutes les portes sécurisées'),b('alarme','Alarme activée'),b('reserve','Réserve sécurisée'),t('transmission','Transmission au lendemain')];
+}
+
+function seedTasks(storeId,group,doneCount){
+ return TASK_DEFS[group].map((d,i)=>{
+  const step=i+1,id=`${storeId}:${group}:${step}`,done=step<=doneCount;
+  const fields=fieldsFor(group,step);
+  if(done) for(const f of fields){if(f.input_type==='BOOLEAN')f.value=true;else if(f.input_type==='NUMBER')f.value=f.min_value!=null&&f.max_value!=null?(f.min_value+f.max_value)/2:0;else if(f.input_type==='MONEY')f.value=1000;else f.value='RAS';}
+  return{id,store_id:storeId,group_name:group,step_order:step,title:d[0],description:d[1],priority:'HIGH',criticality:d[2],blocking_level:d[3],status:done?'COMPLETED':'OPEN',completed_by:done?'u-'+(storeId==='val-fleuri'?'vf':storeId==='trefle'?'tr':storeId==='zeraoui'?'ze':storeId==='sindibad'?'si':'ca'):null,completed_by_name:done?'Responsable '+STORES.find(s=>s.id===storeId).name:null,completed_at:done?now():null,fields};
+ });
+}
+function seed(){
+ const states={'val-fleuri':4,'trefle':7,'zeraoui':3,'sindibad':0,'carita':6};
+ const days={},tasks={};
+ for(const s of STORES){
+  const dc=states[s.id];days[s.id]={id:s.id+'_'+today(),store_id:s.id,business_date:today(),opening_status:dc===7?'OPENED':dc>0?'IN_PROGRESS':'NOT_STARTED',closing_status:'NOT_STARTED',opening_owner_id:dc>0?'u-'+(s.id==='val-fleuri'?'vf':s.id==='trefle'?'tr':s.id==='zeraoui'?'ze':s.id==='sindibad'?'si':'ca'):null,closing_owner_id:null,opened_at:dc===7?now():null,closed_at:null};
+  tasks[s.id]={opening:seedTasks(s.id,'opening',dc),closing:seedTasks(s.id,'closing',0)};
+ }
+ const incidents=[
+  {id:'inc_demo_z',store_id:'zeraoui',title:'Température chambre froide hors tolérance',description:'Relevé à 7,8°C lors de l’ouverture.',category:'COLD',criticality:'CRITICAL',blocking_level:'STORE_OPENING',status:'OPEN',assigned_to:'u-ze',assigned_to_name:'Responsable Zeraoui',due_at:addMinutes(-20),requires_evidence:1,created_by:'u-ze',created_by_name:'Responsable Zeraoui',created_at:addMinutes(-55),actions:[{id:'ia_z1',title:'Contrôler porte et groupe froid',status:'OPEN',assigned_to:'u-ze',assigned_to_name:'Responsable Zeraoui',due_at:addMinutes(-10),created_at:addMinutes(-50)}],evidence:[],resolution_note:null,resolved_by_name:null,resolved_at:null},
+  {id:'inc_demo_vf',store_id:'val-fleuri',title:'Imprimante étiquettes rayon instable',description:'Redémarrage nécessaire ce matin.',category:'TECHNICAL',criticality:'MEDIUM',blocking_level:'NONE',status:'OPEN',assigned_to:'u-vf',assigned_to_name:'Responsable Val Fleuri',due_at:addMinutes(180),requires_evidence:0,created_by:'u-vf',created_by_name:'Responsable Val Fleuri',created_at:addMinutes(-35),actions:[],evidence:[],resolution_note:null,resolved_by_name:null,resolved_at:null},
+  {id:'inc_demo_tr',store_id:'trefle',title:'Écart réception fournisseur',description:'2 unités refusées pour emballage endommagé.',category:'RECEPTION',criticality:'HIGH',blocking_level:'NONE',status:'RESOLVED',assigned_to:'u-tr',assigned_to_name:'Responsable Trèfle',due_at:addMinutes(-60),requires_evidence:1,created_by:'u-tr',created_by_name:'Responsable Trèfle',created_at:addMinutes(-180),actions:[{id:'ia_tr1',title:'Isoler les unités',status:'DONE',assigned_to:'u-tr',assigned_to_name:'Responsable Trèfle',completed_by_name:'Responsable Trèfle',completed_at:addMinutes(-120)}],evidence:[],resolution_note:'Unités refusées et fournisseur informé.',resolved_by_name:'Responsable Trèfle',resolved_at:addMinutes(-100)}
+ ];
+ const dlc=[
+  {id:'dlc1',store_id:'val-fleuri',ean:'6111040001111',product_name:'Lait frais entier 1L',expiry_date:addDays(2),quantity:12,zone:'Chambre froide',lot_ref:'L2408',comment:'',created_by:'u-vf',created_by_name:'Responsable Val Fleuri',status:'ACTIVE'},
+  {id:'dlc2',store_id:'val-fleuri',ean:'3274080005003',product_name:'Yaourt nature 4x110g',expiry_date:addDays(6),quantity:18,zone:'Rayon',lot_ref:'Y2608',comment:'',created_by:'u-vf',created_by_name:'Responsable Val Fleuri',status:'ACTIVE'},
+  {id:'dlc3',store_id:'trefle',ean:'6111040001111',product_name:'Lait frais entier 1L',expiry_date:addDays(1),quantity:8,zone:'Chambre froide',lot_ref:'L2508',comment:'',created_by:'u-tr',created_by_name:'Responsable Trèfle',status:'ACTIVE'}
+ ];
+ const receipts=[
+  {id:'rcpt_vf',store_id:'val-fleuri',po_number:'PO-10482',vendor:'Centrale Frais',eta:'10:30',status:'EXPECTED',lines:[
+   {id:'rl_vf_1',ean:'6111040001111',product_name:'Lait frais entier 1L',category:'Frais',ordered_qty:24,delivered_qty:null,accepted_qty:null,rejected_qty:null,quality_control_id:null},
+   {id:'rl_vf_2',ean:'3274080005003',product_name:'Yaourt nature 4x110g',category:'Frais',ordered_qty:36,delivered_qty:null,accepted_qty:null,rejected_qty:null,quality_control_id:null},
+   {id:'rl_vf_3',ean:'3017620422003',product_name:'Nutella 750g',category:'Épicerie',ordered_qty:12,delivered_qty:null,accepted_qty:null,rejected_qty:null,quality_control_id:null}
+  ]},
+  {id:'rcpt_tr',store_id:'trefle',po_number:'PO-20411',vendor:'Fournisseur Épicerie',eta:'14:00',status:'EXPECTED',lines:[{id:'rl_tr_1',ean:'3017620422003',product_name:'Nutella 750g',category:'Épicerie',ordered_qty:18,delivered_qty:18,accepted_qty:18,rejected_qty:0,quality_control_id:'qc_seed_tr'}]}
+ ];
+ const qualityControls=[
+  {id:'qc_seed_tr',store_id:'trefle',context:'Réception',po_number:'PO-20411',ean:'3017620422003',product_name:'Nutella 750g',category:'Épicerie',ordered_qty:18,delivered_qty:18,accepted_qty:18,rejected_qty:0,temperature:null,temperature_status:'NA',packaging_status:'OK',appearance_status:'NA',expiry_date:addDays(120),lot_ref:'NUT24',decision:'ACCEPT',comment:'',controlled_by:'u-tr',controlled_by_name:'Responsable Trèfle',created_at:addMinutes(-90)}
+ ];
+ return{version:3,stores:clone(STORES),users:clone(USERS),days,tasks,incidents,dlc,receipts,qualityControls,profiles:clone(PROFILES),sla:clone(SLA),audit:[]};
+}
+function load(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s?.version===3)return s}catch{}const s=seed();save(s);return s}
+function save(s){localStorage.setItem(KEY,JSON.stringify(s))}
+function user(s){const id=localStorage.getItem('storeops_user')||'u-vf';return s.users.find(x=>x.id===id)||s.users[0]}
+function assertStore(u,storeId){if(u.role!=='ops_director'&&u.store_id!==storeId)throw err('Accès interdit à ce magasin.',403)}
+function assertManage(u,storeId){assertStore(u,storeId);if(!['store_manager','ops_director'].includes(u.role))throw err('Réservé au Responsable magasin ou Directeur d’exploitation.',403)}
+function assertDirector(u){if(u.role!=='ops_director')throw err('Réservé au Directeur d’exploitation.',403)}
+function err(message,status=400,details){const e=new Error(message);e.status=status;e.details=details;return e}
+function body(options){try{return options?.body?JSON.parse(options.body):{}}catch{return{}}}
+function pathOnly(path){return path.split('?')[0]}
+function qs(path){return new URL(path,'https://showcase.local').searchParams}
+function risk(exp){const d=Math.ceil((new Date(exp+'T23:59:59')-new Date())/86400000);if(d<0)return{stage:'EXPIRED',label:'Expirée',severity:'CRITICAL'};if(d<=1)return{stage:'J1',label:`J-${Math.max(0,d)}`,severity:'CRITICAL'};if(d<=3)return{stage:'J3',label:`J-${d}`,severity:'HIGH'};if(d<=7)return{stage:'J7',label:`J-${d}`,severity:'MEDIUM'};return{stage:'OK',label:`J-${d}`,severity:'LOW'}}
+function audit(s,storeId,u,action,entityId){s.audit.unshift({id:uid('a'),store_id:storeId,action,entity_id:entityId,user_id:u.id,actor:u.name,created_at:now()});s.audit=s.audit.slice(0,100)}
+function process(s,storeId,group){const rows=s.tasks[storeId][group],done=rows.filter(x=>x.status==='COMPLETED').length,current=rows.find(x=>x.status!=='COMPLETED')||null,blockers=rows.filter(x=>x.blocking_level!=='NONE'&&x.status!=='COMPLETED').length;return{total:rows.length,done,percent:Math.round(done*100/rows.length),blockers,currentStep:current?.step_order||null,currentTaskId:current?.id||null,currentTitle:current?.title||null}}
+function incidentHydrate(s,i){const ass=s.users.find(u=>u.id===i.assigned_to);const actions=(i.actions||[]).map(a=>({...a,assigned_to_name:a.assigned_to_name||s.users.find(u=>u.id===a.assigned_to)?.name||null}));const ev=i.evidence||[];return{...i,assigned_to_name:i.assigned_to_name||ass?.name||null,actions,evidence:ev,open_actions:actions.filter(a=>a.status==='OPEN').length,is_overdue:i.status==='OPEN'&&i.due_at&&new Date(i.due_at)<new Date(),sla:{state:i.status==='RESOLVED'?'MET':i.due_at&&new Date(i.due_at)<new Date()?'BREACHED':'ON_TRACK'},escalation_level:i.status==='OPEN'&&i.due_at&&new Date(i.due_at)<new Date()?'OPS_DIRECTOR':'NONE'}}
+function incidentStats(s,storeId){const rows=s.incidents.filter(i=>i.store_id===storeId).map(i=>incidentHydrate(s,i)),open=rows.filter(i=>i.status==='OPEN');return{open:open.length,critical:open.filter(i=>i.criticality==='CRITICAL').length,overdue:open.filter(i=>i.is_overdue).length,escalated:open.filter(i=>i.escalation_level==='OPS_DIRECTOR').length,watch:0,resolvedToday:rows.filter(i=>i.status==='RESOLVED').length}}
+function createIncident(s,storeId,u,b){const pol=s.sla.find(x=>x.criticality===(b.criticality||'MEDIUM'))||s.sla[2];const i={id:uid('inc'),store_id:storeId,title:b.title||'Incident',description:b.description||'',category:b.category||'OPERATIONS',criticality:b.criticality||'MEDIUM',blocking_level:b.blockingLevel||'NONE',status:'OPEN',assigned_to:b.assignedTo||('u-'+(storeId==='val-fleuri'?'vf':storeId==='trefle'?'tr':storeId==='zeraoui'?'ze':storeId==='sindibad'?'si':'ca')),due_at:b.dueAt||addMinutes(pol.resolution_minutes),requires_evidence:b.requiresEvidence?1:0,created_by:u.id,created_by_name:u.name,created_at:now(),actions:[],evidence:[],resolution_note:null,resolved_at:null};s.incidents.unshift(i);audit(s,storeId,u,'INCIDENT_CREATED',i.id);return incidentHydrate(s,i)}
+function profile(s,category){return s.profiles.find(p=>p.category===category)||s.profiles.find(p=>p.category==='Autre')}
+function qualityIssues(p,b){const issues=[];if(p.temperature_required){if(b.temperature==null||b.temperature==='')issues.push('Température obligatoire');else if(Number(b.temperature)<p.temp_min||Number(b.temperature)>p.temp_max)issues.push(`Température hors tolérance ${p.temp_min} à ${p.temp_max} °C`)}if(p.packaging_required&&b.packagingStatus==='NOK')issues.push('Conditionnement non conforme');if(p.appearance_required&&b.appearanceStatus==='NOK')issues.push('Aspect / fraîcheur non conforme');if(p.expiry_required&&!b.expiryDate)issues.push('DLC obligatoire');return issues}
+
+export function resetShowcase(){localStorage.removeItem(KEY);localStorage.removeItem('storeops_user');return load()}
+export function isShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
+
+export async function mockApi(path,options={}){
+ const s=load(),u=user(s),method=(options.method||'GET').toUpperCase(),p=pathOnly(path),q=qs(path),b=body(options);
+ if(p==='/api/health')return{ok:true,service:'StoreOps Showcase',version:'1.4.3-showcase',authMode:'demo',dynamicsMode:'simulated',showcase:true};
+ if(p==='/api/session')return{user:clone(u),authMode:'demo',availableDemoUsers:clone(s.users)};
+ if(p==='/api/config')return{authMode:'demo',dynamicsMode:'simulated',version:'1.4.3-showcase',showcase:true};
+ if(p==='/api/stores')return clone(u.role==='ops_director'?s.stores:s.stores.filter(x=>x.id===u.store_id));
+ if(p==='/api/quality-profiles')return clone(s.profiles);
+ if(p==='/api/sla-policies'){assertDirector(u);return clone(s.sla)}
+ if(p==='/api/dynamics/health'){assertDirector(u);return{connected:false,mode:'SIMULATED',message:'Données Dynamics simulées pour le MVP.'}}
+ if(p==='/api/dynamics/entities'){assertDirector(u);const x=(q.get('q')||'').toLowerCase(),rows=[{PublicEntityName:'ReleasedProductsV2',PublicCollectionName:'Released products'},{PublicEntityName:'EcoResProductBarcodeV2',PublicCollectionName:'Product barcodes'},{PublicEntityName:'PurchaseOrderHeadersV2',PublicCollectionName:'Purchase orders'},{PublicEntityName:'RetailPeriodicDiscounts',PublicCollectionName:'Retail promotions'}];return rows.filter(r=>!x||JSON.stringify(r).toLowerCase().includes(x))}
+ let m;
+ if((m=p.match(/^\/api\/quality-profiles\/(.+)$/))){const cat=decodeURIComponent(m[1]),pr=profile(s,cat);if(method==='GET')return clone(pr);assertDirector(u);Object.assign(pr,{label:b.label??pr.label,temperature_required:b.temperatureRequired?1:0,temp_min:b.tempMin??null,temp_max:b.tempMax??null,packaging_required:b.packagingRequired?1:0,appearance_required:b.appearanceRequired?1:0,expiry_required:b.expiryRequired?1:0,lot_required:b.lotRequired?1:0,photo_on_nonconform:b.photoOnNonconform?1:0,active:b.active?1:0});save(s);return clone(pr)}
+ if((m=p.match(/^\/api\/sla-policies\/(.+)$/))){assertDirector(u);const pol=s.sla.find(x=>x.criticality===m[1]);Object.assign(pol,{response_minutes:Number(b.responseMinutes),resolution_minutes:Number(b.resolutionMinutes),escalation_minutes:Number(b.escalationMinutes),active:b.active?1:0});save(s);return clone(pol)}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/assignees$/))){const storeId=m[1];assertManage(u,storeId);return clone(s.users.filter(x=>x.role==='ops_director'||(x.role==='store_manager'&&x.store_id===storeId)))}
+ if((m=p.match(/^\/api\/products\/(.+)$/))){const prod=PRODUCTS[decodeURIComponent(m[1])];if(!prod)throw err('Article introuvable',404);return{...clone(prod),qualityProfile:clone(profile(s,prod.category))}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/dashboard$/))){const storeId=m[1];assertStore(u,storeId);const day=s.days[storeId],opening=process(s,storeId,'opening'),closing=process(s,storeId,'closing'),ist=incidentStats(s,storeId),qcs=s.qualityControls.filter(x=>x.store_id===storeId),dlc=s.dlc.filter(x=>x.store_id===storeId&&x.status==='ACTIVE');return{day:clone(day),opening,closing,dlcAtRisk:dlc.filter(x=>risk(x.expiry_date).stage!=='OK').length,incidents:ist.open,criticalIncidents:ist.critical,overdueIncidents:ist.overdue,escalatedIncidents:ist.escalated,watchIncidents:ist.watch,qualityControls:qcs.length,qualityRejected:qcs.reduce((a,x)=>a+Number(x.rejected_qty||0),0),health:Math.max(0,100-ist.open*6-ist.escalated*8-opening.blockers*4),lastActions:clone(s.audit.filter(x=>x.store_id===storeId).slice(0,12))}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/tasks$/))){const storeId=m[1],group=q.get('group')||'opening';assertStore(u,storeId);const day=s.days[storeId],ownerId=group==='opening'?day.opening_owner_id:day.closing_owner_id,owner=s.users.find(x=>x.id===ownerId),tasks=clone(s.tasks[storeId][group]),block=group==='opening'?'STORE_OPENING':'STORE_CLOSING';return{day:{...clone(day),opening_owner_name:group==='opening'?owner?.name:s.users.find(x=>x.id===day.opening_owner_id)?.name||null,closing_owner_name:group==='closing'?owner?.name:s.users.find(x=>x.id===day.closing_owner_id)?.name||null},tasks,incidents:clone(s.incidents.filter(i=>i.store_id===storeId&&i.status==='OPEN'&&(i.blocking_level===block||i.source_type==='TASK')).map(i=>incidentHydrate(s,i))),timeline:clone(s.audit.filter(a=>a.store_id===storeId).slice(0,40)),opening:process(s,storeId,'opening'),closing:process(s,storeId,'closing')}}
+ if((m=p.match(/^\/api\/tasks\/([^/]+)\/form$/))){const id=decodeURIComponent(m[1]);for(const st of Object.values(s.tasks))for(const g of ['opening','closing']){const t=st[g].find(x=>x.id===id);if(t)return{task:clone(t),fields:clone(t.fields)}}throw err('Tâche introuvable',404)}
+ if((m=p.match(/^\/api\/tasks\/([^/]+)\/submit$/))){const id=decodeURIComponent(m[1]);let task=null;for(const st of Object.values(s.tasks))for(const g of ['opening','closing']){task=st[g].find(x=>x.id===id)||task}if(!task)throw err('Tâche introuvable',404);assertManage(u,task.store_id);const vals=b.values||{},issues=[];for(const f of task.fields){const v=vals[f.code];if(f.required&&(v===null||v===undefined||v===''))issues.push({label:f.label,message:f.label+' est obligatoire'});if(f.input_type==='BOOLEAN'&&v===false)issues.push({label:f.label,message:f.label+' : non conforme'});if(['NUMBER','MONEY'].includes(f.input_type)&&v!=null){if(f.min_value!=null&&Number(v)<f.min_value)issues.push({label:f.label,message:`${f.label} sous le minimum ${f.min_value}`});if(f.max_value!=null&&Number(v)>f.max_value)issues.push({label:f.label,message:`${f.label} au-dessus du maximum ${f.max_value}`})}}
+  if(task.group_name==='closing'&&task.step_order===3){const tol=1;if(Math.abs(Number(vals.ca_commercial)-Number(vals.ca_comptable))>tol)issues.push({message:'Écart CA commercial / comptable supérieur à 1 DH'});if(Math.abs(Number(vals.especes_attendues)-Number(vals.especes_declarees))>tol)issues.push({message:'Écart espèces supérieur à 1 DH'});if(Math.abs(Number(vals.tpe_systeme)-Number(vals.tpe_cloture))>tol)issues.push({message:'Écart TPE supérieur à 1 DH'})}
+  task.fields.forEach(f=>f.value=vals[f.code]);if(issues.length){task.status='IN_PROGRESS';const existing=s.incidents.find(i=>i.source_id===task.id&&i.status==='OPEN');if(!existing){const inc=createIncident(s,task.store_id,u,{title:'Non-conformité · '+task.title,description:issues.map(x=>x.message).join(' · '),category:'OPERATIONS',criticality:task.criticality,blockingLevel:task.blocking_level,requiresEvidence:task.criticality==='CRITICAL'});inc.source_type='TASK';inc.source_id=task.id}audit(s,task.store_id,u,'TASK_NONCONFORM',task.id);save(s);throw err('Contrôle non conforme.',409,issues)}
+  task.status='COMPLETED';task.completed_by=u.id;task.completed_by_name=u.name;task.completed_at=now();const inc=s.incidents.find(i=>i.source_id===task.id&&i.status==='OPEN');if(inc){inc.status='RESOLVED';inc.resolution_note='Recontrôle conforme';inc.resolved_by_name=u.name;inc.resolved_at=now()}audit(s,task.store_id,u,'TASK_COMPLETED',task.id);save(s);return{ok:true}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/process\/(opening|closing)\/take$/))){const storeId=m[1],group=m[2];assertManage(u,storeId);const day=s.days[storeId];if(group==='closing'&&day.opening_status!=='OPENED')throw err('La fermeture ne peut commencer qu’après validation de l’ouverture.',409);if(group==='opening'){day.opening_status='IN_PROGRESS';day.opening_owner_id=u.id}else{day.closing_status='IN_PROGRESS';day.closing_owner_id=u.id}audit(s,storeId,u,group.toUpperCase()+'_TAKEN',day.id);save(s);return{ok:true}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/process\/(opening|closing)\/validate$/))){const storeId=m[1],group=m[2];assertManage(u,storeId);const day=s.days[storeId],pr=process(s,storeId,group);if(pr.done<pr.total)throw err('Tous les contrôles obligatoires ne sont pas conformes.',409,{...pr});const block=group==='opening'?'STORE_OPENING':'STORE_CLOSING',blocked=s.incidents.filter(i=>i.store_id===storeId&&i.status==='OPEN'&&i.blocking_level===block).length;if(blocked)throw err('Un incident bloquant reste ouvert.',409,{openCritical:blocked});if(group==='opening'){day.opening_status='OPENED';day.opened_at=now();audit(s,storeId,u,'STORE_OPENED',day.id)}else{day.closing_status='CLOSED';day.closed_at=now();audit(s,storeId,u,'STORE_CLOSED',day.id)}save(s);return{ok:true,progress:process(s,storeId,group)}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/dlc$/))){const storeId=m[1];assertStore(u,storeId);if(method==='GET')return clone(s.dlc.filter(x=>x.store_id===storeId).map(x=>({...x,risk:risk(x.expiry_date)})));assertManage(u,storeId);const prod=PRODUCTS[b.ean];if(!prod)throw err('EAN inconnu Dynamics',400);if(!b.expiryDate||!(Number(b.quantity)>0))throw err('DLC et quantité obligatoires',400);const d={id:uid('dlc'),store_id:storeId,ean:b.ean,product_name:prod.name,expiry_date:b.expiryDate,quantity:Number(b.quantity),zone:b.zone||'Rayon',lot_ref:b.lotRef||null,comment:b.comment||'',created_by:u.id,created_by_name:u.name,status:'ACTIVE'};s.dlc.push(d);audit(s,storeId,u,'DLC_CREATED',d.id);save(s);return{id:d.id,product:clone(prod)}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/receipts$/))){const storeId=m[1];assertStore(u,storeId);return clone(s.receipts.filter(x=>x.store_id===storeId))}
+ if((m=p.match(/^\/api\/receipts\/([^/]+)\/lines\/([^/]+)\/quality$/))){const po=decodeURIComponent(m[1]),lineId=m[2],r=s.receipts.find(x=>x.po_number===po);if(!r)throw err('PO introuvable',404);assertManage(u,r.store_id);const line=r.lines.find(x=>x.id===lineId);if(!line)throw err('Ligne introuvable',404);const delivered=Number(b.deliveredQty),accepted=Number(b.acceptedQty),rejected=Number(b.rejectedQty);if(Math.abs(accepted+rejected-delivered)>.0001)throw err('Accepté + refusé doit être égal au livré',400);const pr=profile(s,line.category),issues=qualityIssues(pr,b);if(issues.length&&rejected===0)throw err('Non-conformité détectée : renseigner la quantité refusée.',409,issues);const decision=rejected===0?'ACCEPT':accepted===0?'REJECT':'PARTIAL',qc={id:uid('qc'),store_id:r.store_id,context:'Réception',po_number:r.po_number,ean:line.ean,product_name:line.product_name,category:line.category,ordered_qty:line.ordered_qty,delivered_qty:delivered,accepted_qty:accepted,rejected_qty:rejected,temperature:b.temperature,temperature_status:issues.some(x=>String(x).includes('Température'))?'NOK':b.temperature==null?'NA':'OK',packaging_status:b.packagingStatus||'NA',appearance_status:b.appearanceStatus||'NA',expiry_date:b.expiryDate||null,lot_ref:b.lotRef||null,decision,comment:b.comment||'',controlled_by:u.id,controlled_by_name:u.name,created_at:now()};s.qualityControls.unshift(qc);Object.assign(line,{delivered_qty:delivered,accepted_qty:accepted,rejected_qty:rejected,quality_control_id:qc.id});if(b.expiryDate&&accepted>0)s.dlc.push({id:uid('dlc'),store_id:r.store_id,ean:line.ean,product_name:line.product_name,expiry_date:b.expiryDate,quantity:accepted,zone:'Réserve',lot_ref:b.lotRef||null,comment:'Réception '+r.po_number,created_by:u.id,created_by_name:u.name,status:'ACTIVE'});if(decision!=='ACCEPT'||issues.length){const inc=createIncident(s,r.store_id,u,{title:'Non-conformité réception · '+line.product_name,description:issues.join(' · ')||b.comment,category:'RECEPTION',criticality:issues.some(x=>String(x).includes('Température'))?'CRITICAL':'HIGH',requiresEvidence:true});inc.actions.push({id:uid('ia'),title:'Décider du traitement fournisseur / produit',status:'OPEN',assigned_to:u.id,assigned_to_name:u.name,created_at:now()})}audit(s,r.store_id,u,'RECEIPT_LINE_CONTROLLED',line.id);save(s);return{id:qc.id,decision,issues,qualityProfile:clone(pr)}}
+ if((m=p.match(/^\/api\/receipts\/([^/]+)\/post$/))){const po=decodeURIComponent(m[1]),r=s.receipts.find(x=>x.po_number===po);if(!r)throw err('PO introuvable',404);assertManage(u,r.store_id);if(r.lines.some(l=>!l.quality_control_id))throw err('Toutes les lignes doivent avoir un contrôle qualité avant réception système',409);r.status='POSTED';audit(s,r.store_id,u,'RECEIPT_POSTED',r.id);save(s);return{ok:true,mode:'SIMULATED',po}}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/quality$/))){const storeId=m[1];assertStore(u,storeId);return clone(s.qualityControls.filter(x=>x.store_id===storeId))}
+ if((m=p.match(/^\/api\/stores\/([^/]+)\/incidents$/))){const storeId=m[1];assertStore(u,storeId);if(method==='GET'){const st=(q.get('status')||'OPEN').toUpperCase(),rows=s.incidents.filter(i=>i.store_id===storeId&&(st==='ALL'||i.status===st)).map(i=>incidentHydrate(s,i));return{stats:incidentStats(s,storeId),items:clone(rows)}}assertManage(u,storeId);const i=createIncident(s,storeId,u,b);save(s);return clone(i)}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertStore(u,i.store_id);return clone(incidentHydrate(s,i))}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)\/actions$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertManage(u,i.store_id);i.actions.push({id:uid('ia'),title:b.title||'Action corrective',note:b.note||'',status:'OPEN',assigned_to:b.assignedTo||i.assigned_to,assigned_to_name:s.users.find(x=>x.id===(b.assignedTo||i.assigned_to))?.name||null,due_at:b.dueAt||i.due_at,created_at:now()});save(s);return clone(incidentHydrate(s,i))}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)\/actions\/([^/]+)\/complete$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertManage(u,i.store_id);const a=i.actions.find(x=>x.id===m[2]);if(!a)throw err('Action introuvable',404);Object.assign(a,{status:'DONE',completion_note:b.note||'',completed_by_name:u.name,completed_at:now()});save(s);return clone(incidentHydrate(s,i))}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)\/evidence$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertManage(u,i.store_id);i.evidence.push({id:uid('ev'),file_name:b.fileName||'preuve.jpg',caption:b.caption||'',created_by_name:u.name,created_at:now(),dataUrl:b.dataUrl});save(s);return clone(incidentHydrate(s,i))}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)\/resolve$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertManage(u,i.store_id);if(i.actions.some(a=>a.status==='OPEN'))throw err(i.actions.filter(a=>a.status==='OPEN').length+' action(s) corrective(s) restent ouvertes.',409);if(i.requires_evidence&&!i.evidence.length)throw err('Une preuve photo est obligatoire avant clôture.',409);if(!b.resolutionNote?.trim())throw err('Compte-rendu de résolution obligatoire.',400);Object.assign(i,{status:'RESOLVED',resolution_note:b.resolutionNote,resolved_by_name:u.name,resolved_at:now()});audit(s,i.store_id,u,'INCIDENT_RESOLVED',i.id);save(s);return clone(incidentHydrate(s,i))}
+ if((m=p.match(/^\/api\/incidents\/([^/]+)\/reopen$/))){const i=s.incidents.find(x=>x.id===m[1]);if(!i)throw err('Incident introuvable',404);assertManage(u,i.store_id);Object.assign(i,{status:'OPEN',resolution_note:null,resolved_by_name:null,resolved_at:null,due_at:addMinutes(120)});save(s);return clone(incidentHydrate(s,i))}
+ if(p==='/api/network'){assertDirector(u);return clone(s.stores.map(st=>{const day=s.days[st.id],ist=incidentStats(s,st.id),qcs=s.qualityControls.filter(x=>x.store_id===st.id),owner=s.users.find(x=>x.id===day.opening_owner_id);return{...st,day:{...day,opening_owner_name:owner?.name||null},opening:process(s,st.id,'opening'),closing:process(s,st.id,'closing'),openIncidents:ist.open,criticalIncidents:ist.critical,overdueIncidents:ist.overdue,escalatedIncidents:ist.escalated,watchIncidents:ist.watch,qualityControls:qcs.length,qualityRejected:qcs.reduce((a,x)=>a+Number(x.rejected_qty||0),0),lastAction:s.audit.find(a=>a.store_id===st.id)||null}}))}
+ throw err('Route Showcase non implémentée : '+p,404);
+}
+
+export async function mockBlob(path){
+ const s=load(),m=pathOnly(path).match(/^\/api\/media\/([^/]+)$/);if(!m)throw err('Preuve introuvable',404);
+ for(const i of s.incidents){const e=(i.evidence||[]).find(x=>x.id===m[1]);if(e?.dataUrl){const [head,data]=e.dataUrl.split(',');const mime=head.match(/data:([^;]+)/)?.[1]||'image/jpeg';const bytes=Uint8Array.from(atob(data),c=>c.charCodeAt(0));return new Blob([bytes],{type:mime})}}
+ throw err('Preuve introuvable',404);
+}
