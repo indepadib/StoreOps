@@ -18,7 +18,7 @@ ok(x.r.status===409,'invalid action must be blocked for critical DLC');
 x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'DESTROY',quantity:2});
 ok(x.r.status===409,'DLC destruction proof requirement bypassed');
 
-let x=await call('POST','/api/stores/val-fleuri/incidents','u-emp-vf',{title:'Interdit'});
+x=await call('POST','/api/stores/val-fleuri/incidents','u-emp-vf',{title:'Interdit'});
 ok(x.r.status===403,'employee must not create incidents');
 
 x=await call('PUT','/api/quality-profiles/Frais','u-vf',{tempMin:1});
