@@ -74,7 +74,7 @@ function recordCard(r){
     <div><span>État terrain</span><strong>${stateLabel(r.operational_state)}</strong><small>${esc(r.zone||'—')}</small></div>
   </div>
   <div class="dlc-required-action"><span>Action requise</span><strong>${esc(risk.action||'')}</strong></div>
-  ${r.overdue_control?'<div class="banner ban-danger"><strong>Recontrôle en retard.</strong> Ce lot doit être revu maintenant.</div>':''}
+  ${r.overdue_control?'<div class="banner ban-danger"><strong>Recontrôle en retard.</strong> Ce lot doit être revu maintenant.</div>':r.action_satisfied?'<div class="banner ban-info"><strong>Action du lot enregistrée.</strong> Le lot reste suivi jusqu’au prochain contrôle ou jusqu’à épuisement.</div>':''}
   ${t?`<div class="small muted" style="margin-top:8px">Dernière action : <strong>${esc(actionLabel(t.action_type))}</strong> · ${esc(t.performed_by_name||'')} · ${dt(t.performed_at)}</div>`:''}
   ${canManage()?treatmentPanel(r):''}
   ${historyPanel(r)}
@@ -84,7 +84,7 @@ function treatmentPanel(r){
    <div class="grid g2" style="margin-top:10px">
     <div class="dlc-subpanel"><strong>Enregistrer une action</strong>
       <div class="form-grid" style="margin-top:8px">
-       <div class="field"><label>Action réalisée</label><select data-dlc-action="${r.id}">${cfg.actions.map(x=>`<option value="${x.code}">${esc(x.label)}${x.proof?' · preuve requise':''}</option>`).join('')}</select></div>
+       <div class="field"><label>Action réalisée</label><select data-dlc-action="${r.id}">${cfg.actions.filter(x=>(r.risk?.allowedActions||[]).includes(x.code)).map(x=>`<option value="${x.code}">${esc(x.label)}${x.proof?' · preuve requise':''}</option>`).join('')}</select></div>
        <div class="field"><label>Quantité sortie si applicable</label><input data-dlc-action-qty="${r.id}" type="number" min="0" max="${r.remaining_quantity}" step="0.01" value="${r.remaining_quantity}"></div>
        <div class="field full"><label>Commentaire</label><input data-dlc-action-note="${r.id}" placeholder="Décision / justification / référence PV"></div>
        <div class="field"><label>Preuve photo / PDF</label><input data-dlc-proof="${r.id}" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment"></div>
