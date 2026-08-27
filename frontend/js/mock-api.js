@@ -176,7 +176,7 @@ export function resetShowcase(){localStorage.removeItem(KEY);localStorage.remove
 export function isShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 
 export async function mockApi(path,options={}){
- const s=load(),u=user(s),method=(options.method||'GET').toUpperCase(),p=pathOnly(path),q=qs(path),b=body(options);
+ const s=load(),u=user(s),method=(options.method||'GET').toUpperCase(),p=pathOnly(path),q=qs(path),b=body(options);let m;
  if(p==='/api/health')return{ok:true,service:'StoreOps Showcase',version:'1.4.3-showcase',authMode:'demo',dynamicsMode:'simulated',showcase:true};
  if(p==='/api/session')return{user:clone(u),authMode:'demo',availableDemoUsers:clone(s.users)};
  if(p==='/api/config')return{authMode:'demo',dynamicsMode:'simulated',version:'1.4.3-showcase',showcase:true};
@@ -187,7 +187,6 @@ export async function mockApi(path,options={}){
  if(p==='/api/sla-policies'){assertDirector(u);return clone(s.sla)}
  if(p==='/api/dynamics/health'){assertDirector(u);return{connected:false,mode:'SIMULATED',message:'Données Dynamics simulées pour le MVP.'}}
  if(p==='/api/dynamics/entities'){assertDirector(u);const x=(q.get('q')||'').toLowerCase(),rows=[{PublicEntityName:'ReleasedProductsV2',PublicCollectionName:'Released products'},{PublicEntityName:'EcoResProductBarcodeV2',PublicCollectionName:'Product barcodes'},{PublicEntityName:'PurchaseOrderHeadersV2',PublicCollectionName:'Purchase orders'},{PublicEntityName:'RetailPeriodicDiscounts',PublicCollectionName:'Retail promotions'}];return rows.filter(r=>!x||JSON.stringify(r).toLowerCase().includes(x))}
- let m;
  if((m=p.match(/^\/api\/quality-profiles\/(.+)$/))){const cat=decodeURIComponent(m[1]),pr=profile(s,cat);if(method==='GET')return clone(pr);assertDirector(u);Object.assign(pr,{label:b.label??pr.label,temperature_required:b.temperatureRequired?1:0,temp_min:b.tempMin??null,temp_max:b.tempMax??null,packaging_required:b.packagingRequired?1:0,appearance_required:b.appearanceRequired?1:0,expiry_required:b.expiryRequired?1:0,lot_required:b.lotRequired?1:0,photo_on_nonconform:b.photoOnNonconform?1:0,active:b.active?1:0});save(s);return clone(pr)}
  if((m=p.match(/^\/api\/sla-policies\/(.+)$/))){assertDirector(u);const pol=s.sla.find(x=>x.criticality===m[1]);Object.assign(pol,{response_minutes:Number(b.responseMinutes),resolution_minutes:Number(b.resolutionMinutes),escalation_minutes:Number(b.escalationMinutes),active:b.active?1:0});save(s);return clone(pol)}
  if((m=p.match(/^\/api\/stores\/([^/]+)\/assignees$/))){const storeId=m[1];assertManage(u,storeId);return clone(s.users.filter(x=>x.role==='ops_director'||(x.role==='store_manager'&&x.store_id===storeId)))}
