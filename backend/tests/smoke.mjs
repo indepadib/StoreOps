@@ -47,7 +47,7 @@ ok(x.r.status===409,'evidence requirement was bypassed');
 
 const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7lK0AAAAASUVORK5CYII=';
 x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'DESTROY',quantity:2,dataUrl:'data:image/png;base64,'+png,fileName:'pv-destruction.png',caption:'PV smoke'});
-ok(x.r.status===201&&x.data.remaining_quantity===3&&x.data.evidence.length===1,'DLC partial disposal/evidence failed');
+ok(x.r.status===201&&x.data.remaining_quantity===3&&x.data.evidence.length===1&&x.data.pending_action===true,'DLC partial disposal/evidence failed');
 x=await call('POST',`/api/dlc/${dlcId}/recheck`,'u-vf',{quantity:0,note:'Lot écoulé / sorti'});
 ok(x.r.status===200&&x.data.status==='CLOSED','DLC recheck closure failed');
 x=await call('GET','/api/stores/val-fleuri/dlc?status=ALL','u-vf');
