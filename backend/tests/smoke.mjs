@@ -18,6 +18,30 @@ ok(x.r.status===409,'invalid action must be blocked for critical DLC');
 x=await call('POST',`/api/dlc/${dlcId}/treatments`,'u-vf',{actionType:'DESTROY',quantity:2});
 ok(x.r.status===409,'DLC destruction proof requirement bypassed');
 
+x=await call('POST','/api/stores/val-fleuri/handover','u-emp-vf',{title:'Interdit'});
+ok(x.r.status===403,'employee must not create handover');
+const today=new Date().toISOString().slice(0,10);
+x=await call('POST','/api/stores/val-fleuri/handover','u-vf',{title:'Smoke handover blocking',description:'À traiter avant ouverture',category:'TECHNICAL',priority:'CRITICAL',blockingOpening:true,targetDate:today});
+ok(x.r.status===201&&x.data.blocking_opening===1,'manager handover create failed');const handoverId=x.data.id;
+x=await call('GET','/api/stores/val-fleuri/handover','u-vf');
+ok(x.r.status===200&&x.data.stats.blocking>=1&&x.data.items.some(i=>i.id===handoverId),'handover active list/stats failed');
+x=await call('POST',`/api/handover/${handoverId}/acknowledge`,'u-vf',{});
+ok(x.r.status===200&&x.data.status==='ACKNOWLEDGED','handover acknowledge failed');
+x=await call('POST',`/api/handover/${handoverId}/resolve`,'u-vf',{});
+ok(x.r.status===400,'handover resolution note must be required');
+x=await call('POST',`/api/handover/${handoverId}/resolve`,'u-vf',{note:'Contrôle réalisé et conforme'});
+ok(x.r.status===200&&x.data.status==='RESOLVED','handover resolve failed');
+x=await call('GET','/api/stores/val-fleuri/handover','u-vf');
+ok(x.r.status===200&&x.data.stats.blocking===0,'resolved handover must clear opening blocker');
+
+x=await call('POST','/api/stores/val-fleuri/handover/review-closing','u-vf',{});
+ok(x.r.status===200&&x.data.day.handover_reviewed_at,'closing handover review failed');
+const tomorrow=new Date(Date.now()+86400000).toISOString().slice(0,10);
+x=await call('POST','/api/stores/val-fleuri/handover','u-vf',{title:'Sujet ajouté après revue',category:'OPERATIONS',priority:'NORMAL',targetDate:tomorrow});
+ok(x.r.status===201,'outgoing handover create failed');
+x=await call('GET','/api/stores/val-fleuri/tasks?group=closing','u-vf');
+ok(x.r.status===200&&!x.data.day.handover_reviewed_at,'new outgoing handover must invalidate closing review');
+
 x=await call('POST','/api/stores/val-fleuri/incidents','u-emp-vf',{title:'Interdit'});
 ok(x.r.status===403,'employee must not create incidents');
 
@@ -71,4 +95,4 @@ ok(x.r.status===200&&x.data.stats.overdue>=1&&x.data.stats.escalated>=1,'network
 x=await call('GET','/api/stores/val-fleuri/incidents?status=ALL','u-vf');
 ok(x.r.status===200&&x.data.items.some(i=>i.id===incidentId)&&x.data.items.some(i=>i.id===overdueId),'incident list failed');
 
-console.log('StoreOps V1.5 DLC smoke tests passed');
+console.log('StoreOps V1.6 handover smoke tests passed');
