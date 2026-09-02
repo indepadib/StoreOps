@@ -44,9 +44,13 @@ function hydrate(row){
 export function createHandover({storeId,businessDate=todayISO(),user,title,description='',category='OPERATIONS',priority='NORMAL',blockingOpening=false,targetDate=null}){
   if(!title?.trim())throw Object.assign(new Error('Sujet de passation obligatoire.'),{status:400});
   const allowedPriority=['LOW','NORMAL','HIGH','CRITICAL'];if(!allowedPriority.includes(priority))priority='NORMAL';
+  const allowedCategory=['OPERATIONS','STAFFING','SECURITY','COLD','TECHNICAL','STOCK','CASH','QUALITY','COMMERCIAL'];if(!allowedCategory.includes(category))category='OPERATIONS';
   const id=uid('ho'),target=targetDate||addDaysISO(businessDate,1);
+  if(target<businessDate)throw Object.assign(new Error('La date cible de passation ne peut pas être antérieure à la journée source.'),{status:400});
   db.prepare(`INSERT INTO handover_items(id,store_id,source_business_date,target_business_date,title,description,category,priority,blocking_opening,status,created_by) VALUES(?,?,?,?,?,?,?,?,?,'OPEN',?)`)
     .run(id,storeId,businessDate,target,title.trim(),description||null,category||'OPERATIONS',priority,blockingOpening?1:0,user.id);
+  // Any new outgoing item invalidates a previous closing review: the manager must review the final handover set.
+  db.prepare(`UPDATE store_days SET handover_reviewed_at=NULL,handover_reviewed_by=NULL WHERE store_id=? AND business_date=?`).run(storeId,businessDate);
   audit({storeId,businessDate,userId:user.id,action:'HANDOVER_CREATED',entityType:'HANDOVER',entityId:id,details:{title,category,priority,targetDate:target,blockingOpening:!!blockingOpening}});
   return hydrate(db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(id));
 }
@@ -63,10 +67,11 @@ export function acknowledgeHandover({id,user}){
   audit({storeId:row.store_id,userId:user.id,action:'HANDOVER_ACKNOWLEDGED',entityType:'HANDOVER',entityId:id,details:{sourceDate:row.source_business_date,targetDate:row.target_business_date}});
   return hydrate(db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(id));
 }
-export function resolveHandover({id,user,note=''}){
+export function resolveHandover({id,user,note=''}) {
   const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Passation introuvable.'),{status:404});
   if(row.status==='RESOLVED')return hydrate(row);
-  db.prepare(`UPDATE handover_items SET status='RESOLVED',resolved_by=?,resolved_at=CURRENT_TIMESTAMP,resolution_note=? WHERE id=?`).run(user.id,note||null,id);
+  if(!note?.trim())throw Object.assign(new Error('Note de résolution obligatoire.'),{status:400});
+  db.prepare(`UPDATE handover_items SET status='RESOLVED',resolved_by=?,resolved_at=CURRENT_TIMESTAMP,resolution_note=? WHERE id=?`).run(user.id,note.trim(),id);
   audit({storeId:row.store_id,userId:user.id,action:'HANDOVER_RESOLVED',entityType:'HANDOVER',entityId:id,details:{note}});
   return hydrate(db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(id));
 }
@@ -77,7 +82,7 @@ export function reviewClosingHandover({storeDay,user}){
 }
 export function handoverStats(storeId,businessDate=todayISO()){
   const rows=listHandover(storeId,{businessDate});
-  return {pending:rows.length,critical:rows.filter(x=>x.priority==='CRITICAL').length,high:rows.filter(x=>['HIGH','CRITICAL'].includes(x.priority)).length,blocking:rows.filter(x=>x.blocking_opening&&x.status!=='RESOLVED').length,unacknowledged:rows.filter(x=>x.status==='OPEN').length};
+  return {pending:rows.length,critical:rows.filter(x=>x.priority==='CRITICAL').length,high:rows.filter(x=>['HIGH','CRITICAL'].includes(x.priority)).length,blocking:rows.filter(x=>x.blocking_opening&&x.status!=='RESOLVED').length,unacknowledged:rows.filter(x=>x.status==='OPEN').length,overdue:rows.filter(x=>x.target_business_date<businessDate).length};
 }
 export function blockingHandoverCount(storeId,businessDate=todayISO()){
   return db.prepare(`SELECT COUNT(*) n FROM handover_items WHERE store_id=? AND target_business_date<=? AND blocking_opening=1 AND status!='RESOLVED' AND status!='CANCELLED'`).get(storeId,businessDate).n;
