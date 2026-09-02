@@ -107,10 +107,10 @@ export function countInventoryLine({lineId,user,quantity,reasonCode=null,note=''
  const policy=inventoryPolicy();
  if(recount){
    if(!line.requires_recount)throw Object.assign(new Error('Cette ligne ne nécessite pas de recomptage.'),{status:409});
-   const variance=qty-Number(line.theoretical_qty);
-   if(variance!==0&&!reasonCode)throw Object.assign(new Error('Un motif est obligatoire pour tout écart final.'),{status:409});
-   db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,user.id,qty,variance,reasonCode||null,note||null,lineId);
-   audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,reasonCode}});
+   const variance=qty-Number(line.theoretical_qty),finalReason=reasonCode||line.reason_code||null;
+   if(variance!==0&&!finalReason)throw Object.assign(new Error('Un motif est obligatoire pour tout écart final.'),{status:409});
+   db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,user.id,qty,variance,finalReason,note||line.note||null,lineId);
+   audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,reasonCode:reasonCode||line.reason_code||null}});
  }else{
    if(line.count1_qty!=null)throw Object.assign(new Error('Le premier comptage existe déjà. Utilise le recomptage si nécessaire.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),needs=Math.abs(variance)>=Number(policy.recount_qty_threshold);
