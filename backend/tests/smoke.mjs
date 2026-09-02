@@ -6,7 +6,43 @@ async function call(method,path,user='u-vf',payload){
 }
 function ok(condition,message){if(!condition)throw new Error(message)}
 
-let x=await call('GET','/api/dlc/config','u-vf');
+let x=await call('GET','/api/inventory/config','u-vf');
+ok(x.r.status===200&&Number(x.data.policy?.recount_qty_threshold)===2&&Number(x.data.policy?.incident_qty_threshold)===5,'inventory config failed');
+x=await call('POST','/api/stores/val-fleuri/inventory','u-emp-vf',{type:'CYCLE',zone:'Interdit'});
+ok(x.r.status===403,'employee must not create inventory session');
+x=await call('POST','/api/stores/val-fleuri/inventory','u-vf',{type:'CYCLE',zone:'Smoke inventory',comment:'CI'});
+ok(x.r.status===201&&x.data.status==='COUNTING','manager inventory session create failed');const inventoryId=x.data.id;
+
+x=await call('POST',`/api/inventory/${inventoryId}/lines`,'u-vf',{ean:'3017620422003'});
+ok(x.r.status===201&&Number(x.data.theoretical_qty)===17,'inventory Nutella stock snapshot failed');const nutLineId=x.data.id;
+x=await call('POST',`/api/inventory/lines/${nutLineId}/count`,'u-vf',{quantity:16});
+ok(x.r.status===409,'inventory low variance reason requirement bypassed');
+x=await call('POST',`/api/inventory/lines/${nutLineId}/count`,'u-vf',{quantity:16,reasonCode:'SHRINK',note:'1 unité manquante'});
+ok(x.r.status===200&&x.data.lines.find(i=>i.id===nutLineId)?.status==='COUNTED','inventory direct count with reason failed');
+
+x=await call('POST',`/api/inventory/${inventoryId}/lines`,'u-vf',{ean:'6111040001111'});
+ok(x.r.status===201&&Number(x.data.theoretical_qty)===24,'inventory milk stock snapshot failed');const milkLineId=x.data.id;
+x=await call('POST',`/api/inventory/lines/${milkLineId}/count`,'u-vf',{quantity:18,reasonCode:'SHRINK',note:'écart important'});
+ok(x.r.status===200&&x.data.lines.find(i=>i.id===milkLineId)?.status==='RECOUNT','inventory recount threshold failed');
+x=await call('POST',`/api/inventory/lines/${milkLineId}/count`,'u-vf',{quantity:18,recount:true});
+ok(x.r.status===200&&Number(x.data.lines.find(i=>i.id===milkLineId)?.final_variance)===-6&&x.data.lines.find(i=>i.id===milkLineId)?.reason_code==='SHRINK','inventory recount/final variance failed');
+
+x=await call('POST',`/api/inventory/${inventoryId}/finalize`,'u-vf',{});
+ok(x.r.status===200&&x.data.session.status==='READY_TO_POST'&&x.data.highVarianceLines.some(i=>i.id===milkLineId),'inventory finalize/high variance failed');
+x=await call('GET','/api/stores/val-fleuri/incidents?status=OPEN','u-vf');
+const stockIncident=x.data.items?.find(i=>i.source_type==='INVENTORY_LINE'&&i.source_id===milkLineId);
+ok(x.r.status===200&&stockIncident&&stockIncident.category==='STOCK'&&Number(stockIncident.requires_evidence)===1,'inventory stock incident escalation failed');
+x=await call('POST',`/api/inventory/${inventoryId}/post`,'u-vf',{});
+ok(x.r.status===200&&x.data.dynamics?.simulated===true&&x.data.session?.status==='POSTED','inventory simulated posting failed');
+
+x=await call('PUT','/api/inventory/policy','u-vf',{recountThreshold:3,incidentThreshold:6});
+ok(x.r.status===403,'store manager must not change inventory policy');
+x=await call('PUT','/api/inventory/policy','u-ops',{recountThreshold:3,incidentThreshold:6});
+ok(x.r.status===200&&Number(x.data.recount_qty_threshold)===3&&Number(x.data.incident_qty_threshold)===6,'director inventory policy update failed');
+x=await call('PUT','/api/inventory/policy','u-ops',{recountThreshold:2,incidentThreshold:5});
+ok(x.r.status===200,'inventory policy reset failed');
+
+x=await call('GET','/api/dlc/config','u-vf');
 ok(x.r.status===200&&x.data.departments?.length===13,'DLC reference config failed');
 x=await call('POST','/api/stores/val-fleuri/dlc','u-emp-vf',{ean:'6111040001111',expiryDate:new Date().toISOString().slice(0,10),quantity:5,department:'Crémerie / PLS'});
 ok(x.r.status===403,'employee must not create DLC controls');
@@ -95,4 +131,4 @@ ok(x.r.status===200&&x.data.stats.overdue>=1&&x.data.stats.escalated>=1,'network
 x=await call('GET','/api/stores/val-fleuri/incidents?status=ALL','u-vf');
 ok(x.r.status===200&&x.data.items.some(i=>i.id===incidentId)&&x.data.items.some(i=>i.id===overdueId),'incident list failed');
 
-console.log('StoreOps V1.6 handover smoke tests passed');
+console.log('StoreOps V1.7 stock & inventory smoke tests passed');
