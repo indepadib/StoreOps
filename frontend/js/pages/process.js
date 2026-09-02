@@ -34,7 +34,8 @@ export async function renderProcess(group){
   const handover=data.handover||{stats:{pending:0,blocking:0,unacknowledged:0},items:[]};
   const closingReviewed=group!=='closing'||!!data.day.handover_reviewed_at;
   const openingHandoverBlocking=group==='opening'?Number(handover.stats?.blocking||0):0;
-  const canValidate=canInteract&&p.done>=p.total&&closingReviewed&&openingHandoverBlocking===0;
+  const commercialBlocking=group==='opening'?Number(data.commercial?.blocking||0):0;
+  const canValidate=canInteract&&p.done>=p.total&&closingReviewed&&openingHandoverBlocking===0&&commercialBlocking===0;
 
   const takeBtn=document.querySelector(`[data-take="${group}"]`);
   if(takeBtn){
@@ -45,6 +46,7 @@ export async function renderProcess(group){
   el.innerHTML=`
     ${closingLocked?`<div class="banner ban-danger process-lock"><strong>Fermeture verrouillée</strong><span>L’ouverture du magasin doit être validée avant de commencer le parcours de fermeture.</span></div>`:''}
     ${group==='opening'&&openingHandoverBlocking?`<div class="banner ban-danger process-lock"><strong>${openingHandoverBlocking} passation(s) bloquent l’ouverture</strong><span>Ces sujets doivent être résolus avant de pouvoir déclarer le magasin prêt.</span></div>`:''}
+    ${group==='opening'&&commercialBlocking?`<div class="banner ban-danger process-lock"><strong>${commercialBlocking} action(s) prix/promo restent à vérifier</strong><span>Traite la file « Prix & promotions » avant de déclarer le magasin prêt.</span></div>`:''}
     <div class="process-overview">
       <div class="card hero process-score">
         <div class="label muted">Parcours ${group==='opening'?'d’ouverture':'de fermeture'}</div>
@@ -57,7 +59,7 @@ export async function renderProcess(group){
         <strong class="focus-title">${esc(currentTask?.title||'Parcours terminé')}</strong>
         <div class="small muted">${currentTask?`Étape ${currentTask.step_order}/${p.total}`:'Toutes les étapes ont été traitées.'}</div>
         <div class="focus-meta"><span>Responsable</span><strong>${esc(owner||'Non pris en charge')}</strong></div>
-        <div class="focus-meta"><span>Blocages</span><strong>${p.blockers+openingHandoverBlocking}</strong></div>
+        <div class="focus-meta"><span>Blocages</span><strong>${p.blockers+openingHandoverBlocking+commercialBlocking}</strong></div>
       </div>
       <div class="card process-rule">
         <div class="label">Cycle opérationnel</div>
