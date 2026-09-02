@@ -24,9 +24,9 @@ const USERS=[
   {id:'u-emp-vf',name:'Employé Val Fleuri',role:'employee',store_id:'val-fleuri',active:1}
 ];
 const PRODUCTS={
-  '6111040001111':{ean:'6111040001111',name:'Lait frais entier 1L',category:'Frais',price:11.9,stock:42},
-  '3274080005003':{ean:'3274080005003',name:'Yaourt nature 4x110g',category:'Frais',price:14.5,stock:28},
-  '3017620422003':{ean:'3017620422003',name:'Nutella 750g',category:'Épicerie',price:79.9,stock:17}
+  '6111040001111':{ean:'6111040001111',name:'Lait frais entier 1L',category:'Frais',price:12.90,stock:24,productNumber:'LAIT1L'},
+  '3274080005003':{ean:'3274080005003',name:'Yaourt nature 4x110g',category:'Frais',price:18.50,stock:36,productNumber:'YAOURT4'},
+  '3017620422003':{ean:'3017620422003',name:'Nutella 750g',category:'Épicerie',price:64.90,stock:17,productNumber:'NUT750'}
 };
 const PROFILES=[
   {id:'qp-frais',category:'Frais',label:'Produits frais',temperature_required:1,temp_min:0,temp_max:4,packaging_required:1,appearance_required:1,expiry_required:1,lot_required:0,photo_on_nonconform:1,active:1},
