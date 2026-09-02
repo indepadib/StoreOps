@@ -6,7 +6,7 @@ import { config, productionMisconfig } from './config.mjs';
 import { db, ensureStoreDay, todayISO, uid, audit } from './db.mjs';
 import { sessionFromRequest } from './auth/session.mjs';
 import { canAccessStore, canManageQuality, canManageStore } from './services/permissions.mjs';
-import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, listDataEntities } from './services/dynamics.mjs';
+import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, listDataEntities } from './services/dynamics.mjs';
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
@@ -14,6 +14,7 @@ import { listIncidents, incidentById, createIncident, addAction, completeAction,
 import { listQualityProfiles, updateQualityProfile, listSlaPolicies, updateSlaPolicy } from './services/governance.mjs';
 import { dlcConfig, listDlc, dlcSummary, createDlcRecord, addDlcTreatment, recheckDlc, updateDlcThreshold, dlcMedia } from './services/dlc.mjs';
 import { createHandover, listHandover, acknowledgeHandover, resolveHandover, reviewClosingHandover, handoverStats, dayCycleMetrics } from './services/handover.mjs';
+import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -39,11 +40,11 @@ function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.6',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.7',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
 
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 ORDER BY role,name`).all():[]});
-  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.6'});
+  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.7'});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
 
@@ -77,6 +78,40 @@ async function api(req,res,url){
     return json(req,res,200,{day:reviewClosingHandover({storeDay:day,user}),stats:handoverStats(p.storeId,day.business_date)});
   }
 
+  if(path==='/api/inventory/config'&&req.method==='GET')return json(req,res,200,inventoryConfig());
+  if(path==='/api/inventory/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateInventoryPolicy({user,recountThreshold:b.recountThreshold,incidentThreshold:b.incidentThreshold}))}
+  p=route(path,'/api/stores/:storeId/inventory');if(p){
+    requireStore(user,p.storeId);
+    if(req.method==='GET'){const st=(url.searchParams.get('status')||'ALL').toUpperCase();return json(req,res,200,{summary:inventorySummary(p.storeId),items:listInventorySessions(p.storeId,st)})}
+    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return json(req,res,201,createInventorySession({storeId:p.storeId,user,type:b.type,zone:b.zone,comment:b.comment}))}
+  }
+  p=route(path,'/api/inventory/:sessionId');if(p&&req.method==='GET'){
+    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);return json(req,res,200,inv)
+  }
+  p=route(path,'/api/inventory/:sessionId/lines');if(p&&req.method==='POST'){
+    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
+    const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))
+  }
+  p=route(path,'/api/inventory/lines/:lineId/count');if(p&&req.method==='POST'){
+    const row=db.prepare(`SELECT s.store_id FROM inventory_lines l JOIN inventory_sessions s ON s.id=l.session_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Ligne inventaire introuvable'});
+    requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,countInventoryLine({lineId:p.lineId,user,quantity:b.quantity,reasonCode:b.reasonCode,note:b.note,recount:!!b.recount}))
+  }
+  p=route(path,'/api/inventory/:sessionId/finalize');if(p&&req.method==='POST'){
+    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
+    const result=finalizeInventorySession({sessionId:p.sessionId,user});
+    for(const line of result.highVarianceLines){
+      const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='INVENTORY_LINE' AND source_id=? AND status='OPEN'`).get(line.id);
+      if(!existing){const abs=Math.abs(Number(line.final_variance||0)),threshold=Number(inventoryPolicy().incident_qty_threshold),inc=createIncident({storeId:inv.store_id,user,title:`Écart inventaire · ${line.product_name}`,description:`Stock théorique ${line.theoretical_qty} · compté ${line.final_qty} · écart ${line.final_variance} · motif ${line.reason_code||'—'}`,category:'STOCK',criticality:abs>=threshold*2?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'INVENTORY_LINE',sourceId:line.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Analyser et documenter l’écart de stock',note:line.note||'',assignedTo:user.role==='store_manager'?user.id:null})}
+    }
+    return json(req,res,200,result)
+  }
+  p=route(path,'/api/inventory/:sessionId/post');if(p&&req.method==='POST'){
+    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
+    if(inv.status!=='READY_TO_POST')return json(req,res,409,{error:'L’inventaire doit être validé avant posting'});
+    const dyn=await postInventoryAdjustmentToDynamics(inv.id,{storeId:inv.store_id,lines:inv.lines.filter(x=>Number(x.final_variance)!==0).map(x=>({ean:x.ean,productNumber:x.product_number,theoreticalQty:x.theoretical_qty,finalQty:x.final_qty,variance:x.final_variance,reasonCode:x.reason_code}))});
+    const posted=markInventoryPosted({sessionId:inv.id,user});return json(req,res,200,{dynamics:dyn,session:posted})
+  }
+
   p=route(path,'/api/products/:ean');if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
   if(path==='/api/quality-profiles'&&req.method==='GET')return json(req,res,200,listQualityProfiles());
   p=route(path,'/api/quality-profiles/:category');if(p){
@@ -101,8 +136,8 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/dashboard');if(p){
     requireStore(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');
-    const dlc=dlcSummary(p.storeId),handover=handoverStats(p.storeId,day.business_date),cycle=dayCycleMetrics(day),incidentSummary=incidentStats(p.storeId),quality=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(p.storeId,day.business_date);
-    return json(req,res,200,{day,cycle,handover,opening,closing,dlc,dlcAtRisk:dlc.expired+dlc.critical+dlc.alert+dlc.watch,incidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidentSummary.open*6-incidentSummary.escalated*8-dlc.expired*8-dlc.critical*5-handover.blocking*6-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
+    const dlc=dlcSummary(p.storeId),handover=handoverStats(p.storeId,day.business_date),inventory=inventorySummary(p.storeId),cycle=dayCycleMetrics(day),incidentSummary=incidentStats(p.storeId),quality=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(p.storeId,day.business_date);
+    return json(req,res,200,{day,cycle,handover,inventory,opening,closing,dlc,dlcAtRisk:dlc.expired+dlc.critical+dlc.alert+dlc.watch,incidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidentSummary.open*6-incidentSummary.escalated*8-dlc.expired*8-dlc.critical*5-handover.blocking*6-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
   }
 
   p=route(path,'/api/stores/:storeId/tasks');if(p){
@@ -151,7 +186,7 @@ async function api(req,res,url){
 
   if(path==='/api/network'){
     ensureDirector(user);const stores=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all();
-    const rows=stores.map(s=>{const day=ensureStoreDay(s.id),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing'),incidentSummary=incidentStats(s.id),dlc=dlcSummary(s.id),handover=handoverStats(s.id,day.business_date),cycle=dayCycleMetrics(day),last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id),qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date),openingOwner=day.opening_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.opening_owner_id)?.name:null,closingOwner=day.closing_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.closing_owner_id)?.name:null;return{...s,day:{...day,opening_owner_name:openingOwner,closing_owner_name:closingOwner},cycle,handover,opening,closing,dlc,openIncidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}});
+    const rows=stores.map(s=>{const day=ensureStoreDay(s.id),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing'),incidentSummary=incidentStats(s.id),dlc=dlcSummary(s.id),handover=handoverStats(s.id,day.business_date),inventory=inventorySummary(s.id),cycle=dayCycleMetrics(day),last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id),qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date),openingOwner=day.opening_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.opening_owner_id)?.name:null,closingOwner=day.closing_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.closing_owner_id)?.name:null;return{...s,day:{...day,opening_owner_name:openingOwner,closing_owner_name:closingOwner},cycle,handover,inventory,opening,closing,dlc,openIncidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}});
     return json(req,res,200,rows)
   }
   return json(req,res,404,{error:'Route API inconnue'});
@@ -159,4 +194,4 @@ async function api(req,res,url){
 
 function staticFile(req,res,url){let path=url.pathname==='/'?'/index.html':url.pathname;path=normalize(path).replace(/^\.\.(\/|\\|$)/,'');const file=join(FRONTEND,path);if(!file.startsWith(FRONTEND)||!existsSync(file)){res.writeHead(404);return res.end('Not found')}const type={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'}[extname(file)]||'application/octet-stream';res.writeHead(200,{'content-type':type,'cache-control':path==='/index.html'?'no-cache':'public, max-age=3600'});res.end(readFileSync(file))}
 const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,`http://${req.headers.host}`);if(url.pathname.startsWith('/api/'))return await api(req,res,url);return staticFile(req,res,url)}catch(e){console.error(e);return json(req,res,e.status||500,{error:e.message||'Erreur serveur',code:e.code||undefined,details:e.details||undefined})}});
-server.listen(PORT,()=>console.log(`StoreOps V1.6 Handover running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
+server.listen(PORT,()=>console.log(`StoreOps V1.7 Inventory running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
