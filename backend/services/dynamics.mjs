@@ -85,3 +85,9 @@ export async function postReceiptToDynamics(poNumber,payload={}){
   if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:new Date().toISOString()};
   throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}});
 }
+
+
+export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){
+  if(config.dynamics.mode!=='live') return {ok:true,simulated:true,sessionId,postedAt:new Date().toISOString(),lines:payload.lines?.length||0};
+  throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}});
+}
