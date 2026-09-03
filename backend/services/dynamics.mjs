@@ -91,3 +91,15 @@ export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){
   if(config.dynamics.mode!=='live') return {ok:true,simulated:true,sessionId,postedAt:new Date().toISOString(),lines:payload.lines?.length||0};
   throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}});
 }
+
+
+export async function getCommercialChanges(storeId,businessDate){
+  if(config.dynamics.mode!=='live'){
+    return [
+      {sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},
+      {sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},
+      {sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}
+    ].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
+  }
+  throw Object.assign(new Error('Flux prix/promotions Dynamics live non configuré : mapper les entités prix, remises et promotions F&O/Commerce avant activation.'),{status:503,code:'D365_COMMERCIAL_MAPPING_REQUIRED',details:{storeId,businessDate}});
+}

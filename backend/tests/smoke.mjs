@@ -5,8 +5,63 @@ async function call(method,path,user='u-vf',payload){
   return {r,data};
 }
 function ok(condition,message){if(!condition)throw new Error(message)}
+function compliantValues(form){
+  const out={};
+  for(const f of form.fields||[]){
+    if(f.input_type==='BOOLEAN')out[f.code]=true;
+    else if(f.input_type==='NUMBER'){
+      if(f.min_value!=null&&f.max_value!=null)out[f.code]=(Number(f.min_value)+Number(f.max_value))/2;
+      else out[f.code]=0;
+    }else if(f.input_type==='MONEY')out[f.code]=1000;
+    else if(f.input_type==='SELECT')out[f.code]=(f.options||[])[0]||'OK';
+    else out[f.code]='RAS';
+  }
+  return out;
+}
 
-let x=await call('GET','/api/inventory/config','u-vf');
+let x=await call('GET','/api/commercial/config','u-vf');
+ok(x.r.status===200&&Number(x.data.policy?.price_tolerance)===0.01,'commercial config failed');
+x=await call('GET','/api/stores/val-fleuri/commercial','u-vf');
+ok(x.r.status===200&&x.data.items?.length===3&&x.data.summary?.blocking===3,'commercial Dynamics sync/list failed');
+const milkCommercial=x.data.items.find(i=>i.ean==='6111040001111');
+x=await call('POST',`/api/commercial/${milkCommercial.id}/control`,'u-emp-vf',{observedPrice:12.9,signageOk:true,executionOk:true});
+ok(x.r.status===403,'employee must not validate commercial control');
+x=await call('POST',`/api/commercial/${milkCommercial.id}/control`,'u-vf',{observedPrice:13.9,signageOk:true,executionOk:true,note:'étiquette incorrecte'});
+ok(x.r.status===409&&Array.isArray(x.data.issues),'commercial price mismatch must be rejected');
+x=await call('GET','/api/stores/val-fleuri/incidents?status=OPEN','u-vf');
+const commercialIncident=x.data.items?.find(i=>i.source_type==='COMMERCIAL_CONTROL'&&i.source_id===milkCommercial.id);
+ok(x.r.status===200&&commercialIncident&&commercialIncident.blocking_level==='STORE_OPENING'&&Number(commercialIncident.requires_evidence)===1,'commercial mismatch incident linkage failed');
+x=await call('POST',`/api/commercial/${milkCommercial.id}/control`,'u-vf',{observedPrice:12.9,signageOk:true,executionOk:true,note:'corrigé'});
+ok(x.r.status===200&&x.data.control?.status==='VERIFIED','commercial correction recheck failed');
+
+x=await call('PUT','/api/commercial/policy','u-vf',{priceTolerance:0.05});
+ok(x.r.status===403,'store manager must not change commercial policy');
+x=await call('PUT','/api/commercial/policy','u-ops',{priceTolerance:0.05});
+ok(x.r.status===200&&Number(x.data.price_tolerance)===0.05,'director commercial policy update failed');
+x=await call('PUT','/api/commercial/policy','u-ops',{priceTolerance:0.01});
+ok(x.r.status===200,'commercial policy reset failed');
+
+// Even a fully checked opening must remain blocked until Dynamics price/promo actions are verified.
+x=await call('GET','/api/stores/carita/tasks?group=opening','u-ops');
+ok(x.r.status===200&&x.data.tasks?.length===7,'Carita opening task list failed');
+for(const task of x.data.tasks){
+  const form=await call('GET',`/api/tasks/${task.id}/form`,'u-ops');
+  ok(form.r.status===200,'opening form load failed');
+  const submitted=await call('POST',`/api/tasks/${task.id}/submit`,'u-ops',{values:compliantValues(form.data)});
+  ok(submitted.r.status===200,`opening task ${task.step_order} compliant submit failed`);
+}
+x=await call('POST','/api/stores/carita/process/opening/validate','u-ops',{});
+ok(x.r.status===409&&Number(x.data.details?.commercialBlocking)===3,'commercial readiness must block opening after task checklist');
+x=await call('GET','/api/stores/carita/commercial','u-ops');
+ok(x.r.status===200&&x.data.items.length===3,'Carita commercial controls missing');
+for(const control of x.data.items){
+  const verified=await call('POST',`/api/commercial/${control.id}/control`,'u-ops',{observedPrice:control.expected_price,signageOk:true,executionOk:true,note:'contrôle CI conforme'});
+  ok(verified.r.status===200,'Carita commercial control verification failed');
+}
+x=await call('POST','/api/stores/carita/process/opening/validate','u-ops',{});
+ok(x.r.status===200,'opening should validate after all commercial controls are verified');
+
+x=await call('GET','/api/inventory/config','u-vf');
 ok(x.r.status===200&&Number(x.data.policy?.recount_qty_threshold)===2&&Number(x.data.policy?.incident_qty_threshold)===5,'inventory config failed');
 x=await call('POST','/api/stores/val-fleuri/inventory','u-emp-vf',{type:'CYCLE',zone:'Interdit'});
 ok(x.r.status===403,'employee must not create inventory session');
@@ -131,4 +186,4 @@ ok(x.r.status===200&&x.data.stats.overdue>=1&&x.data.stats.escalated>=1,'network
 x=await call('GET','/api/stores/val-fleuri/incidents?status=ALL','u-vf');
 ok(x.r.status===200&&x.data.items.some(i=>i.id===incidentId)&&x.data.items.some(i=>i.id===overdueId),'incident list failed');
 
-console.log('StoreOps V1.7 stock & inventory smoke tests passed');
+console.log('StoreOps V1.8 price & promotion smoke tests passed');
