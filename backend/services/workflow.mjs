@@ -2,6 +2,7 @@ import { db, audit } from '../db.mjs';
 import { blockingHandoverCount, dayCycleMetrics } from './handover.mjs';
 import { blockingDlcCount } from './dlc.mjs';
 import { commercialBlockingCount } from './commercial.mjs';
+import { cashClosingSummary } from './cash.mjs';
 
 export function processProgress(storeDayId, group){
   const rows=db.prepare(`SELECT id,status,blocking_level,step_order,title FROM tasks WHERE store_day_id=? AND group_name=? ORDER BY step_order`).all(storeDayId,group);
@@ -31,9 +32,11 @@ export function validateProcess({storeDay,user,group}){
   const handoverReviewed=group==='closing'?!!fresh.handover_reviewed_at:true;
   const dlcBlocking=group==='closing'?blockingDlcCount(storeDay.store_id):0;
   const commercialBlocking=group==='opening'?commercialBlockingCount(storeDay.store_id,storeDay.business_date):0;
-  if(p.blockers>0||p.done<p.total||openCritical>0||handoverBlocking>0||commercialBlocking>0||!handoverReviewed||dlcBlocking>0){
-    const reason=!handoverReviewed?'La passation de fin de journée doit être revue avant fermeture.':handoverBlocking?`${handoverBlocking} passation(s) bloquante(s) doivent être résolues avant ouverture.`:commercialBlocking?`${commercialBlocking} changement(s) prix/promo restent à vérifier avant ouverture.`:dlcBlocking?`${dlcBlocking} lot(s) DLC/DDM périmé(s) ou critique(s) restent à traiter avant fermeture.`:'Tous les contrôles obligatoires ne sont pas conformes.';
-    const err=new Error(reason);err.status=409;err.details={...p,openCritical,handoverBlocking,commercialBlocking,handoverReviewed,dlcBlocking};throw err;
+  const cash=group==='closing'?cashClosingSummary(storeDay.store_id,storeDay.business_date):{blocking:0,status:'NA'};
+  const cashBlocking=group==='closing'?Number(cash.blocking||0):0;
+  if(p.blockers>0||p.done<p.total||openCritical>0||handoverBlocking>0||commercialBlocking>0||!handoverReviewed||dlcBlocking>0||cashBlocking>0){
+    const reason=!handoverReviewed?'La passation de fin de journée doit être revue avant fermeture.':handoverBlocking?`${handoverBlocking} passation(s) bloquante(s) doivent être résolues avant ouverture.`:commercialBlocking?`${commercialBlocking} changement(s) prix/promo restent à vérifier avant ouverture.`:cashBlocking?'La clôture caisses doit être rapprochée et validée avant fermeture magasin.':dlcBlocking?`${dlcBlocking} lot(s) DLC/DDM périmé(s) ou critique(s) restent à traiter avant fermeture.`:'Tous les contrôles obligatoires ne sont pas conformes.';
+    const err=new Error(reason);err.status=409;err.details={...p,openCritical,handoverBlocking,commercialBlocking,handoverReviewed,dlcBlocking,cashBlocking,cashStatus:cash.status};throw err;
   }
   if(group==='opening')db.prepare(`UPDATE store_days SET opening_status='OPENED',opened_at=CURRENT_TIMESTAMP WHERE id=?`).run(storeDay.id);
   else db.prepare(`UPDATE store_days SET closing_status='CLOSED',closed_at=CURRENT_TIMESTAMP WHERE id=?`).run(storeDay.id);

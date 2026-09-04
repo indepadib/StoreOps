@@ -60,6 +60,11 @@ jobs:
           cat /tmp/storeops-api.log
           exit 1
 
+      - name: Cash closing API integration test
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-api.mjs
+
       - name: Workflow, incident, permissions and governance smoke test
         env:
           STOREOPS_TEST_BASE: http://127.0.0.1:8787
