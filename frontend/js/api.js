@@ -1,10 +1,12 @@
 import { app } from './state.js';
 import { mockApi,mockBlob,isShowcase } from './mock-api.js';
 import { mockCashApi,cashShowcaseSummary } from './mock-cash.js';
+import { mockLossApi,lossShowcaseSummary } from './mock-loss.js';
 const BASE=(window.STOREOPS_CONFIG?.apiBase||'').replace(/\/$/,'');
 
 function apiUrl(path){return `${BASE}${path}`}
 function cashPath(path){return /^\/api\/(cash(?:\/|$)|stores\/[^/]+\/cash-closing(?:\/|$))/.test(path.split('?')[0])}
+function lossPath(path){return /^\/api\/(loss(?:\/|$)|losses(?:\/|$)|stores\/[^/]+\/losses(?:\/|$))/.test(path.split('?')[0])}
 async function autoCompleteLegacyCashTask(storeId,closing){
   if(!closing||!['READY','CLOSED'].includes(closing.status))return;
   try{
@@ -24,18 +26,20 @@ async function showcaseApi(path,options={}){
     if(m&&r?.closing)await autoCompleteLegacyCashTask(r.closing.store_id,r.closing);
     return r;
   }
+  if(lossPath(path))return mockLossApi(path,options,mockApi);
   const closingValidate=clean.match(/^\/api\/stores\/([^/]+)\/process\/closing\/validate$/);
   if(closingValidate){
-    const storeId=closingValidate[1],cash=cashShowcaseSummary(storeId);
+    const storeId=closingValidate[1],cash=cashShowcaseSummary(storeId),loss=lossShowcaseSummary(storeId);
     if(cash.blocking){const e=new Error('La clôture caisses doit être rapprochée et validée avant fermeture magasin.');e.status=409;e.details={cashBlocking:1,cashStatus:cash.status};throw e}
+    if(loss.blocking){const e=new Error(`${loss.blocking} perte(s) / démarque(s) restent à documenter ou poster avant fermeture.`);e.status=409;e.details={lossBlocking:loss.blocking};throw e}
     try{const c=await mockCashApi(`/api/stores/${storeId}/cash-closing`);await autoCompleteLegacyCashTask(storeId,c.closing)}catch{}
   }
   let data=await mockApi(path,options);
   let m=clean.match(/^\/api\/stores\/([^/]+)\/dashboard$/);
-  if(m)return{...data,cash:cashShowcaseSummary(m[1])};
+  if(m)return{...data,cash:cashShowcaseSummary(m[1]),loss:lossShowcaseSummary(m[1])};
   m=clean.match(/^\/api\/stores\/([^/]+)\/tasks$/);
-  if(m){const storeId=m[1],group=new URL(path,'https://showcase.local').searchParams.get('group');if(group==='closing'){const summary=cashShowcaseSummary(storeId);if(['READY','CLOSED'].includes(summary.status)){try{const c=await mockCashApi(`/api/stores/${storeId}/cash-closing`);await autoCompleteLegacyCashTask(storeId,c.closing);data=await mockApi(path,options)}catch{}}return{...data,cash:summary}}}
-  if(clean==='/api/network'&&Array.isArray(data))return data.map(r=>({...r,cash:cashShowcaseSummary(r.id,r.day?.business_date)}));
+  if(m){const storeId=m[1],group=new URL(path,'https://showcase.local').searchParams.get('group');if(group==='closing'){const cash=cashShowcaseSummary(storeId),loss=lossShowcaseSummary(storeId);if(['READY','CLOSED'].includes(cash.status)){try{const c=await mockCashApi(`/api/stores/${storeId}/cash-closing`);await autoCompleteLegacyCashTask(storeId,c.closing);data=await mockApi(path,options)}catch{}}return{...data,cash,loss}}}
+  if(clean==='/api/network'&&Array.isArray(data))return data.map(r=>({...r,cash:cashShowcaseSummary(r.id,r.day?.business_date),loss:lossShowcaseSummary(r.id,r.day?.business_date)}));
   return data;
 }
 async function parseJsonResponse(r,url){
@@ -61,7 +65,7 @@ export async function api(path,options={}){
   return data;
 }
 export async function health(){
-  if(isShowcase()){const h=await mockApi('/api/health');return{...h,version:'1.9-showcase'}}
+  if(isShowcase()){const h=await mockApi('/api/health');return{...h,version:'1.10-showcase'}}
   const url=apiUrl('/api/health');let r;
   try{r=await fetch(url,{cache:'no-store'})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Configure STOREOPS_API_BASE dans Netlify puis redéploie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);
