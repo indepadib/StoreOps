@@ -6,7 +6,7 @@ import { config, productionMisconfig } from './config.mjs';
 import { db, ensureStoreDay, todayISO, uid, audit } from './db.mjs';
 import { sessionFromRequest } from './auth/session.mjs';
 import { canAccessStore, canManageQuality, canManageStore } from './services/permissions.mjs';
-import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, listDataEntities } from './services/dynamics.mjs';
+import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
@@ -15,7 +15,8 @@ import { listQualityProfiles, updateQualityProfile, listSlaPolicies, updateSlaPo
 import { dlcConfig, listDlc, dlcSummary, createDlcRecord, addDlcTreatment, recheckDlc, updateDlcThreshold, dlcMedia } from './services/dlc.mjs';
 import { createHandover, listHandover, acknowledgeHandover, resolveHandover, reviewClosingHandover, handoverStats, dayCycleMetrics } from './services/handover.mjs';
 import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
-import { commercialConfig, commercialPolicy, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
+import { commercialConfig, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
+import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -38,23 +39,22 @@ function ensureQuality(user,storeId){if(!canManageQuality(user,storeId))throw Ob
 function ensureDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie / PLS':category==='Surgelé'?'Surgelés':category==='F&L'?'Fruits & Légumes':null}
 async function refreshCommercial(storeId,businessDate,{required=false}={}){
-  try{
-    const changes=await getCommercialChanges(storeId,businessDate);
-    return {ok:true,...syncCommercialControls({storeId,businessDate,changes})};
-  }catch(e){
-    if(required)throw e;
-    return {ok:false,error:e.message,code:e.code||'COMMERCIAL_SYNC_FAILED'};
-  }
+  try{const changes=await getCommercialChanges(storeId,businessDate);return {ok:true,...syncCommercialControls({storeId,businessDate,changes})}}
+  catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'COMMERCIAL_SYNC_FAILED'}}
+}
+async function refreshCash(storeId,businessDate,{required=false}={}){
+  try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}
+  catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}
 }
 
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.8',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.9',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
 
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 ORDER BY role,name`).all():[]});
-  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.8'});
+  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.9'});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
 
@@ -66,96 +66,43 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/handover');if(p){
     requireStore(user,p.storeId);
-    if(req.method==='GET'){
-      const businessDate=url.searchParams.get('date')||todayISO(),handoverStatus=(url.searchParams.get('status')||'ACTIVE').toUpperCase();
-      return json(req,res,200,{stats:handoverStats(p.storeId,businessDate),items:listHandover(p.storeId,{businessDate,status:handoverStatus})});
-    }
-    if(req.method==='POST'){
-      ensureManage(user,p.storeId);const b=await body(req),day=ensureStoreDay(p.storeId,b.sourceBusinessDate||todayISO());
-      return json(req,res,201,createHandover({storeId:p.storeId,businessDate:day.business_date,user,title:b.title,description:b.description,category:b.category,priority:b.priority,blockingOpening:!!b.blockingOpening,targetDate:b.targetDate||null}));
-    }
+    if(req.method==='GET'){const businessDate=url.searchParams.get('date')||todayISO(),handoverStatus=(url.searchParams.get('status')||'ACTIVE').toUpperCase();return json(req,res,200,{stats:handoverStats(p.storeId,businessDate),items:listHandover(p.storeId,{businessDate,status:handoverStatus})})}
+    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req),day=ensureStoreDay(p.storeId,b.sourceBusinessDate||todayISO());return json(req,res,201,createHandover({storeId:p.storeId,businessDate:day.business_date,user,title:b.title,description:b.description,category:b.category,priority:b.priority,blockingOpening:!!b.blockingOpening,targetDate:b.targetDate||null}))}
   }
-  p=route(path,'/api/handover/:handoverId/acknowledge');if(p&&req.method==='POST'){
-    const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});
-    requireStore(user,row.store_id);ensureManage(user,row.store_id);return json(req,res,200,acknowledgeHandover({id:p.handoverId,user}));
-  }
-  p=route(path,'/api/handover/:handoverId/resolve');if(p&&req.method==='POST'){
-    const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});
-    requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,resolveHandover({id:p.handoverId,user,note:b.note||''}));
-  }
-  p=route(path,'/api/stores/:storeId/handover/review-closing');if(p&&req.method==='POST'){
-    requireStore(user,p.storeId);ensureManage(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO());
-    return json(req,res,200,{day:reviewClosingHandover({storeDay:day,user}),stats:handoverStats(p.storeId,day.business_date)});
-  }
+  p=route(path,'/api/handover/:handoverId/acknowledge');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);return json(req,res,200,acknowledgeHandover({id:p.handoverId,user}))}
+  p=route(path,'/api/handover/:handoverId/resolve');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,resolveHandover({id:p.handoverId,user,note:b.note||''}))}
+  p=route(path,'/api/stores/:storeId/handover/review-closing');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO());return json(req,res,200,{day:reviewClosingHandover({storeDay:day,user}),stats:handoverStats(p.storeId,day.business_date)})}
 
   if(path==='/api/inventory/config'&&req.method==='GET')return json(req,res,200,inventoryConfig());
   if(path==='/api/inventory/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateInventoryPolicy({user,recountThreshold:b.recountThreshold,incidentThreshold:b.incidentThreshold}))}
-  p=route(path,'/api/stores/:storeId/inventory');if(p){
-    requireStore(user,p.storeId);
-    if(req.method==='GET'){const st=(url.searchParams.get('status')||'ALL').toUpperCase();return json(req,res,200,{summary:inventorySummary(p.storeId),items:listInventorySessions(p.storeId,st)})}
-    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return json(req,res,201,createInventorySession({storeId:p.storeId,user,type:b.type,zone:b.zone,comment:b.comment}))}
-  }
-  p=route(path,'/api/inventory/:sessionId');if(p&&req.method==='GET'){
-    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);return json(req,res,200,inv)
-  }
-  p=route(path,'/api/inventory/:sessionId/lines');if(p&&req.method==='POST'){
-    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
-    const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))
-  }
-  p=route(path,'/api/inventory/lines/:lineId/count');if(p&&req.method==='POST'){
-    const row=db.prepare(`SELECT s.store_id FROM inventory_lines l JOIN inventory_sessions s ON s.id=l.session_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Ligne inventaire introuvable'});
-    requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,countInventoryLine({lineId:p.lineId,user,quantity:b.quantity,reasonCode:b.reasonCode,note:b.note,recount:!!b.recount}))
-  }
-  p=route(path,'/api/inventory/:sessionId/finalize');if(p&&req.method==='POST'){
-    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
-    const result=finalizeInventorySession({sessionId:p.sessionId,user});
-    for(const line of result.highVarianceLines){
-      const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='INVENTORY_LINE' AND source_id=? AND status='OPEN'`).get(line.id);
-      if(!existing){const abs=Math.abs(Number(line.final_variance||0)),threshold=Number(inventoryPolicy().incident_qty_threshold),inc=createIncident({storeId:inv.store_id,user,title:`Écart inventaire · ${line.product_name}`,description:`Stock théorique ${line.theoretical_qty} · compté ${line.final_qty} · écart ${line.final_variance} · motif ${line.reason_code||'—'}`,category:'STOCK',criticality:abs>=threshold*2?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'INVENTORY_LINE',sourceId:line.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Analyser et documenter l’écart de stock',note:line.note||'',assignedTo:user.role==='store_manager'?user.id:null})}
-    }
-    return json(req,res,200,result)
-  }
-  p=route(path,'/api/inventory/:sessionId/post');if(p&&req.method==='POST'){
-    const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);
-    if(inv.status!=='READY_TO_POST')return json(req,res,409,{error:'L’inventaire doit être validé avant posting'});
-    const dyn=await postInventoryAdjustmentToDynamics(inv.id,{storeId:inv.store_id,lines:inv.lines.filter(x=>Number(x.final_variance)!==0).map(x=>({ean:x.ean,productNumber:x.product_number,theoreticalQty:x.theoretical_qty,finalQty:x.final_qty,variance:x.final_variance,reasonCode:x.reason_code}))});
-    const posted=markInventoryPosted({sessionId:inv.id,user});return json(req,res,200,{dynamics:dyn,session:posted})
-  }
+  p=route(path,'/api/stores/:storeId/inventory');if(p){requireStore(user,p.storeId);if(req.method==='GET'){const st=(url.searchParams.get('status')||'ALL').toUpperCase();return json(req,res,200,{summary:inventorySummary(p.storeId),items:listInventorySessions(p.storeId,st)})}if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return json(req,res,201,createInventorySession({storeId:p.storeId,user,type:b.type,zone:b.zone,comment:b.comment}))}}
+  p=route(path,'/api/inventory/:sessionId');if(p&&req.method==='GET'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);return json(req,res,200,inv)}
+  p=route(path,'/api/inventory/:sessionId/lines');if(p&&req.method==='POST'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))}
+  p=route(path,'/api/inventory/lines/:lineId/count');if(p&&req.method==='POST'){const row=db.prepare(`SELECT s.store_id FROM inventory_lines l JOIN inventory_sessions s ON s.id=l.session_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Ligne inventaire introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,countInventoryLine({lineId:p.lineId,user,quantity:b.quantity,reasonCode:b.reasonCode,note:b.note,recount:!!b.recount}))}
+  p=route(path,'/api/inventory/:sessionId/finalize');if(p&&req.method==='POST'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);const result=finalizeInventorySession({sessionId:p.sessionId,user});for(const line of result.highVarianceLines){const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='INVENTORY_LINE' AND source_id=? AND status='OPEN'`).get(line.id);if(!existing){const abs=Math.abs(Number(line.final_variance||0)),threshold=Number(inventoryPolicy().incident_qty_threshold),inc=createIncident({storeId:inv.store_id,user,title:`Écart inventaire · ${line.product_name}`,description:`Stock théorique ${line.theoretical_qty} · compté ${line.final_qty} · écart ${line.final_variance} · motif ${line.reason_code||'—'}`,category:'STOCK',criticality:abs>=threshold*2?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'INVENTORY_LINE',sourceId:line.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Analyser et documenter l’écart de stock',note:line.note||'',assignedTo:user.role==='store_manager'?user.id:null})}}return json(req,res,200,result)}
+  p=route(path,'/api/inventory/:sessionId/post');if(p&&req.method==='POST'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);if(inv.status!=='READY_TO_POST')return json(req,res,409,{error:'L’inventaire doit être validé avant posting'});const dyn=await postInventoryAdjustmentToDynamics(inv.id,{storeId:inv.store_id,lines:inv.lines.filter(x=>Number(x.final_variance)!==0).map(x=>({ean:x.ean,productNumber:x.product_number,theoreticalQty:x.theoretical_qty,finalQty:x.final_qty,variance:x.final_variance,reasonCode:x.reason_code}))});const posted=markInventoryPosted({sessionId:inv.id,user});return json(req,res,200,{dynamics:dyn,session:posted})}
 
   if(path==='/api/commercial/config'&&req.method==='GET')return json(req,res,200,commercialConfig());
   if(path==='/api/commercial/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateCommercialPolicy({user,priceTolerance:b.priceTolerance}))}
-  p=route(path,'/api/stores/:storeId/commercial');if(p){
-    requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:false});
-    if(req.method==='GET')return json(req,res,200,{summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate),sync});
-  }
-  p=route(path,'/api/stores/:storeId/commercial/sync');if(p&&req.method==='POST'){
-    requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:true});
-    return json(req,res,200,{sync,summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate)})
-  }
-  p=route(path,'/api/commercial/:controlId/control');if(p&&req.method==='POST'){
-    const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(p.controlId);if(!row)return json(req,res,404,{error:'Contrôle prix/promo introuvable'});
-    requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req),result=submitCommercialControl({id:p.controlId,user,observedPrice:b.observedPrice,signageOk:b.signageOk===true,executionOk:b.executionOk===true,note:b.note||''});
-    if(result.issues.length){
-      const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? AND status='OPEN'`).get(p.controlId);
-      if(!existing){const inc=createIncident({storeId:row.store_id,user,title:`Écart prix/promo · ${row.product_name}`,description:result.issues.join(' · '),category:'PRICE_PROMO',criticality:row.priority==='CRITICAL'?'CRITICAL':'HIGH',blockingLevel:row.blocking_opening?'STORE_OPENING':'NONE',sourceType:'COMMERCIAL_CONTROL',sourceId:p.controlId,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Corriger le prix / la signalétique puis recontrôler',note:b.note||'',assignedTo:user.role==='store_manager'?user.id:null})}
-    }
-    return json(req,res,result.issues.length?409:200,result)
-  }
+  p=route(path,'/api/stores/:storeId/commercial');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:false});if(req.method==='GET')return json(req,res,200,{summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate),sync})}
+  p=route(path,'/api/stores/:storeId/commercial/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:true});return json(req,res,200,{sync,summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate)})}
+  p=route(path,'/api/commercial/:controlId/control');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(p.controlId);if(!row)return json(req,res,404,{error:'Contrôle prix/promo introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req),result=submitCommercialControl({id:p.controlId,user,observedPrice:b.observedPrice,signageOk:b.signageOk===true,executionOk:b.executionOk===true,note:b.note||''});if(result.issues.length){const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? AND status='OPEN'`).get(p.controlId);if(!existing){const inc=createIncident({storeId:row.store_id,user,title:`Écart prix/promo · ${row.product_name}`,description:result.issues.join(' · '),category:'PRICE_PROMO',criticality:row.priority==='CRITICAL'?'CRITICAL':'HIGH',blockingLevel:row.blocking_opening?'STORE_OPENING':'NONE',sourceType:'COMMERCIAL_CONTROL',sourceId:p.controlId,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Corriger le prix / la signalétique puis recontrôler',note:b.note||'',assignedTo:user.role==='store_manager'?user.id:null})}}return json(req,res,result.issues.length?409:200,result)}
+
+  if(path==='/api/cash/config'&&req.method==='GET')return json(req,res,200,cashConfig());
+  if(path==='/api/cash/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateCashPolicy({user,tolerance:b.tolerance,recountThreshold:b.recountThreshold,evidenceThreshold:b.evidenceThreshold}))}
+  p=route(path,'/api/stores/:storeId/cash-closing');if(p){requireStore(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()),sync=await refreshCash(p.storeId,day.business_date,{required:false});return json(req,res,200,{summary:cashClosingSummary(p.storeId,day.business_date),closing:cashClosing(p.storeId,day.business_date),sync})}
+  p=route(path,'/api/stores/:storeId/cash-closing/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()),sync=await refreshCash(p.storeId,day.business_date,{required:true});return json(req,res,200,{summary:cashClosingSummary(p.storeId,day.business_date),closing:sync.closing,sync})}
+  p=route(path,'/api/cash/lines/:lineId/count');if(p&&req.method==='POST'){const row=db.prepare(`SELECT c.store_id FROM cash_closing_lines l JOIN cash_closings c ON c.id=l.closing_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Shift caisse introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,countCashLine({lineId:p.lineId,user,declaredCash:b.declaredCash,cardSettlement:b.cardSettlement,statementOk:b.statementOk===true,reasonCode:b.reasonCode,note:b.note,recount:!!b.recount}))}
+  p=route(path,'/api/cash/:closingId/finalize');if(p&&req.method==='POST'){const closing=cashClosingById(p.closingId);if(!closing)return json(req,res,404,{error:'Clôture caisse introuvable'});requireStore(user,closing.store_id);ensureManage(user,closing.store_id);return json(req,res,200,finalizeCashClosing({closingId:p.closingId,user}))}
+  p=route(path,'/api/cash/:closingId/close');if(p&&req.method==='POST'){const closing=cashClosingById(p.closingId);if(!closing)return json(req,res,404,{error:'Clôture caisse introuvable'});requireStore(user,closing.store_id);ensureManage(user,closing.store_id);return json(req,res,200,markCashClosingClosed({closingId:p.closingId,user}))}
 
   p=route(path,'/api/products/:ean');if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
   if(path==='/api/quality-profiles'&&req.method==='GET')return json(req,res,200,listQualityProfiles());
-  p=route(path,'/api/quality-profiles/:category');if(p){
-    if(req.method==='GET')return json(req,res,200,qualityProfileFor(p.category));
-    if(req.method==='PUT'||req.method==='PATCH'){ensureDirector(user);return json(req,res,200,updateQualityProfile({category:p.category,user,payload:await body(req)}))}
-  }
+  p=route(path,'/api/quality-profiles/:category');if(p){if(req.method==='GET')return json(req,res,200,qualityProfileFor(p.category));if(req.method==='PUT'||req.method==='PATCH'){ensureDirector(user);return json(req,res,200,updateQualityProfile({category:p.category,user,payload:await body(req)}))}}
   if(path==='/api/sla-policies'&&req.method==='GET'){ensureDirector(user);return json(req,res,200,listSlaPolicies())}
   p=route(path,'/api/sla-policies/:criticality');if(p&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);return json(req,res,200,updateSlaPolicy({criticality:p.criticality,user,payload:await body(req)}))}
 
-  p=route(path,'/api/stores/:storeId/incidents');if(p){
-    requireStore(user,p.storeId);
-    if(req.method==='GET'){const status=(url.searchParams.get('status')||'OPEN').toUpperCase();return json(req,res,200,{stats:incidentStats(p.storeId),items:listIncidents(p.storeId,status)})}
-    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return json(req,res,201,createIncident({storeId:p.storeId,user,title:b.title,description:b.description,category:b.category,criticality:b.criticality,blockingLevel:b.blockingLevel,assignedTo:b.assignedTo,dueAt:b.dueAt,requiresEvidence:!!b.requiresEvidence}))}
-  }
+  p=route(path,'/api/stores/:storeId/incidents');if(p){requireStore(user,p.storeId);if(req.method==='GET'){const status=(url.searchParams.get('status')||'OPEN').toUpperCase();return json(req,res,200,{stats:incidentStats(p.storeId),items:listIncidents(p.storeId,status)})}if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return json(req,res,201,createIncident({storeId:p.storeId,user,title:b.title,description:b.description,category:b.category,criticality:b.criticality,blockingLevel:b.blockingLevel,assignedTo:b.assignedTo,dueAt:b.dueAt,requiresEvidence:!!b.requiresEvidence}))}}
   p=route(path,'/api/incidents/:incidentId');if(p&&req.method==='GET'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);return json(req,res,200,incident)}
   p=route(path,'/api/incidents/:incidentId/actions');if(p&&req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,201,addAction({incidentId:p.incidentId,user,title:b.title,note:b.note,assignedTo:b.assignedTo,dueAt:b.dueAt}))}
   p=route(path,'/api/incidents/:incidentId/actions/:actionId/complete');if(p&&req.method==='POST'){const incident=incidentById(p.incidentId);if(!incident)return json(req,res,404,{error:'Incident introuvable'});requireStore(user,incident.store_id);ensureManage(user,incident.store_id);const b=await body(req);return json(req,res,200,completeAction({incidentId:p.incidentId,actionId:p.actionId,user,note:b.note}))}
@@ -166,13 +113,13 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/dashboard');if(p){
     requireStore(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');
-    const commercialSync=await refreshCommercial(p.storeId,day.business_date,{required:false}),commercial=commercialSummary(p.storeId,day.business_date),dlc=dlcSummary(p.storeId),handover=handoverStats(p.storeId,day.business_date),inventory=inventorySummary(p.storeId),cycle=dayCycleMetrics(day),incidentSummary=incidentStats(p.storeId),quality=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(p.storeId,day.business_date);
-    return json(req,res,200,{day,cycle,handover,inventory,commercial,commercialSync,opening,closing,dlc,dlcAtRisk:dlc.expired+dlc.critical+dlc.alert+dlc.watch,incidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidentSummary.open*6-incidentSummary.escalated*8-dlc.expired*8-dlc.critical*5-handover.blocking*6-commercial.mismatch*5-commercial.pending*2-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
+    const commercialSync=await refreshCommercial(p.storeId,day.business_date,{required:false}),commercial=commercialSummary(p.storeId,day.business_date),cash=cashClosingSummary(p.storeId,day.business_date),dlc=dlcSummary(p.storeId),handover=handoverStats(p.storeId,day.business_date),inventory=inventorySummary(p.storeId),cycle=dayCycleMetrics(day),incidentSummary=incidentStats(p.storeId),quality=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(p.storeId,day.business_date);
+    return json(req,res,200,{day,cycle,handover,inventory,commercial,commercialSync,cash,opening,closing,dlc,dlcAtRisk:dlc.expired+dlc.critical+dlc.alert+dlc.watch,incidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:quality.n,qualityRejected:quality.rejected,health:Math.max(0,100-incidentSummary.open*6-incidentSummary.escalated*8-dlc.expired*8-dlc.critical*5-handover.blocking*6-commercial.mismatch*5-commercial.pending*2-opening.blockers*4),lastActions:db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 12`).all(p.storeId)})
   }
 
   p=route(path,'/api/stores/:storeId/tasks');if(p){
     requireStore(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO()),group=url.searchParams.get('group');if(group==='opening')await refreshCommercial(p.storeId,day.business_date,{required:false});const sqlBase=`SELECT t.*,u.name completed_by_name FROM tasks t LEFT JOIN users u ON u.id=t.completed_by WHERE t.store_day_id=?`,rows=group?db.prepare(`${sqlBase} AND t.group_name=? ORDER BY t.step_order`).all(day.id,group):db.prepare(`${sqlBase} ORDER BY t.group_name,t.step_order`).all(day.id),openingOwner=day.opening_owner_id?db.prepare(`SELECT id,name FROM users WHERE id=?`).get(day.opening_owner_id):null,closingOwner=day.closing_owner_id?db.prepare(`SELECT id,name FROM users WHERE id=?`).get(day.closing_owner_id):null,processBlock=group==='opening'?'STORE_OPENING':group==='closing'?'STORE_CLOSING':null,incidents=processBlock?db.prepare(`SELECT i.*,u.name created_by_name FROM incidents i LEFT JOIN users u ON u.id=i.created_by WHERE i.store_id=? AND i.status='OPEN' AND (i.blocking_level=? OR i.source_type='TASK') ORDER BY i.created_at DESC`).all(p.storeId,processBlock):[],timeline=db.prepare(`SELECT a.*,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? AND a.business_date=? ORDER BY a.id DESC LIMIT 60`).all(p.storeId,day.business_date);
-    return json(req,res,200,{day:{...day,opening_owner_name:openingOwner?.name||null,closing_owner_name:closingOwner?.name||null},cycle:dayCycleMetrics(day),handover:{stats:handoverStats(p.storeId,day.business_date),items:listHandover(p.storeId,{businessDate:day.business_date})},commercial:commercialSummary(p.storeId,day.business_date),tasks:rows,incidents,timeline,opening:processProgress(day.id,'opening'),closing:processProgress(day.id,'closing')})
+    return json(req,res,200,{day:{...day,opening_owner_name:openingOwner?.name||null,closing_owner_name:closingOwner?.name||null},cycle:dayCycleMetrics(day),handover:{stats:handoverStats(p.storeId,day.business_date),items:listHandover(p.storeId,{businessDate:day.business_date})},commercial:commercialSummary(p.storeId,day.business_date),cash:cashClosingSummary(p.storeId,day.business_date),tasks:rows,incidents,timeline,opening:processProgress(day.id,'opening'),closing:processProgress(day.id,'closing')})
   }
   p=route(path,'/api/tasks/:taskId/form');if(p){const form=getTaskForm(p.taskId);if(!form)return json(req,res,404,{error:'Tâche introuvable'});requireStore(user,form.task.store_id);return json(req,res,200,form)}
   p=route(path,'/api/tasks/:taskId/submit');if(p&&req.method==='POST'){const form=getTaskForm(p.taskId);if(!form)return json(req,res,404,{error:'Tâche introuvable'});requireStore(user,form.task.store_id);ensureManage(user,form.task.store_id);const b=await body(req),result=submitTaskForm({taskId:p.taskId,user,values:b.values||{}});return json(req,res,result.ok?200:409,result)}
@@ -182,11 +129,7 @@ async function api(req,res,url){
   if(path==='/api/dlc/config'&&req.method==='GET')return json(req,res,200,dlcConfig());
   p=route(path,'/api/dlc/thresholds/:department');if(p&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateDlcThreshold({department:p.department,user,criticalDays:b.criticalDays,alertDays:b.alertDays,watchDays:b.watchDays}))}
   p=route(path,'/api/dlc-media/:mediaId');if(p&&req.method==='GET'){const media=dlcMedia(p.mediaId);if(!media)return json(req,res,404,{error:'Preuve DLC introuvable'});requireStore(user,media.store_id);cors(req,res);res.writeHead(200,{'content-type':media.mime_type,'content-disposition':`inline; filename="${String(media.file_name||'preuve').replaceAll('"','')}"`,'cache-control':'private, max-age=300'});return res.end(media.bytes)}
-  p=route(path,'/api/stores/:storeId/dlc');if(p){
-    requireStore(user,p.storeId);
-    if(req.method==='GET'){const status=(url.searchParams.get('status')||'ACTIVE').toUpperCase();return json(req,res,200,{summary:dlcSummary(p.storeId),items:listDlc(p.storeId,status)})}
-    if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,400,{error:'EAN inconnu Dynamics'});return json(req,res,201,createDlcRecord({storeId:p.storeId,user,product,expiryDate:b.expiryDate,quantity:b.quantity,zone:b.zone,lotRef:b.lotRef,comment:b.comment,expiryType:b.expiryType,department:b.department,family:b.family,unit:b.unit,sourceType:b.sourceType||'MANUAL'}))}
-  }
+  p=route(path,'/api/stores/:storeId/dlc');if(p){requireStore(user,p.storeId);if(req.method==='GET'){const status=(url.searchParams.get('status')||'ACTIVE').toUpperCase();return json(req,res,200,{summary:dlcSummary(p.storeId),items:listDlc(p.storeId,status)})}if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,400,{error:'EAN inconnu Dynamics'});return json(req,res,201,createDlcRecord({storeId:p.storeId,user,product,expiryDate:b.expiryDate,quantity:b.quantity,zone:b.zone,lotRef:b.lotRef,comment:b.comment,expiryType:b.expiryType,department:b.department,family:b.family,unit:b.unit,sourceType:b.sourceType||'MANUAL'}))}}
   p=route(path,'/api/dlc/:dlcId/treatments');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM dlc_records WHERE id=?`).get(p.dlcId);if(!row)return json(req,res,404,{error:'Lot DLC introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,201,addDlcTreatment({id:p.dlcId,user,actionType:b.actionType,quantity:b.quantity,note:b.note,dataUrl:b.dataUrl,fileName:b.fileName,caption:b.caption}))}
   p=route(path,'/api/dlc/:dlcId/recheck');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM dlc_records WHERE id=?`).get(p.dlcId);if(!row)return json(req,res,404,{error:'Lot DLC introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,recheckDlc({id:p.dlcId,user,quantity:b.quantity,note:b.note}))}
 
@@ -216,7 +159,7 @@ async function api(req,res,url){
 
   if(path==='/api/network'){
     ensureDirector(user);const stores=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all();
-    const rows=await Promise.all(stores.map(async s=>{const day=ensureStoreDay(s.id),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');await refreshCommercial(s.id,day.business_date,{required:false});const commercial=commercialSummary(s.id,day.business_date),incidentSummary=incidentStats(s.id),dlc=dlcSummary(s.id),handover=handoverStats(s.id,day.business_date),inventory=inventorySummary(s.id),cycle=dayCycleMetrics(day),last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id),qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date),openingOwner=day.opening_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.opening_owner_id)?.name:null,closingOwner=day.closing_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.closing_owner_id)?.name:null;return{...s,day:{...day,opening_owner_name:openingOwner,closing_owner_name:closingOwner},cycle,handover,inventory,commercial,opening,closing,dlc,openIncidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}}));
+    const rows=await Promise.all(stores.map(async s=>{const day=ensureStoreDay(s.id),opening=processProgress(day.id,'opening'),closing=processProgress(day.id,'closing');await refreshCommercial(s.id,day.business_date,{required:false});const commercial=commercialSummary(s.id,day.business_date),cash=cashClosingSummary(s.id,day.business_date),incidentSummary=incidentStats(s.id),dlc=dlcSummary(s.id),handover=handoverStats(s.id,day.business_date),inventory=inventorySummary(s.id),cycle=dayCycleMetrics(day),last=db.prepare(`SELECT a.action,a.created_at,u.name actor FROM audit_log a LEFT JOIN users u ON u.id=a.user_id WHERE a.store_id=? ORDER BY a.id DESC LIMIT 1`).get(s.id),qc=db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(rejected_qty),0) rejected FROM quality_controls WHERE store_id=? AND date(created_at)=?`).get(s.id,day.business_date),openingOwner=day.opening_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.opening_owner_id)?.name:null,closingOwner=day.closing_owner_id?db.prepare(`SELECT name FROM users WHERE id=?`).get(day.closing_owner_id)?.name:null;return{...s,day:{...day,opening_owner_name:openingOwner,closing_owner_name:closingOwner},cycle,handover,inventory,commercial,cash,opening,closing,dlc,openIncidents:incidentSummary.open,criticalIncidents:incidentSummary.critical,overdueIncidents:incidentSummary.overdue,escalatedIncidents:incidentSummary.escalated,watchIncidents:incidentSummary.watch,qualityControls:qc.n,qualityRejected:qc.rejected,lastAction:last||null}}));
     return json(req,res,200,rows)
   }
   return json(req,res,404,{error:'Route API inconnue'});
@@ -224,4 +167,4 @@ async function api(req,res,url){
 
 function staticFile(req,res,url){let path=url.pathname==='/'?'/index.html':url.pathname;path=normalize(path).replace(/^\.\.(\/|\\|$)/,'');const file=join(FRONTEND,path);if(!file.startsWith(FRONTEND)||!existsSync(file)){res.writeHead(404);return res.end('Not found')}const type={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'}[extname(file)]||'application/octet-stream';res.writeHead(200,{'content-type':type,'cache-control':path==='/index.html'?'no-cache':'public, max-age=3600'});res.end(readFileSync(file))}
 const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,`http://${req.headers.host}`);if(url.pathname.startsWith('/api/'))return await api(req,res,url);return staticFile(req,res,url)}catch(e){console.error(e);return json(req,res,e.status||500,{error:e.message||'Erreur serveur',code:e.code||undefined,details:e.details||undefined})}});
-server.listen(PORT,()=>console.log(`StoreOps V1.8 Price & Promo running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
+server.listen(PORT,()=>console.log(`StoreOps V1.9 Cash & POS running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
