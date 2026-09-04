@@ -38,6 +38,9 @@ jobs:
       - name: Loss showcase engine test
         run: node backend/tests/showcase-loss.mjs
 
+      - name: Showcase DLC to loss automation test
+        run: node backend/tests/showcase-dlc-loss.mjs
+
       - name: Cash closing engine unit test
         env:
           D365_MODE: simulated
