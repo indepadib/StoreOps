@@ -4,9 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#e5004f">
-  <title>Franprix StoreOps — V1.8 Price & Promo</title>
+  <title>Franprix StoreOps — V1.9 Cash & POS</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/incidents.css">
+  <link rel="stylesheet" href="/cash.css">
 </head>
 <body>
 <div id="toast" class="toast"></div>
@@ -24,6 +25,7 @@
   <button data-page="inventory">Stock & inventaire</button>
   <button data-page="quality">Qualité</button>
   <button data-page="incidents">Incidents</button>
+  <button data-page="cash">Caisses & clôture</button>
   <button data-page="closing">Fermeture</button>
   <button data-page="network" id="networkNav">Direction</button>
   <button data-page="system" id="systemNav">Système</button>
@@ -37,11 +39,12 @@
 <section class="page" id="inventoryPage"><div class="page-title"><div><h1>Stock & inventaire</h1><p>Compter, recomptabiliser, expliquer les écarts et préparer l’ajustement Dynamics.</p></div></div><div id="inventoryContent"></div></section>
 <section class="page" id="qualityPage"><div class="page-title"><div><h1>Qualité</h1><p>Contrôles, non-conformités, référentiels et performance qualité.</p></div></div><div id="qualityContent"></div></section>
 <section class="page" id="incidentsPage"><div class="page-title"><div><h1>Incidents & actions</h1><p>Du constat terrain à la résolution documentée.</p></div></div><div id="incidentsContent"></div></section>
+<section class="page" id="cashPage"><div class="page-title"><div><h1>Caisses & clôture</h1><p>Rapprocher chaque shift, les espèces et les TPE avec Dynamics avant fermeture.</p></div><span class="pill">Responsable / Direction</span></div><div id="cashContent"></div></section>
 <section class="page" id="closingPage"><div class="page-title"><div><h1>Fermeture magasin</h1><p>Clôture financière, opérationnelle et sécurisation.</p></div><button class="btn brand" data-take="closing">Prendre en charge</button></div><div id="closingContent"></div></section>
 <section class="page" id="networkPage"><div class="page-title"><div><h1>Direction d’Exploitation</h1><p>Vue réseau, SLA et suivi du parcours de chaque magasin.</p></div></div><div id="networkContent"></div></section>
 <section class="page" id="systemPage"><div class="page-title"><div><h1>Système & Dynamics</h1><p>État des intégrations. Visible uniquement par la Direction.</p></div></div><div id="systemContent"></div></section>
 </main>
-<footer>StoreOps V1.8 · Prix & Promotions · Stock · Passation · DLC/DDM · Réception · Incidents · Direction</footer>
+<footer>StoreOps V1.9 · Caisses & TPE · Prix & Promotions · Stock · Passation · DLC/DDM · Réception · Incidents · Direction</footer>
 </div>
 <div class="modal-backdrop" id="taskModal" hidden><div class="modal"><div class="row"><div><div class="label" id="modalStep"></div><h2 id="modalTitle">Contrôle</h2></div><button class="btn ghost" id="modalClose">Fermer</button></div><p class="muted small" id="modalDescription"></p><div id="modalBody"></div><div class="modal-actions"><button class="btn brand" id="modalSubmit">Valider le contrôle</button></div></div></div>
 <div class="modal-backdrop" id="incidentModal" hidden><div class="modal incident-modal"><div class="row"><div><div class="label" id="incidentModalMeta"></div><h2 id="incidentModalTitle">Incident</h2></div><button class="btn ghost" id="incidentModalClose">Fermer</button></div><div id="incidentModalBody"></div></div></div>
