@@ -1,11 +1,11 @@
 import{api}from'../api.js';
 import{isDirector}from'../state.js';
-import{$,status,progress,esc}from'../ui.js';
+import{$,status,progress,esc,fmtMoney}from'../ui.js';
 
 export async function renderNetwork(){
   if(!isDirector())return;
   const base=await api('/api/network');
-  const rows=await Promise.all(base.map(async r=>{try{const inc=await api(`/api/stores/${r.id}/incidents?status=OPEN`);return{...r,sla:inc.stats}}catch{return{...r,sla:{open:r.openIncidents||0,critical:r.criticalIncidents||0,overdue:0,escalated:0,watch:0}}}}));
+  const rows=await Promise.all(base.map(async r=>{try{const [inc,loss]=await Promise.all([api(`/api/stores/${r.id}/incidents?status=OPEN`),api(`/api/stores/${r.id}/losses`)]);return{...r,sla:inc.stats,loss:loss.summary}}catch{return{...r,sla:{open:r.openIncidents||0,critical:r.criticalIncidents||0,overdue:0,escalated:0,watch:0},loss:r.loss||{blocking:0,retailValue:0}}}}));
   const ready=rows.filter(x=>x.day.opening_status==='OPENED').length,
     blocked=rows.filter(x=>x.opening.blockers>0&&x.day.opening_status!=='OPENED').length,
     overdue=rows.reduce((s,x)=>s+Number(x.sla?.overdue||0),0),
@@ -15,6 +15,8 @@ export async function renderNetwork(){
     commercialBlocking=rows.reduce((s,x)=>s+Number(x.commercial?.blocking||0),0),
     cashBlocking=rows.reduce((s,x)=>s+Number(x.cash?.blocking||0),0),
     cashRecounts=rows.reduce((s,x)=>s+Number(x.cash?.recounts||0),0),
+    lossBlocking=rows.reduce((s,x)=>s+Number(x.loss?.blocking||0),0),
+    lossValue=rows.reduce((s,x)=>s+Number(x.loss?.retailValue||0),0),
     sorted=[...rows].sort((a,b)=>risk(b)-risk(a));
   $('#networkContent').innerHTML=`
   <div class="grid g4">
@@ -25,20 +27,22 @@ export async function renderNetwork(){
     <div class="card"><div class="label">Passations bloquantes</div><div class="kpi">${blockingHandover}</div><div class="small muted">à résoudre avant ouverture</div></div>
     <div class="card"><div class="label">Recomptages stock</div><div class="kpi">${pendingRecounts}</div><div class="small muted">écarts à revérifier réseau</div></div>
     <div class="card"><div class="label">Prix/promos bloquants</div><div class="kpi">${commercialBlocking}</div><div class="small muted">actions avant ouverture</div></div>
+    <div class="card"><div class="label">Démarque à traiter</div><div class="kpi">${lossBlocking}</div><div class="small muted">${fmtMoney(lossValue)} enregistrés aujourd’hui</div></div>
     <div class="card"><div class="label">Clôtures caisse</div><div class="kpi">${cashBlocking}</div><div class="small muted">à finaliser · ${cashRecounts} recomptage(s)</div></div>
   </div>
   ${blocked?`<div class="banner ban-danger" style="margin-top:14px"><strong>${blocked} ouverture(s) actuellement bloquée(s).</strong> Les magasins concernés remontent en tête de liste.</div>`:''}
-  <div class="network-section-title"><div><strong>Priorités réseau</strong><span>Classement par incidents, caisse, prix/promo, DLC, stock et progression opérationnelle.</span></div></div>
+  <div class="network-section-title"><div><strong>Priorités réseau</strong><span>Classement par incidents, démarque, caisse, prix/promo, DLC, stock et progression opérationnelle.</span></div></div>
   <div class="network-store-grid">${sorted.map(card).join('')}</div>`;
 }
 
-const risk=r=>Number(r.sla?.escalated||0)*250+Number(r.handover?.blocking||0)*220+Number(r.commercial?.mismatch||0)*180+Number(r.cash?.recounts||0)*160+Number(r.cash?.blocking||0)*80+Number(r.commercial?.pending||0)*60+Number(r.inventory?.pendingRecounts||0)*90+Number(r.inventory?.varianceLines||0)*20+(Number(r.dlc?.expired||0)+Number(r.dlc?.critical||0))*180+Number(r.sla?.overdue||0)*140+Number(r.criticalIncidents||0)*100+Number(r.opening.blockers||0)*30+Number(r.openIncidents||0)*8+(r.day.opening_status==='OPENED'?0:10);
+const risk=r=>Number(r.sla?.escalated||0)*250+Number(r.handover?.blocking||0)*220+Number(r.commercial?.mismatch||0)*180+Number(r.loss?.blocking||0)*170+Number(r.loss?.pendingApproval||0)*120+Number(r.cash?.recounts||0)*160+Number(r.cash?.blocking||0)*80+Number(r.commercial?.pending||0)*60+Number(r.inventory?.pendingRecounts||0)*90+Number(r.inventory?.varianceLines||0)*20+(Number(r.dlc?.expired||0)+Number(r.dlc?.critical||0))*180+Number(r.sla?.overdue||0)*140+Number(r.criticalIncidents||0)*100+Number(r.opening.blockers||0)*30+Number(r.openIncidents||0)*8+(r.day.opening_status==='OPENED'?0:10);
 function card(r){
-  const open=r.day.opening_status==='OPENED',cashAlert=Number(r.cash?.recounts||0)>0||(r.day.closing_status!=='CLOSED'&&r.cash?.status==='REVIEW'),danger=Number(r.sla?.escalated||0)>0||Number(r.sla?.overdue||0)>0||r.criticalIncidents>0||cashAlert||(!open&&r.opening.blockers>0);
+  const open=r.day.opening_status==='OPENED',cashAlert=Number(r.cash?.recounts||0)>0||(r.day.closing_status!=='CLOSED'&&r.cash?.status==='REVIEW'),lossAlert=Number(r.loss?.blocking||0)>0,danger=Number(r.sla?.escalated||0)>0||Number(r.sla?.overdue||0)>0||r.criticalIncidents>0||cashAlert||lossAlert||(!open&&r.opening.blockers>0);
   return`<article class="card network-store ${danger?'critical':''}">
     <div class="row"><div><div class="label">${esc(r.code||'Magasin')}</div><h3>${esc(r.name)}</h3></div>${status(Number(r.sla?.escalated||0)>0?'Escalade':danger?'À traiter':open?'Ouvert':'En cours',danger?'danger':open?'ok':'warn')}</div>
     <div class="network-process"><div class="row small"><strong>Ouverture</strong><span>${r.opening.percent}%</span></div>${progress(r.opening.percent)}<div class="small muted process-caption">${open?'Validée':r.opening.currentTitle?`Étape : ${esc(r.opening.currentTitle)}`:'À démarrer'}</div><div class="owner-line"><span>Responsable</span><strong>${esc(r.day.opening_owner_name||'Non attribué')}</strong></div></div>
-    <div class="network-signals"><div><span>Incidents</span><strong>${r.openIncidents}</strong></div><div><span>Prix/promos</span><strong>${r.commercial?.blocking||0}</strong></div><div><span>DLC urgentes</span><strong>${Number(r.dlc?.expired||0)+Number(r.dlc?.critical||0)}</strong></div><div><span>Caisses</span><strong>${r.cash?.status||'—'}</strong></div></div>
+    <div class="network-signals"><div><span>Incidents</span><strong>${r.openIncidents}</strong></div><div><span>Démarque</span><strong>${r.loss?.blocking||0}</strong></div><div><span>DLC urgentes</span><strong>${Number(r.dlc?.expired||0)+Number(r.dlc?.critical||0)}</strong></div><div><span>Caisses</span><strong>${r.cash?.status||'—'}</strong></div></div>
+    ${Number(r.loss?.blocking||0)>0?`<div class="banner ban-danger"><strong>${r.loss.blocking} perte(s)</strong> restent à documenter / poster · ${fmtMoney(r.loss.retailValue||0)}.</div>`:''}
     ${Number(r.cash?.recounts||0)>0?`<div class="banner ban-danger"><strong>${r.cash.recounts} recomptage(s) caisse</strong> restent à traiter avant clôture.</div>`:''}
     ${(r.sla?.watch||0)>0?`<div class="banner ban-info"><strong>${r.sla.watch} incident(s)</strong> approchent de leur échéance SLA.</div>`:''}
     <button class="btn soft wide" data-network-store="${r.id}">Superviser ce magasin</button>
