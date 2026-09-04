@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS loss_records(
 CREATE INDEX IF NOT EXISTS ix_loss_store_date ON loss_records(store_id,business_date,status,reason_code);
 CREATE INDEX IF NOT EXISTS ix_loss_source ON loss_records(source_type,source_id);
 `);
+function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
+ensureColumn('loss_records','evidence_satisfied','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('loss_records','evidence_source_type','TEXT NULL');
+ensureColumn('loss_records','evidence_source_id','TEXT NULL');
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_loss_source_idempotency ON loss_records(source_type,source_id) WHERE source_id IS NOT NULL;`);
 db.prepare(`INSERT OR IGNORE INTO loss_policies(id,evidence_threshold_dh,approval_threshold_dh) VALUES('default',100,500)`).run();
 
 export const LOSS_REASONS=[
@@ -56,7 +61,11 @@ function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).
 export function lossPolicy(){return db.prepare(`SELECT * FROM loss_policies WHERE id='default'`).get()}
 export function lossConfig(){return{reasons:LOSS_REASONS,units:['pièce','kg','g','L','barquette','colis'],policy:lossPolicy()}}
 function validReason(code){return LOSS_REASONS.some(x=>x.code===code)}
-function hydrate(row){if(!row)return null;return{...row,created_by_name:userName(row.created_by),approved_by_name:userName(row.approved_by),posted_by_name:userName(row.posted_by),incident:row.incident_id?incidentById(row.incident_id):null}}
+function externalEvidence(row){
+ if(row?.evidence_source_type==='DLC_TREATMENT'&&row.evidence_source_id){const e=db.prepare(`SELECT id,file_name,mime_type,caption,created_at FROM dlc_evidence WHERE treatment_id=? ORDER BY created_at DESC LIMIT 1`).get(row.evidence_source_id);return e?{...e,url:`/api/dlc-media/${e.id}`,source:'DLC'}:null}
+ return null;
+}
+function hydrate(row){if(!row)return null;return{...row,created_by_name:userName(row.created_by),approved_by_name:userName(row.approved_by),posted_by_name:userName(row.posted_by),incident:row.incident_id?incidentById(row.incident_id):null,external_evidence:externalEvidence(row)}}
 export function lossRecord(id){return hydrate(db.prepare(`SELECT * FROM loss_records WHERE id=?`).get(id))}
 export function listLossRecords(storeId,businessDate=todayISO(),status='ALL'){
  const allowed=['ALL','READY_TO_POST','APPROVAL_REQUIRED','APPROVED','POSTED','CANCELLED'];if(!allowed.includes(status))status='ALL';
@@ -65,22 +74,23 @@ export function listLossRecords(storeId,businessDate=todayISO(),status='ALL'){
 }
 export function lossSummary(storeId,businessDate=todayISO()){
  const rows=listLossRecords(storeId,businessDate,'ALL'),open=rows.filter(x=>!['POSTED','CANCELLED'].includes(x.status));
- return{records:rows.length,open:open.length,posted:rows.filter(x=>x.status==='POSTED').length,pendingApproval:rows.filter(x=>x.status==='APPROVAL_REQUIRED').length,pendingEvidence:open.filter(x=>x.requires_evidence&&x.incident?.status==='OPEN').length,totalQty:round(rows.reduce((s,x)=>s+Number(x.quantity||0),0)),retailValue:round(rows.reduce((s,x)=>s+Number(x.total_retail_value||0),0)),blocking:open.length};
+ return{records:rows.length,open:open.length,posted:rows.filter(x=>x.status==='POSTED').length,pendingApproval:rows.filter(x=>x.status==='APPROVAL_REQUIRED').length,pendingEvidence:open.filter(x=>x.requires_evidence&&!x.evidence_satisfied&&x.incident?.status==='OPEN').length,totalQty:round(rows.reduce((s,x)=>s+Number(x.quantity||0),0)),retailValue:round(rows.reduce((s,x)=>s+Number(x.total_retail_value||0),0)),blocking:open.length};
 }
 export function blockingLossCount(storeId,businessDate=todayISO()){return db.prepare(`SELECT COUNT(*) n FROM loss_records WHERE store_id=? AND business_date=? AND status NOT IN ('POSTED','CANCELLED')`).get(storeId,businessDate).n}
-export function createLossRecord({storeId,businessDate=todayISO(),user,product,reasonCode,quantity,unit='pièce',note='',sourceType='MANUAL',sourceId=null}){
+export function createLossRecord({storeId,businessDate=todayISO(),user,product,reasonCode,quantity,unit='pièce',note='',sourceType='MANUAL',sourceId=null,evidenceAlreadySatisfied=false,evidenceSourceType=null,evidenceSourceId=null}){
+ if(sourceId){const existing=db.prepare(`SELECT * FROM loss_records WHERE source_type=? AND source_id=?`).get(sourceType||'MANUAL',sourceId);if(existing)return hydrate(existing)}
  if(!validReason(reasonCode))throw Object.assign(new Error('Motif de perte invalide.'),{status:400});
  const qty=Number(quantity);if(!Number.isFinite(qty)||qty<=0)throw Object.assign(new Error('Quantité de perte invalide.'),{status:400});
  if(!product?.ean||!product?.name)throw Object.assign(new Error('Article Dynamics invalide.'),{status:400});
  const price=product?.price==null?null:Number(product.price),total=Number.isFinite(price)?round(price*qty):null,policy=lossPolicy();
  const requiresEvidence=total==null||total>=Number(policy.evidence_threshold_dh),requiresApproval=total==null||total>=Number(policy.approval_threshold_dh),status=requiresApproval?'APPROVAL_REQUIRED':'READY_TO_POST',id=uid('loss');
- db.prepare(`INSERT INTO loss_records(id,store_id,business_date,ean,product_number,product_name,category,reason_code,source_type,source_id,quantity,unit,unit_retail_value,total_retail_value,requires_evidence,status,note,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,storeId,businessDate,product.ean,product.productNumber||null,product.name,product.category||null,reasonCode,sourceType||'MANUAL',sourceId||null,qty,unit||'pièce',Number.isFinite(price)?price:null,total,requiresEvidence?1:0,status,note||null,user.id);
- if(requiresEvidence){
+ db.prepare(`INSERT INTO loss_records(id,store_id,business_date,ean,product_number,product_name,category,reason_code,source_type,source_id,quantity,unit,unit_retail_value,total_retail_value,requires_evidence,evidence_satisfied,evidence_source_type,evidence_source_id,status,note,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,storeId,businessDate,product.ean,product.productNumber||null,product.name,product.category||null,reasonCode,sourceType||'MANUAL',sourceId||null,qty,unit||'pièce',Number.isFinite(price)?price:null,total,requiresEvidence?1:0,evidenceAlreadySatisfied?1:0,evidenceSourceType||null,evidenceSourceId||null,status,note||null,user.id);
+ if(requiresEvidence&&!evidenceAlreadySatisfied){
   const inc=createIncident({storeId,user,title:`Perte à documenter · ${product.name}`,description:`${qty} ${unit} · ${LOSS_REASONS.find(x=>x.code===reasonCode)?.label||reasonCode}${total==null?'':` · valeur vente estimée ${total} DH`}`,category:'LOSS',criticality:requiresApproval?'HIGH':'MEDIUM',blockingLevel:'STORE_CLOSING',sourceType:'LOSS_RECORD',sourceId:id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});
   addAction({incidentId:inc.id,user,title:'Joindre la preuve et documenter la sortie de stock',note:note||'',assignedTo:user.role==='store_manager'?user.id:null});
   db.prepare(`UPDATE loss_records SET incident_id=? WHERE id=?`).run(inc.id,id);
  }
- audit({storeId,businessDate,userId:user.id,action:'LOSS_RECORDED',entityType:'LOSS_RECORD',entityId:id,details:{ean:product.ean,reasonCode,quantity:qty,unit,totalRetailValue:total,requiresEvidence,requiresApproval,sourceType,sourceId}});
+ audit({storeId,businessDate,userId:user.id,action:'LOSS_RECORDED',entityType:'LOSS_RECORD',entityId:id,details:{ean:product.ean,reasonCode,quantity:qty,unit,totalRetailValue:total,requiresEvidence,requiresApproval,sourceType,sourceId,evidenceAlreadySatisfied,evidenceSourceType,evidenceSourceId}});
  return lossRecord(id);
 }
 export function approveLossRecord({id,user}){
@@ -92,7 +102,7 @@ export function approveLossRecord({id,user}){
 export function ensureLossPostable(id){
  const row=lossRecord(id);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});
  if(!['READY_TO_POST','APPROVED'].includes(row.status))throw Object.assign(new Error('La perte doit être prête ou approuvée avant posting.'),{status:409});
- if(row.requires_evidence&&row.incident?.status!=='RESOLVED')throw Object.assign(new Error('La preuve et l’action corrective doivent être clôturées avant posting.'),{status:409,details:{incidentId:row.incident_id}});
+ if(row.requires_evidence&&!row.evidence_satisfied&&row.incident?.status!=='RESOLVED')throw Object.assign(new Error('La preuve et l’action corrective doivent être clôturées avant posting.'),{status:409,details:{incidentId:row.incident_id}});
  return row;
 }
 export function markLossPosted({id,user}){
