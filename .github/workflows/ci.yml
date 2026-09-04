@@ -35,6 +35,9 @@ jobs:
       - name: Cash showcase engine test
         run: node backend/tests/showcase-cash.mjs
 
+      - name: Loss showcase engine test
+        run: node backend/tests/showcase-loss.mjs
+
       - name: Cash closing engine unit test
         env:
           D365_MODE: simulated
@@ -73,6 +76,11 @@ jobs:
         env:
           STOREOPS_TEST_BASE: http://127.0.0.1:8787
         run: node backend/tests/cash-api.mjs
+
+      - name: Loss and waste API integration test
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/loss-api.mjs
 
       - name: Workflow, incident, permissions and governance smoke test
         env:
