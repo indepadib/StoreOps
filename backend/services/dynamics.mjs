@@ -91,6 +91,11 @@ export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){
   throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}});
 }
 
+export async function postLossToDynamics(lossId,payload={}){
+  if(config.dynamics.mode!=='live') return {ok:true,simulated:true,lossId,postedAt:new Date().toISOString(),quantity:payload.quantity||0};
+  throw Object.assign(new Error('Posting démarque/perte Dynamics live non configuré : mapper le journal de mouvement ou ajustement stock F&O avant activation.'),{status:501,code:'D365_LOSS_WRITE_NOT_MAPPED',details:{lossId,payload}});
+}
+
 export async function getCommercialChanges(storeId,businessDate){
   if(config.dynamics.mode!=='live'){
     return [
