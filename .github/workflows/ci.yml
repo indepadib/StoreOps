@@ -32,6 +32,13 @@ jobs:
             node --check "$file"
           done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
 
+      - name: Cash closing engine unit test
+        env:
+          D365_MODE: simulated
+          STOREOPS_DB: /tmp/storeops-cash-ci.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-cash-media
+        run: node backend/tests/cash-engine.mjs
+
       - name: Start StoreOps API
         shell: bash
         env:
