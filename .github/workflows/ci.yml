@@ -51,6 +51,12 @@ jobs:
           STOREOPS_MEDIA_DIR: /tmp/storeops-loss-media
         run: node backend/tests/loss-engine.mjs
 
+      - name: DLC to loss source automation test
+        env:
+          STOREOPS_DB: /tmp/storeops-dlc-loss-ci.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-dlc-loss-media
+        run: node backend/tests/loss-source-dlc.mjs
+
       - name: Start StoreOps API
         shell: bash
         env:
