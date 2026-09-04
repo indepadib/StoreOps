@@ -19,14 +19,14 @@ export async function renderLosses(){
     ${canManage()?createPanel(config):'<div class="banner ban-info" style="margin-top:14px"><strong>Lecture seule.</strong> La saisie et le posting sont réservés au Responsable magasin et à la Direction.</div>'}
     ${isDirector()?policyPanel(config.policy):''}
     <div class="card" style="margin-top:14px">
-      <div class="row"><div><strong>Registre démarque & pertes</strong><div class="small muted">Chaque sortie doit être documentée puis postée avant fermeture.</div></div><span class="pill">${items.length} ligne(s)</span></div>
+      <div class="row"><div><strong>Registre démarque & pertes</strong><div class="small muted">Chaque sortie doit être documentée puis postée avant fermeture. Les sorties DLC sont créées automatiquement.</div></div><span class="pill">${items.length} ligne(s)</span></div>
       <div class="loss-list">${items.length?items.map(lossCard).join(''):'<div class="empty">Aucune perte enregistrée aujourd’hui.</div>'}</div>
     </div>`;
   bind();
 }
 
 function createPanel(config){return`<div class="card loss-create" style="margin-top:14px">
-  <div class="row"><div><strong>Enregistrer une sortie / perte</strong><div class="small muted">Le prix et l’article sont récupérés depuis Dynamics.</div></div><span class="pill">Terrain</span></div>
+  <div class="row"><div><strong>Enregistrer une sortie / perte</strong><div class="small muted">Le prix et l’article sont récupérés depuis Dynamics. Ne ressaisis pas les destructions/retours/dons déjà traités dans DLC.</div></div><span class="pill">Terrain</span></div>
   <div class="form-grid" style="margin-top:12px">
     <div class="field"><label>EAN *</label><input id="lossEan" inputmode="numeric" placeholder="Scanner ou saisir le code-barres"></div>
     <div class="field"><label>Motif *</label><select id="lossReason">${config.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div>
@@ -39,11 +39,13 @@ function createPanel(config){return`<div class="card loss-create" style="margin-
 </div>`}
 function policyPanel(p){return`<details class="card" style="margin-top:14px"><summary><strong>Politique réseau démarque</strong> · Direction</summary><div class="form-grid" style="margin-top:12px"><div class="field"><label>Preuve obligatoire à partir de</label><input id="lossEvidenceThreshold" type="number" min="0" step="1" value="${Number(p.evidence_threshold_dh)}"></div><div class="field"><label>Validation Direction à partir de</label><input id="lossApprovalThreshold" type="number" min="0" step="1" value="${Number(p.approval_threshold_dh)}"></div></div><button class="btn soft" id="saveLossPolicyBtn">Enregistrer la politique</button></details>`}
 function lossCard(x){
- const evidence=x.requires_evidence?`<span class="loss-flag">Preuve ${x.incident?.status==='RESOLVED'?'✓':'requise'}</span>`:'';
+ const proofOk=!!x.evidence_satisfied||x.incident?.status==='RESOLVED',proofSource=x.external_evidence?.source==='DLC'?' · DLC liée':'';
+ const evidence=x.requires_evidence?`<span class="loss-flag">Preuve ${proofOk?'✓':'requise'}${proofOk?proofSource:''}</span>`:'';
+ const source=x.source_type==='DLC_TREATMENT'?'<span class="loss-flag">Créée depuis DLC</span>':'';
  const approval=x.status==='APPROVAL_REQUIRED'?'<span class="loss-flag danger">Direction requise</span>':x.approved_by_name?`<span class="loss-flag">Approuvée · ${esc(x.approved_by_name)}</span>`:'';
  return`<article class="loss-row ${x.status==='POSTED'?'done':''}">
   <div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div>
-  <div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_retail_value==null?'Valeur Dynamics indisponible':fmtMoney(x.total_retail_value)}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${evidence}${approval}</div></div>
+  <div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_retail_value==null?'Valeur Dynamics indisponible':fmtMoney(x.total_retail_value)}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}</div></div>
   <div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}${canManage()&&['READY_TO_POST','APPROVED'].includes(x.status)?`<button class="btn brand" data-post-loss="${x.id}">Poster Dynamics</button>`:''}</div>
  </article>`;
 }
