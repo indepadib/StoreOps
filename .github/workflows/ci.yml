@@ -42,6 +42,12 @@ jobs:
           STOREOPS_MEDIA_DIR: /tmp/storeops-cash-media
         run: node backend/tests/cash-engine.mjs
 
+      - name: Loss and waste engine unit test
+        env:
+          STOREOPS_DB: /tmp/storeops-loss-ci.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-loss-media
+        run: node backend/tests/loss-engine.mjs
+
       - name: Start StoreOps API
         shell: bash
         env:
