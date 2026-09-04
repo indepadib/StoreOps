@@ -19,7 +19,7 @@ async function autoCompleteLegacyCashTask(storeId,closing){
   }catch{}
 }
 async function showcaseApi(path,options={}){
-  const clean=path.split('?')[0];
+  const clean=path.split('?')[0],method=String(options.method||'GET').toUpperCase();
   if(cashPath(path)){
     const r=await mockCashApi(path,options);
     const m=clean.match(/^\/api\/cash\/([^/]+)\/finalize$/);
@@ -27,6 +27,16 @@ async function showcaseApi(path,options={}){
     return r;
   }
   if(lossPath(path))return mockLossApi(path,options,mockApi);
+  const dlcTreatment=clean.match(/^\/api\/dlc\/([^/]+)\/treatments$/);
+  if(dlcTreatment&&method==='POST'){
+    const data=await mockApi(path,options),b=options.body?JSON.parse(options.body):{},reason={DESTROY:'EXPIRED',RETURN_SUPPLIER:'RETURN_SUPPLIER',DONATE:'DONATION'}[b.actionType];
+    if(reason&&Number(b.quantity)>0){
+      const treatment=data.treatments?.[0],evidence=data.evidence?.[0];
+      const generated=await mockLossApi(`/api/stores/${data.store_id}/losses`,{method:'POST',body:JSON.stringify({ean:data.ean,reasonCode:reason,quantity:Number(b.quantity),unit:data.unit||'pièce',note:[`Générée automatiquement depuis DLC ${data.expiry_date}`,data.lot_ref?`lot ${data.lot_ref}`:null,b.note||null].filter(Boolean).join(' · '),sourceType:'DLC_TREATMENT',sourceId:treatment?.id||dlcTreatment[1],evidenceAlreadySatisfied:!!evidence,evidenceSourceType:evidence?'DLC_TREATMENT':null,evidenceSourceId:evidence?treatment?.id:null,externalEvidence:evidence?{id:evidence.id,file_name:evidence.file_name,caption:evidence.caption||'',source:'DLC'}:null})},mockApi);
+      return{...data,generated_loss:generated};
+    }
+    return data;
+  }
   const closingValidate=clean.match(/^\/api\/stores\/([^/]+)\/process\/closing\/validate$/);
   if(closingValidate){
     const storeId=closingValidate[1],cash=cashShowcaseSummary(storeId),loss=lossShowcaseSummary(storeId);
