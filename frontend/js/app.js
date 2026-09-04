@@ -1,5 +1,6 @@
 import { api,health,isShowcase } from './api.js';
 import { resetShowcase } from './mock-api.js';
+import { resetCashShowcase } from './mock-cash.js';
 import { app,currentStore,isDirector } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 import { renderToday } from './pages/today.js';
@@ -22,7 +23,7 @@ async function bootstrap(){
 function renderUserSelect(){const el=$('#demoUser');if(app.authMode!=='demo'){el.hidden=true;return}el.hidden=false;el.innerHTML=app.users.map(u=>`<option value="${u.id}" ${u.id===app.user.id?'selected':''}>${u.name}</option>`).join('')}
 async function loadStores(){app.stores=await api('/api/stores');if(!app.storeId||!app.stores.some(s=>s.id===app.storeId))app.storeId=app.stores[0]?.id||null;$('#storeSelect').innerHTML=app.stores.map(s=>`<option value="${s.id}" ${s.id===app.storeId?'selected':''}>${s.name}</option>`).join('');updateHeader()}
 function updateHeader(){const store=currentStore();$('#headerMeta').textContent=`${store?.name||'Réseau'} · ${roleLabel(app.user.role)}${app.showcase?' · MVP Showcase':''}`;$('#rolePill').textContent=app.showcase?'MVP · '+roleLabel(app.user.role):roleLabel(app.user.role);$('#networkNav').hidden=!isDirector();$('#systemNav').hidden=!isDirector();ensureShowcaseControls()}
-function ensureShowcaseControls(){if(!isShowcase())return;const host=document.querySelector('.top-controls');if(!host||document.querySelector('#resetShowcaseBtn'))return;const b=document.createElement('button');b.id='resetShowcaseBtn';b.className='btn ghost';b.textContent='Réinitialiser démo';b.onclick=()=>{if(confirm('Réinitialiser toutes les données de démonstration ?')){resetShowcase();location.reload()}};host.appendChild(b)}
+function ensureShowcaseControls(){if(!isShowcase())return;const host=document.querySelector('.top-controls');if(!host||document.querySelector('#resetShowcaseBtn'))return;const b=document.createElement('button');b.id='resetShowcaseBtn';b.className='btn ghost';b.textContent='Réinitialiser démo';b.onclick=()=>{if(confirm('Réinitialiser toutes les données de démonstration ?')){resetShowcase();resetCashShowcase();location.reload()}};host.appendChild(b)}
 export function setPage(page){if((page==='network'||page==='system')&&!isDirector())page='today';app.page=page;$$('.page').forEach(x=>x.classList.remove('active'));$(`#${page}Page`).classList.add('active');$$('.nav button').forEach(x=>x.classList.toggle('active',x.dataset.page===page));renderPage(page)}
 async function renderPage(page){try{if(page==='today')return renderToday();if(page==='opening')return renderProcess('opening');if(page==='closing')return renderProcess('closing');if(page==='commercial')return renderCommercial();if(page==='dlc')return renderDlc();if(page==='receipts')return renderReceipts();if(page==='inventory')return renderInventory();if(page==='quality')return renderQuality();if(page==='incidents')return renderIncidents();if(page==='cash')return renderCash();if(page==='network')return renderNetwork();if(page==='system')return renderSystem()}catch(e){console.error(e);toast(e.message)}}
 function bind(){
