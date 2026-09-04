@@ -65,7 +65,7 @@ function hydrate(row){
  return{...row,controlled_by_name:userName(row.controlled_by),issues,incident};
 }
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[]}){
- const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+ const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
  for(const c of changes){
   if(!c?.sourceKey||!c?.ean||!c?.productName)continue;
