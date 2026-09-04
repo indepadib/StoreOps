@@ -86,12 +86,10 @@ export async function postReceiptToDynamics(poNumber,payload={}){
   throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}});
 }
 
-
 export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){
   if(config.dynamics.mode!=='live') return {ok:true,simulated:true,sessionId,postedAt:new Date().toISOString(),lines:payload.lines?.length||0};
   throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}});
 }
-
 
 export async function getCommercialChanges(storeId,businessDate){
   if(config.dynamics.mode!=='live'){
@@ -102,4 +100,19 @@ export async function getCommercialChanges(storeId,businessDate){
     ].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
   }
   throw Object.assign(new Error('Flux prix/promotions Dynamics live non configuré : mapper les entités prix, remises et promotions F&O/Commerce avant activation.'),{status:503,code:'D365_COMMERCIAL_MAPPING_REQUIRED',details:{storeId,businessDate}});
+}
+
+export async function getCashClosingSnapshot(storeId,businessDate){
+  if(config.dynamics.mode!=='live'){
+    return {
+      sourceKey:`CASH-CLOSING-${storeId}-${businessDate}`,
+      storeId,businessDate,source:'SIMULATED_D365',
+      lines:[
+        {tillCode:'C01',shiftId:`${storeId.toUpperCase()}-C01-${businessDate}`,cashierName:'Caissier 1',expectedSales:4200,expectedCash:1600,expectedCard:2400,expectedOther:200},
+        {tillCode:'C02',shiftId:`${storeId.toUpperCase()}-C02-${businessDate}`,cashierName:'Caissier 2',expectedSales:3500,expectedCash:1400,expectedCard:2000,expectedOther:100},
+        {tillCode:'C03',shiftId:`${storeId.toUpperCase()}-C03-${businessDate}`,cashierName:'Caissier 3',expectedSales:2800,expectedCash:900,expectedCard:1800,expectedOther:100}
+      ]
+    };
+  }
+  throw Object.assign(new Error('Flux clôture caisses Dynamics live non configuré : mapper shifts, statements, modes de paiement et remises TPE avant activation.'),{status:503,code:'D365_CASH_CLOSING_MAPPING_REQUIRED',details:{storeId,businessDate}});
 }
