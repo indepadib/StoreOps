@@ -5,6 +5,7 @@ import { mockLossApi,lossShowcaseSummary } from './mock-loss.js';
 import { mockCashOpeningApi,cashOpeningShowcaseSummary,markCashOpeningShowcaseOpened } from './mock-cash-opening.js';
 import { mockColdChainApi,coldChainShowcaseSummary,markColdChainShowcaseOpened } from './mock-cold-chain.js';
 import { mockStaffingApi,staffingShowcaseSummary,markStaffingShowcaseOpened } from './mock-staffing.js';
+import { mockPriceCheckApi } from './mock-price-check.js';
 const BASE=(window.STOREOPS_CONFIG?.apiBase||'').replace(/\/$/,'');
 function apiUrl(path){return `${BASE}${path}`}
 function cashPath(path){return /^\/api\/(cash(?:\/|$)|stores\/[^/]+\/cash-closing(?:\/|$))/.test(path.split('?')[0])}
@@ -12,8 +13,10 @@ function lossPath(path){return /^\/api\/(loss(?:\/|$)|losses(?:\/|$)|stores\/[^/
 function cashOpeningPath(path){return /^\/api\/(cash-opening(?:\/|$)|stores\/[^/]+\/cash-opening(?:\/|$))/.test(path.split('?')[0])}
 function coldChainPath(path){return /^\/api\/(cold-chain(?:\/|$)|stores\/[^/]+\/cold-chain(?:\/|$))/.test(path.split('?')[0])}
 function staffingPath(path){return /^\/api\/(staffing(?:\/|$)|stores\/[^/]+\/staffing(?:\/|$))/.test(path.split('?')[0])}
+function priceCheckPath(path){return /^\/api\/stores\/[^/]+\/price-check(?:\/|s(?:\?|$)|$)/.test(path)}
 async function autoCompleteLegacyCashTask(storeId,closing){if(!closing||!['READY','CLOSED'].includes(closing.status))return;try{let data=await mockApi(`/api/stores/${storeId}/tasks?group=closing`);if(data.day?.opening_status!=='OPENED')return;const task=(data.tasks||[]).find(t=>Number(t.step_order)===3);if(!task||task.status==='COMPLETED')return;const m=closing.metrics||{};await mockApi(`/api/tasks/${task.id}/submit`,{method:'POST',body:JSON.stringify({values:{ca_commercial:Number(m.expectedSales||0),ca_comptable:Number(m.expectedSales||0),especes_attendues:Number(m.expectedCash||0),especes_declarees:Number(m.expectedCash||0),tpe_systeme:Number(m.expectedCard||0),tpe_cloture:Number(m.expectedCard||0),statement:true}})})}catch{}}
 async function showcaseApi(path,options={}){const clean=path.split('?')[0],method=String(options.method||'GET').toUpperCase();
+  if(priceCheckPath(path))return mockPriceCheckApi(path,options,mockApi);
   if(staffingPath(path))return mockStaffingApi(path,options,mockApi);
   if(coldChainPath(path))return mockColdChainApi(path,options,mockApi);
   if(cashOpeningPath(path))return mockCashOpeningApi(path,options,mockApi);
