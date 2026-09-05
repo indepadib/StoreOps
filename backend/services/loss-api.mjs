@@ -1,6 +1,6 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
-import { getProductByEan,postLossToDynamics } from './dynamics.mjs';
+import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
@@ -16,6 +16,10 @@ function requireDirector(user){if(user.role!=='ops_director')throw Object.assign
 
 export async function handleLossApi({req,url,user}){
  const path=url.pathname;let p;
+
+ // Safe Dynamics connection assistant. Never returns the client secret or an access token.
+ if(path==='/api/dynamics/diagnostics'&&req.method==='GET'){requireDirector(user);return{status:200,data:await getDynamicsDiagnostics({forceToken:url.searchParams.get('force')==='1'})}}
+ if(path==='/api/dynamics/probe'&&req.method==='GET'){requireDirector(user);const entity=url.searchParams.get('entity')||'';return{status:200,data:await probeDataEntity(entity,{top:url.searchParams.get('top')||1})}}
 
  // Staffing readiness.
  if(path==='/api/staffing/config'&&req.method==='GET')return{status:200,data:staffingConfig()};
