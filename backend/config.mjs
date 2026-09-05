@@ -5,6 +5,7 @@ function parseStoreMap(v=''){
   if(raw.startsWith('{')){try{const parsed=JSON.parse(raw);return parsed&&typeof parsed==='object'?Object.fromEntries(Object.entries(parsed).map(([k,val])=>[String(k).trim(),String(val||'').trim()]).filter(([,val])=>val)):{};}catch{}}
   return Object.fromEntries(raw.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return i>0?[x.slice(0,i).trim(),x.slice(i+1).trim()]:null}).filter(x=>x&&x[0]&&x[1]));
 }
+function source(v,fallback='storeops'){const s=String(v||fallback).trim().toLowerCase();return ['storeops','d365'].includes(s)?s:fallback}
 
 export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
@@ -16,6 +17,11 @@ export const config = {
     apiClientId: process.env.ENTRA_API_CLIENT_ID || '',
     allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
     requiredScope: process.env.ENTRA_REQUIRED_SCOPE || ''
+  },
+  pilot: {
+    staffingSource: source(process.env.STOREOPS_STAFFING_SOURCE,'storeops'),
+    cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops'),
+    cashClosingSource: source(process.env.STOREOPS_CASH_CLOSING_SOURCE,'storeops')
   },
   dynamics: {
     mode: process.env.D365_MODE || 'simulated', // simulated | live
