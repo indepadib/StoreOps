@@ -23,7 +23,7 @@ export async function renderManagerHome(){
   const [d,lossData,cashOpenData,coldData,staffData,receiptRows,qualityRows,incidentData]=await Promise.all([
     api(`/api/stores/${app.storeId}/dashboard`),api(`/api/stores/${app.storeId}/losses`),api(`/api/stores/${app.storeId}/cash-opening`),api(`/api/stores/${app.storeId}/cold-chain`),api(`/api/stores/${app.storeId}/staffing`),api(`/api/stores/${app.storeId}/receipts`),api(`/api/stores/${app.storeId}/quality`),api(`/api/stores/${app.storeId}/incidents?status=OPEN`)
   ]);
-  const store=currentStore(),loss=lossData.summary||{},cashOpen=cashOpenData.summary||{},cold=coldData.summary||{},staff=staffData.summary||{},receipts=summarizeReceipts(receiptRows),quality=summarizeQualityToday(qualityRows),maintenance=maintenanceSummary(incidentData.items||[]),health=calculateStoreHealth({dashboard:d,staff,cold,cashOpen,receipts,quality,maintenance,loss}),phase=managerPhase(d);
+  const store=currentStore(),loss=lossData.summary||{},cashOpen=cashOpenData.summary||{},cold=coldData.summary||{},staff=staffData.summary||{},receipts=summarizeReceipts(receiptRows),quality=summarizeQualityToday(qualityRows),maintenance=maintenanceSummary(incidentData.items||[]),health=calculateStoreHealth({dashboard:d,staff,cold,cashOpen,receipts,quality,maintenance,loss}),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
   const next=chooseManagerNextAction({dashboard:d,staff,cold,cashOpen,maintenance,receipts,quality,loss,incidents:incidentData.items||[]});
   const priorities=[];
   if(Number(maintenance.openCount||0)>0)priorities.push({level:maintenance.critical||maintenance.blocking?'CRITICAL':'HIGH',title:'Maintenance',detail:`${maintenance.openCount} panne(s) ouverte(s) · ${maintenance.overdue||0} SLA en retard`,page:'maintenance'});
@@ -35,7 +35,7 @@ export async function renderManagerHome(){
 
   $('#todayContent').innerHTML=`
     <div class="manager-home">
-      <div class="manager-welcome"><div><span class="manager-eyebrow">${esc(store?.name||'Magasin')} · ${managerPhaseLabel(phase)}</span><h2>${phase==='OPENING'?'Préparons une ouverture sans blocage.':phase==='CLOSING'?'Terminons la journée proprement.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui mérite votre attention.'}</h2><p>StoreOps vous guide étape par étape. Vous n’avez pas besoin de parcourir tous les modules.</p></div><div class="manager-health"><strong>${health.score}</strong><span>/100</span><small>${esc(health.label)}</small></div></div>
+      <div class="manager-welcome"><div><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}${hours?` · ${esc(hours)}`:''}</span><h2>${phase==='OPENING'?'Préparons une ouverture sans blocage.':phase==='CLOSING'?'Terminons la journée proprement.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui mérite votre attention.'}</h2><p>${managerPhaseLabel(phase)} · StoreOps vous guide étape par étape. Vous n’avez pas besoin de parcourir tous les modules.</p></div><div class="manager-health"><strong>${health.score}</strong><span>/100</span><small>${esc(health.label)}</small></div></div>
       ${phaseStrip(phase)}
       <section class="manager-next ${next.level==='CRITICAL'?'critical':''}">
         <div class="manager-next-copy"><span class="manager-eyebrow">À faire maintenant</span><h2>${esc(next.title)}</h2><p>${esc(next.detail)}</p></div>
