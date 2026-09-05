@@ -58,6 +58,9 @@ jobs:
       - name: Pilot source decoupling test
         env: { STOREOPS_DB: /tmp/storeops-pilot-sources-ci.db }
         run: node backend/tests/pilot-source-decoupling.mjs
+      - name: Manual cash-closing fallback test
+        env: { STOREOPS_DB: /tmp/storeops-manual-cash-fallback-ci.db }
+        run: node backend/tests/manual-cash-closing-fallback.mjs
       - name: Entra SPA PKCE security contract test
         run: node backend/tests/entra-spa-contract.mjs
       - name: Pricing configuration and hardening tests
