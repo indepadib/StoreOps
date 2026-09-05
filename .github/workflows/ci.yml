@@ -32,6 +32,7 @@ jobs:
           node backend/tests/pricing-config.mjs
           node backend/tests/pricing-hardening.mjs
           node backend/tests/commercial-operational-filter.mjs
+          node backend/tests/commercial-lifecycle.mjs
       - name: Dynamics diagnostics engine test
         run: node backend/tests/dynamics-diagnostics.mjs
       - name: Cash showcase engine test
