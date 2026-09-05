@@ -1,8 +1,13 @@
 {
   "name":"franprix-storeops-api",
-  "version":"1.4.0",
+  "version":"1.21.0",
   "private":true,
   "type":"module",
-  "scripts":{"start":"node server.mjs","dev":"node --watch server.mjs","check":"node --check server.mjs && node --check db.mjs && node --check services/dynamics.mjs && node --check services/task-forms.mjs && node --check auth/entra.mjs"},
+  "scripts":{
+    "start":"node server.mjs",
+    "dev":"node --watch server.mjs",
+    "check":"node --check server.mjs && node --check db.mjs && node --check services/dynamics.mjs && node --check services/dynamics-query.mjs && node --check services/dynamics-promotion.mjs && node --check services/price-check.mjs && node --check services/task-forms.mjs && node --check auth/entra.mjs",
+    "test:pricing":"node tests/pricing-hardening.mjs && node tests/commercial-operational-filter.mjs"
+  },
   "engines":{"node":">=22.5"}
 }
