@@ -32,6 +32,8 @@ jobs:
         run: node backend/tests/pwa-shell.mjs
       - name: Blind inventory presentation test
         run: node backend/tests/inventory-privacy.mjs
+      - name: Quality floor-control draft test
+        run: node backend/tests/quality-draft.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs
