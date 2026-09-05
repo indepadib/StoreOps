@@ -14,9 +14,12 @@ for(const selector of ['#priceCheckEan','#qualityEan','#dlcEan','#lossEan'])asse
 assert.ok(scanner.includes('[data-inv-ean]'),'inventory scanner enhancement missing');
 assert.ok(scanner.includes('receiptMobileFinder'),'receiving scan/manual finder missing');
 assert.ok(scanner.includes('getUserMedia'),'camera scanning must use the phone camera');
-assert.ok(scanner.includes('BarcodeDetector'),'barcode detection engine missing');
+assert.ok(scanner.includes('BarcodeDetector'),'native barcode detection engine missing');
+assert.ok(scanner.includes('html5-qrcode@2.3.8'),'iOS/Safari fallback scanner must be pinned to a fixed version');
+assert.ok(scanner.includes('Html5Qrcode'),'iOS/Safari fallback implementation missing');
+assert.ok(scanner.includes('EAN_13')&&scanner.includes('CODE_128'),'fallback must support retail 1D barcodes');
 assert.ok(scanner.includes('saisie manuelle'),'manual fallback must remain explicit');
-assert.ok(scanner.includes('facingMode:{ideal:\'environment\'}'),'rear camera must be preferred');
+assert.ok(scanner.includes("facingMode:'environment'")||scanner.includes("facingMode:{ideal:'environment'}"),'rear camera must be preferred');
 assert.ok(pwa.includes("import './mobile-barcode.js'"),'mobile scan layer must load with StoreOps');
 assert.ok(sw.includes("'/js/mobile-barcode.js'"),'scanner JS must be available in the PWA shell');
 assert.ok(sw.includes("'/mobile-barcode.css'"),'scanner CSS must be available in the PWA shell');
