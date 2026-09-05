@@ -17,6 +17,13 @@ assert.match(hubs,/Une seule étape à la fois\./,'manager journey must explicit
 assert.match(hubs,/manager-guided-cta/,'guided journey must have one primary CTA');
 assert.match(guided,/\.manager-mode #refreshBtn\{display:none!important\}/,'manager must not see manual refresh chrome');
 assert.match(guided,/\.manager-mode #todayPage>\.page-title\{display:none\}/,'manager home must remove duplicate page title');
+assert.match(guided,/\.manager-mode \[data-take\]\{display:none!important\}/,'manager must not see the redundant take-ownership button');
+assert.match(polish,/function autoTakeJourney\(\)/,'manager process ownership must start automatically');
+assert.match(polish,/btn\.click\(\)/,'automatic ownership must reuse the audited process action');
+assert.match(polish,/function finishJourneyIfReady\(\)/,'manager must have an automatic post-validation transition');
+assert.match(polish,/Magasin prêt\./,'opening completion must have short success feedback');
+assert.match(polish,/Journée terminée\./,'closing completion must have short success feedback');
+assert.match(polish,/#managerNav \[data-page="today"\]/,'completed opening/closing must return to Today');
 assert.match(polish,/C’est fait\./,'manager completion feedback must be immediate and short');
 assert.match(polish,/On passe à la suite\./,'manager completion feedback must guide the next action');
 assert.match(index,/\/guided-day\.css/,'guided manager stylesheet must be loaded');
@@ -24,4 +31,4 @@ assert.match(index,/\/js\/manager-polish\.js/,'guided manager interaction layer 
 assert.match(auth,/Votre magasin\. Simplement\./,'pilot fallback login copy must remain minimal');
 assert.match(auth,/type="email"/,'pilot fallback login email field missing');
 assert.match(auth,/type="password"/,'pilot fallback login password field missing');
-console.log('StoreOps V1.44 guided manager flow contract passed');
+console.log('StoreOps V1.45 automatic manager journey contract passed');
