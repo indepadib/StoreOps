@@ -1,6 +1,7 @@
 import { api } from './api.js';
 import { app } from './state.js';
 import { toast } from './ui.js';
+import { renderHandover } from './pages/handover.js';
 
 const MANAGER=()=>document.body.classList.contains('manager-mode');
 let step=0;
@@ -27,6 +28,7 @@ function bind(){
   document.querySelectorAll('[data-ho-type]').forEach(b=>b.addEventListener('click',()=>{draft.category=b.dataset.hoType;step=2;render()}));
   document.querySelectorAll('[data-ho-block]').forEach(b=>b.addEventListener('click',async()=>{draft.blocking=b.dataset.hoBlock==='true';await submit(b)}));
 }
+async function refresh(){await renderHandover();enhancePage()}
 async function submit(button){
   if(busy)return;busy=true;button.disabled=true;
   try{
@@ -38,15 +40,14 @@ async function submit(button){
       targetDate:tomorrow(),
       blockingOpening:draft.blocking
     })});
-    close();toast('Sujet transmis pour demain.');refresh();
+    close();toast('Sujet transmis pour demain.');await refresh();
   }catch(e){busy=false;button.disabled=false;toast(e.message)}
 }
 async function review(){
   if(busy)return;busy=true;
   const buttons=document.querySelectorAll('[data-manager-handover-review]');buttons.forEach(b=>b.disabled=true);
-  try{await api(`/api/stores/${app.storeId}/handover/review-closing`,{method:'POST'});toast('Passation terminée.');refresh()}catch(e){busy=false;buttons.forEach(b=>b.disabled=false);toast(e.message)}
+  try{await api(`/api/stores/${app.storeId}/handover/review-closing`,{method:'POST'});toast('Passation terminée.');busy=false;await refresh()}catch(e){busy=false;buttons.forEach(b=>b.disabled=false);toast(e.message)}
 }
-function refresh(){document.querySelector('#managerNav [data-page="managerJourney"]')?.click();setTimeout(()=>document.querySelector('#managerNav [data-page="managerJourney"]')?.click(),20)}
 
 function enhancePage(){
   if(!MANAGER())return;
@@ -54,7 +55,7 @@ function enhancePage(){
   const content=page.querySelector('#handoverContent');if(!content||content.querySelector('#managerHandoverPrompt'))return;
   const reviewed=/Revue effectuée|Passation de fin de journée revue/.test(content.textContent||'');
   const prompt=document.createElement('section');prompt.id='managerHandoverPrompt';prompt.className='manager-handover-prompt';
-  prompt.innerHTML=reviewed?`<div class="manager-handover-check">✓</div><span class="manager-eyebrow">Passation</span><h2>C’est vérifié.</h2><p>Les sujets pour l’équipe suivante sont enregistrés.</p>`:`<span class="manager-eyebrow">Fin de journée</span><h2>Quelque chose à transmettre demain ?</h2><p>Ajoutez seulement ce que l’équipe suivante doit vraiment savoir.</p><div class="manager-handover-actions"><button class="btn soft" id="managerHandoverYes">Oui, transmettre un sujet</button><button class="btn brand" data-manager-handover-review>Non, rien à transmettre</button></div><button class="btn ghost manager-handover-finish" data-manager-handover-review>J’ai terminé mes sujets</button>`;
+  prompt.innerHTML=reviewed?`<div class="manager-handover-check">✓</div><span class="manager-eyebrow">Passation</span><h2>C’est vérifié.</h2><p>Les sujets pour l’équipe suivante sont enregistrés.</p>`:`<span class="manager-eyebrow">Fin de journée</span><h2>Quelque chose à transmettre demain ?</h2><p>S’il n’y a rien, terminez directement la passation.</p><div class="manager-handover-actions"><button class="btn soft" id="managerHandoverYes">Ajouter un sujet</button><button class="btn brand" data-manager-handover-review>Terminer la passation</button></div>`;
   content.prepend(prompt);
   prompt.querySelector('#managerHandoverYes')?.addEventListener('click',()=>{step=0;draft={title:'',category:'OPERATIONS',blocking:false};render()});
   prompt.querySelectorAll('[data-manager-handover-review]').forEach(b=>b.addEventListener('click',review));
