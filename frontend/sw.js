@@ -1,7 +1,7 @@
-const CACHE='storeops-shell-v1.30';
+const CACHE='storeops-shell-v1.31';
 const CORE=[
   '/','/index.html','/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/handover.css','/maintenance.css','/price-check-mobile.css','/runtime-config.js',
-  '/js/pwa.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/today-signals.js','/js/inventory-privacy.js','/js/quality-draft.js','/js/network-risk.js','/js/maintenance-model.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
+  '/js/pwa.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/today-signals.js','/js/store-health.js','/js/inventory-privacy.js','/js/quality-draft.js','/js/network-risk.js','/js/maintenance-model.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
   '/js/pages/today.js','/js/pages/process.js','/js/pages/handover.js','/js/pages/staffing.js','/js/pages/cold-chain.js','/js/pages/cash-opening.js','/js/pages/dlc.js','/js/pages/commercial.js','/js/pages/receipts.js','/js/pages/inventory.js','/js/pages/losses.js','/js/pages/quality.js','/js/pages/maintenance.js','/js/pages/cash.js','/js/pages/network.js','/js/pages/system.js','/js/pages/incidents.js'
 ];
 
