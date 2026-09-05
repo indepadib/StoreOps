@@ -29,14 +29,15 @@ async function openIncidentFor(mockApi,storeId,ean){
 function contextFor(product,storeId,businessDate,openIncident){
   const promo=product.promotion?[clone(product.promotion)]:[];
   return{
-    storeId,businessDate,ean:product.ean,
+    storeId,businessDate,ean:product.ean,priceGroup:'Franprix',
     product:{ean:product.ean,productNumber:product.productNumber,name:product.name,category:product.category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
     basePrice:{price:product.basePrice,unit:product.unit,priceQuantity:1,priceDate:'2026-07-05T12:00:00Z',source:'Showcase'},
     expectedUnitPrice:product.expectedUnitPrice,
-    promotions:{rowCount:promo.length,activeCount:promo.length,items:promo,coverage:{directItem:true,category:false}},
+    promotions:{rowCount:promo.length,activeCount:promo.length,items:promo,coverage:{directItem:true,category:false},scan:{rowsScanned:promo.length,pages:1,truncated:false}},
     conditionalPromotions:promo.filter(x=>x.mechanic?.type==='MIX_AND_MATCH'),
     promoLabel:product.promoLabel,
     pricingNote:promo.some(x=>x.mechanic?.type==='MIX_AND_MATCH')?'Le prix unitaire n’est pas artificiellement recalculé pour les offres Mix & Match. La mécanique du lot reste séparée.':null,
+    promotionScan:{rowsScanned:promo.length,pages:1,truncated:false},
     openIncident:openIncident?{id:openIncident.id,title:openIncident.title,criticality:openIncident.criticality,requiresEvidence:!!openIncident.requires_evidence}:null,
     source:'SHOWCASE'
   };
@@ -78,7 +79,6 @@ export async function mockPriceCheckApi(path,options={},mockApi){
     if(incident){
       const evidenceProvided=!!(b.evidenceFileName||b.evidenceDataUrl);
       if(!evidenceProvided)throw err('Une photo de preuve est obligatoire pour clôturer cet incident.',409);
-      // Showcase: persist metadata only. Never write the image base64 into localStorage.
       await mockApi(`/api/incidents/${incident.id}/evidence`,{method:'POST',body:JSON.stringify({fileName:b.evidenceFileName||'preuve-correction.jpg',caption:b.evidenceCaption||'Preuve après correction prix/promo',showcase:true})});
       const current=await mockApi(`/api/incidents/${incident.id}`);
       for(const action of current.actions||[])if(action.status==='OPEN')await mockApi(`/api/incidents/${incident.id}/actions/${action.id}/complete`,{method:'POST',body:JSON.stringify({note:`Recontrôle conforme ${money(observed)} · EAN ${ean}`})});
