@@ -1,6 +1,8 @@
 import { db,uid,audit,todayISO } from '../db.mjs';
+import { config } from '../config.mjs';
 import { getStoreProductByEan } from './dynamics-stock.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
+import { odataGet } from './dynamics.mjs';
 
 // V1.19 — executable shelf price / promotion checks.
 db.exec(`
@@ -38,16 +40,30 @@ function promoText(p){
   return x.name||x.periodicDiscountType||'Promotion active';
  }).join(' | ');
 }
+async function categoryForProduct(productNumber,fallback='Autre'){
+ if(fallback&&fallback!=='Autre')return fallback;
+ if(config.dynamics.mode!=='live')return fallback||'Autre';
+ const company=config.dynamics.dataAreaId;
+ const filter=company?`${config.dynamics.dataAreaField} eq '${String(company).replaceAll("'","''")}'`:'';
+ try{
+  const payload=await odataGet('RetailDiscountLines',{filter,top:5000,extra:company?'cross-company=true':''});
+  const row=(payload?.value||[]).find(x=>String(x?.ItemId||'').trim()===String(productNumber||'').trim()&&String(x?.CategoryName||'').trim());
+  return String(row?.CategoryName||fallback||'Autre').trim()||'Autre';
+ }catch{return fallback||'Autre'}
+}
 
 export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO()}){
  const code=String(ean||'').trim();
  if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
  const product=await getStoreProductByEan(storeId,code);
  if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
- const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:'Franprix'});
+ const [pricing,category]=await Promise.all([
+  getProductPricing(product.productNumber,{businessDate,priceGroup:'Franprix'}),
+  categoryForProduct(product.productNumber,product.category)
+ ]);
  return{
   storeId,businessDate,ean:code,
-  product:{ean:code,productNumber:product.productNumber,name:product.name,category:product.category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
+  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
   basePrice:pricing.basePrice,
   expectedUnitPrice:pricing.effectiveUnitPrice,
   promotions:pricing.promotions,
