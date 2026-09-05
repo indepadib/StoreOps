@@ -1,4 +1,4 @@
-const CACHE='storeops-shell-v1.44';
+const CACHE='storeops-shell-v1.45';
 const CORE=[
   '/','/index.html','/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/handover.css','/maintenance.css','/price-check-mobile.css','/manager.css','/mobile-barcode.css','/auth.css','/guided-day.css','/runtime-config.js',
   '/js/pwa.js','/js/mobile-barcode.js','/js/manager-polish.js','/js/auth-entry.js','/js/auth.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/today-signals.js','/js/store-health.js','/js/manager-journey.js','/js/manager-compliance.js','/js/inventory-privacy.js','/js/quality-draft.js','/js/network-risk.js','/js/maintenance-model.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
