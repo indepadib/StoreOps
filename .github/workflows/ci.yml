@@ -48,6 +48,8 @@ jobs:
         run: node backend/tests/store-health.mjs
       - name: Manager journey decision test
         run: node backend/tests/manager-journey.mjs
+      - name: Mobile scan and manual entry coverage test
+        run: node backend/tests/mobile-dual-entry.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs
