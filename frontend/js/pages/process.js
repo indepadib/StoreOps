@@ -2,7 +2,8 @@ import { api } from '../api.js';
 import { app,canManage } from '../state.js';
 import { $,status,progress,esc,toast } from '../ui.js';
 
-let activeTask=null;
+let activeTask=null,activeFieldIndex=0,activeDraft={};
+const managerWizard=()=>app.user?.role==='store_manager';
 const CATEGORIES=[
   ['OPERATIONS','Exploitation'],['STAFFING','Équipe'],['SECURITY','Sécurité'],['COLD','Froid'],
   ['TECHNICAL','Technique'],['STOCK','Stock'],['CASH','Caisses'],['QUALITY','Qualité'],['COMMERCIAL','Commerce']
@@ -164,7 +165,7 @@ function stepCard(t,p,canInteract){
   return `<div class="step-card ${done?'done':''} ${current?'current':''}">
     <div class="step-index">${done?'✓':t.step_order}</div><div class="step-main"><div class="step-title-row"><h3>${esc(t.title)}</h3>${critical?'<span class="mini-tag">Critique</span>':''}</div><p>${esc(t.description||'')}</p>
     ${done?`<div class="step-audit">Validé par <strong>${esc(t.completed_by_name||'Système')}</strong> · ${timeOf(t.completed_at)}</div>`:`<div class="step-audit">${current?'Étape à traiter maintenant':'En attente des étapes précédentes'}</div>`}</div>
-    ${done?status('Conforme','ok'):`<button class="btn ${current?'brand':'soft'}" data-task-form="${t.id}" ${canInteract?'':'disabled'}>${t.status==='IN_PROGRESS'?'Corriger':'Contrôler'}</button>`}</div>`;
+    ${done?status('Conforme','ok'):`<button class="btn ${current?'brand':'soft'}" data-task-form="${t.id}" ${canInteract?'':'disabled'}>${t.status==='IN_PROGRESS'?'Corriger':'Continuer'}</button>`}</div>`;
 }
 function incidentHtml(i){
   const severity=i.criticality==='CRITICAL'?'danger':i.criticality==='HIGH'?'warn':'neutral';
@@ -177,24 +178,42 @@ function timelineHtml(a){
 }
 
 export async function openTask(taskId){
-  activeTask=await api(`/api/tasks/${taskId}/form`);
+  activeTask=await api(`/api/tasks/${taskId}/form`);activeFieldIndex=0;activeDraft=Object.fromEntries(activeTask.fields.map(f=>[f.code,f.value]));
   $('#modalStep').textContent=`Étape ${activeTask.task.step_order} · ${activeTask.task.group_name==='opening'?'Ouverture':'Fermeture'}`;
   $('#modalTitle').textContent=activeTask.task.title;$('#modalDescription').textContent=activeTask.task.description||'';
-  $('#modalBody').innerHTML=`<div class="control-intro"><strong>Contrôle opérationnel</strong><span>Renseigne uniquement ce qui est réellement constaté en magasin. Toute non-conformité est auditée.</span></div><div class="form-grid control-grid">${activeTask.fields.map(fieldHtml).join('')}</div>`;
-  $('#taskModal').hidden=false;bindBooleanChoices();
+  $('#taskModal').hidden=false;renderTaskForm();
+}
+function renderTaskForm(){
+  if(!activeTask)return;
+  if(!managerWizard()){
+    $('#modalBody').innerHTML=`<div class="control-intro"><strong>Contrôle opérationnel</strong><span>Renseigne uniquement ce qui est réellement constaté en magasin. Toute non-conformité est auditée.</span></div><div class="form-grid control-grid">${activeTask.fields.map(fieldHtml).join('')}</div>`;
+    $('#modalSubmit').textContent='Valider le contrôle';bindBooleanChoices();return;
+  }
+  const total=activeTask.fields.length,f=activeTask.fields[activeFieldIndex],last=activeFieldIndex===total-1,pct=Math.round(((activeFieldIndex+1)/Math.max(1,total))*100);
+  $('#modalBody').innerHTML=`<div class="task-wizard"><div class="task-wizard-head"><span>Question ${activeFieldIndex+1} sur ${total}</span><strong>${pct}%</strong></div><div class="task-wizard-track"><i style="width:${pct}%"></i></div><div class="task-wizard-question">${fieldHtml(f)}</div>${activeFieldIndex>0?'<button type="button" class="btn ghost task-wizard-back" id="taskWizardBack">← Retour</button>':''}</div>`;
+  $('#modalSubmit').textContent=last?'Valider':'Continuer';bindBooleanChoices();
+  $('#taskWizardBack')?.addEventListener('click',()=>{captureVisibleField(false);activeFieldIndex=Math.max(0,activeFieldIndex-1);renderTaskForm()});
 }
 function fieldHtml(f){
-  const id=`tf_${f.code}`,val=f.value,help=[f.unit,f.min_value!=null||f.max_value!=null?`Tolérance ${f.min_value??'—'} à ${f.max_value??'—'}${f.unit?' '+f.unit:''}`:''].filter(Boolean).join(' · ');
-  if(f.input_type==='BOOLEAN')return `<div class="field"><label>${esc(f.label)}</label><input id="${id}" type="hidden" value="${val===true?'true':val===false?'false':''}"><div class="boolean-choice" data-target="${id}"><button type="button" class="choice yes ${val===true?'active':''}" data-value="true">Conforme</button><button type="button" class="choice no ${val===false?'active':''}" data-value="false">Non conforme</button></div>${help?`<div class="field-help">${esc(help)}</div>`:''}</div>`;
-  if(f.input_type==='TEXT')return `<div class="field full"><label>${esc(f.label)}</label><textarea id="${id}" rows="3" placeholder="Ajouter une note si nécessaire">${esc(val??'')}</textarea></div>`;
-  if(f.input_type==='SELECT')return `<div class="field"><label>${esc(f.label)}</label><select id="${id}"><option value="">— Choisir —</option>${(f.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
-  return `<div class="field metric-field"><label>${esc(f.label)}</label><div class="metric-input"><input id="${id}" type="number" step="0.01" value="${val??''}" placeholder="0"><span>${esc(f.unit||'')}</span></div>${help?`<div class="field-help">${esc(help)}</div>`:''}</div>`;
+  const id=`tf_${f.code}`,val=Object.prototype.hasOwnProperty.call(activeDraft,f.code)?activeDraft[f.code]:f.value,help=[f.unit,f.min_value!=null||f.max_value!=null?`Tolérance ${f.min_value??'—'} à ${f.max_value??'—'}${f.unit?' '+f.unit:''}`:''].filter(Boolean).join(' · ');
+  if(f.input_type==='BOOLEAN')return `<div class="field wizard-field"><label>${esc(f.label)}</label><input id="${id}" type="hidden" value="${val===true?'true':val===false?'false':''}"><div class="boolean-choice" data-target="${id}"><button type="button" class="choice yes ${val===true?'active':''}" data-value="true">Oui</button><button type="button" class="choice no ${val===false?'active':''}" data-value="false">Non</button></div>${help?`<div class="field-help">${esc(help)}</div>`:''}</div>`;
+  if(f.input_type==='TEXT')return `<div class="field full wizard-field"><label>${esc(f.label)}</label><textarea id="${id}" rows="3" placeholder="Ajouter une note si nécessaire">${esc(val??'')}</textarea></div>`;
+  if(f.input_type==='SELECT')return `<div class="field wizard-field"><label>${esc(f.label)}</label><select id="${id}"><option value="">— Choisir —</option>${(f.options||[]).map(o=>`<option value="${esc(o)}" ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select></div>`;
+  return `<div class="field metric-field wizard-field"><label>${esc(f.label)}</label><div class="metric-input"><input id="${id}" type="number" step="0.01" value="${val??''}" placeholder="0"><span>${esc(f.unit||'')}</span></div>${help?`<div class="field-help">${esc(help)}</div>`:''}</div>`;
 }
 function bindBooleanChoices(){document.querySelectorAll('.boolean-choice').forEach(group=>group.querySelectorAll('.choice').forEach(btn=>btn.addEventListener('click',()=>{const target=$(`#${group.dataset.target}`);target.value=btn.dataset.value;group.querySelectorAll('.choice').forEach(x=>x.classList.toggle('active',x===btn))})))}
-export function closeTask(){activeTask=null;$('#taskModal').hidden=true}
+function readField(f){const el=$(`#tf_${f.code}`);if(!el)return activeDraft[f.code]??null;if(f.input_type==='BOOLEAN')return el.value===''?null:el.value==='true';if(['NUMBER','MONEY'].includes(f.input_type))return el.value===''?null:Number(el.value);return el.value}
+function captureVisibleField(requireValue=true){const f=activeTask?.fields?.[activeFieldIndex];if(!f)return;const value=readField(f),missing=value===null||value===undefined||(typeof value==='string'&&!value.trim());if(requireValue&&Number(f.required)!==0&&missing)throw new Error('Réponds à cette question pour continuer.');activeDraft[f.code]=value}
+export function closeTask(){activeTask=null;activeFieldIndex=0;activeDraft={};$('#taskModal').hidden=true;$('#modalSubmit').textContent='Valider le contrôle'}
 export async function submitActiveTask(){
-  if(!activeTask)return;const values={};
-  for(const f of activeTask.fields){const el=$(`#tf_${f.code}`);if(f.input_type==='BOOLEAN')values[f.code]=el.value===''?null:el.value==='true';else if(['NUMBER','MONEY'].includes(f.input_type))values[f.code]=el.value===''?null:Number(el.value);else values[f.code]=el.value}
-  try{const group=activeTask.task.group_name,r=await api(`/api/tasks/${activeTask.task.id}/submit`,{method:'POST',body:JSON.stringify({values})});toast('Contrôle conforme et audité.');closeTask();await renderProcess(group);return r}
-  catch(e){toast(e.message);const details=e.details||e.issues;if(details){$('#modalBody').querySelector('.ban-danger')?.remove();$('#modalBody').insertAdjacentHTML('beforeend',`<div class="banner ban-danger" style="margin-top:12px"><strong>Non-conformité détectée</strong><div style="margin-top:5px">${Array.isArray(details)?details.map(x=>esc(x.message||x.label||x)).join('<br>'):esc(JSON.stringify(details))}</div><div class="small" style="margin-top:7px">Corrige la situation terrain puis renseigne le nouveau contrôle. L’anomalie reste historisée.</div></div>`)}throw e}
+  if(!activeTask)return;let values={};
+  if(managerWizard()){
+    try{captureVisibleField(true)}catch(e){toast(e.message);throw e}
+    if(activeFieldIndex<activeTask.fields.length-1){activeFieldIndex+=1;renderTaskForm();return{advanced:true}}
+    values={...activeDraft};
+  }else{
+    for(const f of activeTask.fields){const el=$(`#tf_${f.code}`);if(f.input_type==='BOOLEAN')values[f.code]=el.value===''?null:el.value==='true';else if(['NUMBER','MONEY'].includes(f.input_type))values[f.code]=el.value===''?null:Number(el.value);else values[f.code]=el.value}
+  }
+  try{const group=activeTask.task.group_name,r=await api(`/api/tasks/${activeTask.task.id}/submit`,{method:'POST',body:JSON.stringify({values})});toast('C’est fait.');closeTask();await renderProcess(group);return r}
+  catch(e){toast(e.message);const details=e.details||e.issues;if(details){$('#modalBody').querySelector('.ban-danger')?.remove();$('#modalBody').insertAdjacentHTML('beforeend',`<div class="banner ban-danger" style="margin-top:12px"><strong>À corriger</strong><div style="margin-top:5px">${Array.isArray(details)?details.map(x=>esc(x.message||x.label||x)).join('<br>'):esc(JSON.stringify(details))}</div><div class="small" style="margin-top:7px">Corrige la situation terrain puis recommence le contrôle. L’écart reste historisé.</div></div>`)}throw e}
 }

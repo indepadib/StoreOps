@@ -50,6 +50,8 @@ jobs:
         run: node backend/tests/manager-journey.mjs
       - name: Manager day compliance model test
         run: node backend/tests/manager-compliance.mjs
+      - name: Simple manager flow contract test
+        run: node backend/tests/manager-simple-flow.mjs
       - name: Mobile scan and manual entry coverage test
         run: node backend/tests/mobile-dual-entry.mjs
       - name: Val Fleuri pilot operating profile test
@@ -61,6 +63,9 @@ jobs:
       - name: Manual cash-closing fallback test
         env: { STOREOPS_DB: /tmp/storeops-manual-cash-fallback-ci.db }
         run: node backend/tests/manual-cash-closing-fallback.mjs
+      - name: Local pilot authentication test
+        env: { STOREOPS_DB: /tmp/storeops-local-auth-ci.db }
+        run: node backend/tests/local-auth.mjs
       - name: Entra SPA PKCE security contract test
         run: node backend/tests/entra-spa-contract.mjs
       - name: Pricing configuration and hardening tests

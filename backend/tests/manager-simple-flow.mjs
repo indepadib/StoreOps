@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const process=readFileSync(new URL('../../frontend/js/pages/process.js',import.meta.url),'utf8');
+const manager=readFileSync(new URL('../../frontend/manager.css',import.meta.url),'utf8');
+const auth=readFileSync(new URL('../../frontend/js/auth.js',import.meta.url),'utf8');
+assert.match(process,/Question \$\{activeFieldIndex\+1\} sur \$\{total\}/,'manager controls must be rendered as one-question flow');
+assert.match(process,/activeFieldIndex<activeTask\.fields\.length-1/,'manager wizard must progress one field at a time');
+assert.match(process,/data-value="true">Oui<\/button>/,'boolean manager choice must use simple Oui/Non language');
+assert.match(process,/\$\('#modalSubmit'\)\.textContent=last\?'Valider':'Continuer'/,'primary CTA must remain single and contextual');
+assert.match(manager,/body\.manager-mode \.journey-panel\{display:none\}/,'manager must not see redundant process rail');
+assert.match(manager,/body\.manager-mode \.step-card:not\(\.current\)\{display:none\}/,'manager must only see current process step');
+assert.match(auth,/Votre magasin\. Simplement\./,'pilot login copy must remain minimal');
+assert.match(auth,/type="email"/,'pilot login email field missing');
+assert.match(auth,/type="password"/,'pilot login password field missing');
+console.log('StoreOps V1.41 simple manager flow contract passed');

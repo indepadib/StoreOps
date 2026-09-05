@@ -2,6 +2,7 @@ import { db } from '../db.mjs';
 
 const PILOT_STORE_ID='val-fleuri';
 const PILOT_MANAGER_ID='u-vf';
+const OPS_DIRECTOR_ID='u-ops';
 
 function ensureColumn(table,column,definition){
   const cols=db.prepare(`PRAGMA table_info(${table})`).all();
@@ -27,11 +28,14 @@ ensureColumn('store_terminals','expected_float','REAL NOT NULL DEFAULT 0');
 // Val Fleuri is the first operational StoreOps pilot.
 db.prepare(`UPDATE stores SET opening_time='08:00',closing_time='23:00',active=1 WHERE id=?`).run(PILOT_STORE_ID);
 db.prepare(`UPDATE users SET name='Ayoub Nachiti',role='store_manager',store_id=?,active=1 WHERE id=?`).run(PILOT_STORE_ID,PILOT_MANAGER_ID);
+db.prepare(`UPDATE users SET name=?,role='ops_director',store_id=NULL,active=1 WHERE id=?`).run(String(process.env.STOREOPS_OPS_DIRECTOR_NAME||'Mourad').trim()||'Mourad',OPS_DIRECTOR_ID);
 
 const appEmail=String(process.env.STOREOPS_VF_MANAGER_EMAIL||'').trim().toLowerCase();
 const dynamicsEmail=String(process.env.STOREOPS_VF_D365_EMAIL||'').trim().toLowerCase();
+const opsEmail=String(process.env.STOREOPS_OPS_DIRECTOR_EMAIL||'').trim().toLowerCase();
 if(appEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(appEmail,PILOT_MANAGER_ID);
 if(dynamicsEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(dynamicsEmail,PILOT_MANAGER_ID);
+if(opsEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(opsEmail,OPS_DIRECTOR_ID);
 
 const terminal=db.prepare(`INSERT INTO store_terminals(id,store_id,till_code,label,tpe_mode,expected_float,active)
 VALUES(?,?,?,?,?,?,1)
