@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="fr">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#e5004f">
-  <title>Franprix StoreOps — V1.13 Équipe & Prise de poste</title>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#e5004f">
+  <title>Franprix StoreOps — Cockpit opérationnel magasin</title>
   <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/incidents.css"><link rel="stylesheet" href="/cash.css"><link rel="stylesheet" href="/losses.css"><link rel="stylesheet" href="/cash-opening.css"><link rel="stylesheet" href="/cold-chain.css"><link rel="stylesheet" href="/staffing.css"><link rel="stylesheet" href="/price-check-mobile.css">
 </head>
 <body><div id="toast" class="toast"></div><div class="app-shell">
-<header class="topbar"><div class="brand"><div class="brand-mark">f</div><div><strong>franprix <span>StoreOps</span></strong><small id="headerMeta">Chargement…</small></div></div><div class="top-controls"><select id="demoUser"></select><select id="storeSelect"></select><button id="refreshBtn" class="btn ghost">Actualiser</button></div></header>
-<nav class="nav" id="nav">
+<header class="topbar"><div class="brand"><div class="brand-mark">f</div><div><strong>franprix <span>StoreOps</span></strong><small id="headerMeta">Chargement…</small></div></div><div class="top-controls"><select id="demoUser" aria-label="Profil utilisateur"></select><select id="storeSelect" aria-label="Magasin"></select><button id="refreshBtn" class="btn ghost">Actualiser</button></div></header>
+<nav class="nav" id="nav" aria-label="Navigation StoreOps">
 <button data-page="today" class="active">Aujourd’hui</button><button data-page="opening">Ouverture</button><button data-page="staffing">Équipe & prise de poste</button><button data-page="coldChain">Chaîne du froid</button><button data-page="cashOpening">Préparation caisses</button><button data-page="commercial">Prix & promos</button><button data-page="dlc">DLC</button><button data-page="receipts">Réception</button><button data-page="inventory">Stock & inventaire</button><button data-page="losses">Démarque & pertes</button><button data-page="quality">Qualité</button><button data-page="incidents">Incidents</button><button data-page="cash">Caisses & clôture</button><button data-page="closing">Fermeture</button><button data-page="network" id="networkNav">Direction</button><button data-page="system" id="systemNav">Système</button>
 </nav>
 <main>
@@ -27,7 +27,7 @@
 <section class="page" id="closingPage"><div class="page-title"><div><h1>Fermeture magasin</h1><p>Clôture financière, opérationnelle et sécurisation.</p></div><button class="btn brand" data-take="closing">Prendre en charge</button></div><div id="closingContent"></div></section>
 <section class="page" id="networkPage"><div class="page-title"><div><h1>Direction d’Exploitation</h1><p>Vue réseau, SLA et suivi du parcours de chaque magasin.</p></div></div><div id="networkContent"></div></section>
 <section class="page" id="systemPage"><div class="page-title"><div><h1>Système & Dynamics</h1><p>État des intégrations. Visible uniquement par la Direction.</p></div></div><div id="systemContent"></div></section>
-</main><footer>StoreOps V1.13 · Équipe · Chaîne du Froid · Préparation Caisses · Démarque & Pertes · Clôture Caisses · Prix & Promotions · Stock · DLC/DDM · Réception · Incidents · Direction</footer></div>
+</main><footer>StoreOps · Cockpit opérationnel Franprix · Ouverture · Prix & Promotions · Stock · DLC/DDM · Réception · Incidents · Caisses · Direction</footer></div>
 <div class="modal-backdrop" id="taskModal" hidden><div class="modal"><div class="row"><div><div class="label" id="modalStep"></div><h2 id="modalTitle">Contrôle</h2></div><button class="btn ghost" id="modalClose">Fermer</button></div><p class="muted small" id="modalDescription"></p><div id="modalBody"></div><div class="modal-actions"><button class="btn brand" id="modalSubmit">Valider le contrôle</button></div></div></div>
 <div class="modal-backdrop" id="incidentModal" hidden><div class="modal incident-modal"><div class="row"><div><div class="label" id="incidentModalMeta"></div><h2 id="incidentModalTitle">Incident</h2></div><button class="btn ghost" id="incidentModalClose">Fermer</button></div><div id="incidentModalBody"></div></div></div>
 <script src="/runtime-config.js"></script><script type="module" src="/js/app.js"></script></body></html>
