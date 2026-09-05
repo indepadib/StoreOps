@@ -136,6 +136,70 @@ export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynam
 export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,sessionId,postedAt:now(),lines:payload.lines?.length||0};throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}})}
 export async function postLossToDynamics(lossId,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,lossId,postedAt:now(),quantity:payload.quantity||0};throw Object.assign(new Error('Posting démarque/perte Dynamics live non configuré : mapper le journal de mouvement ou ajustement stock F&O avant activation.'),{status:501,code:'D365_LOSS_WRITE_NOT_MAPPED',details:{lossId,payload}})}
 
-export async function getCommercialChanges(storeId,businessDate){if(config.dynamics.mode!=='live')return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));throw Object.assign(new Error('Flux prix/promotions Dynamics live non configuré : mapper les entités prix, remises et promotions F&O/Commerce avant activation.'),{status:503,code:'D365_COMMERCIAL_MAPPING_REQUIRED',details:{storeId,businessDate}})}
+function dateOnly(v){const s=String(v||'');return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
+function openBoundary(v){const d=dateOnly(v);return !d||d==='1900-01-01'||d==='1900-01-02'}
+function activeOffer(h,day){if(h?.Status!=='Enabled'||h?.ProcessingStatus!=='Processed')return false;const from=dateOnly(h.ValidFrom),to=dateOnly(h.ValidTo);return (openBoundary(from)||from<=day)&&(openBoundary(to)||to>=day)}
+function mixQty(line){return Number(line?.MixAndMatchNumberOfItemsNeeded||0)||null}
+function promoPresentation(header,line){
+  const name=String(header?.Name||'').trim(),type=header?.PeriodicDiscountType;
+  if(type==='MixAndMatch'){
+    if(header.MixAndMatchDiscountType==='DealPrice'){
+      const qty=mixQty(line),deal=Number(header.MixAndMatchDealPrice||0)||null;
+      return{label:qty&&deal?`${qty} article(s) éligible(s) pour ${deal.toFixed(2)} DH`:`Offre Mix & Match · prix de lot`,warning:/50\s*%/i.test(name)?'Libellé marketing en pourcentage : le contrôle StoreOps suit le DealPrice Dynamics, pas le texte de l’offre.':null};
+    }
+    if(header.MixAndMatchDiscountType==='LeastExpensive'){
+      const qty=mixQty(line),count=Number(header.MixAndMatchNoOfLeastExpensiveLines||0)||1,pct=Number(header.DiscountPercentValue||0)||100;
+      let warning=null;
+      if(/buy\s*2.*get\s*1\s*free|2\s*\+\s*1/i.test(name)&&qty&&qty<3)warning='⚠️ Libellé "2+1" potentiellement incohérent avec la mécanique Dynamics : seulement 2 articles requis.';
+      return{label:`Sur ${qty||'N'} article(s) éligible(s), ${count} moins cher(s) remisé(s) à ${pct}%`,warning};
+    }
+    return{label:`Mix & Match · ${header.MixAndMatchDiscountType||'mécanique spéciale'}`,warning:null};
+  }
+  if(line?.OfferDiscountMethod==='PercentOff')return{label:`Remise ${Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0)}%`,warning:null};
+  if(Number(line?.OfferDiscountAmount||0))return{label:`Remise ${Number(line.OfferDiscountAmount).toFixed(2)} DH`,warning:null};
+  if(Number(line?.OfferPrice||0))return{label:`Prix promo ${Number(line.OfferPrice).toFixed(2)} DH`,warning:null};
+  return{label:name||type||'Promotion',warning:null};
+}
+function promoExpectedPrice(base,header,line){const b=Number(base);if(!Number.isFinite(b))return null;if(header?.PeriodicDiscountType==='MixAndMatch')return b;if(line?.OfferDiscountMethod==='PercentOff'){const p=Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0);return Number((b*(1-p/100)).toFixed(2))}if(Number(line?.OfferDiscountAmount||0))return Number(Math.max(0,b-Number(line.OfferDiscountAmount)).toFixed(2));if(Number(line?.OfferPrice||0))return Number(line.OfferPrice);return b}
+
+export async function getCommercialChanges(storeId,businessDate){
+  if(config.dynamics.mode!=='live')return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),company=config.dynamics.dataAreaId,companyFilter=company?`${config.dynamics.dataAreaField} eq '${escapeOData(company)}'`:'',extra=company?'cross-company=true':'';
+  const [headersPayload,linesPayload,groupsPayload,productsPayload,barcodesPayload]=await Promise.all([
+    odataGet('RetailDiscounts',{filter:companyFilter,top:5000,extra}),
+    odataGet('RetailDiscountLines',{filter:companyFilter,top:5000,extra}),
+    odataGet('RetailDiscountPriceGroups',{filter:companyFilter,top:5000,extra}),
+    odataGet('ReleasedProductsV2',{filter:companyFilter,top:5000,extra}),
+    config.dynamics.barcodeEntity?odataGet(config.dynamics.barcodeEntity,{filter:companyFilter,top:5000,extra}):Promise.resolve({value:[]})
+  ]);
+  const headers=(headersPayload?.value||[]).filter(h=>activeOffer(h,day));
+  const franprixIds=new Set((groupsPayload?.value||[]).filter(g=>g.PriceGroupId==='Franprix').map(g=>g.OfferId));
+  const eligibleHeaders=headers.filter(h=>franprixIds.has(h.OfferId));
+  const headerById=new Map(eligibleHeaders.map(h=>[h.OfferId,h]));
+  const productById=new Map((productsPayload?.value||[]).map(p=>[p.ItemNumber||p.ProductNumber,p]));
+  const barcodeByProduct=new Map();
+  for(const b of (barcodesPayload?.value||[])){const pn=b[config.dynamics.barcodeProductField];const ean=b[config.dynamics.barcodeField];if(pn&&ean&&!barcodeByProduct.has(pn))barcodeByProduct.set(pn,String(ean))}
+  const changes=[],categorySeen=new Set();
+  for(const line of (linesPayload?.value||[])){
+    const header=headerById.get(line.OfferId);if(!header||line.LineType==='Exclude')continue;
+    const item=String(line.ItemId||'').trim(),category=String(line.CategoryName||'').trim()||null,presentation=promoPresentation(header,line),startsToday=dateOnly(header.ValidFrom)===day;
+    if(item){
+      const product=productById.get(item)||{},base=Number(product.SalesPrice),expected=promoExpectedPrice(base,header,line),ean=barcodeByProduct.get(item)||`ITEM:${item}`;
+      const promoLabel=[header.Name||null,presentation.label,presentation.warning].filter(Boolean).join(' · ');
+      changes.push({sourceKey:`D365-PROMO-${line.OfferId}-${line.LineNum}-${day}`,actionType:startsToday?'PROMO_START':'VERIFY',ean,productNumber:item,productName:line.Name||product.ProductName||product.SearchName||item,category,oldPrice:Number.isFinite(base)?base:null,expectedPrice:Number.isFinite(expected)?expected:null,promoLabel,signageAction:startsToday?'INSTALL':'VERIFY',priority:presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,source:'D365_RETAIL_PRICING'});
+    }else if(category){
+      const key=`${line.OfferId}|${category}`;if(categorySeen.has(key))continue;categorySeen.add(key);
+      const promoLabel=[header.Name||null,presentation.label,presentation.warning,'Contrôle catégorie : vérifier la signalétique et la mécanique en rayon'].filter(Boolean).join(' · ');
+      changes.push({sourceKey:`D365-PROMO-CAT-${line.OfferId}-${category}-${day}`,actionType:startsToday?'PROMO_START':'VERIFY',ean:`CATEGORY:${category}`,productNumber:null,productName:`Catégorie ${category}`,category,oldPrice:null,expectedPrice:null,promoLabel,signageAction:startsToday?'INSTALL':'VERIFY',priority:presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,source:'D365_RETAIL_PRICING'});
+    }
+  }
+  for(const p of (productsPayload?.value||[])){
+    const item=p.ItemNumber||p.ProductNumber;if(!item||dateOnly(p.SalesPriceDate)!==day)continue;
+    const ean=barcodeByProduct.get(item)||`ITEM:${item}`,price=Number(p.SalesPrice);
+    if(!Number.isFinite(price))continue;
+    changes.push({sourceKey:`D365-PRICE-${item}-${day}`,actionType:'PRICE_CHANGE',ean,productNumber:item,productName:p.ProductName||p.SearchName||item,category:null,oldPrice:null,expectedPrice:price,promoLabel:`Prix fiche Dynamics applicable · ${price.toFixed(2)} DH`,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,source:'D365_RETAIL_PRICING'});
+  }
+  return changes;
+}
 
 export async function getCashClosingSnapshot(storeId,businessDate){if(config.dynamics.mode!=='live')return{sourceKey:`CASH-CLOSING-${storeId}-${businessDate}`,storeId,businessDate,source:'SIMULATED_D365',lines:[{tillCode:'C01',shiftId:`${storeId.toUpperCase()}-C01-${businessDate}`,cashierName:'Caissier 1',expectedSales:4200,expectedCash:1600,expectedCard:2400,expectedOther:200},{tillCode:'C02',shiftId:`${storeId.toUpperCase()}-C02-${businessDate}`,cashierName:'Caissier 2',expectedSales:3500,expectedCash:1400,expectedCard:2000,expectedOther:100},{tillCode:'C03',shiftId:`${storeId.toUpperCase()}-C03-${businessDate}`,cashierName:'Caissier 3',expectedSales:2800,expectedCash:900,expectedCard:1800,expectedOther:100}]};throw Object.assign(new Error('Flux clôture caisses Dynamics live non configuré : mapper shifts, statements, modes de paiement et remises TPE avant activation.'),{status:503,code:'D365_CASH_CLOSING_MAPPING_REQUIRED',details:{storeId,businessDate}})}
