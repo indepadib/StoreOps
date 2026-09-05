@@ -1,0 +1,4 @@
+const BASE=process.env.STOREOPS_TEST_BASE||'http://127.0.0.1:8787';
+async function call(path,user){const r=await fetch(BASE+path,{headers:{'content-type':'application/json','x-demo-user':user}});let data={};try{data=await r.json()}catch{}return{r,data}}
+function ok(v,m){if(!v)throw new Error(m)}
+let x=await call('/api/dynamics/diagnostics','u-vf');ok(x.r.status===403,'manager must not access Dynamics diagnostics');x=await call('/api/dynamics/diagnostics','u-ops');ok(x.r.status===200&&x.data.mode==='SIMULATED'&&x.data.configuration?.clientSecret?.configured===false,'director Dynamics diagnostics failed');ok(!JSON.stringify(x.data).includes('access_token'),'diagnostics API exposed token');x=await call('/api/dynamics/probe?entity=ReleasedProductsV2&top=1','u-ops');ok(x.r.status===200&&x.data.mode==='SIMULATED','Dynamics probe API failed');console.log('StoreOps V1.14 Dynamics diagnostics API tests passed');
