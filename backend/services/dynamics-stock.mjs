@@ -28,6 +28,9 @@ export function stockIntegrationConfig(){
       onHand:'OnHandQuantity',
       availableOnHand:'AvailableOnHandQuantity',
       reservedOnHand:'ReservedOnHandQuantity',
+      ordered:'OrderedQuantity',
+      availableOrdered:'AvailableOrderedQuantity',
+      reservedOrdered:'ReservedOrderedQuantity',
       onOrder:'OnOrderQuantity',
       totalAvailable:'TotalAvailableQuantity'
     }
@@ -37,7 +40,7 @@ export function stockIntegrationConfig(){
 export async function getStoreStockByProductNumber(storeId,productNumber){
   const warehouseId=warehouseForStore(storeId);
   if(config.dynamics.mode!=='live'){
-    return {warehouseId,dataAreaId:config.dynamics.dataAreaId||null,rowCount:0,onHandQuantity:null,availableOnHandQuantity:null,reservedOnHandQuantity:null,onOrderQuantity:null,totalAvailableQuantity:null,source:'SIMULATED_D365'};
+    return {warehouseId,dataAreaId:config.dynamics.dataAreaId||null,rowCount:0,onHandQuantity:null,availableOnHandQuantity:null,reservedOnHandQuantity:null,orderedQuantity:null,availableOrderedQuantity:null,reservedOrderedQuantity:null,onOrderQuantity:null,totalAvailableQuantity:null,source:'SIMULATED_D365'};
   }
   const filters=[
     `ItemNumber eq '${escapeOData(productNumber)}'`,
@@ -54,6 +57,9 @@ export async function getStoreStockByProductNumber(storeId,productNumber){
     onHandQuantity:sum('OnHandQuantity'),
     availableOnHandQuantity:sum('AvailableOnHandQuantity'),
     reservedOnHandQuantity:sum('ReservedOnHandQuantity'),
+    orderedQuantity:sum('OrderedQuantity'),
+    availableOrderedQuantity:sum('AvailableOrderedQuantity'),
+    reservedOrderedQuantity:sum('ReservedOrderedQuantity'),
     onOrderQuantity:sum('OnOrderQuantity'),
     totalAvailableQuantity:sum('TotalAvailableQuantity'),
     source:`D365/${STOCK_ENTITY}`
@@ -70,6 +76,9 @@ export async function getStoreProductByEan(storeId,ean){
     stock:stock.onHandQuantity,
     availableStock:stock.availableOnHandQuantity,
     reservedStock:stock.reservedOnHandQuantity,
+    orderedStock:stock.orderedQuantity,
+    availableOrderedStock:stock.availableOrderedQuantity,
+    reservedOrderedStock:stock.reservedOrderedQuantity,
     onOrderStock:stock.onOrderQuantity,
     totalAvailableStock:stock.totalAvailableQuantity,
     warehouseId:stock.warehouseId,
