@@ -33,6 +33,8 @@ jobs:
         run: node backend/tests/showcase-cash-opening.mjs
       - name: Cold chain showcase test
         run: node backend/tests/showcase-cold-chain.mjs
+      - name: Staffing showcase test
+        run: node backend/tests/showcase-staffing.mjs
       - name: Loss showcase engine test
         run: node backend/tests/showcase-loss.mjs
       - name: Showcase DLC to loss automation test
