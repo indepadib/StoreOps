@@ -1,5 +1,6 @@
 function row(id,label,page,applicable,done,detail,level='NORMAL'){return{ id,label,page,applicable:!!applicable,done:!!done,detail,level }}
 const ready=s=>['READY','OPENED','CLOSED'].includes(String(s||'').toUpperCase());
+const severity={CRITICAL:0,HIGH:1,NORMAL:2};
 export function managerDayCompliance({dashboard:d={},staff={},cold={},cashOpen={},receipts={},quality={},maintenance={},loss={}}={}){
   const day=d.day||{},openingDone=day.opening_status==='OPENED',closingStarted=day.closing_status==='IN_PROGRESS'||day.closing_status==='CLOSED',closingDone=day.closing_status==='CLOSED';
   const rows=[
@@ -19,6 +20,6 @@ export function managerDayCompliance({dashboard:d={},staff={},cold={},cashOpen={
     row('closing','Fermeture magasin','closing',closingStarted,closingDone,'Parcours de fermeture validé','CRITICAL')
   ];
   const applicable=rows.filter(x=>x.applicable),done=applicable.filter(x=>x.done),pending=applicable.filter(x=>!x.done),percent=applicable.length?Math.round(done.length*100/applicable.length):100;
-  const next=pending.sort((a,b)=>({CRITICAL:0,HIGH:1,NORMAL:2}[a.level]-({CRITICAL:0,HIGH:1,NORMAL:2}[b.level]))[0]||null;
+  const next=[...pending].sort((a,b)=>(severity[a.level]??9)-(severity[b.level]??9))[0]||null;
   return{percent,done:done.length,total:applicable.length,pending,next,rows:applicable,state:pending.some(x=>x.level==='CRITICAL')?'BLOCKED':pending.length?'PENDING':'COMPLETE'};
 }
