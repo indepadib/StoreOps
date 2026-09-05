@@ -1,0 +1,22 @@
+# Local secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Local databases/runtime
+*.db
+*.db-shm
+*.db-wal
+backend/storeops.db
+backend/media/
+backend/uploads/
+
+# Node / tooling
+node_modules/
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Editor / local workspace
+.vscode/
+.idea/
