@@ -4,7 +4,6 @@ import { getStoreProductByEan } from './dynamics-stock.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
 import { odataGet } from './dynamics.mjs';
 
-// V1.19 — executable shelf price / promotion checks.
 db.exec(`
 CREATE TABLE IF NOT EXISTS price_checks(
  id TEXT PRIMARY KEY,
@@ -51,6 +50,15 @@ async function categoryForProduct(productNumber,fallback='Autre'){
   return String(row?.CategoryName||fallback||'Autre').trim()||'Autre';
  }catch{return fallback||'Autre'}
 }
+function openPriceIncident(storeId,ean){
+ const row=db.prepare(`SELECT i.id,i.title,i.criticality,i.requires_evidence,i.created_at,
+  (SELECT COUNT(*) FROM incident_actions a WHERE a.incident_id=i.id AND a.status='OPEN') open_actions,
+  (SELECT COUNT(*) FROM incident_evidence e WHERE e.incident_id=i.id) evidence_count
+  FROM incidents i JOIN price_checks p ON p.id=i.source_id
+  WHERE i.store_id=? AND i.source_type='PRICE_CHECK' AND i.status='OPEN' AND p.ean=?
+  ORDER BY i.created_at DESC LIMIT 1`).get(storeId,ean);
+ return row||null;
+}
 
 export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO()}){
  const code=String(ean||'').trim();
@@ -69,7 +77,8 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
   promotions:pricing.promotions,
   conditionalPromotions:pricing.conditionalPromotions||[],
   promoLabel:promoText(pricing),
-  pricingNote:pricing.pricingNote||null
+  pricingNote:pricing.pricingNote||null,
+  openIncident:openPriceIncident(storeId,code)
  };
 }
 
@@ -87,7 +96,7 @@ export async function executePriceCheck({storeId,ean,businessDate=todayISO(),obs
  const status=issues.length?'MISMATCH':'CONFORM',id=uid('pc');
  db.prepare(`INSERT INTO price_checks(id,store_id,business_date,ean,product_number,product_name,expected_price,observed_price,promo_label,signage_ok,execution_ok,status,issues_json,checked_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
   .run(id,storeId,businessDate,ctx.ean,ctx.product.productNumber,ctx.product.name,expected,Number.isFinite(observed)?observed:null,ctx.promoLabel,hasPromo?(signageOk===true?1:0):1,executionOk===true?1:0,status,issues.length?JSON.stringify(issues):null,user.id);
- audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,issues}});
+ audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,issues,priorIncidentId:ctx.openIncident?.id||null}});
  return{check:{id,status,issues,expectedPrice:expected,observedPrice:Number.isFinite(observed)?observed:null},context:ctx};
 }
 
