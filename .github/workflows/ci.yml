@@ -55,6 +55,9 @@ jobs:
       - name: Val Fleuri pilot operating profile test
         env: { STOREOPS_DB: /tmp/storeops-pilot-profile-ci.db }
         run: node backend/tests/pilot-profile.mjs
+      - name: Pilot source decoupling test
+        env: { STOREOPS_DB: /tmp/storeops-pilot-sources-ci.db }
+        run: node backend/tests/pilot-source-decoupling.mjs
       - name: Entra SPA PKCE security contract test
         run: node backend/tests/entra-spa-contract.mjs
       - name: Pricing configuration and hardening tests
