@@ -27,6 +27,8 @@ jobs:
         run: |
           set -euo pipefail
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
+      - name: Dynamics diagnostics engine test
+        run: node backend/tests/dynamics-diagnostics.mjs
       - name: Cash showcase engine test
         run: node backend/tests/showcase-cash.mjs
       - name: Cash opening showcase test
@@ -65,6 +67,9 @@ jobs:
           echo $! > /tmp/storeops-api.pid
           for i in {1..20}; do if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then cat /tmp/health.json; exit 0; fi; sleep 1; done
           cat /tmp/storeops-api.log; exit 1
+      - name: Dynamics diagnostics API integration test
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
+        run: node backend/tests/dynamics-diagnostics-api.mjs
       - name: Staffing readiness API integration test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/staffing-api.mjs
