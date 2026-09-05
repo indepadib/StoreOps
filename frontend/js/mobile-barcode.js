@@ -42,7 +42,7 @@ async function supportedDetector(){
     const supported=await window.BarcodeDetector.getSupportedFormats?.()||[];
     const wanted=['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf'];
     const formats=wanted.filter(x=>!supported.length||supported.includes(x));
-    return new window.BarcodeDetector(formats.length?{formats}:undefined);
+    return formats.length?new window.BarcodeDetector({formats}):new window.BarcodeDetector();
   }catch{return null}
 }
 
@@ -94,7 +94,7 @@ function enhanceStatic(){
     addScanButton(input,()=>cfg.action&&document.querySelector(cfg.action)?.click());
   }
   document.querySelectorAll('[data-inv-ean]').forEach(input=>{
-    addScanButton(input,()=>{const id=input.dataset.invEan;document.querySelector(`[data-add-inv-line="${CSS.escape(id)}"]`)?.click()});
+    addScanButton(input,()=>{const id=input.dataset.invEan;[...document.querySelectorAll('[data-add-inv-line]')].find(b=>b.dataset.addInvLine===id)?.click()});
   });
 }
 
@@ -107,8 +107,7 @@ function findReceiptArticle(code){
   match.classList.add('receipt-line-focus');match.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>match.classList.remove('receipt-line-focus'),4500);
 }
 function enhanceReceipts(){
-  const root=document.querySelector('#receiptsContent');if(!root||root.dataset.receiptFinder==='1'||!root.querySelector('.receipt-line'))return;
-  root.dataset.receiptFinder='1';
+  const root=document.querySelector('#receiptsContent');if(!root||root.querySelector('#receiptMobileFinder')||!root.querySelector('.receipt-line'))return;
   const panel=document.createElement('section');panel.id='receiptMobileFinder';panel.className='card receipt-mobile-finder';panel.innerHTML=`<div><strong>Trouver un article à réceptionner</strong><div class="small muted">Scanne le produit reçu ou saisis son EAN/code article pour aller directement à sa ligne de contrôle.</div></div><div class="receipt-finder-row"><input id="receiptFinderEan" inputmode="numeric" autocomplete="off" placeholder="EAN / code article"><button class="btn brand" id="receiptFinderGo" type="button">Trouver</button></div>`;
   root.prepend(panel);
   const input=panel.querySelector('#receiptFinderEan'),go=panel.querySelector('#receiptFinderGo');go.addEventListener('click',()=>findReceiptArticle(input.value));input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findReceiptArticle(input.value)}});addScanButton(input,raw=>findReceiptArticle(raw));
