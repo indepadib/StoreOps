@@ -1,6 +1,7 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
 import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
+import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
@@ -20,6 +21,11 @@ export async function handleLossApi({req,url,user}){
  // Safe Dynamics connection assistant. Never returns the client secret or an access token.
  if(path==='/api/dynamics/diagnostics'&&req.method==='GET'){requireDirector(user);return{status:200,data:await getDynamicsDiagnostics({forceToken:url.searchParams.get('force')==='1'})}}
  if(path==='/api/dynamics/probe'&&req.method==='GET'){requireDirector(user);const entity=url.searchParams.get('entity')||'';return{status:200,data:await probeDataEntity(entity,{top:url.searchParams.get('top')||1})}}
+ if(path==='/api/dynamics/stock/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:stockIntegrationConfig()}}
+ p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){
+  requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);
+  return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}};
+ }
 
  // Staffing readiness.
  if(path==='/api/staffing/config'&&req.method==='GET')return{status:200,data:staffingConfig()};

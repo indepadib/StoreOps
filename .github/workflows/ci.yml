@@ -70,6 +70,9 @@ jobs:
       - name: Dynamics diagnostics API integration test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/dynamics-diagnostics-api.mjs
+      - name: Dynamics stock store mapping API test
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
+        run: node backend/tests/dynamics-stock-api.mjs
       - name: Staffing readiness API integration test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/staffing-api.mjs
