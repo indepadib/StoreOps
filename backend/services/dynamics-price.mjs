@@ -21,33 +21,6 @@ const BASE_PRICE_SELECT_FIELDS=[
   'IsManualDiscountPOSRegistrationProhibited','IsPOSRegistrationBlocked','ProductLifecycleStateId'
 ];
 
-export async function getSalesPriceAgreementsByItem(productNumber){
-  const item=String(productNumber||'').trim();
-  if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRICE_ITEM_REQUIRED'});
-
-  if(config.dynamics.mode!=='live'){
-    return {mode:'SIMULATED',entity:SALES_PRICE_ENTITY,productNumber:item,rowCount:0,rows:[]};
-  }
-
-  const filters=[`ItemNumber eq '${escapeOData(item)}'`];
-  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
-  const payload=await odataGet(SALES_PRICE_ENTITY,{
-    filter:filters.join(' and '),
-    select:AGREEMENT_SELECT_FIELDS.join(','),
-    top:100,
-    extra:config.dynamics.dataAreaId?'cross-company=true':''
-  });
-  const rows=Array.isArray(payload?.value)?payload.value:[];
-  return {
-    mode:'LIVE',
-    entity:SALES_PRICE_ENTITY,
-    productNumber:item,
-    dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||null,
-    rowCount:rows.length,
-    rows
-  };
-}
-
 export async function getBaseSalesPriceByItem(productNumber){
   const item=String(productNumber||'').trim();
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_BASE_PRICE_ITEM_REQUIRED'});
@@ -72,5 +45,34 @@ export async function getBaseSalesPriceByItem(productNumber){
     dataAreaId:config.dynamics.dataAreaId||row?.dataAreaId||null,
     rowCount:row?1:0,
     row
+  };
+}
+
+export async function getSalesPriceAgreementsByItem(productNumber){
+  const item=String(productNumber||'').trim();
+  if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRICE_ITEM_REQUIRED'});
+
+  const basePrice=await getBaseSalesPriceByItem(item);
+  if(config.dynamics.mode!=='live'){
+    return {mode:'SIMULATED',entity:SALES_PRICE_ENTITY,productNumber:item,rowCount:0,rows:[],basePrice};
+  }
+
+  const filters=[`ItemNumber eq '${escapeOData(item)}'`];
+  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+  const payload=await odataGet(SALES_PRICE_ENTITY,{
+    filter:filters.join(' and '),
+    select:AGREEMENT_SELECT_FIELDS.join(','),
+    top:100,
+    extra:config.dynamics.dataAreaId?'cross-company=true':''
+  });
+  const rows=Array.isArray(payload?.value)?payload.value:[];
+  return {
+    mode:'LIVE',
+    entity:SALES_PRICE_ENTITY,
+    productNumber:item,
+    dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||basePrice.dataAreaId||null,
+    rowCount:rows.length,
+    rows,
+    basePrice
   };
 }
