@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import {managerPhase,chooseManagerNextAction} from '../../frontend/js/manager-journey.js';
+
+const base={day:{opening_status:'NOT_STARTED',closing_status:'NOT_STARTED'},opening:{done:0,total:7},closing:{done:0,total:6},handover:{blocking:0},commercial:{blocking:0},dlc:{expired:0,critical:0},inventory:{pendingRecounts:0},cash:{status:'OPEN'}};
+assert.equal(managerPhase(base),'OPENING');
+assert.equal(chooseManagerNextAction({dashboard:base,staff:{blocking:1,pending:2}}).page,'staffing');
+assert.equal(chooseManagerNextAction({dashboard:{...base,handover:{blocking:1}},staff:{blocking:1}}).page,'handover');
+const open={...base,day:{opening_status:'OPENED',closing_status:'NOT_STARTED'}};
+assert.equal(managerPhase(open),'DAY');
+assert.equal(chooseManagerNextAction({dashboard:open,maintenance:{critical:1,blocking:1,openCount:1}}).page,'maintenance');
+assert.equal(chooseManagerNextAction({dashboard:open,receipts:{overdue:1,pendingLines:3}}).page,'receipts');
+assert.equal(chooseManagerNextAction({dashboard:open,quality:{temperatureNok:1}}).page,'quality');
+assert.equal(chooseManagerNextAction({dashboard:open,incidents:[{status:'OPEN',criticality:'CRITICAL'}]}).page,'incidents');
+assert.equal(chooseManagerNextAction({dashboard:open}).page,'managerControls');
+const closing={...open,day:{opening_status:'OPENED',closing_status:'IN_PROGRESS'},cycle:{handoverReviewed:false}};
+assert.equal(managerPhase(closing),'CLOSING');
+assert.equal(chooseManagerNextAction({dashboard:closing}).page,'handover');
+const readyClose={...closing,cycle:{handoverReviewed:true},cash:{status:'CLOSED',pending:0,recounts:0},closing:{done:5,total:6}};
+assert.equal(chooseManagerNextAction({dashboard:readyClose}).page,'closing');
+assert.equal(managerPhase({...readyClose,day:{opening_status:'OPENED',closing_status:'CLOSED'}}),'CLOSED');
+console.log('StoreOps V1.33 manager journey tests passed');
