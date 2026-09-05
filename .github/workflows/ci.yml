@@ -41,6 +41,13 @@ jobs:
       - name: Showcase DLC to loss automation test
         run: node backend/tests/showcase-dlc-loss.mjs
 
+      - name: Cash opening readiness engine test
+        env:
+          D365_MODE: simulated
+          STOREOPS_DB: /tmp/storeops-cash-opening-ci.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-cash-opening-media
+        run: node backend/tests/cash-opening-engine.mjs
+
       - name: Cash closing engine unit test
         env:
           D365_MODE: simulated
@@ -81,6 +88,11 @@ jobs:
           cat /tmp/storeops-api.log
           exit 1
 
+      - name: Cash opening API integration test
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
       - name: Cash closing API integration test
         env:
           STOREOPS_TEST_BASE: http://127.0.0.1:8787
@@ -94,7 +106,7 @@ jobs:
       - name: Workflow, incident, permissions and governance smoke test
         env:
           STOREOPS_TEST_BASE: http://127.0.0.1:8787
-        run: node backend/tests/smoke.mjs
+        run: node backend/tests/smoke-v111.mjs
 
       - name: Stop StoreOps API
         if: always()
