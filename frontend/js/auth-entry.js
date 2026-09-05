@@ -1,5 +1,5 @@
 import { health } from './api.js';
-import { ensureAccessToken,renderLoginScreen,hideLoginScreen,addLogoutControl } from './auth.js';
+import { ensureAccessToken,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive } from './auth.js';
 
 async function start(){
   let h;
@@ -14,6 +14,7 @@ async function start(){
     const token=await ensureAccessToken();
     if(!token){renderLoginScreen();return}
     hideLoginScreen();
+    startAuthKeepAlive();
     await import('./app.js');
     addLogoutControl();
   }catch(e){
