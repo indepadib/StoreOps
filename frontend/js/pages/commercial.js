@@ -55,12 +55,32 @@ function bindCommercial(){
 async function lookupPrice(){try{const ean=$('#priceCheckEan')?.value.trim();if(!ean)throw new Error('Scanne ou saisis un EAN.');scanCtx=await api(`/api/stores/${app.storeId}/price-check/context/${encodeURIComponent(ean)}`);$('#priceCheckResult').innerHTML=priceCheckResult(scanCtx);$('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck)}catch(e){toast(e.message)}}
 function fileAsDataUrl(file){return new Promise((resolve,reject)=>{if(!file)return resolve(null);const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Impossible de lire la photo.'));r.readAsDataURL(file)})}
 async function submitPriceCheck(){
+ const submitBtn=$('#priceCheckSubmit');if(submitBtn?.disabled)return;const hadOpenIncident=!!scanCtx?.openIncident;let originalLabel=null;
  try{
   if(!scanCtx)throw new Error('Article non chargé.');const observed=$('#priceCheckObserved')?.value,sg=$('#priceCheckSignage')?.value,ex=$('#priceCheckExecution')?.value;if(observed===''||sg===''||ex==='')throw new Error('Renseigne prix, signalétique et exécution.');
   const file=$('#priceCheckEvidence')?.files?.[0]||null;if(scanCtx.openIncident&&!file)throw new Error('Ajoute la photo de preuve après correction.');const evidenceDataUrl=await fileAsDataUrl(file);
+  if(submitBtn){originalLabel=submitBtn.textContent;submitBtn.disabled=true;submitBtn.textContent='Enregistrement…'}
   const result=await api(`/api/stores/${app.storeId}/price-check`,{method:'POST',body:JSON.stringify({ean:scanCtx.ean,observedPrice:Number(observed),signageOk:sg==='true',executionOk:ex==='true',tolerance:Number(cfg.policy.price_tolerance||0.01),evidenceDataUrl,evidenceFileName:file?.name||null,evidenceCaption:'Preuve après correction prix/promo'})});
-  const closed=!!result.incidentResolved;toast(closed?'Correction conforme : incident clôturé.':'Contrôle rayon conforme.');scanCtx=null;$('#priceCheckEan').value='';$('#priceCheckResult').innerHTML=`<div class="banner ban-info"><strong>${closed?'Correction validée et incident clôturé.':'Contrôle conforme enregistré.'}</strong></div>`;
- }catch(e){toast(e.message);$('#priceCheckResult')?.insertAdjacentHTML('beforeend',`<div class="banner ban-danger" style="margin-top:8px"><strong>Contrôle non finalisé.</strong><div class="small">${esc(e.message)}</div></div>`)}
+  const closed=!!result.incidentResolved;toast(closed?'Correction conforme : incident clôturé.':'Contrôle rayon conforme.');scanCtx=null;$('#priceCheckEan').value='';$('#priceCheckResult').innerHTML=`<div class="banner ban-info price-check-feedback"><strong>${closed?'Correction validée et incident clôturé.':'Contrôle conforme enregistré.'}</strong></div>`;
+ }catch(e){
+  if(e?.status===409&&scanCtx?.ean){
+   const ean=scanCtx.ean;
+   try{
+    scanCtx=await api(`/api/stores/${app.storeId}/price-check/context/${encodeURIComponent(ean)}`);
+    const issues=Array.isArray(e.details)?e.details:[];
+    const title=hadOpenIncident?'Écart toujours présent — incident maintenu ouvert.':'Écart enregistré — incident créé.';
+    const detail=issues.length?issues.map(esc).join('<br>'):esc(e.message||'Contrôle prix/promo non conforme.');
+    $('#priceCheckResult').innerHTML=`<div class="banner ban-danger price-check-feedback" style="margin-bottom:8px"><strong>${title}</strong><div class="small" style="margin-top:4px">${detail}</div></div>${priceCheckResult(scanCtx)}`;
+    $('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck);
+    toast(hadOpenIncident?'Écart toujours présent.':'Écart enregistré, incident créé.');
+    return;
+   }catch(refreshError){if(refreshError?.status!==409)e=refreshError}
+  }
+  document.querySelectorAll('#priceCheckResult .price-check-feedback').forEach(x=>x.remove());
+  toast(e.message);$('#priceCheckResult')?.insertAdjacentHTML('beforeend',`<div class="banner ban-danger price-check-feedback" style="margin-top:8px"><strong>Impossible de finaliser le contrôle.</strong><div class="small">${esc(e.message)}</div></div>`)
+ }finally{
+  const current=$('#priceCheckSubmit');if(current&&current===submitBtn){current.disabled=false;if(originalLabel)current.textContent=originalLabel}
+ }
 }
 async function sync(){try{await api(`/api/stores/${app.storeId}/commercial/sync`,{method:'POST'});toast('Prix et promotions rafraîchis depuis Dynamics.');await renderCommercial()}catch(e){toast(e.message)}}
 async function submit(id){try{const price=document.querySelector(`[data-commercial-price="${id}"]`),sg=document.querySelector(`[data-commercial-signage="${id}"]`),ex=document.querySelector(`[data-commercial-execution="${id}"]`),note=document.querySelector(`[data-commercial-note="${id}"]`);if(sg?.value===''||ex?.value==='')throw new Error('Renseigne la signalétique et l’exécution rayon.');await api(`/api/commercial/${id}/control`,{method:'POST',body:JSON.stringify({observedPrice:price?.value===''?null:Number(price?.value),signageOk:sg?.value==='true',executionOk:ex?.value==='true',note:note?.value.trim()||''})});toast('Contrôle prix/promo conforme.');await renderCommercial()}catch(e){toast(e.message);await renderCommercial()}}
