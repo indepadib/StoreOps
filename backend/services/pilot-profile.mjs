@@ -17,10 +17,12 @@ CREATE TABLE IF NOT EXISTS store_terminals(
   till_code TEXT NOT NULL,
   label TEXT NOT NULL,
   tpe_mode TEXT NOT NULL CHECK(tpe_mode IN ('INTEGRATED','MANUAL','NONE')),
+  expected_float REAL NOT NULL DEFAULT 0,
   active INTEGER NOT NULL DEFAULT 1,
   UNIQUE(store_id,till_code)
 );
 `);
+ensureColumn('store_terminals','expected_float','REAL NOT NULL DEFAULT 0');
 
 // Val Fleuri is the first operational StoreOps pilot.
 db.prepare(`UPDATE stores SET opening_time='08:00',closing_time='23:00',active=1 WHERE id=?`).run(PILOT_STORE_ID);
@@ -31,14 +33,14 @@ const dynamicsEmail=String(process.env.STOREOPS_VF_D365_EMAIL||'').trim().toLowe
 if(appEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(appEmail,PILOT_MANAGER_ID);
 if(dynamicsEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(dynamicsEmail,PILOT_MANAGER_ID);
 
-const terminal=db.prepare(`INSERT INTO store_terminals(id,store_id,till_code,label,tpe_mode,active)
-VALUES(?,?,?,?,?,1)
-ON CONFLICT(store_id,till_code) DO UPDATE SET label=excluded.label,tpe_mode=excluded.tpe_mode,active=1`);
-terminal.run('vf-c01',PILOT_STORE_ID,'C01','Caisse 1','INTEGRATED');
-terminal.run('vf-c02',PILOT_STORE_ID,'C02','Caisse 2','MANUAL');
+const terminal=db.prepare(`INSERT INTO store_terminals(id,store_id,till_code,label,tpe_mode,expected_float,active)
+VALUES(?,?,?,?,?,?,1)
+ON CONFLICT(store_id,till_code) DO UPDATE SET label=excluded.label,tpe_mode=excluded.tpe_mode,expected_float=excluded.expected_float,active=1`);
+terminal.run('vf-c01',PILOT_STORE_ID,'C01','Caisse 1','INTEGRATED',1000);
+terminal.run('vf-c02',PILOT_STORE_ID,'C02','Caisse 2','MANUAL',1000);
 
 export function storeTerminals(storeId){
-  return db.prepare(`SELECT id,store_id,till_code,label,tpe_mode,active FROM store_terminals WHERE store_id=? AND active=1 ORDER BY till_code`).all(storeId);
+  return db.prepare(`SELECT id,store_id,till_code,label,tpe_mode,expected_float,active FROM store_terminals WHERE store_id=? AND active=1 ORDER BY till_code`).all(storeId);
 }
 
 export function storeOperatingProfile(storeId){

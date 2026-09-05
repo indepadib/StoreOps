@@ -1,4 +1,4 @@
-const KEY='storeops_showcase_cash_opening_v2';
+const KEY='storeops_showcase_cash_opening_v3';
 const round=v=>Math.round(Number(v||0)*100)/100;
 const today=()=>new Date().toISOString().slice(0,10);
 const uid=p=>`${p}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
@@ -9,10 +9,10 @@ async function user(core){return(await core('/api/session')).user}
 function access(u,storeId){return u.role==='ops_director'||u.store_id===storeId}
 function manage(u,storeId){return access(u,storeId)&&['store_manager','ops_director'].includes(u.role)}
 function key(storeId,date){return `${storeId}:${date}`}
-function terminalDefs(storeId){return storeId==='val-fleuri'?[{till_code:'C01',terminal_label:'Caisse 1',tpe_mode:'INTEGRATED'},{till_code:'C02',terminal_label:'Caisse 2',tpe_mode:'MANUAL'}]:[1,2,3].map(i=>({till_code:`C0${i}`,terminal_label:`Caisse ${i}`,tpe_mode:'INTEGRATED'}))}
+function terminalDefs(storeId){return storeId==='val-fleuri'?[{till_code:'C01',terminal_label:'Caisse 1',tpe_mode:'INTEGRATED',expected_float:1000},{till_code:'C02',terminal_label:'Caisse 2',tpe_mode:'MANUAL',expected_float:1000}]:[1,2,3].map(i=>({till_code:`C0${i}`,terminal_label:`Caisse ${i}`,tpe_mode:'INTEGRATED',expected_float:500}))}
 function ensureOpening(s,storeId,date=today()){
  const k=key(storeId,date);if(s.openings[k])return s.openings[k];const prefix=storeId.toUpperCase().replaceAll('-','_');
- const opening={id:uid('cashopen'),store_id:storeId,business_date:date,source_key:`CASH-OPENING-${storeId}-${date}`,status:'PREPARING',synced_at:new Date().toISOString(),ready_by_name:null,ready_at:null,opened_at:null,lines:terminalDefs(storeId).map(t=>({id:uid('cashol'),till_code:t.till_code,terminal_label:t.terminal_label,tpe_mode:t.tpe_mode,shift_id:`${prefix}-OPEN-${t.till_code}-${date}`,expected_float:500,cashier_name:null,declared_float:null,pos_ok:null,tpe_ok:null,printer_ok:null,shift_opened:null,float_variance:null,status:'PENDING',note:'',checked_by_name:null,checked_at:null}))};s.openings[k]=opening;save(s);return opening
+ const opening={id:uid('cashopen'),store_id:storeId,business_date:date,source_key:`CASH-OPENING-${storeId}-${date}`,status:'PREPARING',synced_at:new Date().toISOString(),ready_by_name:null,ready_at:null,opened_at:null,lines:terminalDefs(storeId).map(t=>({id:uid('cashol'),till_code:t.till_code,terminal_label:t.terminal_label,tpe_mode:t.tpe_mode,shift_id:`${prefix}-OPEN-${t.till_code}-${date}`,expected_float:t.expected_float,cashier_name:null,declared_float:null,pos_ok:null,tpe_ok:null,printer_ok:null,shift_opened:null,float_variance:null,status:'PENDING',note:'',checked_by_name:null,checked_at:null}))};s.openings[k]=opening;save(s);return opening
 }
 function hydrate(o){if(!o)return null;const lines=o.lines||[],ready=lines.filter(x=>x.status==='READY').length;return{...o,lines,metrics:{lines:lines.length,ready,pending:lines.filter(x=>x.status==='PENDING').length,mismatch:lines.filter(x=>x.status==='MISMATCH').length,expectedFloat:round(lines.reduce((a,x)=>a+Number(x.expected_float||0),0)),declaredFloat:round(lines.reduce((a,x)=>a+Number(x.declared_float||0),0)),floatVariance:round(lines.reduce((a,x)=>a+Number(x.float_variance||0),0))}}}
 export function cashOpeningShowcaseSummary(storeId,date=today()){const s=load(),o=s.openings[key(storeId,date)];if(!o)return{status:'NOT_STARTED',lines:0,ready:0,pending:0,mismatch:0,blocking:1,expectedFloat:0,declaredFloat:0,floatVariance:0};const h=hydrate(o);return{status:h.status,...h.metrics,blocking:['READY','OPENED'].includes(h.status)?0:Math.max(1,h.metrics.pending+h.metrics.mismatch)}}
