@@ -2,7 +2,7 @@ import{api}from'../api.js';
 import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 
-let cfg=null,data=null,scanCtx=null;
+let cfg=null,data=null,scanCtx=null,priceChecks=[];
 const actionLabel=x=>cfg?.actionTypes?.find(a=>a.code===x)?.label||x;
 const signageLabel=x=>cfg?.signageActions?.find(a=>a.code===x)?.label||x;
 const priKind=x=>x==='CRITICAL'?'danger':x==='HIGH'?'warn':'neutral';
@@ -12,12 +12,17 @@ const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDi
 const dt=v=>v?new Date(String(v).replace(' ','T')+'Z').toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 
 export async function renderCommercial(){
- cfg=await api('/api/commercial/config');
- data=await api(`/api/stores/${app.storeId}/commercial`);
+ const [cfgData,commercialData,historyData]=await Promise.all([
+  api('/api/commercial/config'),
+  api(`/api/stores/${app.storeId}/commercial`),
+  canManage()?api(`/api/stores/${app.storeId}/price-checks?limit=8`).catch(()=>({items:[]})):Promise.resolve({items:[]})
+ ]);
+ cfg=cfgData;data=commercialData;priceChecks=historyData.items||[];
  const s=data.summary||{},rows=data.items||[];
  $('#commercialContent').innerHTML=`
    ${data.sync&&!data.sync.ok?`<div class="banner ban-danger"><strong>Flux Dynamics prix/promos indisponible.</strong><div class="small">${esc(data.sync.error||'Mapping requis')}</div></div>`:''}
    ${canManage()?priceCheckCard():''}
+   ${canManage()?`<div id="priceCheckHistory">${priceCheckHistory(priceChecks)}</div>`:''}
    <div class="grid g4" style="margin-top:14px">
     ${kpi('Actions du jour',s.total||0,'issues de Dynamics')}
     ${kpi('À vérifier',s.pending||0,'avant ouverture',s.pending?'warn':'')}
@@ -38,9 +43,16 @@ function priceCheckCard(){const showcase=!!app.showcase;return`<section class="c
 function priceCheckResult(c){
  const promo=c.promoLabel?`<div class="commercial-promo"><span>Promotion applicable</span><strong>${esc(c.promoLabel)}</strong></div>`:'<div class="banner ban-info"><strong>Aucune promotion active applicable.</strong></div>';
  const correction=c.openIncident?`<div class="banner ban-danger" style="margin-top:10px"><strong>Incident de prix ouvert à corriger</strong><div class="small" style="margin-top:4px">${esc(c.openIncident.title)} · Un nouveau contrôle conforme + une photo sont obligatoires pour clôturer.</div></div>`:'';
- const evidence=c.openIncident?`<div class="field full price-check-evidence"><label>Photo de preuve après correction *</label><input id="priceCheckEvidence" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"><div class="small muted">Photo du prix / étiquette / signalétique corrigée. JPG, PNG ou WEBP.</div></div>`:'';
- return`<div class="card price-check-detail"><div class="price-check-product-head"><div><div class="small muted">${esc(c.product.productNumber)} · ${esc(c.product.category||'')}</div><h3>${esc(c.product.name)}</h3><div class="small muted">EAN ${esc(c.ean)}</div></div><div class="price-check-price-badge">${status(money(c.expectedUnitPrice),'ok')}</div></div><div class="commercial-grid"><div><span>Prix fiche</span><strong>${money(c.basePrice?.price)}</strong></div><div><span>Prix unitaire attendu</span><strong>${money(c.expectedUnitPrice)}</strong></div><div><span>Stock</span><strong>${c.product.stock??'—'}</strong></div><div><span>Disponible</span><strong>${c.product.availableStock??'—'}</strong></div></div>${promo}${correction}<div class="form-grid" style="margin-top:10px"><div class="field"><label>Prix constaté rayon *</label><input id="priceCheckObserved" type="number" min="0" step="0.01" placeholder="${c.expectedUnitPrice??''}"></div><div class="field"><label>Signalétique conforme *</label><select id="priceCheckSignage"><option value="">— Choisir —</option><option value="true">Oui</option><option value="false">Non</option></select></div><div class="field"><label>Exécution rayon conforme *</label><select id="priceCheckExecution"><option value="">— Choisir —</option><option value="true">Oui</option><option value="false">Non</option></select></div>${evidence}</div><button class="btn brand price-check-submit" id="priceCheckSubmit">${c.openIncident?'Valider la correction et clôturer':'Valider le contrôle'}</button><div class="small muted price-check-help">${c.openIncident?'La clôture n’est possible que si le nouveau scan est conforme et la preuve photo enregistrée.':'En cas d’écart, StoreOps crée automatiquement un incident avec preuve obligatoire.'}</div></div>`;
+ const evidence=c.openIncident?`<div class="field full price-check-evidence"><label>Photo de preuve après correction *</label><input id="priceCheckEvidence" type="file" accept="image/jpeg,image/png,image/webp" capture="environment"><div class="small muted">Photo du prix / étiquette / signalétique corrigée. Elle est compressée automatiquement avant envoi.</div></div>`:'';
+ const scanInfo=c.promotionScan?`<div class="small muted" style="margin-top:6px">Lecture promo : ${Number(c.promotionScan.rowsScanned||0).toLocaleString('fr-FR')} ligne(s) Dynamics · ${c.promotionScan.pages||1} page(s)${c.promotionScan.truncated?' · limite de sécurité atteinte':''}</div>`:'';
+ return`<div class="card price-check-detail"><div class="price-check-product-head"><div><div class="small muted">${esc(c.product.productNumber)} · ${esc(c.product.category||'')}</div><h3>${esc(c.product.name)}</h3><div class="small muted">EAN ${esc(c.ean)} · Groupe prix ${esc(c.priceGroup||'Franprix')}</div></div><div class="price-check-price-badge">${status(money(c.expectedUnitPrice),'ok')}</div></div><div class="commercial-grid"><div><span>Prix fiche</span><strong>${money(c.basePrice?.price)}</strong></div><div><span>Prix unitaire attendu</span><strong>${money(c.expectedUnitPrice)}</strong></div><div><span>Stock</span><strong>${c.product.stock??'—'}</strong></div><div><span>Disponible</span><strong>${c.product.availableStock??'—'}</strong></div></div>${promo}${scanInfo}${correction}<div class="form-grid" style="margin-top:10px"><div class="field"><label>Prix constaté rayon *</label><input id="priceCheckObserved" type="number" min="0" step="0.01" placeholder="${c.expectedUnitPrice??''}"></div><div class="field"><label>Signalétique conforme *</label><select id="priceCheckSignage"><option value="">— Choisir —</option><option value="true">Oui</option><option value="false">Non</option></select></div><div class="field"><label>Exécution rayon conforme *</label><select id="priceCheckExecution"><option value="">— Choisir —</option><option value="true">Oui</option><option value="false">Non</option></select></div>${evidence}</div><button class="btn brand price-check-submit" id="priceCheckSubmit">${c.openIncident?'Valider la correction et clôturer':'Valider le contrôle'}</button><div class="small muted price-check-help">${c.openIncident?'La clôture n’est possible que si le nouveau scan est conforme et la preuve photo enregistrée.':'En cas d’écart, StoreOps crée automatiquement un incident avec preuve obligatoire.'}</div></div>`;
 }
+function priceCheckHistory(items){
+ const mismatch=items.filter(x=>x.status==='MISMATCH').length;
+ return`<section class="card" style="margin:0 0 14px"><div class="row"><div><strong>Derniers contrôles prix rayon</strong><div class="small muted">Traçabilité des scans réalisés aujourd’hui dans ce magasin.</div></div>${status(items.length?`${items.length} contrôle(s)`:'Aucun contrôle',mismatch?'danger':'neutral')}</div><div style="display:grid;gap:8px;margin-top:10px">${items.length?items.map(priceCheckHistoryRow).join(''):'<div class="empty compact">Aucun scan prix enregistré aujourd’hui.</div>'}</div></section>`;
+}
+function priceCheckHistoryRow(x){const bad=x.status==='MISMATCH';return`<div style="border:1px solid var(--line);border-radius:13px;padding:10px;min-width:0"><div class="row" style="align-items:flex-start"><div style="min-width:0"><strong style="display:block;overflow-wrap:anywhere">${esc(x.product_name||x.product_number||x.ean)}</strong><div class="small muted">${esc(x.ean)} · ${esc(x.checked_by_name||'—')} · ${dt(x.checked_at)}</div></div>${status(bad?'Écart':'Conforme',bad?'danger':'ok')}</div><div class="small" style="margin-top:6px">Attendu <strong>${money(x.expected_price)}</strong> · Constaté <strong>${money(x.observed_price)}</strong>${x.promo_label?` · Promo : ${esc(x.promo_label)}`:''}</div>${x.issues?.length?`<div class="small" style="margin-top:5px;color:var(--danger)">${x.issues.map(esc).join(' · ')}</div>`:''}</div>`}
+async function refreshPriceCheckHistory(){if(!canManage())return;try{const h=await api(`/api/stores/${app.storeId}/price-checks?limit=8`);priceChecks=h.items||[];const el=$('#priceCheckHistory');if(el)el.innerHTML=priceCheckHistory(priceChecks)}catch{}}
 function kpi(label,value,sub,type=''){return`<div class="card ${type==='danger'?'commercial-kpi-danger':type==='warn'?'commercial-kpi-warn':''}"><div class="label">${esc(label)}</div><div class="kpi">${value}</div><div class="small muted">${esc(sub)}</div></div>`}
 function controlCard(c){
  const expectedAction=c.action_type==='PROMO_END'?'Retirer l’ancienne promo':c.action_type==='PROMO_START'?'Installer la nouvelle promo':c.action_type==='PRICE_CHANGE'?'Mettre le nouveau prix':'Vérifier le rayon';
@@ -53,7 +65,7 @@ function bindCommercial(){
  document.querySelectorAll('[data-commercial-submit]').forEach(b=>b.addEventListener('click',()=>submit(b.dataset.commercialSubmit)));
 }
 async function lookupPrice(){try{const ean=$('#priceCheckEan')?.value.trim();if(!ean)throw new Error('Scanne ou saisis un EAN.');scanCtx=await api(`/api/stores/${app.storeId}/price-check/context/${encodeURIComponent(ean)}`);$('#priceCheckResult').innerHTML=priceCheckResult(scanCtx);$('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck)}catch(e){toast(e.message)}}
-function fileAsDataUrl(file){return new Promise((resolve,reject)=>{if(!file)return resolve(null);const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Impossible de lire la photo.'));r.readAsDataURL(file)})}
+function fileAsDataUrl(file){return new Promise((resolve,reject)=>{if(!file)return resolve(null);const fallback=()=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(new Error('Impossible de lire la photo.'));r.readAsDataURL(file)};if(!String(file.type||'').startsWith('image/'))return fallback();const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{try{const max=1600,scale=Math.min(1,max/Math.max(img.naturalWidth||1,img.naturalHeight||1)),w=Math.max(1,Math.round((img.naturalWidth||1)*scale)),h=Math.max(1,Math.round((img.naturalHeight||1)*scale)),canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;canvas.getContext('2d').drawImage(img,0,0,w,h);const out=canvas.toDataURL('image/jpeg',.78);URL.revokeObjectURL(url);resolve(out)}catch{URL.revokeObjectURL(url);fallback()}};img.onerror=()=>{URL.revokeObjectURL(url);fallback()};img.src=url})}
 async function submitPriceCheck(){
  const submitBtn=$('#priceCheckSubmit');if(submitBtn?.disabled)return;const hadOpenIncident=!!scanCtx?.openIncident;let originalLabel=null;
  try{
@@ -61,7 +73,7 @@ async function submitPriceCheck(){
   const file=$('#priceCheckEvidence')?.files?.[0]||null;if(scanCtx.openIncident&&!file)throw new Error('Ajoute la photo de preuve après correction.');const evidenceDataUrl=app.showcase?null:await fileAsDataUrl(file);
   if(submitBtn){originalLabel=submitBtn.textContent;submitBtn.disabled=true;submitBtn.textContent='Enregistrement…'}
   const result=await api(`/api/stores/${app.storeId}/price-check`,{method:'POST',body:JSON.stringify({ean:scanCtx.ean,observedPrice:Number(observed),signageOk:sg==='true',executionOk:ex==='true',tolerance:Number(cfg.policy.price_tolerance||0.01),evidenceDataUrl,evidenceFileName:file?.name||null,evidenceCaption:'Preuve après correction prix/promo'})});
-  const closed=!!result.incidentResolved;toast(closed?'Correction conforme : incident clôturé.':'Contrôle rayon conforme.');scanCtx=null;$('#priceCheckEan').value='';$('#priceCheckResult').innerHTML=`<div class="banner ban-info price-check-feedback"><strong>${closed?'Correction validée et incident clôturé.':'Contrôle conforme enregistré.'}</strong></div>`;
+  const closed=!!result.incidentResolved;toast(closed?'Correction conforme : incident clôturé.':'Contrôle rayon conforme.');scanCtx=null;$('#priceCheckEan').value='';$('#priceCheckResult').innerHTML=`<div class="banner ban-info price-check-feedback"><strong>${closed?'Correction validée et incident clôturé.':'Contrôle conforme enregistré.'}</strong></div>`;await refreshPriceCheckHistory();
  }catch(e){
   if(e?.status===409&&scanCtx?.ean){
    const ean=scanCtx.ean;
@@ -71,7 +83,7 @@ async function submitPriceCheck(){
     const title=hadOpenIncident?'Écart toujours présent — incident maintenu ouvert.':'Écart enregistré — incident créé.';
     const detail=issues.length?issues.map(esc).join('<br>'):esc(e.message||'Contrôle prix/promo non conforme.');
     $('#priceCheckResult').innerHTML=`<div class="banner ban-danger price-check-feedback"><strong>${title}</strong><div class="small" style="margin-top:4px">${detail}</div></div>${priceCheckResult(scanCtx)}`;
-    $('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck);
+    $('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck);await refreshPriceCheckHistory();
     toast(hadOpenIncident?'Écart toujours présent.':'Écart enregistré, incident créé.');
     return;
    }catch(refreshError){if(refreshError?.status!==409)e=refreshError}

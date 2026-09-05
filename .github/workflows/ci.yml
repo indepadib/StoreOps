@@ -27,6 +27,11 @@ jobs:
         run: |
           set -euo pipefail
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
+      - name: Pricing configuration and hardening tests
+        run: |
+          node backend/tests/pricing-config.mjs
+          node backend/tests/pricing-hardening.mjs
+          node backend/tests/commercial-operational-filter.mjs
       - name: Dynamics diagnostics engine test
         run: node backend/tests/dynamics-diagnostics.mjs
       - name: Cash showcase engine test

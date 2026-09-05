@@ -2,7 +2,7 @@ import { db,uid,audit,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
 import { getStoreProductByEan } from './dynamics-stock.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
-import { odataGet } from './dynamics.mjs';
+import { odataGetAllBySkip } from './dynamics-query.mjs';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS price_checks(
@@ -26,16 +26,17 @@ CREATE INDEX IF NOT EXISTS ix_price_checks_store_date ON price_checks(store_id,b
 `);
 
 const money=n=>`${Number(n).toFixed(2)} DH`;
-function promoText(p){
+export function priceGroupForStore(storeId){return String(config.dynamics.storePriceGroups?.[storeId]||config.dynamics.defaultPriceGroup||'Franprix').trim()||'Franprix'}
+export function promoText(p){
  const active=(p?.promotions?.items||[]).filter(x=>x.activeForRequestedContext);
  if(!active.length)return null;
  return active.map(x=>{
   const m=x.mechanic||{};
   if(m.type==='MIX_AND_MATCH'&&m.mechanic==='DEAL_PRICE')return `${x.name} · ${m.requiredQuantity||'?'} article(s) pour ${money(m.dealPrice)}`;
   if(m.type==='MIX_AND_MATCH'&&m.mechanic==='LEAST_EXPENSIVE')return `${x.name} · sur ${m.requiredQuantity||'?'} article(s), ${m.discountedLineCount||1} moins cher(s) remisé(s) à ${m.discountPercent||100}%`;
-  if(m.type==='PERCENT_OFF')return `${x.name} · -${m.discountPercent}%`;
-  if(m.type==='AMOUNT_OFF')return `${x.name} · -${money(m.discountAmount)}`;
-  if(m.type==='OFFER_PRICE')return `${x.name} · prix promo ${money(m.offerPrice)}`;
+  if(m.type==='DISCOUNT'&&m.mechanic==='PERCENT_OFF')return `${x.name} · -${m.discountPercent}%`;
+  if(m.type==='DISCOUNT'&&m.mechanic==='AMOUNT_OFF')return `${x.name} · -${money(m.discountAmount)}`;
+  if(m.type==='DISCOUNT'&&m.mechanic==='FIXED_PRICE')return `${x.name} · prix promo ${money(m.dealPrice)}`;
   return x.name||x.periodicDiscountType||'Promotion active';
  }).join(' | ');
 }
@@ -45,7 +46,7 @@ async function categoryForProduct(productNumber,fallback='Autre'){
  const company=config.dynamics.dataAreaId;
  const filter=company?`${config.dynamics.dataAreaField} eq '${String(company).replaceAll("'","''")}'`:'';
  try{
-  const payload=await odataGet('RetailDiscountLines',{filter,top:5000,extra:company?'cross-company=true':''});
+  const payload=await odataGetAllBySkip('RetailDiscountLines',{filter,extra:company?'cross-company=true':''});
   const row=(payload?.value||[]).find(x=>String(x?.ItemId||'').trim()===String(productNumber||'').trim()&&String(x?.CategoryName||'').trim());
   return String(row?.CategoryName||fallback||'Autre').trim()||'Autre';
  }catch{return fallback||'Autre'}
@@ -65,12 +66,13 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
  if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
  const product=await getStoreProductByEan(storeId,code);
  if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
+ const priceGroup=priceGroupForStore(storeId);
  const [pricing,category]=await Promise.all([
-  getProductPricing(product.productNumber,{businessDate,priceGroup:'Franprix'}),
+  getProductPricing(product.productNumber,{businessDate,priceGroup}),
   categoryForProduct(product.productNumber,product.category)
  ]);
  return{
-  storeId,businessDate,ean:code,
+  storeId,businessDate,ean:code,priceGroup,
   product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
   basePrice:pricing.basePrice,
   expectedUnitPrice:pricing.effectiveUnitPrice,
@@ -78,6 +80,7 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
   conditionalPromotions:pricing.conditionalPromotions||[],
   promoLabel:promoText(pricing),
   pricingNote:pricing.pricingNote||null,
+  promotionScan:pricing.promotions?.scan||null,
   openIncident:openPriceIncident(storeId,code)
  };
 }
@@ -96,7 +99,7 @@ export async function executePriceCheck({storeId,ean,businessDate=todayISO(),obs
  const status=issues.length?'MISMATCH':'CONFORM',id=uid('pc');
  db.prepare(`INSERT INTO price_checks(id,store_id,business_date,ean,product_number,product_name,expected_price,observed_price,promo_label,signage_ok,execution_ok,status,issues_json,checked_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
   .run(id,storeId,businessDate,ctx.ean,ctx.product.productNumber,ctx.product.name,expected,Number.isFinite(observed)?observed:null,ctx.promoLabel,hasPromo?(signageOk===true?1:0):1,executionOk===true?1:0,status,issues.length?JSON.stringify(issues):null,user.id);
- audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,issues,priorIncidentId:ctx.openIncident?.id||null}});
+ audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,priceGroup:ctx.priceGroup,issues,priorIncidentId:ctx.openIncident?.id||null}});
  return{check:{id,status,issues,expectedPrice:expected,observedPrice:Number.isFinite(observed)?observed:null},context:ctx};
 }
 
