@@ -36,6 +36,8 @@ jobs:
         run: node backend/tests/quality-draft.mjs
       - name: Network control-tower risk test
         run: node backend/tests/network-risk.mjs
+      - name: Today receiving and quality signals test
+        run: node backend/tests/today-signals.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs
