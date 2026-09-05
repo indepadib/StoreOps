@@ -46,6 +46,8 @@ jobs:
         run: node backend/tests/maintenance-model.mjs
       - name: Store Health V2 model test
         run: node backend/tests/store-health.mjs
+      - name: Manager journey decision test
+        run: node backend/tests/manager-journey.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs
