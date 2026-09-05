@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS cash_opening_lines(
  till_code TEXT NOT NULL,
  shift_id TEXT NOT NULL,
  expected_float REAL NOT NULL DEFAULT 0,
+ terminal_label TEXT NULL,
+ tpe_mode TEXT NULL,
  cashier_name TEXT NULL,
  declared_float REAL NULL,
  pos_ok INTEGER NULL,
@@ -41,6 +43,9 @@ CREATE TABLE IF NOT EXISTS cash_opening_lines(
 );
 CREATE INDEX IF NOT EXISTS ix_cash_opening_store_date ON cash_openings(store_id,business_date,status);
 `);
+function ensureLineColumn(column,definition){const cols=db.prepare(`PRAGMA table_info(cash_opening_lines)`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE cash_opening_lines ADD COLUMN ${column} ${definition}`)}
+ensureLineColumn('terminal_label','TEXT NULL');
+ensureLineColumn('tpe_mode','TEXT NULL');
 db.prepare(`INSERT OR IGNORE INTO cash_opening_policies(id,float_tolerance_dh) VALUES('default',0.01)`).run();
 const round=v=>Math.round(Number(v||0)*100)/100;
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -61,8 +66,10 @@ export function syncCashOpening({storeId,businessDate=todayISO(),snapshot}){
  if(!snapshot?.sourceKey||!Array.isArray(snapshot.lines))throw Object.assign(new Error('Snapshot préparation caisses Dynamics invalide.'),{status:502});
  let opening=db.prepare(`SELECT * FROM cash_openings WHERE store_id=? AND business_date=?`).get(storeId,businessDate);
  if(!opening){const id=uid('cashopen');db.prepare(`INSERT INTO cash_openings(id,store_id,business_date,source_key,status) VALUES(?,?,?,?,'PREPARING')`).run(id,storeId,businessDate,snapshot.sourceKey);opening=db.prepare(`SELECT * FROM cash_openings WHERE id=?`).get(id)}
- const stmt=db.prepare(`INSERT OR IGNORE INTO cash_opening_lines(id,opening_id,till_code,shift_id,expected_float) VALUES(?,?,?,?,?)`);
- for(const l of snapshot.lines||[]){if(!l.tillCode||!l.shiftId)continue;stmt.run(uid('cashol'),opening.id,String(l.tillCode),String(l.shiftId),round(l.expectedFloat||0))}
+ const stmt=db.prepare(`INSERT INTO cash_opening_lines(id,opening_id,till_code,shift_id,expected_float,terminal_label,tpe_mode) VALUES(?,?,?,?,?,?,?) ON CONFLICT(opening_id,till_code) DO UPDATE SET shift_id=excluded.shift_id,expected_float=excluded.expected_float,terminal_label=excluded.terminal_label,tpe_mode=excluded.tpe_mode`);
+ const active=[];
+ for(const l of snapshot.lines||[]){if(!l.tillCode||!l.shiftId)continue;const code=String(l.tillCode);active.push(code);stmt.run(uid('cashol'),opening.id,code,String(l.shiftId),round(l.expectedFloat||0),l.label||null,l.tpeMode||null)}
+ if(active.length){const placeholders=active.map(()=>'?').join(',');db.prepare(`DELETE FROM cash_opening_lines WHERE opening_id=? AND status='PENDING' AND till_code NOT IN (${placeholders})`).run(opening.id,...active)}
  db.prepare(`UPDATE cash_openings SET synced_at=CURRENT_TIMESTAMP WHERE id=?`).run(opening.id);return cashOpeningById(opening.id);
 }
 function autoCompleteOpeningTask(opening,user){
@@ -88,7 +95,7 @@ export function checkCashOpeningLine({lineId,user,cashierName,declaredFloat,posO
  if(posOk!==true)issues.push('POS non opérationnel.');if(tpeOk!==true)issues.push('TPE non opérationnel.');if(printerOk!==true)issues.push('Imprimante ticket non opérationnelle.');if(shiftOpened!==true)issues.push('Shift Dynamics non ouvert.');
  const status=issues.length?'MISMATCH':'READY';
  db.prepare(`UPDATE cash_opening_lines SET cashier_name=?,declared_float=?,pos_ok=?,tpe_ok=?,printer_ok=?,shift_opened=?,float_variance=?,status=?,note=?,checked_by=?,checked_at=CURRENT_TIMESTAMP WHERE id=?`).run(String(cashierName).trim(),declared,posOk?1:0,tpeOk?1:0,printerOk?1:0,shiftOpened?1:0,variance,status,note||null,user.id,lineId);
- audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:issues.length?'CASH_OPENING_LINE_MISMATCH':'CASH_OPENING_LINE_READY',entityType:'CASH_OPENING_LINE',entityId:lineId,details:{tillCode:row.till_code,shiftId:row.shift_id,cashierName,declaredFloat:declared,expectedFloat:row.expected_float,variance,posOk,tpeOk,printerOk,shiftOpened,issues}});
+ audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:issues.length?'CASH_OPENING_LINE_MISMATCH':'CASH_OPENING_LINE_READY',entityType:'CASH_OPENING_LINE',entityId:lineId,details:{tillCode:row.till_code,shiftId:row.shift_id,tpeMode:row.tpe_mode,cashierName,declaredFloat:declared,expectedFloat:row.expected_float,variance,posOk,tpeOk,printerOk,shiftOpened,issues}});
  const opening=refreshOpeningStatus(row.opening_id,user);return{opening,line:opening.lines.find(x=>x.id===lineId),issues};
 }
 export function markCashOpeningOpened({storeId,businessDate=todayISO(),user}){const o=cashOpening(storeId,businessDate);if(!o)throw Object.assign(new Error('Préparation caisses introuvable.'),{status:404});if(o.status!=='READY')throw Object.assign(new Error('Les caisses doivent être prêtes avant ouverture.'),{status:409});db.prepare(`UPDATE cash_openings SET status='OPENED',opened_at=CURRENT_TIMESTAMP WHERE id=?`).run(o.id);audit({storeId,businessDate,userId:user.id,action:'CASH_OPENING_OPENED',entityType:'CASH_OPENING',entityId:o.id});return cashOpeningById(o.id)}

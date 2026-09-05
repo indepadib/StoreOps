@@ -5,6 +5,7 @@ import { $,esc,status,fmtMoney,toast } from '../ui.js';
 let cfg=null;
 const label={NOT_STARTED:'À préparer',PREPARING:'Préparation en cours',READY:'Prête',OPENED:'Ouverte',PENDING:'À contrôler',MISMATCH:'Non conforme'};
 const type={NOT_STARTED:'neutral',PREPARING:'warn',READY:'ok',OPENED:'ok',PENDING:'neutral',MISMATCH:'danger'};
+const tpeLabel=x=>x==='MANUAL'?'TPE manuel':x==='INTEGRATED'?'TPE intégré':x==='NONE'?'Sans TPE':'TPE';
 
 export async function renderCashOpening(){
   const [config,data]=await Promise.all([api('/api/cash-opening/config'),api(`/api/stores/${app.storeId}/cash-opening`)]);cfg=config;const o=data.opening,s=data.summary||{},locked=o?.status==='OPENED';
@@ -26,8 +27,8 @@ export async function renderCashOpening(){
   bind();
 }
 
-function lineCard(x,locked){const ready=x.status==='READY';return`<article class="card cash-open-card ${x.status==='MISMATCH'?'has-error':ready?'is-ready':''}">
-  <div class="row"><div><div class="label">Caisse ${esc(x.till_code)}</div><strong>${esc(x.shift_id)}</strong></div>${status(label[x.status]||x.status,type[x.status]||'neutral')}</div>
+function lineCard(x,locked){const ready=x.status==='READY',tpe=tpeLabel(x.tpe_mode);return`<article class="card cash-open-card ${x.status==='MISMATCH'?'has-error':ready?'is-ready':''}">
+  <div class="row"><div><div class="label">${esc(x.terminal_label||`Caisse ${x.till_code}`)} · ${esc(tpe)}</div><strong>${esc(x.shift_id)}</strong></div>${status(label[x.status]||x.status,type[x.status]||'neutral')}</div>
   <div class="cash-open-amount"><span>Fond attendu Dynamics</span><strong>${fmtMoney(x.expected_float)}</strong></div>
   <div class="form-grid cash-open-form">
     <div class="field"><label>Caissier affecté *</label><input data-co-cashier="${x.id}" value="${esc(x.cashier_name||'')}" placeholder="Nom / matricule" ${locked?'disabled':''}></div>
@@ -35,12 +36,12 @@ function lineCard(x,locked){const ready=x.status==='READY';return`<article class
   </div>
   ${x.float_variance!=null?`<div class="cash-open-variance ${Math.abs(Number(x.float_variance))>.01?'bad':''}"><span>Écart fond</span><strong>${fmtMoney(x.float_variance)}</strong></div>`:''}
   <div class="cash-open-checks">
-    ${check(x,'pos_ok','POS opérationnel',locked)}${check(x,'tpe_ok','TPE opérationnel',locked)}${check(x,'printer_ok','Imprimante ticket',locked)}${check(x,'shift_opened','Shift Dynamics ouvert',locked)}
+    ${check(x,'pos_ok','POS opérationnel',locked)}${check(x,'tpe_ok',`${tpe} opérationnel`,locked)}${check(x,'printer_ok','Imprimante ticket',locked)}${check(x,'shift_opened','Shift Dynamics ouvert',locked)}
   </div>
   <div class="field"><label>Note</label><input data-co-note="${x.id}" value="${esc(x.note||'')}" placeholder="Anomalie / correction / remplacement" ${locked?'disabled':''}></div>
   <div class="cash-open-footer"><span class="small muted">${x.checked_by_name?`Contrôlé par ${esc(x.checked_by_name)}`:'Non contrôlé'}</span>${canManage()&&!locked?`<button class="btn ${ready?'soft':'brand'}" data-check-cash-opening="${x.id}">${ready?'Recontrôler':'Contrôler la caisse'}</button>`:''}</div>
  </article>`}
-function check(x,key,text,locked){return`<label class="cash-open-check"><input type="checkbox" data-co-check="${x.id}:${key}" ${Number(x[key])===1?'checked':''} ${locked?'disabled':''}><span>${text}</span></label>`}
+function check(x,key,text,locked){return`<label class="cash-open-check"><input type="checkbox" data-co-check="${x.id}:${key}" ${Number(x[key])===1?'checked':''} ${locked?'disabled':''}><span>${esc(text)}</span></label>`}
 function policyPanel(p){return`<details class="card" style="margin-top:14px"><summary><strong>Politique réseau · fonds de caisse</strong> · Direction</summary><div class="form-grid" style="margin-top:12px"><div class="field"><label>Tolérance d’écart (DH)</label><input id="cashOpeningTolerance" type="number" min="0" max="10" step="0.01" value="${Number(p?.float_tolerance_dh||0)}"></div></div><button class="btn soft" id="saveCashOpeningPolicyBtn">Enregistrer</button></details>`}
 function val(id,key){return document.querySelector(`[data-co-${key}="${id}"]`)?.value}
 function checked(id,key){return !!document.querySelector(`[data-co-check="${id}:${key}"]`)?.checked}
