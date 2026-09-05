@@ -68,6 +68,8 @@ jobs:
         run: node backend/tests/local-auth.mjs
       - name: Entra SPA PKCE security contract test
         run: node backend/tests/entra-spa-contract.mjs
+      - name: Single App Registration Entra contract test
+        run: node backend/tests/entra-single-app.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs

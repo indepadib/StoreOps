@@ -14,9 +14,9 @@ export const config = {
   authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID || '',
-    apiClientId: process.env.ENTRA_API_CLIENT_ID || '',
+    apiClientId: process.env.ENTRA_API_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '',
     allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
-    requiredScope: process.env.ENTRA_REQUIRED_SCOPE || ''
+    requiredScope: process.env.ENTRA_REQUIRED_SCOPE || 'StoreOps.Access'
   },
   pilot: {
     staffingSource: source(process.env.STOREOPS_STAFFING_SOURCE,'storeops'),
@@ -56,8 +56,7 @@ export function productionMisconfig(){
   }
   if(config.authMode==='entra'){
     if(!config.entra.tenantId) issues.push('ENTRA_TENANT_ID manquant');
-    if(!config.entra.apiClientId) issues.push('ENTRA_API_CLIENT_ID manquant');
-    if(!config.entra.requiredScope) issues.push('ENTRA_REQUIRED_SCOPE manquant');
+    if(!config.entra.apiClientId) issues.push('ENTRA_CLIENT_ID manquant');
   }
   if(config.dynamics.mode==='live'){
     if(!config.dynamics.baseUrl) issues.push('D365_BASE_URL manquant');
