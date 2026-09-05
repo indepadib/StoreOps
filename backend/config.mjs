@@ -1,6 +1,13 @@
 function cleanUrl(v=''){ return String(v||'').trim().replace(/\/+$/,''); }
+function parseStoreMap(v=''){
+  const raw=String(v||'').trim();
+  if(!raw)return{};
+  if(raw.startsWith('{')){try{const parsed=JSON.parse(raw);return parsed&&typeof parsed==='object'?Object.fromEntries(Object.entries(parsed).map(([k,val])=>[String(k).trim(),String(val||'').trim()]).filter(([,val])=>val)):{};}catch{}}
+  return Object.fromEntries(raw.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return i>0?[x.slice(0,i).trim(),x.slice(i+1).trim()]:null}).filter(x=>x&&x[0]&&x[1]));
+}
 
 export const config = {
+  appVersion: process.env.STOREOPS_VERSION || '1.21.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo', // demo | entra
@@ -25,7 +32,11 @@ export const config = {
     barcodeField: process.env.D365_BARCODE_FIELD || 'Barcode',
     barcodeProductField: process.env.D365_BARCODE_PRODUCT_FIELD || 'ItemNumber',
     barcodeDescriptionField: process.env.D365_BARCODE_DESCRIPTION_FIELD || 'Description',
-    barcodeUnitField: process.env.D365_BARCODE_UNIT_FIELD || 'UnitID'
+    barcodeUnitField: process.env.D365_BARCODE_UNIT_FIELD || 'UnitID',
+    defaultPriceGroup: process.env.D365_DEFAULT_PRICE_GROUP || 'Franprix',
+    storePriceGroups: parseStoreMap(process.env.D365_STORE_PRICE_GROUPS || ''),
+    odataPageSize: Math.max(50,Math.min(2000,Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
+    odataMaxRows: Math.max(500,Math.min(100000,Number(process.env.D365_ODATA_MAX_ROWS)||25000))
   }
 };
 
