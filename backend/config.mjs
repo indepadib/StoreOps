@@ -20,8 +20,7 @@ export const config = {
   },
   pilot: {
     staffingSource: source(process.env.STOREOPS_STAFFING_SOURCE,'storeops'),
-    cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops'),
-    cashClosingSource: source(process.env.STOREOPS_CASH_CLOSING_SOURCE,'storeops')
+    cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops')
   },
   dynamics: {
     mode: process.env.D365_MODE || 'simulated', // simulated | live
