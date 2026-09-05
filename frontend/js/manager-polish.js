@@ -1,0 +1,67 @@
+const MANAGER=()=>document.body.classList.contains('manager-mode');
+let submitPending=false;
+let successTimer=null;
+
+function ensureSuccessHost(){
+  let host=document.querySelector('#managerSuccess');
+  if(host)return host;
+  host=document.createElement('div');
+  host.id='managerSuccess';
+  host.className='manager-success';
+  host.hidden=true;
+  host.innerHTML='<div class="manager-success-mark">✓</div><strong>C’est fait.</strong><span>On passe à la suite.</span>';
+  document.body.appendChild(host);
+  return host;
+}
+
+function showSuccess(){
+  if(!MANAGER())return;
+  const host=ensureSuccessHost();
+  clearTimeout(successTimer);
+  host.hidden=false;
+  requestAnimationFrame(()=>host.classList.add('show'));
+  successTimer=setTimeout(()=>{
+    host.classList.remove('show');
+    setTimeout(()=>{
+      host.hidden=true;
+      const next=document.querySelector('.page.active .step-card.current,.page.active .manager-main-cta');
+      next?.scrollIntoView({behavior:'smooth',block:'center'});
+    },180);
+  },650);
+}
+
+function simplifyTaskModal(){
+  if(!MANAGER())return;
+  const modal=document.querySelector('#taskModal');
+  if(!modal||modal.hidden)return;
+  modal.querySelectorAll('.boolean-choice .choice.yes').forEach(b=>{if(b.textContent.trim()==='Conforme')b.textContent='Oui'});
+  modal.querySelectorAll('.boolean-choice .choice.no').forEach(b=>{if(b.textContent.trim()==='Non conforme')b.textContent='Non'});
+  modal.querySelectorAll('.task-wizard-question label').forEach(label=>{
+    const node=label.childNodes[0],text=node?.textContent?.trim();
+    if(text&&!/[?…:]$/.test(text))node.textContent=`${text} ? `;
+  });
+  const submit=document.querySelector('#modalSubmit');
+  if(submit&&submit.textContent.trim()==='Valider le contrôle')submit.textContent='Valider';
+}
+
+function simplifyManagerChrome(){
+  if(!MANAGER())return;
+  const refresh=document.querySelector('#refreshBtn');
+  if(refresh)refresh.hidden=true;
+  document.querySelector('footer')?.setAttribute('aria-hidden','true');
+}
+
+export function initManagerPolish(){
+  const taskModal=document.querySelector('#taskModal');
+  document.querySelector('#modalSubmit')?.addEventListener('click',()=>{if(MANAGER()&&!taskModal?.hidden)submitPending=true},{capture:true});
+  const observer=new MutationObserver(()=>{
+    simplifyManagerChrome();
+    simplifyTaskModal();
+    if(submitPending&&taskModal?.hidden){submitPending=false;showSuccess()}
+  });
+  observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','class']});
+  simplifyManagerChrome();
+  simplifyTaskModal();
+}
+
+document.addEventListener('DOMContentLoaded',()=>initManagerPolish(),{once:true});
