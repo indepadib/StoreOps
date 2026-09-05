@@ -1,5 +1,5 @@
 import { health } from './api.js';
-import { ensureAccessToken,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive } from './auth.js';
+import { ensureAccessToken,ensureLocalSession,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive } from './auth.js';
 
 async function start(){
   let h;
@@ -7,19 +7,27 @@ async function start(){
     // Keep the existing app error handling for non-auth/API deployment failures.
     await import('./app.js');return;
   }
+  if(h.authMode==='local'){
+    const session=await ensureLocalSession();
+    if(!session){renderLoginScreen({mode:'local'});return}
+    hideLoginScreen();
+    await import('./app.js');
+    addLogoutControl();
+    return;
+  }
   if(h.authMode!=='entra'){
     await import('./app.js');return;
   }
   try{
     const token=await ensureAccessToken();
-    if(!token){renderLoginScreen();return}
+    if(!token){renderLoginScreen({mode:'entra'});return}
     hideLoginScreen();
     startAuthKeepAlive();
     await import('./app.js');
     addLogoutControl();
   }catch(e){
     console.error(e);
-    renderLoginScreen({message:e.message});
+    renderLoginScreen({message:e.message,mode:'entra'});
   }
 }
 start();
