@@ -15,6 +15,11 @@ assert.deepEqual(config.body.stores,[
   {storeId:'val-fleuri',warehouseId:'FRP0001'},
   {storeId:'trefle',warehouseId:'FRP0002'}
 ]);
+assert.equal(config.body.fields.ordered,'OrderedQuantity');
+assert.equal(config.body.fields.availableOrdered,'AvailableOrderedQuantity');
+assert.equal(config.body.fields.reservedOrdered,'ReservedOrderedQuantity');
+assert.equal(config.body.fields.onOrder,'OnOrderQuantity');
+assert.equal(config.body.fields.totalAvailable,'TotalAvailableQuantity');
 
 const vf=await get('/api/stores/val-fleuri/products/3017620422003','u-vf');
 assert.equal(vf.status,200);
