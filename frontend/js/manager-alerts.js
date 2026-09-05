@@ -17,7 +17,7 @@ let draft={title:'',category:'',impact:''};
 let step=0;
 
 function impactConfig(code){
-  if(code==='URGENT')return{criticality:'HIGH',blockingLevel:'PROCESS',requiresEvidence:true};
+  if(code==='URGENT')return{criticality:'HIGH',blockingLevel:'NONE',requiresEvidence:false};
   if(code==='OPENING')return{criticality:'CRITICAL',blockingLevel:'STORE_OPENING',requiresEvidence:true};
   if(code==='CLOSING')return{criticality:'CRITICAL',blockingLevel:'STORE_CLOSING',requiresEvidence:true};
   if(code==='TRANSACTION')return{criticality:'CRITICAL',blockingLevel:'TRANSACTION',requiresEvidence:true};
