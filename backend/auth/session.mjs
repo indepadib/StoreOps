@@ -12,7 +12,8 @@ function userByClaims(claims){
   const oid=claims.oid||claims.sub||null;
   const email=(claims.preferred_username||claims.email||claims.upn||'').toLowerCase();
   let user=oid?db.prepare(`SELECT * FROM users WHERE entra_oid=?`).get(oid):null;
-  if(!user && email) user=db.prepare(`SELECT * FROM users WHERE lower(email)=?`).get(email);
+  if(!user && email) user=db.prepare(`SELECT * FROM users WHERE lower(email)=? OR lower(dynamics_email)=?`).get(email,email);
+  if(user&&oid&&!user.entra_oid){db.prepare(`UPDATE users SET entra_oid=? WHERE id=? AND entra_oid IS NULL`).run(oid,user.id);user=db.prepare(`SELECT * FROM users WHERE id=?`).get(user.id)}
   return user||null;
 }
 
