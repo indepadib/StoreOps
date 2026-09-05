@@ -46,6 +46,8 @@ jobs:
         run: node backend/tests/showcase-cold-chain.mjs
       - name: Staffing showcase test
         run: node backend/tests/showcase-staffing.mjs
+      - name: Receiving quality showcase test
+        run: node backend/tests/showcase-receipts.mjs
       - name: Loss showcase engine test
         run: node backend/tests/showcase-loss.mjs
       - name: Showcase DLC to loss automation test
