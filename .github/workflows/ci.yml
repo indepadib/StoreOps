@@ -52,6 +52,8 @@ jobs:
         run: node backend/tests/showcase-cold-chain.mjs
       - name: Staffing showcase test
         run: node backend/tests/showcase-staffing.mjs
+      - name: Handover showcase test
+        run: node backend/tests/showcase-handover.mjs
       - name: Receiving quality showcase test
         run: node backend/tests/showcase-receipts.mjs
       - name: Loss showcase engine test
