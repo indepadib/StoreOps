@@ -64,15 +64,29 @@ function hydrate(row){
  const incident=db.prepare(`SELECT id,status,criticality,requires_evidence FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? ORDER BY created_at DESC LIMIT 1`).get(row.id)||null;
  return{...row,controlled_by_name:userName(row.controlled_by),issues,incident};
 }
+function isActionableChange(c){
+ if(!c?.sourceKey||!c?.ean||!c?.productName)return false;
+ const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
+ // Dynamics can expose hundreds of promotions that are simply active. They are context,
+ // not a new store task every morning. Keep daily actions, price changes and anomalies.
+ if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&priority!=='CRITICAL')return false;
+ return true;
+}
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[]}){
+ const actionable=(Array.isArray(changes)?changes:[]).filter(isActionableChange);
+ // Reconcile only untouched Dynamics-generated pending rows. Never erase a completed,
+ // mismatched or manually followed-up control.
+ const removed=db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
- for(const c of changes){
-  if(!c?.sourceKey||!c?.ean||!c?.productName)continue;
-  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),c.actionType||'VERIFY',String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',c.priority||'NORMAL',c.blockingOpening===false?0:1);
+ for(const c of actionable){
+  const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
+  // Opening is blocked only by a real change to execute or a critical inconsistency.
+  const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
+  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
- return{inserted,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
+ return{inserted,removed:Number(removed.changes||0),rawCount:Array.isArray(changes)?changes.length:0,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
  return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
