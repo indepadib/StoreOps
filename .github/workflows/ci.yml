@@ -27,6 +27,9 @@ jobs:
         run: |
           set -euo pipefail
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
+          node --check frontend/sw.js
+      - name: PWA shell integrity test
+        run: node backend/tests/pwa-shell.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs

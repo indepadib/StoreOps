@@ -1,0 +1,12 @@
+{
+  "name":"Franprix StoreOps",
+  "short_name":"StoreOps",
+  "description":"Cockpit opérationnel magasin Franprix",
+  "lang":"fr",
+  "start_url":"/",
+  "scope":"/",
+  "display":"standalone",
+  "orientation":"any",
+  "background_color":"#faf7f9",
+  "theme_color":"#e5004f"
+}
