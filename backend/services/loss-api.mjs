@@ -4,6 +4,8 @@ import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEnti
 import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
+import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';
+import { createIncident,addAction } from './incidents.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
@@ -20,7 +22,6 @@ function requireDirector(user){if(user.role!=='ops_director')throw Object.assign
 export async function handleLossApi({req,url,user}){
  const path=url.pathname;let p;
 
- // Safe Dynamics connection assistant. Never returns the client secret or an access token.
  if(path==='/api/dynamics/diagnostics'&&req.method==='GET'){requireDirector(user);return{status:200,data:await getDynamicsDiagnostics({forceToken:url.searchParams.get('force')==='1'})}}
  if(path==='/api/dynamics/probe'&&req.method==='GET'){requireDirector(user);const entity=url.searchParams.get('entity')||'';return{status:200,data:await probeDataEntity(entity,{top:url.searchParams.get('top')||1,filter:url.searchParams.get('filter')||''})}}
  if(path==='/api/dynamics/stock/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:stockIntegrationConfig()}}
@@ -31,7 +32,27 @@ export async function handleLossApi({req,url,user}){
   return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}};
  }
 
- // Staffing readiness.
+ // V1.19 — shelf price check execution.
+ p=route(path,'/api/stores/:storeId/price-check/context/:ean');if(p&&req.method==='GET'){
+  requireStore(user,p.storeId);return{status:200,data:await buildPriceCheckContext({storeId:p.storeId,ean:p.ean,businessDate:url.searchParams.get('date')||todayISO()})};
+ }
+ p=route(path,'/api/stores/:storeId/price-checks');if(p&&req.method==='GET'){
+  requireStore(user,p.storeId);return{status:200,data:{items:listPriceChecks(p.storeId,url.searchParams.get('date')||todayISO(),url.searchParams.get('limit')||50)}};
+ }
+ p=route(path,'/api/stores/:storeId/price-check');if(p&&req.method==='POST'){
+  requireStore(user,p.storeId);requireManage(user,p.storeId);const b=await body(req),businessDate=b.businessDate||todayISO();
+  const result=await executePriceCheck({storeId:p.storeId,ean:b.ean,businessDate,observedPrice:b.observedPrice,signageOk:b.signageOk===true,executionOk:b.executionOk===true,user,tolerance:b.tolerance??0.01});
+  if(result.check.status==='MISMATCH'){
+   const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='PRICE_CHECK' AND source_id=? AND status='OPEN'`).get(result.check.id);
+   if(!existing){
+    const inc=createIncident({storeId:p.storeId,user,title:`Écart prix/promo · ${result.context.product.name}`,description:result.check.issues.join(' · '),category:'PRICE_PROMO',criticality:'HIGH',blockingLevel:'NONE',sourceType:'PRICE_CHECK',sourceId:result.check.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});
+    addAction({incidentId:inc.id,user,title:'Corriger prix / signalétique puis effectuer un nouveau scan de contrôle',note:`EAN ${result.context.ean} · prix Dynamics ${result.check.expectedPrice??'—'}`,assignedTo:user.role==='store_manager'?user.id:null});
+    result.incident=inc;
+   }
+  }
+  return{status:result.check.status==='MISMATCH'?409:200,data:result};
+ }
+
  if(path==='/api/staffing/config'&&req.method==='GET')return{status:200,data:staffingConfig()};
  if(path==='/api/staffing/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateStaffingPolicy({user,requiredManagers:b.requiredManagers,requiredCashiers:b.requiredCashiers,requiredFloor:b.requiredFloor})}}
  p=route(path,'/api/stores/:storeId/staffing');if(p&&req.method==='GET'){
@@ -43,14 +64,12 @@ export async function handleLossApi({req,url,user}){
  p=route(path,'/api/stores/:storeId/staffing/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),snapshot=await getStaffingSnapshot(p.storeId,businessDate),day=syncStaffingDay({storeId:p.storeId,businessDate,snapshot});return{status:200,data:{summary:staffingSummary(p.storeId,businessDate),day,sync:{ok:true,source:snapshot.source||'PLANNING'}}}}
  p=route(path,'/api/staffing/lines/:lineId/attendance');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM staffing_lines l JOIN staffing_days d ON d.id=l.staffing_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Collaborateur planning introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req);return{status:200,data:setAttendance({lineId:p.lineId,user,status:b.status,replacementName:b.replacementName||'',note:b.note||''})}}
 
- // Cold chain opening controls.
  if(path==='/api/cold-chain/config'&&req.method==='GET')return{status:200,data:coldChainConfig()};
  p=route(path,'/api/cold-chain/profiles/:code');if(p&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateColdProfile({code:p.code,user,tempMin:b.tempMin,tempMax:b.tempMax})}}
  p=route(path,'/api/stores/:storeId/cold-chain');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();ensureColdChainDay(p.storeId,businessDate);return{status:200,data:{summary:coldChainSummary(p.storeId,businessDate),day:coldChainDay(p.storeId,businessDate)}}}
  p=route(path,'/api/cold-chain/lines/:lineId/check');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req),result=checkColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
- p=route(path,'/api/cold-chain/lines/:lineId/recheck');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req),result=recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
+ p=route(path,'/api/cold-chain/lines/:lineId/recheck');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user(user,row.store_id));const b=await body(req),result=recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
 
- // Cash opening readiness.
  if(path==='/api/cash-opening/config'&&req.method==='GET')return{status:200,data:cashOpeningConfig()};
  if(path==='/api/cash-opening/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateCashOpeningPolicy({user,floatTolerance:b.floatTolerance})}}
  p=route(path,'/api/stores/:storeId/cash-opening');if(p&&req.method==='GET'){
