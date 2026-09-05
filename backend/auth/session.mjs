@@ -2,7 +2,7 @@ import { config } from '../config.mjs';
 import { db } from '../db.mjs';
 import '../services/pilot-profile.mjs';
 import { verifyEntraToken } from './entra.mjs';
-import { verifyLocalRequest } from './local.mjs';
+import { localSessionFromRequest } from './local.mjs';
 
 function bearer(req){
   const h=String(req.headers.authorization||'');
@@ -25,9 +25,7 @@ export async function sessionFromRequest(req){
     if(!user) throw Object.assign(new Error('Utilisateur de démonstration inconnu'),{status:401});
     return {user,claims:null,mode:'demo'};
   }
-  if(config.authMode==='local'){
-    return {user:verifyLocalRequest(req),claims:null,mode:'local'};
-  }
+  if(config.authMode==='local')return {user:localSessionFromRequest(req),claims:null,mode:'local'};
   const token=bearer(req);
   if(!token) throw Object.assign(new Error('Authentification requise'),{status:401});
   const claims=await verifyEntraToken(token);
