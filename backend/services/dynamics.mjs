@@ -93,11 +93,14 @@ export async function listDataEntities(search=''){
   return rows.filter(x=>!q || JSON.stringify(x).toLowerCase().includes(q)).slice(0,100);
 }
 
-export async function probeDataEntity(entity,{top=1}={}){
-  if(config.dynamics.mode!=='live')return{ok:false,mode:'SIMULATED',entity,rows:[],message:'Le probe OData réel est disponible uniquement avec D365_MODE=live.'};
+export async function probeDataEntity(entity,{top=1,filter=''}={}){
   const name=String(entity||'').trim();if(!/^[A-Za-z0-9_]+$/.test(name))throw Object.assign(new Error('Nom de Data Entity invalide.'),{status:400,code:'D365_ENTITY_NAME_INVALID'});
-  const started=Date.now(),payload=await d365Fetch(`/data/${encodeURIComponent(name)}?$top=${Math.max(1,Math.min(5,Number(top)||1))}`),rows=payload?.value||[];
-  return{ok:true,entity:name,latencyMs:Date.now()-started,rowCount:Array.isArray(rows)?rows.length:0,rows:Array.isArray(rows)?rows.slice(0,5):[]};
+  const safeTop=Math.max(1,Math.min(20,Number(top)||1));
+  const appliedFilter=String(filter||'').trim();
+  if(config.dynamics.mode!=='live')return{ok:false,mode:'SIMULATED',entity:name,filter:appliedFilter||null,rows:[],message:'Le probe OData réel est disponible uniquement avec D365_MODE=live.'};
+  const qs=new URLSearchParams();qs.set('$top',String(safeTop));if(appliedFilter)qs.set('$filter',appliedFilter);
+  const started=Date.now(),payload=await d365Fetch(`/data/${encodeURIComponent(name)}?${qs.toString()}`),rows=payload?.value||[];
+  return{ok:true,entity:name,filter:appliedFilter||null,latencyMs:Date.now()-started,rowCount:Array.isArray(rows)?rows.length:0,rows:Array.isArray(rows)?rows.slice(0,safeTop):[]};
 }
 
 export async function odataGet(entity,{filter='',select='',top=50,extra=''}={}){
