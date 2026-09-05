@@ -1,0 +1,36 @@
+process.env.STOREOPS_DB=process.env.STOREOPS_DB||'/tmp/storeops-cold-chain-test.db';
+process.env.STOREOPS_MEDIA_DIR=process.env.STOREOPS_MEDIA_DIR||'/tmp/storeops-cold-chain-media';
+const {db,ensureStoreDay}=await import('../db.mjs');
+const {ensureColdChainDay,coldChainSummary,checkColdChainLine,recheckColdChainLine,coldChainDay,updateColdProfile}=await import('../services/cold-chain.mjs');
+const {syncCashOpening,checkCashOpeningLine}=await import('../services/cash-opening.mjs');
+const {validateProcess}=await import('../services/workflow.mjs');
+const {incidentById,completeAction,addEvidence,resolveIncident}=await import('../services/incidents.mjs');
+function ok(v,m){if(!v)throw new Error(m)}
+const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get(),director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get(),date=new Date().toISOString().slice(0,10),storeDay=ensureStoreDay('val-fleuri',date);
+// Complete all legacy opening steps except cold (4) and cash readiness (7), now owned by dedicated engines.
+db.prepare(`UPDATE tasks SET status='COMPLETED',completed_by=?,completed_at=CURRENT_TIMESTAMP WHERE store_day_id=? AND group_name='opening' AND step_order IN (1,2,3,5,6)`).run(manager.id,storeDay.id);
+// Prepare cash opening prerequisite.
+let cash=syncCashOpening({storeId:'val-fleuri',businessDate:date,snapshot:{sourceKey:`CASH-OPENING-val-fleuri-${date}`,lines:[1,2,3].map(i=>({tillCode:`C0${i}`,shiftId:`VF-OPEN-C0${i}`,expectedFloat:500}))}});
+for(const [i,line] of cash.lines.entries())cash=checkCashOpeningLine({lineId:line.id,user:manager,cashierName:`Caissier ${i+1}`,declaredFloat:500,posOk:true,tpeOk:true,printerOk:true,shiftOpened:true}).opening;
+ok(cash.status==='READY','cash opening prerequisite failed');
+
+let cold=ensureColdChainDay('val-fleuri',date);ok(cold.lines.length===3&&coldChainSummary('val-fleuri',date).blocking===3,'cold chain day seed failed');
+const positive=cold.lines.find(x=>x.profile_code==='COLD_ROOM_POS'),fresh=cold.lines.find(x=>x.profile_code==='FRESH_DISPLAY'),frozen=cold.lines.find(x=>x.profile_code==='FROZEN_DISPLAY');
+let r=checkColdChainLine({lineId:positive.id,user:manager,temperature:3.2,doorOk:true,note:'RAS'});ok(r.line.status==='READY','positive cold room conform reading failed');
+r=checkColdChainLine({lineId:fresh.id,user:manager,temperature:2.8,doorOk:true,note:'RAS'});ok(r.line.status==='READY','fresh display conform reading failed');
+r=checkColdChainLine({lineId:frozen.id,user:manager,temperature:-14,doorOk:true,note:'Température haute au démarrage'});ok(r.line.status==='MISMATCH'&&r.issues.length===1&&r.line.incident_id,'frozen mismatch must create incident');
+let incident=incidentById(r.line.incident_id);ok(incident&&incident.category==='COLD'&&incident.criticality==='CRITICAL'&&incident.blocking_level==='STORE_OPENING'&&Number(incident.requires_evidence)===1&&incident.open_actions===1,'cold incident governance failed');
+
+r=recheckColdChainLine({lineId:frozen.id,user:manager,temperature:-20,doorOk:true,maintenanceSignaled:true,note:'Porte contrôlée, température stabilisée'});ok(r.line.status==='READY'&&r.day.status==='READY'&&Number(r.line.maintenance_signaled)===1,'cold recheck readiness failed');
+const coldTask=db.prepare(`SELECT * FROM tasks WHERE store_day_id=? AND group_name='opening' AND step_order=4`).get(storeDay.id);ok(coldTask.status==='COMPLETED','cold chain engine must auto-complete opening step 4');
+let blocked=false;try{validateProcess({storeDay,user:manager,group:'opening'})}catch(e){blocked=e.status===409&&Number(e.details?.openCritical)>=1}ok(blocked,'resolved temperature alone must not bypass open cold incident');
+
+incident=incidentById(incident.id);completeAction({incidentId:incident.id,actionId:incident.actions[0].id,user:manager,note:'Contrôle porte, alimentation et groupe froid terminé'});
+const png='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl7lK0AAAAASUVORK5CYII=';
+addEvidence({incidentId:incident.id,user:manager,dataUrl:'data:image/png;base64,'+png,fileName:'releve-froid.png',caption:'Relevé conforme après stabilisation'});
+incident=resolveIncident({incidentId:incident.id,user:manager,resolutionNote:'Température stabilisée à -20°C, contrôle technique effectué.'});ok(incident.status==='RESOLVED','cold incident resolution failed');
+const progress=validateProcess({storeDay,user:manager,group:'opening'});ok(progress.done===progress.total,'store opening must validate after cold evidence and incident resolution');
+cold=coldChainDay('val-fleuri',date);ok(cold.status==='OPENED','cold chain day must lock OPENED with store opening');
+let locked=false;try{checkColdChainLine({lineId:positive.id,user:manager,temperature:3,doorOk:true})}catch(e){locked=e.status===409}ok(locked,'cold chain must be locked after store opening');
+let p=updateColdProfile({code:'COLD_ROOM_POS',user:director,tempMin:0,tempMax:5});ok(Number(p.temp_max)===5,'director cold profile update failed');p=updateColdProfile({code:'COLD_ROOM_POS',user:director,tempMin:0,tempMax:4});ok(Number(p.temp_max)===4,'cold profile reset failed');
+console.log('StoreOps V1.12 cold chain readiness engine tests passed');
