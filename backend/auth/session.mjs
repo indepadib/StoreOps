@@ -1,5 +1,6 @@
 import { config } from '../config.mjs';
 import { db } from '../db.mjs';
+import '../services/pilot-profile.mjs';
 import { verifyEntraToken } from './entra.mjs';
 
 function bearer(req){
