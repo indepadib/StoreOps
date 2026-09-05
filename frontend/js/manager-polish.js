@@ -1,6 +1,7 @@
 const MANAGER=()=>document.body.classList.contains('manager-mode');
 let submitPending=false;
 let successTimer=null;
+let pendingTimer=null;
 
 function ensureSuccessHost(){
   let host=document.querySelector('#managerSuccess');
@@ -12,6 +13,13 @@ function ensureSuccessHost(){
   host.innerHTML='<div class="manager-success-mark">✓</div><strong>C’est fait.</strong><span>On passe à la suite.</span>';
   document.body.appendChild(host);
   return host;
+}
+
+function resetPending(){submitPending=false;clearTimeout(pendingTimer)}
+function markPending(){
+  submitPending=true;
+  clearTimeout(pendingTimer);
+  pendingTimer=setTimeout(()=>{submitPending=false},10000);
 }
 
 function showSuccess(){
@@ -53,11 +61,13 @@ function simplifyManagerChrome(){
 
 export function initManagerPolish(){
   const taskModal=document.querySelector('#taskModal');
-  document.querySelector('#modalSubmit')?.addEventListener('click',()=>{if(MANAGER()&&!taskModal?.hidden)submitPending=true},{capture:true});
+  document.querySelector('#modalSubmit')?.addEventListener('click',()=>{if(MANAGER()&&!taskModal?.hidden)markPending()},{capture:true});
+  document.querySelector('#modalClose')?.addEventListener('click',resetPending,{capture:true});
+  taskModal?.addEventListener('click',e=>{if(e.target===taskModal)resetPending()},{capture:true});
   const observer=new MutationObserver(()=>{
     simplifyManagerChrome();
     simplifyTaskModal();
-    if(submitPending&&taskModal?.hidden){submitPending=false;showSuccess()}
+    if(submitPending&&taskModal?.hidden){resetPending();showSuccess()}
   });
   observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','class']});
   simplifyManagerChrome();
