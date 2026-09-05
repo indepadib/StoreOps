@@ -66,27 +66,50 @@ function hydrate(row){
 }
 function isActionableChange(c){
  if(!c?.sourceKey||!c?.ean||!c?.productName)return false;
- const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
- // Dynamics can expose hundreds of promotions that are simply active. They are context,
- // not a new store task every morning. Keep daily actions, price changes and anomalies.
+ const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL',label=String(c.promoLabel||'');
+ if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&label.includes('le contrôle StoreOps suit le DealPrice Dynamics'))return false;
  if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&priority!=='CRITICAL')return false;
  return true;
 }
+function offerIdFromSourceKey(sourceKey){
+ const m=String(sourceKey||'').match(/^D365-PROMO-([^\-]+-[^\-]+)-/);
+ return m?.[1]||null;
+}
+function aggregateOfferAnomalies(changes,businessDate){
+ const out=[],groups=new Map();
+ for(const c of changes){
+  const offerId=c.source==='D365_RETAIL_PRICING'&&c.actionType==='VERIFY'&&c.priority==='CRITICAL'?offerIdFromSourceKey(c.sourceKey):null;
+  if(!offerId){out.push(c);continue}
+  if(!groups.has(offerId))groups.set(offerId,[]);
+  groups.get(offerId).push(c);
+ }
+ for(const [offerId,rows] of groups){
+  const first=rows[0],names=rows.map(x=>x.productName).filter(Boolean),cats=[...new Set(rows.map(x=>x.category).filter(Boolean))];
+  const preview=names.slice(0,5).join(', ')+(names.length>5?` +${names.length-5} autre(s)`:''),baseLabel=String(first.promoLabel||'').replace(/ · ⚠️.*/,''),warning=String(first.promoLabel||'').includes('⚠️')?String(first.promoLabel).split('⚠️')[1].trim():String(first.promoLabel||'');
+  out.push({
+   sourceKey:`D365-OFFER-ANOMALY-${offerId}-${businessDate}`,
+   actionType:'VERIFY',ean:`OFFER:${offerId}`,productNumber:null,
+   productName:`Anomalie promotion ${offerId}`,
+   category:cats.length===1?cats[0]:cats.length?`${cats.length} catégories`:null,
+   oldPrice:null,expectedPrice:null,
+   promoLabel:[baseLabel,`⚠️ ${warning}`,`${rows.length} article(s) concerné(s) : ${preview}`].filter(Boolean).join(' · '),
+   signageAction:'VERIFY',priority:'CRITICAL',blockingOpening:true,storeId:first.storeId,source:'D365_RETAIL_PRICING'
+  });
+ }
+ return out;
+}
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[]}){
- const actionable=(Array.isArray(changes)?changes:[]).filter(isActionableChange);
- // Reconcile only untouched Dynamics-generated pending rows. Never erase a completed,
- // mismatched or manually followed-up control.
+ const raw=Array.isArray(changes)?changes:[],filtered=raw.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
  for(const c of actionable){
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
-  // Opening is blocked only by a real change to execute or a critical inconsistency.
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
   const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
- return{inserted,removed:Number(removed.changes||0),rawCount:Array.isArray(changes)?changes.length:0,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
+ return{inserted,removed:Number(removed.changes||0),rawCount:raw.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
  return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
