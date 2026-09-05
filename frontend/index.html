@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#e5004f">
-  <title>Franprix StoreOps — V1.10 Démarque & Pertes</title>
+  <title>Franprix StoreOps — V1.11 Préparation Caisses</title>
   <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/incidents.css">
   <link rel="stylesheet" href="/cash.css">
   <link rel="stylesheet" href="/losses.css">
+  <link rel="stylesheet" href="/cash-opening.css">
 </head>
 <body>
 <div id="toast" class="toast"></div>
@@ -20,6 +21,7 @@
 <nav class="nav" id="nav">
   <button data-page="today" class="active">Aujourd’hui</button>
   <button data-page="opening">Ouverture</button>
+  <button data-page="cashOpening">Préparation caisses</button>
   <button data-page="commercial">Prix & promos</button>
   <button data-page="dlc">DLC</button>
   <button data-page="receipts">Réception</button>
@@ -35,6 +37,7 @@
 <main>
 <section class="page active" id="todayPage"><div class="page-title"><div><h1>Aujourd’hui</h1><p>Le cockpit opérationnel du magasin.</p></div><span class="pill brand-pill" id="rolePill">—</span></div><div id="todayContent"></div></section>
 <section class="page" id="openingPage"><div class="page-title"><div><h1>Ouverture magasin</h1><p>Parcours séquencé, contrôlé et auditable.</p></div><button class="btn brand" data-take="opening">Prendre en charge</button></div><div id="openingContent"></div></section>
+<section class="page" id="cashOpeningPage"><div class="page-title"><div><h1>Préparation caisses</h1><p>Affecter les caissiers, vérifier les fonds et rendre chaque POS/TPE/shift prêt avant ouverture.</p></div><span class="pill">Responsable / Direction</span></div><div id="cashOpeningContent"></div></section>
 <section class="page" id="commercialPage"><div class="page-title"><div><h1>Prix & promotions</h1><p>Exécuter les changements Dynamics, contrôler le rayon et corriger les écarts avant ouverture.</p></div></div><div id="commercialContent"></div></section>
 <section class="page" id="dlcPage"><div class="page-title"><div><h1>DLC, DDM & FEFO</h1><p>Contrôler, prioriser, traiter et clôturer chaque lot jusqu’à la quantité restante réelle.</p></div></div><div id="dlcContent"></div></section>
 <section class="page" id="receiptsPage"><div class="page-title"><div><h1>Réception & qualité</h1><p>PO, quantités et conformité article par article.</p></div><span class="pill">Responsable / Direction uniquement</span></div><div id="receiptsContent"></div></section>
@@ -47,7 +50,7 @@
 <section class="page" id="networkPage"><div class="page-title"><div><h1>Direction d’Exploitation</h1><p>Vue réseau, SLA et suivi du parcours de chaque magasin.</p></div></div><div id="networkContent"></div></section>
 <section class="page" id="systemPage"><div class="page-title"><div><h1>Système & Dynamics</h1><p>État des intégrations. Visible uniquement par la Direction.</p></div></div><div id="systemContent"></div></section>
 </main>
-<footer>StoreOps V1.10 · Démarque & Pertes · Caisses & TPE · Prix & Promotions · Stock · Passation · DLC/DDM · Réception · Incidents · Direction</footer>
+<footer>StoreOps V1.11 · Préparation Caisses · Démarque & Pertes · Clôture Caisses · Prix & Promotions · Stock · Passation · DLC/DDM · Réception · Incidents · Direction</footer>
 </div>
 <div class="modal-backdrop" id="taskModal" hidden><div class="modal"><div class="row"><div><div class="label" id="modalStep"></div><h2 id="modalTitle">Contrôle</h2></div><button class="btn ghost" id="modalClose">Fermer</button></div><p class="muted small" id="modalDescription"></p><div id="modalBody"></div><div class="modal-actions"><button class="btn brand" id="modalSubmit">Valider le contrôle</button></div></div></div>
 <div class="modal-backdrop" id="incidentModal" hidden><div class="modal incident-modal"><div class="row"><div><div class="label" id="incidentModalMeta"></div><h2 id="incidentModalTitle">Incident</h2></div><button class="btn ghost" id="incidentModalClose">Fermer</button></div><div id="incidentModalBody"></div></div></div>
