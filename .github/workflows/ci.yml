@@ -35,6 +35,9 @@ jobs:
       - name: Cash showcase engine test
         run: node backend/tests/showcase-cash.mjs
 
+      - name: Cash opening showcase test
+        run: node backend/tests/showcase-cash-opening.mjs
+
       - name: Loss showcase engine test
         run: node backend/tests/showcase-loss.mjs
 
