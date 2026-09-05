@@ -44,10 +44,10 @@ async function refreshCash(storeId,businessDate,{required=false}={}){try{const s
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:'1.10',authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:config.appVersion,authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 ORDER BY role,name`).all():[]});
-  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:'1.10'});
+  if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
   const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);
@@ -126,4 +126,4 @@ async function api(req,res,url){
 
 function staticFile(req,res,url){let path=url.pathname==='/'?'/index.html':url.pathname;path=normalize(path).replace(/^\.\.(\/|\\|$)/,'');const file=join(FRONTEND,path);if(!file.startsWith(FRONTEND)||!existsSync(file)){res.writeHead(404);return res.end('Not found')}const type={'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml','.png':'image/png','.json':'application/json'}[extname(file)]||'application/octet-stream';res.writeHead(200,{'content-type':type,'cache-control':path==='/index.html'?'no-cache':'public, max-age=3600'});res.end(readFileSync(file))}
 const server=http.createServer(async(req,res)=>{try{const url=new URL(req.url,`http://${req.headers.host}`);if(url.pathname.startsWith('/api/'))return await api(req,res,url);return staticFile(req,res,url)}catch(e){console.error(e);return json(req,res,e.status||500,{error:e.message||'Erreur serveur',code:e.code||undefined,details:e.details||undefined})}});
-server.listen(PORT,()=>console.log(`StoreOps V1.10 Loss & Waste running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));
+server.listen(PORT,()=>console.log(`StoreOps ${config.appVersion} running on http://localhost:${PORT} · auth=${config.authMode} · dynamics=${config.dynamics.mode}`));

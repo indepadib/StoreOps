@@ -7,7 +7,7 @@ function parseStoreMap(v=''){
 }
 
 export const config = {
-  appVersion: process.env.STOREOPS_VERSION || '1.21.1',
+  appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo', // demo | entra
