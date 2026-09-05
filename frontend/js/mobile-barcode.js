@@ -9,6 +9,7 @@ const STATIC_TARGETS=[
 
 let activeStream=null,activeFrame=null,scanBusy=false,lastDetect=0;
 
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
   if(host)return host;
@@ -118,7 +119,7 @@ function enhanceAll(){queued=false;enhanceStatic();enhanceReceipts()}
 function schedule(){if(queued)return;queued=true;requestAnimationFrame(enhanceAll)}
 
 export function initMobileBarcode(){
-  scannerShell();enhanceAll();
+  ensureStyles();scannerShell();enhanceAll();
   const observer=new MutationObserver(schedule);observer.observe(document.body,{childList:true,subtree:true});
   window.addEventListener('pagehide',stopScanner);document.addEventListener('visibilitychange',()=>{if(document.hidden)stopScanner()});
 }
