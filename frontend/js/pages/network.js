@@ -1,12 +1,13 @@
 import{api}from'../api.js';
 import{isDirector}from'../state.js';
 import{$,status,progress,esc,fmtMoney}from'../ui.js';
+import{dlcRisk,closingStarted,cashClosingNeedsAttention,storeBlocked,networkRisk}from'../network-risk.js';
 
 export async function renderNetwork(){
  if(!isDirector())return;
  const base=await api('/api/network');
  const rows=await Promise.all(base.map(async r=>{try{const [inc,loss,cashOpening,cold,staff]=await Promise.all([api(`/api/stores/${r.id}/incidents?status=OPEN`),api(`/api/stores/${r.id}/losses`),api(`/api/stores/${r.id}/cash-opening`),api(`/api/stores/${r.id}/cold-chain`),api(`/api/stores/${r.id}/staffing`)]);return{...r,sla:inc.stats,loss:loss.summary,cashOpening:cashOpening.summary,coldChain:cold.summary,staffing:staff.summary}}catch{return{...r,sla:{open:r.openIncidents||0,critical:r.criticalIncidents||0,overdue:0,escalated:0,watch:0},loss:r.loss||{blocking:0,retailValue:0},cashOpening:r.cashOpening||{blocking:1},coldChain:r.coldChain||{blocking:1},staffing:r.staffing||{blocking:1}}}}));
- const ready=rows.filter(x=>x.day.opening_status==='OPENED').length,staffBlocking=sum(rows,x=>x.staffing?.blocking),coldBlocking=sum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=sum(rows,x=>x.cashOpening?.blocking),commercialBlocking=sum(rows,x=>x.commercial?.blocking),dlcCritical=sum(rows,x=>Number(x.dlc?.expired||0)+Number(x.dlc?.critical||0)),inventoryRecounts=sum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=sum(rows,x=>x.handover?.blocking),overdue=sum(rows,x=>x.sla?.overdue),lossBlocking=sum(rows,x=>x.loss?.blocking),lossValue=sum(rows,x=>x.loss?.retailValue),qualityControls=sum(rows,x=>x.qualityControls),qualityRejected=sum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(x=>cashClosingNeedsAttention(x)).length,blocked=rows.filter(x=>storeBlocked(x)).length,sorted=[...rows].sort((a,b)=>risk(b)-risk(a));
+ const ready=rows.filter(x=>x.day.opening_status==='OPENED').length,staffBlocking=sum(rows,x=>x.staffing?.blocking),coldBlocking=sum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=sum(rows,x=>x.cashOpening?.blocking),commercialBlocking=sum(rows,x=>x.commercial?.blocking),dlcCritical=sum(rows,x=>dlcRisk(x)),inventoryRecounts=sum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=sum(rows,x=>x.handover?.blocking),overdue=sum(rows,x=>x.sla?.overdue),lossBlocking=sum(rows,x=>x.loss?.blocking),lossValue=sum(rows,x=>x.loss?.retailValue),qualityControls=sum(rows,x=>x.qualityControls),qualityRejected=sum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(cashClosingNeedsAttention).length,blocked=rows.filter(storeBlocked).length,sorted=[...rows].sort((a,b)=>networkRisk(b)-networkRisk(a));
  $('#networkContent').innerHTML=`
  <div class="grid g4">
   <div class="card"><div class="label">Réseau</div><div class="kpi">${rows.length}</div></div>
@@ -32,11 +33,6 @@ export async function renderNetwork(){
 }
 
 const sum=(rows,fn)=>rows.reduce((s,x)=>s+Number(fn(x)||0),0);
-const dlcRisk=r=>Number(r.dlc?.expired||0)+Number(r.dlc?.critical||0);
-const closingStarted=r=>r.day?.closing_status==='IN_PROGRESS'||Number(r.closing?.done||0)>0;
-const cashClosingNeedsAttention=r=>closingStarted(r)&&(Number(r.cash?.blocking||0)>0||Number(r.cash?.recounts||0)>0||Number(r.cash?.pending||0)>0);
-const storeBlocked=r=>r.day.opening_status!=='OPENED'&&(Number(r.opening?.blockers||0)>0||Number(r.staffing?.blocking||0)>0||Number(r.coldChain?.blocking||0)>0||Number(r.cashOpening?.blocking||0)>0||Number(r.commercial?.blocking||0)>0||Number(r.handover?.blocking||0)>0);
-const risk=r=>Number(r.staffing?.blocking||0)*260+Number(r.staffing?.gaps?.managers||0)*300+Number(r.coldChain?.mismatch||0)*280+Number(r.coldChain?.blocking||0)*110+Number(r.cashOpening?.mismatch||0)*240+Number(r.cashOpening?.blocking||0)*90+Number(r.commercial?.blocking||0)*220+dlcRisk(r)*210+Number(r.inventory?.pendingRecounts||0)*130+Number(r.handover?.blocking||0)*230+Number(r.sla?.escalated||0)*250+Number(r.loss?.blocking||0)*170+Number(r.sla?.overdue||0)*140+Number(r.criticalIncidents||0)*180+Number(r.opening?.blockers||0)*30+Math.min(500,Number(r.qualityRejected||0)*35)+(cashClosingNeedsAttention(r)?260:0);
 function card(r){
  const open=r.day.opening_status==='OPENED',staffAlert=!open&&Number(r.staffing?.blocking||0)>0,coldAlert=!open&&Number(r.coldChain?.blocking||0)>0,cashAlert=!open&&Number(r.cashOpening?.blocking||0)>0,commercialAlert=!open&&Number(r.commercial?.blocking||0)>0,handoverAlert=!open&&Number(r.handover?.blocking||0)>0,dlcAlert=dlcRisk(r)>0,stockAlert=Number(r.inventory?.pendingRecounts||0)>0,qualityAlert=Number(r.qualityRejected||0)>0,closingAlert=cashClosingNeedsAttention(r),danger=staffAlert||coldAlert||cashAlert||commercialAlert||handoverAlert||dlcAlert||qualityAlert||closingAlert||Number(r.sla?.overdue||0)>0||r.criticalIncidents>0;
  const closingPct=Number(r.closing?.percent||0),closingStatus=r.day?.closing_status==='CLOSED'?'Fermé':closingStarted(r)?'En fermeture':'Non démarrée';
