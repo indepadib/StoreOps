@@ -11,7 +11,7 @@ export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
-  authMode: process.env.AUTH_MODE || 'demo', // demo | entra
+  authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || '',
@@ -48,6 +48,12 @@ export const config = {
 
 export function productionMisconfig(){
   const issues=[];
+  if(config.authMode==='local'){
+    if(!process.env.STOREOPS_VF_MANAGER_EMAIL) issues.push('STOREOPS_VF_MANAGER_EMAIL manquant');
+    if(!process.env.STOREOPS_VF_MANAGER_PASSWORD) issues.push('STOREOPS_VF_MANAGER_PASSWORD manquant');
+    if(!process.env.STOREOPS_OPS_DIRECTOR_EMAIL) issues.push('STOREOPS_OPS_DIRECTOR_EMAIL manquant');
+    if(!process.env.STOREOPS_OPS_DIRECTOR_PASSWORD) issues.push('STOREOPS_OPS_DIRECTOR_PASSWORD manquant');
+  }
   if(config.authMode==='entra'){
     if(!config.entra.tenantId) issues.push('ENTRA_TENANT_ID manquant');
     if(!config.entra.apiClientId) issues.push('ENTRA_API_CLIENT_ID manquant');
