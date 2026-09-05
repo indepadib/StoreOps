@@ -28,6 +28,8 @@ jobs:
           set -euo pipefail
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
           node --check frontend/sw.js
+      - name: Version contract test
+        run: node backend/tests/version-contract.mjs
       - name: PWA shell integrity test
         run: node backend/tests/pwa-shell.mjs
       - name: Blind inventory presentation test
@@ -88,6 +90,9 @@ jobs:
           echo $! > /tmp/storeops-api.pid
           for i in {1..20}; do if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then cat /tmp/health.json; exit 0; fi; sleep 1; done
           cat /tmp/storeops-api.log; exit 1
+      - name: Runtime version API integration test
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
+        run: node backend/tests/version-api.mjs
       - name: Dynamics diagnostics API integration test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/dynamics-diagnostics-api.mjs
