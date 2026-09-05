@@ -1,5 +1,6 @@
 import { db, audit } from '../db.mjs';
 import { createIncident } from './incidents.mjs';
+import { autoResolutionDecision } from './incident-resolution-policy.mjs';
 
 function parse(v,fallback=null){try{return v?JSON.parse(v):fallback}catch{return fallback}}
 function normalizeBoolean(v){return v===true || v==='true' || v===1 || v==='1'}
@@ -61,6 +62,7 @@ export function submitTaskForm({taskId,user,values}){
 
   audit({storeId:task.store_id,businessDate:task.business_date,userId:user.id,action:nonconforms.length?'TASK_NONCONFORM':'TASK_COMPLETED',entityType:'TASK',entityId:task.id,details:{title:task.title,values:normalized,nonconforms}});
 
+  let incidentResolutionPending=null;
   if(nonconforms.length){
     const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='TASK' AND source_id=? AND status='OPEN' LIMIT 1`).get(task.id);
     const description=nonconforms.map(x=>x.message).join(' · ');
@@ -73,11 +75,16 @@ export function submitTaskForm({taskId,user,values}){
     const existing=db.prepare(`SELECT * FROM incidents WHERE source_type='TASK' AND source_id=? AND status='OPEN' LIMIT 1`).get(task.id);
     if(existing){
       const openActions=db.prepare(`SELECT COUNT(*) n FROM incident_actions WHERE incident_id=? AND status='OPEN'`).get(existing.id).n;
-      if(!openActions){
+      const evidenceCount=db.prepare(`SELECT COUNT(*) n FROM incident_evidence WHERE incident_id=?`).get(existing.id).n;
+      const decision=autoResolutionDecision({requiresEvidence:existing.requires_evidence,openActions,evidenceCount});
+      if(decision.canResolve){
         db.prepare(`UPDATE incidents SET status='RESOLVED',resolution_note='Contrôle redevenu conforme',resolved_by=?,resolved_at=CURRENT_TIMESTAMP WHERE id=?`).run(user.id,existing.id);
-        audit({storeId:task.store_id,businessDate:task.business_date,userId:user.id,action:'INCIDENT_AUTO_RESOLVED',entityType:'INCIDENT',entityId:existing.id,details:{sourceTask:task.id}});
+        audit({storeId:task.store_id,businessDate:task.business_date,userId:user.id,action:'INCIDENT_AUTO_RESOLVED',entityType:'INCIDENT',entityId:existing.id,details:{sourceTask:task.id,evidenceCount}});
+      }else{
+        incidentResolutionPending={incidentId:existing.id,reason:decision.reason,openActions:decision.openActions,evidenceCount:decision.evidenceCount,requiresEvidence:!!existing.requires_evidence};
+        audit({storeId:task.store_id,businessDate:task.business_date,userId:user.id,action:'INCIDENT_RESOLUTION_PENDING',entityType:'INCIDENT',entityId:existing.id,details:{sourceTask:task.id,reason:decision.reason,openActions:decision.openActions,evidenceCount:decision.evidenceCount}});
       }
     }
   }
-  return {ok:!nonconforms.length,taskId:task.id,status:nonconforms.length?'IN_PROGRESS':'COMPLETED',nonconforms,values:normalized};
+  return {ok:!nonconforms.length,taskId:task.id,status:nonconforms.length?'IN_PROGRESS':'COMPLETED',nonconforms,values:normalized,incidentResolutionPending};
 }
