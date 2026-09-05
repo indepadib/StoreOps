@@ -14,7 +14,8 @@ export const config = {
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || '',
-    allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || process.env.ENTRA_TENANT_ID || ''
+    allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
+    requiredScope: process.env.ENTRA_REQUIRED_SCOPE || ''
   },
   dynamics: {
     mode: process.env.D365_MODE || 'simulated', // simulated | live
@@ -45,6 +46,7 @@ export function productionMisconfig(){
   if(config.authMode==='entra'){
     if(!config.entra.tenantId) issues.push('ENTRA_TENANT_ID manquant');
     if(!config.entra.apiClientId) issues.push('ENTRA_API_CLIENT_ID manquant');
+    if(!config.entra.requiredScope) issues.push('ENTRA_REQUIRED_SCOPE manquant');
   }
   if(config.dynamics.mode==='live'){
     if(!config.dynamics.baseUrl) issues.push('D365_BASE_URL manquant');
