@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const auth=readFileSync(new URL('../../frontend/js/auth.js',import.meta.url),'utf8');
+const entry=readFileSync(new URL('../../frontend/js/auth-entry.js',import.meta.url),'utf8');
+const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
+const build=readFileSync(new URL('../../frontend/netlify-build.sh',import.meta.url),'utf8');
+const config=readFileSync(new URL('../config.mjs',import.meta.url),'utf8');
+const session=readFileSync(new URL('../auth/session.mjs',import.meta.url),'utf8');
+const env=readFileSync(new URL('../../.env.example',import.meta.url),'utf8');
+assert.match(auth,/response_type:'code'/,'OAuth authorization code flow required');
+assert.match(auth,/code_challenge_method:'S256'/,'PKCE S256 required');
+assert.match(auth,/code_verifier:verifier/,'PKCE verifier required for token exchange');
+assert.match(auth,/sessionStorage/,'tokens must use session storage');
+assert.doesNotMatch(auth,/client_secret/i,'SPA must never contain a client secret');
+assert.match(entry,/ensureAccessToken/,'app must be gated by access-token acquisition');
+assert.match(index,/\/js\/auth-entry\.js/,'index must load auth gate entrypoint');
+assert.doesNotMatch(index,/type="module" src="\/js\/app\.js"/,'index must not bypass auth gate');
+for(const name of ['STOREOPS_ENTRA_TENANT_ID','STOREOPS_ENTRA_SPA_CLIENT_ID','STOREOPS_ENTRA_API_SCOPE'])assert.ok(build.includes(name),`Netlify public auth config missing ${name}`);
+assert.match(config,/requiredScope: process\.env\.ENTRA_REQUIRED_SCOPE/,'backend required scope missing');
+assert.match(session,/lower\(dynamics_email\)/,'approved Dynamics identity fallback missing');
+assert.match(env,/ENTRA_REQUIRED_SCOPE=StoreOps\.Access/,'required API scope must be documented');
+for(const text of [auth,entry,index,build,config,session,env]){assert.doesNotMatch(text,/a\.nachiti@/i,'real pilot email must not be committed')}
+console.log('Entra SPA PKCE security contract OK');

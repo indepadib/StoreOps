@@ -52,5 +52,6 @@ export async function verifyEntraToken(token){
   if(config.entra.allowedTenantId && p.tid!==config.entra.allowedTenantId) throw Object.assign(new Error('Tenant Entra non autorisé'),{status:401});
   const acceptedAudiences=new Set([config.entra.apiClientId,`api://${config.entra.apiClientId}`].filter(Boolean));
   if(acceptedAudiences.size && !acceptedAudiences.has(p.aud)) throw Object.assign(new Error('Audience JWT invalide'),{status:401});
+  if(config.entra.requiredScope){const scopes=new Set(String(p.scp||'').split(/\s+/).filter(Boolean));if(!scopes.has(config.entra.requiredScope))throw Object.assign(new Error('Autorisation StoreOps manquante dans le jeton Microsoft'),{status:403,code:'ENTRA_SCOPE_REQUIRED'});}
   return p;
 }
