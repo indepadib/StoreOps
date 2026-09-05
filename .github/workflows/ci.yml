@@ -38,6 +38,8 @@ jobs:
         run: node backend/tests/network-risk.mjs
       - name: Today receiving and quality signals test
         run: node backend/tests/today-signals.mjs
+      - name: Evidence-safe incident resolution policy test
+        run: node backend/tests/incident-resolution-policy.mjs
       - name: Pricing configuration and hardening tests
         run: |
           node backend/tests/pricing-config.mjs
