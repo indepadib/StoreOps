@@ -1,10 +1,13 @@
 process.env.STOREOPS_DB=process.env.STOREOPS_DB||'/tmp/storeops-cash-opening-test.db';
 const {db,ensureStoreDay}=await import('../db.mjs');
 const {syncCashOpening,cashOpeningSummary,checkCashOpeningLine,updateCashOpeningPolicy}=await import('../services/cash-opening.mjs');
+const {ensureColdChainDay,checkColdChainLine}=await import('../services/cold-chain.mjs');
 const {validateProcess}=await import('../services/workflow.mjs');
 function ok(v,m){if(!v)throw new Error(m)}
 const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get(),director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get(),date=new Date().toISOString().slice(0,10),day=ensureStoreDay('val-fleuri',date);
-db.prepare(`UPDATE tasks SET status='COMPLETED',completed_by=?,completed_at=CURRENT_TIMESTAMP WHERE store_day_id=? AND group_name='opening' AND step_order<7`).run(manager.id,day.id);
+db.prepare(`UPDATE tasks SET status='COMPLETED',completed_by=?,completed_at=CURRENT_TIMESTAMP WHERE store_day_id=? AND group_name='opening' AND step_order IN (1,2,3,5,6)`).run(manager.id,day.id);
+// Satisfy V1.12 cold-chain prerequisite so this test isolates the till-readiness gate.
+let cold=ensureColdChainDay('val-fleuri',date);for(const line of cold.lines){const p=line.profile,temp=(Number(p.temp_min)+Number(p.temp_max))/2;cold=checkColdChainLine({lineId:line.id,user:manager,temperature:temp,doorOk:true,note:'Précondition test Cash Opening'}).day}ok(cold.status==='READY','cash opening test cold prerequisite failed');
 const snapshot={sourceKey:`OPEN-CASH-val-fleuri-${date}`,lines:[{tillCode:'C01',shiftId:'VF-OPEN-C01',expectedFloat:500},{tillCode:'C02',shiftId:'VF-OPEN-C02',expectedFloat:500},{tillCode:'C03',shiftId:'VF-OPEN-C03',expectedFloat:500}]};
 let opening=syncCashOpening({storeId:'val-fleuri',businessDate:date,snapshot});
 ok(opening.lines.length===3&&cashOpeningSummary('val-fleuri',date).blocking===3,'cash opening snapshot failed');
