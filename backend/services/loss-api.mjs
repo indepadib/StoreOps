@@ -3,6 +3,7 @@ import { canAccessStore,canManageStore } from './permissions.mjs';
 import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
 import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
+import { getProductPricing } from './dynamics-promotion.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
@@ -24,6 +25,7 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/dynamics/probe'&&req.method==='GET'){requireDirector(user);const entity=url.searchParams.get('entity')||'';return{status:200,data:await probeDataEntity(entity,{top:url.searchParams.get('top')||1,filter:url.searchParams.get('filter')||''})}}
  if(path==='/api/dynamics/stock/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:stockIntegrationConfig()}}
  if(path==='/api/dynamics/sales-price-agreements'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'';return{status:200,data:await getSalesPriceAgreementsByItem(item)}}
+ if(path==='/api/dynamics/product-price'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'',businessDate=url.searchParams.get('date')||null,priceGroup=url.searchParams.get('priceGroup')||'Franprix';return{status:200,data:await getProductPricing(item,{businessDate,priceGroup})}}
  p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){
   requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);
   return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}};
