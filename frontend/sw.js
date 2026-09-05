@@ -1,5 +1,9 @@
 const CACHE='storeops-shell-v1.23';
-const CORE=['/','/index.html','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/price-check-mobile.css','/runtime-config.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js'];
+const CORE=[
+  '/','/index.html','/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/price-check-mobile.css','/runtime-config.js',
+  '/js/pwa.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
+  '/js/pages/today.js','/js/pages/process.js','/js/pages/staffing.js','/js/pages/cold-chain.js','/js/pages/cash-opening.js','/js/pages/dlc.js','/js/pages/commercial.js','/js/pages/receipts.js','/js/pages/inventory.js','/js/pages/losses.js','/js/pages/quality.js','/js/pages/cash.js','/js/pages/network.js','/js/pages/system.js','/js/pages/incidents.js'
+];
 
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(CORE)).then(()=>self.skipWaiting()));
