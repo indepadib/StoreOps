@@ -76,8 +76,10 @@ export async function mockPriceCheckApi(path,options={},mockApi){
     }
     let incidentResolved=null;
     if(incident){
-      if(!b.evidenceDataUrl)throw err('Une photo de preuve est obligatoire pour clôturer cet incident.',409);
-      await mockApi(`/api/incidents/${incident.id}/evidence`,{method:'POST',body:JSON.stringify({dataUrl:b.evidenceDataUrl,fileName:b.evidenceFileName||'preuve-correction.jpg',caption:b.evidenceCaption||'Preuve après correction prix/promo'})});
+      const evidenceProvided=!!(b.evidenceFileName||b.evidenceDataUrl);
+      if(!evidenceProvided)throw err('Une photo de preuve est obligatoire pour clôturer cet incident.',409);
+      // Showcase: persist metadata only. Never write the image base64 into localStorage.
+      await mockApi(`/api/incidents/${incident.id}/evidence`,{method:'POST',body:JSON.stringify({fileName:b.evidenceFileName||'preuve-correction.jpg',caption:b.evidenceCaption||'Preuve après correction prix/promo',showcase:true})});
       const current=await mockApi(`/api/incidents/${incident.id}`);
       for(const action of current.actions||[])if(action.status==='OPEN')await mockApi(`/api/incidents/${incident.id}/actions/${action.id}/complete`,{method:'POST',body:JSON.stringify({note:`Recontrôle conforme ${money(observed)} · EAN ${ean}`})});
       incidentResolved=await mockApi(`/api/incidents/${incident.id}/resolve`,{method:'POST',body:JSON.stringify({resolutionNote:`Correction validée par nouveau scan conforme · EAN ${ean} · prix ${money(observed)} · signalétique et exécution conformes.`})});
