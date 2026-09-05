@@ -17,7 +17,18 @@ function configured(){
     clientId:{configured:!!c.clientId,value:c.clientId||null},
     clientSecret:{configured:!!c.clientSecret},
     oauthVersion:c.oauthVersion,
-    mappings:{barcodeEntity:c.barcodeEntity||null,productEntity:c.productEntity||null,barcodeField:c.barcodeField,barcodeProductField:c.barcodeProductField,productNumberField:c.productNumberField,productNameField:c.productNameField}
+    dataAreaId:c.dataAreaId||null,
+    mappings:{
+      barcodeEntity:c.barcodeEntity||null,
+      productEntity:c.productEntity||null,
+      dataAreaField:c.dataAreaField,
+      barcodeField:c.barcodeField,
+      barcodeProductField:c.barcodeProductField,
+      barcodeDescriptionField:c.barcodeDescriptionField,
+      barcodeUnitField:c.barcodeUnitField,
+      productNumberField:c.productNumberField,
+      productNameField:c.productNameField
+    }
   };
 }
 function missingConfig(){const c=config.dynamics,rows={D365_BASE_URL:c.baseUrl,D365_TENANT_ID:c.tenantId,D365_CLIENT_ID:c.clientId,D365_CLIENT_SECRET:c.clientSecret};return Object.entries(rows).filter(([,v])=>!v).map(([k])=>k)}
@@ -99,12 +110,23 @@ export async function getProductByEan(ean){
   if(config.dynamics.mode!=='live') return PRODUCTS[ean] || null;
   const c=config.dynamics;
   if(!c.barcodeEntity) throw Object.assign(new Error('D365_BARCODE_ENTITY non configuré'),{status:503,code:'D365_MAPPING_REQUIRED'});
-  const barcodePayload=await odataGet(c.barcodeEntity,{filter:`${c.barcodeField} eq '${escapeOData(ean)}'`,top:1});
+
+  const filters=[`${c.barcodeField} eq '${escapeOData(ean)}'`];
+  if(c.dataAreaId) filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+  const barcodePayload=await odataGet(c.barcodeEntity,{
+    filter:filters.join(' and '),
+    top:1,
+    extra:c.dataAreaId?'cross-company=true':''
+  });
   const barcodeRow=barcodePayload?.value?.[0]; if(!barcodeRow) return null;
   const productNumber=barcodeRow[c.barcodeProductField];
-  if(!c.productEntity || !productNumber)return {ean,name:barcodeRow.Description||productNumber||ean,price:null,stock:null,category:barcodeRow.Category||'Autre',productNumber:productNumber||null,source:'D365'};
+  const barcodeName=barcodeRow[c.barcodeDescriptionField]||barcodeRow.Description||barcodeRow.description||productNumber||ean;
+  const unit=barcodeRow[c.barcodeUnitField]||barcodeRow.UnitID||barcodeRow.UnitId||null;
+  const dataAreaId=barcodeRow[c.dataAreaField]||barcodeRow.dataAreaId||c.dataAreaId||null;
+
+  if(!c.productEntity || !productNumber)return {ean,name:barcodeName,price:null,stock:null,category:barcodeRow.Category||'Autre',productNumber:productNumber||null,unit,dataAreaId,source:'D365'};
   const select=[c.productNumberField,c.productNameField].join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1}),p=productPayload?.value?.[0]||{};
-  return {ean,name:p[c.productNameField]||barcodeRow.Description||productNumber,price:null,stock:null,category:p.Category||barcodeRow.Category||'Autre',productNumber,source:'D365'};
+  return {ean,name:p[c.productNameField]||barcodeName||productNumber,price:null,stock:null,category:p.Category||barcodeRow.Category||'Autre',productNumber,unit,dataAreaId,source:'D365'};
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}

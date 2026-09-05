@@ -78,7 +78,11 @@ Lancer StoreOps localement :
 ./start.sh
 ```
 
-ou le backend selon le README.
+Sous Windows :
+
+```powershell
+.\start-local.ps1
+```
 
 Se connecter avec le profil Directeur de démonstration et ouvrir **Système & Dynamics**.
 
@@ -126,22 +130,32 @@ Le probe est limité en lecture et à quelques lignes.
 
 ## 7. Premier mapping : Article / EAN
 
-On commence uniquement par le référentiel article/EAN.
+Le mapping code-barres Franprix a été validé sur l'environnement One Retail réel avec la Data Entity :
 
-Une fois les deux entités exactes découvertes :
+- collection OData : `RetailInventItemBarcode`
+- société / `dataAreaId` : `5001`
+- EAN : `itemBarCode`
+- SKU : `itemId`
+- libellé : `description`
+- unité : `UnitID`
+
+Configuration locale validée :
 
 ```env
-D365_BARCODE_ENTITY=<PublicCollectionName codes-barres>
-D365_PRODUCT_ENTITY=<PublicCollectionName articles>
-D365_BARCODE_FIELD=Barcode
-D365_BARCODE_PRODUCT_FIELD=ItemNumber
-D365_PRODUCT_NUMBER_FIELD=ProductNumber
-D365_PRODUCT_NAME_FIELD=ProductName
+D365_DATA_AREA_ID=5001
+D365_DATA_AREA_FIELD=dataAreaId
+D365_BARCODE_ENTITY=RetailInventItemBarcode
+D365_BARCODE_FIELD=itemBarCode
+D365_BARCODE_PRODUCT_FIELD=itemId
+D365_BARCODE_DESCRIPTION_FIELD=description
+D365_BARCODE_UNIT_FIELD=UnitID
 ```
 
-Redémarrer le backend après modification des variables.
+`StoreOps` ajoute le filtre société et `cross-company=true` lors de la recherche EAN afin d'éviter de prendre une ligne d'une autre entité juridique.
 
-Ensuite seulement, valider `getProductByEan()` avec un EAN réel connu dans Franprix.
+L'entité article complémentaire `D365_PRODUCT_ENTITY` reste à identifier. Tant qu'elle est vide, l'entité Retail code-barres fournit déjà EAN, SKU, libellé et unité.
+
+Redémarrer le backend après modification des variables, puis valider `getProductByEan()` avec un EAN réel connu dans Franprix.
 
 ## 8. Ordre de raccordement conseillé
 
