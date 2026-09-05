@@ -18,118 +18,71 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-
       - name: Syntax check backend and frontend
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r file; do
-            node --check "$file"
-          done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
-
+          while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
       - name: Cash showcase engine test
         run: node backend/tests/showcase-cash.mjs
-
       - name: Cash opening showcase test
         run: node backend/tests/showcase-cash-opening.mjs
-
       - name: Cold chain showcase test
         run: node backend/tests/showcase-cold-chain.mjs
-
       - name: Loss showcase engine test
         run: node backend/tests/showcase-loss.mjs
-
       - name: Showcase DLC to loss automation test
         run: node backend/tests/showcase-dlc-loss.mjs
-
+      - name: Staffing readiness engine test
+        env: { STOREOPS_DB: /tmp/storeops-staffing-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-staffing-media, D365_MODE: simulated }
+        run: node backend/tests/staffing-engine.mjs
       - name: Cold chain readiness engine test
-        env:
-          D365_MODE: simulated
-          STOREOPS_DB: /tmp/storeops-cold-chain-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-cold-chain-media
+        env: { D365_MODE: simulated, STOREOPS_DB: /tmp/storeops-cold-chain-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-cold-chain-media }
         run: node backend/tests/cold-chain-engine.mjs
-
       - name: Cash opening readiness engine test
-        env:
-          D365_MODE: simulated
-          STOREOPS_DB: /tmp/storeops-cash-opening-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-cash-opening-media
+        env: { D365_MODE: simulated, STOREOPS_DB: /tmp/storeops-cash-opening-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-cash-opening-media }
         run: node backend/tests/cash-opening-engine.mjs
-
       - name: Cash closing engine unit test
-        env:
-          D365_MODE: simulated
-          STOREOPS_DB: /tmp/storeops-cash-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-cash-media
+        env: { D365_MODE: simulated, STOREOPS_DB: /tmp/storeops-cash-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-cash-media }
         run: node backend/tests/cash-engine.mjs
-
       - name: Loss and waste engine unit test
-        env:
-          STOREOPS_DB: /tmp/storeops-loss-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-loss-media
+        env: { STOREOPS_DB: /tmp/storeops-loss-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-loss-media }
         run: node backend/tests/loss-engine.mjs
-
       - name: DLC to loss source automation test
-        env:
-          STOREOPS_DB: /tmp/storeops-dlc-loss-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-dlc-loss-media
+        env: { STOREOPS_DB: /tmp/storeops-dlc-loss-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-dlc-loss-media }
         run: node backend/tests/loss-source-dlc.mjs
-
       - name: Start StoreOps API
         shell: bash
-        env:
-          AUTH_MODE: demo
-          D365_MODE: simulated
-          PORT: 8787
-          STOREOPS_DB: /tmp/storeops-ci.db
-          STOREOPS_MEDIA_DIR: /tmp/storeops-media
+        env: { AUTH_MODE: demo, D365_MODE: simulated, PORT: 8787, STOREOPS_DB: /tmp/storeops-ci.db, STOREOPS_MEDIA_DIR: /tmp/storeops-media }
         run: |
           node backend/server.mjs > /tmp/storeops-api.log 2>&1 &
           echo $! > /tmp/storeops-api.pid
-          for i in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then
-              cat /tmp/health.json
-              exit 0
-            fi
-            sleep 1
-          done
-          cat /tmp/storeops-api.log
-          exit 1
-
+          for i in {1..20}; do if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then cat /tmp/health.json; exit 0; fi; sleep 1; done
+          cat /tmp/storeops-api.log; exit 1
+      - name: Staffing readiness API integration test
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
+        run: node backend/tests/staffing-api.mjs
       - name: Cold chain API integration test
-        env:
-          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/cold-chain-api.mjs
-
       - name: Cash opening API integration test
-        env:
-          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/cash-opening-api.mjs
-
       - name: Cash closing API integration test
-        env:
-          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/cash-api.mjs
-
       - name: Loss and waste API integration test
-        env:
-          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/loss-api.mjs
-
       - name: Workflow, incident, permissions and governance smoke test
-        env:
-          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/smoke-v112.mjs
-
       - name: Stop StoreOps API
         if: always()
         shell: bash
         run: |
-          if [ -f /tmp/storeops-api.pid ]; then
-            kill "$(cat /tmp/storeops-api.pid)" || true
-          fi
+          if [ -f /tmp/storeops-api.pid ]; then kill "$(cat /tmp/storeops-api.pid)" || true; fi
