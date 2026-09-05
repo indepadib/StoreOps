@@ -5,7 +5,7 @@ import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mj
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
 import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';
-import { createIncident,addAction } from './incidents.mjs';
+import { createIncident,addAction,completeAction,addEvidence,resolveIncident,incidentById } from './incidents.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
@@ -28,15 +28,20 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/dynamics/product-price'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'',businessDate=url.searchParams.get('date')||null,priceGroup=url.searchParams.get('priceGroup')||'Franprix';return{status:200,data:await getProductPricing(item,{businessDate,priceGroup})}}
  p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}}}
 
- // V1.19 — scan EAN, resolve Dynamics price/promotion, execute shelf check.
  p=route(path,'/api/stores/:storeId/price-check/context/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildPriceCheckContext({storeId:p.storeId,ean:p.ean,businessDate:url.searchParams.get('date')||todayISO()})}}
  p=route(path,'/api/stores/:storeId/price-checks');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:listPriceChecks(p.storeId,url.searchParams.get('date')||todayISO(),url.searchParams.get('limit')||50)}}}
  p=route(path,'/api/stores/:storeId/price-check');if(p&&req.method==='POST'){
   requireStore(user,p.storeId);requireManage(user,p.storeId);const b=await body(req),businessDate=b.businessDate||todayISO();
   const result=await executePriceCheck({storeId:p.storeId,ean:b.ean,businessDate,observedPrice:b.observedPrice,signageOk:b.signageOk===true,executionOk:b.executionOk===true,user,tolerance:b.tolerance??0.01});
+  const prior=result.context.openIncident;
   if(result.check.status==='MISMATCH'){
-   const inc=createIncident({storeId:p.storeId,user,title:`Écart prix/promo · ${result.context.product.name}`,description:result.check.issues.join(' · '),category:'PRICE_PROMO',criticality:'HIGH',blockingLevel:'NONE',sourceType:'PRICE_CHECK',sourceId:result.check.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});
-   addAction({incidentId:inc.id,user,title:'Corriger prix / signalétique puis effectuer un nouveau scan de contrôle',note:`EAN ${result.context.ean} · prix Dynamics ${result.check.expectedPrice??'—'}`,assignedTo:user.role==='store_manager'?user.id:null});result.incident=inc;
+   if(prior){result.incident=incidentById(prior.id);result.incidentReused=true}
+   else{const inc=createIncident({storeId:p.storeId,user,title:`Écart prix/promo · ${result.context.product.name}`,description:result.check.issues.join(' · '),category:'PRICE_PROMO',criticality:'HIGH',blockingLevel:'NONE',sourceType:'PRICE_CHECK',sourceId:result.check.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Corriger prix / signalétique puis effectuer un nouveau scan de contrôle',note:`EAN ${result.context.ean} · prix Dynamics ${result.check.expectedPrice??'—'}`,assignedTo:user.role==='store_manager'?user.id:null});result.incident=inc}
+  }else if(prior){
+   if(!b.evidenceDataUrl)throw Object.assign(new Error('Le nouveau contrôle est conforme. Ajoute une photo de preuve pour clôturer l’incident.'),{status:422,code:'PRICE_CHECK_EVIDENCE_REQUIRED',details:{checkId:result.check.id,incidentId:prior.id}});
+   addEvidence({incidentId:prior.id,user,dataUrl:b.evidenceDataUrl,fileName:b.evidenceFileName||'preuve-correction-prix.jpg',caption:b.evidenceCaption||`Contrôle conforme EAN ${result.context.ean} · ${result.check.observedPrice} DH`});
+   const hydrated=incidentById(prior.id);for(const a of hydrated.actions.filter(x=>x.status==='OPEN'))completeAction({incidentId:prior.id,actionId:a.id,user,note:`Nouveau contrôle conforme ${result.check.id}`});
+   result.incident=resolveIncident({incidentId:prior.id,user,resolutionNote:b.resolutionNote||`Correction validée par nouveau scan conforme. Prix rayon ${result.check.observedPrice} DH, signalétique et exécution conformes.`});result.incidentResolved=true;
   }
   return{status:result.check.status==='MISMATCH'?409:200,data:result};
  }
