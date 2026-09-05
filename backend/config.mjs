@@ -16,12 +16,16 @@ export const config = {
     clientId: process.env.D365_CLIENT_ID || '',
     clientSecret: process.env.D365_CLIENT_SECRET || '',
     oauthVersion: process.env.D365_OAUTH_VERSION || 'v2',
+    dataAreaId: process.env.D365_DATA_AREA_ID || '',
+    dataAreaField: process.env.D365_DATA_AREA_FIELD || 'dataAreaId',
     productEntity: process.env.D365_PRODUCT_ENTITY || '',
     barcodeEntity: process.env.D365_BARCODE_ENTITY || '',
     productNumberField: process.env.D365_PRODUCT_NUMBER_FIELD || 'ProductNumber',
     productNameField: process.env.D365_PRODUCT_NAME_FIELD || 'ProductName',
     barcodeField: process.env.D365_BARCODE_FIELD || 'Barcode',
-    barcodeProductField: process.env.D365_BARCODE_PRODUCT_FIELD || 'ItemNumber'
+    barcodeProductField: process.env.D365_BARCODE_PRODUCT_FIELD || 'ItemNumber',
+    barcodeDescriptionField: process.env.D365_BARCODE_DESCRIPTION_FIELD || 'Description',
+    barcodeUnitField: process.env.D365_BARCODE_UNIT_FIELD || 'UnitID'
   }
 };
 
