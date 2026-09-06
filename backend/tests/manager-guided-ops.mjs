@@ -10,4 +10,6 @@ assert.match(src,/Prêt pour Dynamics/);
 assert.match(src,/Réception · contrôle article/);
 assert.match(src,/champs inutiles restent hors du parcours/);
 assert.match(src,/guided-hidden/);
+assert.match(src,/font-size:16px/,'mobile form controls must avoid iOS zoom and stay touch friendly');
+assert.match(src,/min-height:46px/,'manager actions must keep comfortable touch targets');
 console.log('StoreOps V1.60 guided operations UX contract passed');
