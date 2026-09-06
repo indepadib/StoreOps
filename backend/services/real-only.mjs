@@ -1,7 +1,6 @@
 import { db } from '../db.mjs';
 import { config } from '../config.mjs';
 
-const FAKE_PRODUCT_NUMBERS=['NUT750','LAIT1L','YAOURT4'];
 const FAKE_RECEIPTS=['rcpt_vf_10482','rcpt_tr_20411'];
 
 function table(name){return !!db.prepare(`SELECT 1 ok FROM sqlite_master WHERE type='table' AND name=?`).get(name)}
@@ -67,8 +66,12 @@ export function enforceRealOnlyData(){
     const lossRows=db.prepare(`SELECT id,incident_id FROM loss_records WHERE product_number IN ('NUT750','LAIT1L','YAOURT4')`).all();
     const lossIds=lossRows.map(r=>String(r.id));
     const incidentIds=lossRows.map(r=>r.incident_id&&String(r.incident_id)).filter(Boolean);
+    if(lossIds.length){
+      detail.lossAudits=deleteAuditsFor(lossIds);
+      // loss_records has a FK to incidents: remove the record first, then its generated incident.
+      detail.lossRecords=delWhere('loss_records',`id IN (${placeholders(lossIds)})`,lossIds);
+    }
     if(incidentIds.length)detail.lossIncidents=delWhere('incidents',`id IN (${placeholders(incidentIds)})`,incidentIds);
-    if(lossIds.length){detail.lossAudits=deleteAuditsFor(lossIds);detail.lossRecords=delWhere('loss_records',`id IN (${placeholders(lossIds)})`,lossIds)}
   }
 
   // Old staffing snapshots contained placeholder people (Poste caisse 1/2, Poste surface).
