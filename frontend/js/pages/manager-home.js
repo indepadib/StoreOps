@@ -3,11 +3,11 @@ import { $,status,progress,esc } from '../ui.js';
 import { calculateStoreHealth } from '../store-health.js';
 import { managerPhase,managerPhaseLabel } from '../manager-journey.js';
 import { managerDayCompliance } from '../manager-compliance.js';
-import { loadManagerInbox,actionKind,categoryLabel,syncManagerNav } from '../manager-action-inbox.js';
+import { loadManagerInbox,actionKind,categoryLabel,priorityLabel,syncManagerNav } from '../manager-action-inbox.js';
 
 function actionCard(i){
-  const kind=actionKind(i);
-  return `<button class="manager-action-card ${i.severity==='CRITICAL'?'critical':''}" data-manager-go="${esc(i.page)}"><div><div class="chips"><span class="chip ${kind}">${esc(categoryLabel(i.category))}</span>${i.blocking?'<span class="chip danger">Bloquant</span>':''}${i.meta?`<span class="chip">${esc(i.meta)}</span>`:''}</div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small></div><span class="arrow">›</span></button>`;
+  const kind=actionKind(i),pclass=i.priority==='P0'?'priority-p0':i.priority==='P1'?'priority-p1':'';
+  return `<button class="manager-action-card ${i.priority==='P0'?'critical':''}" data-manager-go="${esc(i.page)}"><div><div class="chips"><span class="chip ${pclass}">${esc(priorityLabel(i.priority))}</span><span class="chip ${kind}">${esc(categoryLabel(i.category))}</span>${i.blocking?'<span class="chip danger">Bloquant</span>':''}${i.meta?`<span class="chip">${esc(i.meta)}</span>`:''}</div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small></div><span class="arrow">›</span></button>`;
 }
 
 function phaseStrip(phase){
@@ -31,11 +31,11 @@ export async function renderManagerHome(){
       <div class="manager-inbox-head">
         <span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span>
         <h2>${esc(title)}</h2>
-        <p>${inbox.summary.total?`${inbox.summary.total} action(s) demandent votre attention.`:'Aucune action urgente pour le moment.'}</p>
+        <p>${inbox.summary.total?`${inbox.summary.total} action(s) demandent votre attention${inbox.summary.p0?` · ${inbox.summary.p0} immédiate(s)`:''}.`:'Aucune action urgente pour le moment.'}</p>
       </div>
 
       <div class="manager-inbox-stats">
-        <button class="manager-inbox-stat ${inbox.summary.blocking?'danger':''}" data-manager-go="managerControls"><strong>${inbox.summary.total}</strong><span>À valider</span></button>
+        <button class="manager-inbox-stat ${inbox.summary.p0?'danger':''}" data-manager-go="managerControls"><strong>${inbox.summary.total}</strong><span>À valider${inbox.summary.p0?` · ${inbox.summary.p0} urgent(s)`:''}</span></button>
         <button class="manager-inbox-stat ${inbox.summary.alertCritical?'danger':''}" data-manager-go="incidents"><strong>${inbox.summary.alerts}</strong><span>Alertes</span></button>
         <div class="manager-inbox-stat"><strong>${health.score}</strong><span>Santé / 100</span></div>
       </div>
@@ -43,7 +43,7 @@ export async function renderManagerHome(){
       ${inbox.summary.alerts?`<div class="manager-alert-strip"><div><strong>${inbox.summary.alerts} alerte(s) ouverte(s)</strong><small>${inbox.summary.alertCritical?`${inbox.summary.alertCritical} critique(s) · `:''}actions correctives, preuves et clôture</small></div><button data-manager-go="incidents">Traiter</button></div>`:''}
 
       <section class="manager-inbox-section">
-        <div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>Trié par blocage et priorité métier.</span></div>${inbox.summary.blocking?status(`${inbox.summary.blocking} bloquant(s)`,'danger'):status('Priorisé','neutral')}</div>
+        <div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>Sécurité → stock → prix/promo → contrôles opérationnels.</span></div>${inbox.summary.p0?status(`${inbox.summary.p0} immédiat(s)`,'danger'):status('Priorisé','neutral')}</div>
         <div class="manager-action-list">${top.length?top.map(actionCard).join(''):'<div class="manager-all-good"><strong>Rien à valider.</strong><span>StoreOps vous préviendra dès qu’un contrôle ou une anomalie apparaît.</span></div>'}</div>
         ${remaining?`<button class="btn soft" data-manager-go="managerControls" style="width:100%;margin-top:10px">Voir les ${remaining} autres action(s)</button>`:''}
       </section>
