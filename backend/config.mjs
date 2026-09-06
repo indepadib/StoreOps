@@ -6,6 +6,7 @@ function parseStoreMap(v=''){
   return Object.fromEntries(raw.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return i>0?[x.slice(0,i).trim(),x.slice(i+1).trim()]:null}).filter(x=>x&&x[0]&&x[1]));
 }
 function source(v,fallback='storeops'){const s=String(v||fallback).trim().toLowerCase();return ['storeops','d365'].includes(s)?s:fallback}
+function readMode(v,fallback='simulated'){const s=String(v||fallback).trim().toLowerCase();return ['live','simulated'].includes(s)?s:fallback}
 
 export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
@@ -13,12 +14,8 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
   entra: {
-    // tenantId accepts either the Microsoft tenant GUID or the verified tenant domain
-    // (e.g. contoso.onmicrosoft.com) for OIDC discovery/authorization.
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '',
-    // Keep the strict tid claim check separate because JWT tid is always a GUID.
-    // Set ENTRA_ALLOWED_TENANT_ID once the Directory (tenant) ID is known.
     allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || '',
     requiredScope: process.env.ENTRA_REQUIRED_SCOPE || 'StoreOps.Access'
   },
@@ -27,12 +24,18 @@ export const config = {
     cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops')
   },
   dynamics: {
-    mode: process.env.D365_MODE || 'simulated', // simulated | live
+    mode: readMode(process.env.D365_MODE,'simulated'), // transport/auth mode; writes stay explicitly blocked in services
     baseUrl: cleanUrl(process.env.D365_BASE_URL),
     tenantId: process.env.D365_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
     clientId: process.env.D365_CLIENT_ID || '',
     clientSecret: process.env.D365_CLIENT_SECRET || '',
     oauthVersion: process.env.D365_OAUTH_VERSION || 'v2',
+    read: {
+      product: readMode(process.env.D365_PRODUCT_READ_MODE,'simulated'),
+      stock: readMode(process.env.D365_STOCK_READ_MODE,'simulated'),
+      price: readMode(process.env.D365_PRICE_READ_MODE,'simulated'),
+      promotion: readMode(process.env.D365_PROMOTION_READ_MODE,'simulated')
+    },
     dataAreaId: process.env.D365_DATA_AREA_ID || '',
     dataAreaField: process.env.D365_DATA_AREA_FIELD || 'dataAreaId',
     productEntity: process.env.D365_PRODUCT_ENTITY || '',
@@ -45,10 +48,18 @@ export const config = {
     barcodeUnitField: process.env.D365_BARCODE_UNIT_FIELD || 'UnitID',
     defaultPriceGroup: process.env.D365_DEFAULT_PRICE_GROUP || 'Franprix',
     storePriceGroups: parseStoreMap(process.env.D365_STORE_PRICE_GROUPS || ''),
+    entities: {
+      basePrice: process.env.D365_BASE_PRICE_ENTITY || 'ReleasedProductsV2',
+      salesPrice: process.env.D365_SALES_PRICE_ENTITY || 'SalesPriceAgreements',
+      retailDiscount: process.env.D365_RETAIL_DISCOUNT_ENTITY || 'RetailDiscounts',
+      retailDiscountLine: process.env.D365_RETAIL_DISCOUNT_LINE_ENTITY || 'RetailDiscountLines',
+      retailDiscountPriceGroup: process.env.D365_RETAIL_DISCOUNT_PRICE_GROUP_ENTITY || 'RetailDiscountPriceGroups',
+      mixMatchLineGroup: process.env.D365_MIX_MATCH_LINE_GROUP_ENTITY || 'MixAndMatchLineGroups'
+    },
     odataPageSize: Math.max(50,Math.min(2000,Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
     odataMaxRows: Math.max(500,Math.min(100000,Number(process.env.D365_ODATA_MAX_ROWS)||25000)),
     stock: {
-      entity: process.env.D365_STOCK_ENTITY || '',
+      entity: process.env.D365_STOCK_ENTITY || 'WarehousesOnHandV2',
       productField: process.env.D365_STOCK_PRODUCT_FIELD || 'ItemNumber',
       nameField: process.env.D365_STOCK_NAME_FIELD || '',
       eanField: process.env.D365_STOCK_EAN_FIELD || '',
@@ -80,6 +91,8 @@ export function productionMisconfig(){
     if(!config.dynamics.tenantId) issues.push('D365_TENANT_ID manquant');
     if(!config.dynamics.clientId) issues.push('D365_CLIENT_ID manquant');
     if(!config.dynamics.clientSecret) issues.push('D365_CLIENT_SECRET manquant');
+    if(config.dynamics.read.product==='live'&&!config.dynamics.barcodeEntity)issues.push('D365_BARCODE_ENTITY manquant pour Article/EAN LIVE');
+    if(config.dynamics.read.stock==='live'&&!config.dynamics.stock.entity)issues.push('D365_STOCK_ENTITY manquant pour Stock LIVE');
   }
   return issues;
 }

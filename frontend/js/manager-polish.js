@@ -1,5 +1,7 @@
 import './manager-dlc-focus.js';
 import './manager-commercial-focus.js';
+import './manager-inventory-focus.js';
+import {app} from './state.js';
 
 const MANAGER=()=>document.body.classList.contains('manager-mode');
 let submitPending=false;
@@ -66,11 +68,25 @@ function simplifyTaskModal(){
   if(submit&&submit.textContent.trim()==='Valider le contrôle')submit.textContent='Valider';
 }
 
+function applyAccessChrome(){
+  if(MANAGER()){
+    const store=document.querySelector('#storeSelect'),person=document.querySelector('#demoUser');
+    if(store)store.hidden=true;
+    if(person)person.hidden=true;
+  }
+  if(app.user?.id==='u-quality-audit'){
+    const pill=document.querySelector('#rolePill'),meta=document.querySelector('#headerMeta');
+    if(pill)pill.textContent='Responsable Qualité & Audit';
+    if(meta&&meta.textContent.includes('Lecture seule'))meta.textContent=meta.textContent.replace('Lecture seule','Responsable Qualité & Audit');
+  }
+}
+
 function simplifyManagerChrome(){
   if(!MANAGER())return;
   const refresh=document.querySelector('#refreshBtn');
   if(refresh)refresh.hidden=true;
   document.querySelector('footer')?.setAttribute('aria-hidden','true');
+  applyAccessChrome();
 }
 
 function autoTakeJourney(){
@@ -111,6 +127,7 @@ export function initManagerPolish(){
   taskModal?.addEventListener('click',e=>{if(e.target===taskModal)resetPending()},{capture:true});
   document.addEventListener('click',e=>{const btn=e.target.closest?.('[data-validate]');if(MANAGER()&&btn)markFinalize(btn.dataset.validate)},{capture:true});
   const observer=new MutationObserver(()=>{
+    applyAccessChrome();
     simplifyManagerChrome();
     simplifyTaskModal();
     autoTakeJourney();
@@ -118,6 +135,7 @@ export function initManagerPolish(){
     if(submitPending&&taskModal?.hidden){resetPending();showSuccess()}
   });
   observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['hidden','class','disabled']});
+  applyAccessChrome();
   simplifyManagerChrome();
   simplifyTaskModal();
   autoTakeJourney();
