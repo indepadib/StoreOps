@@ -81,6 +81,13 @@ function simplifyAlertsPage(){
   let btn=page.querySelector('#managerReportAlert');
   if(!btn){btn=document.createElement('button');btn.id='managerReportAlert';btn.className='btn soft';btn.textContent='Signaler un problème';page.querySelector('.page-title')?.appendChild(btn);btn.addEventListener('click',()=>{draft={title:'',category:'',impact:''};step=0;render()})}
   const openTitle=[...page.querySelectorAll('.network-section-title strong')].find(x=>x.textContent.includes('Incidents ouverts'));if(openTitle)openTitle.textContent='À traiter';
+  const open=[...page.querySelectorAll('[data-open-incident]')];
+  let next=page.querySelector('#managerNextAlert');
+  if(open.length){
+    if(!next){next=document.createElement('button');next.id='managerNextAlert';next.className='btn brand wide';next.style.margin='10px 0 14px';page.querySelector('#incidentsContent')?.prepend(next)}
+    next.textContent=open.length===1?'Traiter l’alerte':'Traiter la prochaine alerte';
+    next.onclick=()=>open[0]?.click();
+  }else next?.remove();
 }
 
 export function initManagerAlerts(){

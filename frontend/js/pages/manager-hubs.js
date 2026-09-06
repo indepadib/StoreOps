@@ -47,27 +47,34 @@ export async function renderManagerControls(){
     ['P3','À surveiller','Sujets non urgents à garder sous contrôle.']
   ];
   const stockSource=inbox.stockData?.source?`${inbox.stockData.source}${inbox.stockData.warehouse?` · ${inbox.stockData.warehouse}`:''}`:'';
+  const urgent=inbox.items.filter(x=>['P0','P1'].includes(x.priority)),later=inbox.items.filter(x=>['P2','P3'].includes(x.priority));
   $('#managerControlsContent').innerHTML=`
-    <div class="manager-inbox-head"><span class="manager-eyebrow">File de travail Responsable</span><h2>À valider</h2><p>Une seule liste, triée par impact magasin. Les plus urgents sont toujours en haut.</p></div>
+    <div class="manager-inbox-head"><span class="manager-eyebrow">Votre file de travail</span><h2>À valider</h2><p>StoreOps vous montre d’abord ce qui compte vraiment. Traitez une carte, puis passez à la suivante.</p></div>
     <div class="manager-inbox-stats"><div class="manager-inbox-stat ${inbox.summary.p0?'danger':''}"><strong>${inbox.summary.p0}</strong><span>Immédiats</span></div><div class="manager-inbox-stat ${inbox.summary.p1?'danger':''}"><strong>${inbox.summary.p1}</strong><span>Prioritaires</span></div><button class="manager-inbox-stat ${inbox.summary.alertCritical?'danger':''}" data-manager-go="incidents"><strong>${inbox.summary.alerts}</strong><span>Alertes</span></button></div>
     ${stockSource?`<div class="small muted" style="margin:-3px 2px 12px">Stock : ${esc(stockSource)}</div>`:''}
-    ${inbox.items.length?priorityGroups.map(([key,label,detail])=>{const rows=inbox.items.filter(x=>x.priority===key);return rows.length?`<section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>${esc(label)}</h3><span>${esc(detail)}</span></div><strong>${rows.length}</strong></div><div class="manager-action-list">${rows.map(actionCard).join('')}</div></section>`:''}).join(''):'<div class="manager-all-good"><strong>Tout est validé.</strong><span>Aucune action en attente pour ce magasin.</span></div>'}
-    ${inbox.alerts.length?`<section class="manager-alert-strip"><div><strong>${inbox.alerts.length} alerte(s) à traiter séparément</strong><small>Problèmes / incidents avec action corrective, preuve et clôture.</small></div><button data-manager-go="incidents">Ouvrir</button></section>`:''}`;
+    ${urgent.length?priorityGroups.slice(0,2).map(([key,label,detail])=>{const rows=inbox.items.filter(x=>x.priority===key);return rows.length?`<section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>${esc(label)}</h3><span>${esc(detail)}</span></div><strong>${rows.length}</strong></div><div class="manager-action-list">${rows.map(actionCard).join('')}</div></section>`:''}).join(''):'<div class="manager-all-good"><strong>Rien d’urgent.</strong><span>Les sujets prioritaires sont traités.</span></div>'}
+    ${later.length?`<details class="card" style="margin-top:14px"><summary><strong>${later.length} autre(s) action(s) aujourd’hui</strong> · voir seulement si besoin</summary><div style="margin-top:12px">${priorityGroups.slice(2).map(([key,label])=>{const rows=inbox.items.filter(x=>x.priority===key);return rows.length?`<div class="manager-group-title">${esc(label)}</div><div class="manager-action-list">${rows.map(actionCard).join('')}</div>`:''}).join('')}</div></details>`:''}
+    ${inbox.alerts.length?`<section class="manager-alert-strip"><div><strong>${inbox.alerts.length} alerte(s) ouverte(s)</strong><small>Problèmes qui nécessitent une correction ou une preuve.</small></div><button data-manager-go="incidents">Traiter</button></section>`:''}`;
 }
 
 export async function renderManagerMore(){
   const inbox=await loadManagerInbox();syncManagerNav(inbox);
   $('#managerMoreContent').innerHTML=`
-    <div class="manager-hub-head"><span class="manager-eyebrow">Plus</span><h2>Tous les outils</h2><p>Accès direct aux modules quand vous ne passez pas par la file « À valider ».</p></div>
+    <div class="manager-hub-head"><span class="manager-eyebrow">Plus</span><h2>Que voulez-vous faire ?</h2><p>Les actions les plus fréquentes d’abord. Le reste reste accessible sans encombrer l’écran.</p></div>
     <div class="manager-more-grid">
-      ${navCard('commercial','Prix & promotions','Scan prix, changements du jour et promotions.')}
-      ${navCard('inventory','Stock & inventaire','Comptages, recomptages, ruptures et écarts.')}
-      ${navCard('receipts','Réception','Contrôle qualité article par article.')}
-      ${navCard('dlc','DLC / DDM','Contrôle article et alertes DLC.')}
-      ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
-      ${navCard('quality','Qualité','Contrôles ponctuels et historique.')}
-      ${navCard('maintenance','Maintenance','Pannes et remises en service.')}
-      ${navCard('losses','Démarque & pertes','Sorties et justificatifs.')}
-      ${navCard('cash','Caisses & clôture','Rapprochement des shifts et moyens de paiement.')}
-    </div>`;
+      ${navCard('commercial','Scanner un prix','Vérifier un article ou traiter les changements prix / promo.')}
+      ${navCard('inventory','Compter un stock','Inventaire ciblé, recomptage ou anomalie stock.')}
+      ${navCard('receipts','Réceptionner','Contrôler une livraison article par article.')}
+      ${navCard('losses','Enregistrer une perte','Démarque, casse, destruction ou autre sortie.')}
+      ${navCard('dlc','Contrôler une DLC','Scanner et traiter une DLC / DDM.')}
+    </div>
+    <details class="card" style="margin-top:14px">
+      <summary><strong>Autres outils</strong> · moins fréquents</summary>
+      <div class="manager-more-grid" style="margin-top:12px">
+        ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
+        ${navCard('quality','Qualité','Contrôles ponctuels et historique.')}
+        ${navCard('maintenance','Maintenance','Pannes et remises en service.')}
+        ${navCard('cash','Caisses & clôture','Rapprochement des shifts et moyens de paiement.')}
+      </div>
+    </details>`;
 }
