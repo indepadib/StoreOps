@@ -3,6 +3,7 @@ import { db } from '../db.mjs';
 const PILOT_STORE_ID='val-fleuri';
 const PILOT_MANAGER_ID='u-vf';
 const OPS_DIRECTOR_ID='u-ops';
+const ADMIN_ID='u-admin';
 
 function ensureColumn(table,column,definition){
   const cols=db.prepare(`PRAGMA table_info(${table})`).all();
@@ -30,14 +31,24 @@ db.prepare(`UPDATE stores SET opening_time='08:00',closing_time='23:00',active=1
 db.prepare(`UPDATE users SET name='Ayoub Nachiti',role='store_manager',store_id=?,active=1 WHERE id=?`).run(PILOT_STORE_ID,PILOT_MANAGER_ID);
 db.prepare(`UPDATE users SET name=?,role='ops_director',store_id=NULL,active=1 WHERE id=?`).run(String(process.env.STOREOPS_OPS_DIRECTOR_NAME||'Mourad').trim()||'Mourad',OPS_DIRECTOR_ID);
 
+// Separate technical pilot administrator. It deliberately uses the existing
+// ops_director permission envelope so the administrator can validate every
+// store/system screen without being confused with Mourad's identity.
+const adminName=String(process.env.STOREOPS_ADMIN_NAME||'Admin StoreOps').trim()||'Admin StoreOps';
+db.prepare(`INSERT INTO users(id,name,email,entra_oid,role,store_id,active,dynamics_email)
+VALUES(?,?,NULL,NULL,'ops_director',NULL,1,NULL)
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role='ops_director',store_id=NULL,active=1`).run(ADMIN_ID,adminName);
+
 const appEmail=String(process.env.STOREOPS_VF_MANAGER_EMAIL||'').trim().toLowerCase();
 const dynamicsEmail=String(process.env.STOREOPS_VF_D365_EMAIL||'').trim().toLowerCase();
 const opsEmail=String(process.env.STOREOPS_OPS_DIRECTOR_EMAIL||'').trim().toLowerCase();
 const opsMicrosoftEmail=String(process.env.STOREOPS_OPS_DIRECTOR_D365_EMAIL||process.env.STOREOPS_OPS_DIRECTOR_MICROSOFT_EMAIL||'').trim().toLowerCase();
+const adminMicrosoftEmail=String(process.env.STOREOPS_ADMIN_MICROSOFT_EMAIL||process.env.STOREOPS_ADMIN_D365_EMAIL||'').trim().toLowerCase();
 if(appEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(appEmail,PILOT_MANAGER_ID);
 if(dynamicsEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(dynamicsEmail,PILOT_MANAGER_ID);
 if(opsEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(opsEmail,OPS_DIRECTOR_ID);
 if(opsMicrosoftEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(opsMicrosoftEmail,OPS_DIRECTOR_ID);
+if(adminMicrosoftEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(adminMicrosoftEmail,ADMIN_ID);
 
 const terminal=db.prepare(`INSERT INTO store_terminals(id,store_id,till_code,label,tpe_mode,expected_float,active)
 VALUES(?,?,?,?,?,?,1)
