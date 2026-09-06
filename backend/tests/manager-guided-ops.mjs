@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const src=readFileSync(new URL('../../frontend/js/manager-guided-ops.js',import.meta.url),'utf8');
+const entry=readFileSync(new URL('../../frontend/js/enhancements-entry.js',import.meta.url),'utf8');
+assert.match(entry,/manager-guided-ops\.js/);
+assert.match(src,/Inventaire · étape 2\/3/);
+assert.match(src,/stock théorique reste volontairement masqué/);
+assert.match(src,/Démarque · étape 2\/3/);
+assert.match(src,/Prêt pour Dynamics/);
+assert.match(src,/Réception · contrôle article/);
+assert.match(src,/champs inutiles restent hors du parcours/);
+assert.match(src,/guided-hidden/);
+console.log('StoreOps V1.60 guided operations UX contract passed');
