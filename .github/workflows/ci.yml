@@ -52,6 +52,8 @@ jobs:
         run: node backend/tests/manager-compliance.mjs
       - name: Simple manager flow contract test
         run: node backend/tests/manager-simple-flow.mjs
+      - name: Focused commercial manager flow test
+        run: node backend/tests/manager-commercial-focus.mjs
       - name: Mobile scan and manual entry coverage test
         run: node backend/tests/mobile-dual-entry.mjs
       - name: Val Fleuri pilot operating profile test

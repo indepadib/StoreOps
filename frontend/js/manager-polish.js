@@ -1,4 +1,5 @@
 import './manager-dlc-focus.js';
+import './manager-commercial-focus.js';
 
 const MANAGER=()=>document.body.classList.contains('manager-mode');
 let submitPending=false;
