@@ -3,6 +3,7 @@ import {readFileSync} from 'node:fs';
 const auth=readFileSync(new URL('../../frontend/js/auth.js',import.meta.url),'utf8');
 const entry=readFileSync(new URL('../../frontend/js/auth-entry.js',import.meta.url),'utf8');
 const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
+const redirects=readFileSync(new URL('../../frontend/_redirects',import.meta.url),'utf8');
 const build=readFileSync(new URL('../../frontend/netlify-build.sh',import.meta.url),'utf8');
 const config=readFileSync(new URL('../config.mjs',import.meta.url),'utf8');
 const session=readFileSync(new URL('../auth/session.mjs',import.meta.url),'utf8');
@@ -15,6 +16,8 @@ assert.doesNotMatch(auth,/client_secret/i,'SPA must never contain a client secre
 assert.match(entry,/ensureAccessToken/,'app must be gated by access-token acquisition');
 assert.match(index,/\/js\/auth-entry\.js/,'index must load auth gate entrypoint');
 assert.doesNotMatch(index,/type="module" src="\/js\/app\.js"/,'index must not bypass auth gate');
+assert.doesNotMatch(redirects,/^\/\s+\/repair\.html\s+30[12]/m,'root must never redirect before the Microsoft OAuth callback is consumed');
+assert.match(redirects,/^\/repair\s+\/repair\.html\s+200/m,'manual repair route should remain available without intercepting OAuth');
 for(const name of ['STOREOPS_ENTRA_TENANT_ID','STOREOPS_ENTRA_SPA_CLIENT_ID','STOREOPS_ENTRA_API_SCOPE'])assert.ok(build.includes(name),`Netlify public auth config missing ${name}`);
 assert.match(config,/requiredScope: process\.env\.ENTRA_REQUIRED_SCOPE/,'backend required scope missing');
 assert.match(session,/lower\(dynamics_email\)/,'approved Dynamics identity fallback missing');
