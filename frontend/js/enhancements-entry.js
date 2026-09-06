@@ -5,11 +5,12 @@ const modules=[
   './manager-incident-flow.js',
   './manager-handover.js',
   './manager-control-focus.js',
-  './manager-receiving-focus.js'
+  './manager-receiving-focus.js',
+  './manager-replenishment.js'
 ];
 
 export async function loadEnhancements(){
   for(const path of modules){
-    await import(`${path}?v=1560`);
+    await import(`${path}?v=1590`);
   }
 }
