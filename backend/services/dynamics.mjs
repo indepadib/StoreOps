@@ -9,6 +9,7 @@ const PRODUCTS = {
 let tokenCache={token:null,expiresAt:0};
 const now=()=>new Date().toISOString();
 function escapeOData(v){ return String(v).replaceAll("'","''"); }
+export function isD365ReadLive(domain){return config.dynamics.mode==='live'&&config.dynamics.read?.[domain]==='live'}
 function configured(){
   const c=config.dynamics;
   return {
@@ -18,9 +19,17 @@ function configured(){
     clientSecret:{configured:!!c.clientSecret},
     oauthVersion:c.oauthVersion,
     dataAreaId:c.dataAreaId||null,
+    readModes:{...c.read},
     mappings:{
       barcodeEntity:c.barcodeEntity||null,
       productEntity:c.productEntity||null,
+      stockEntity:c.stock?.entity||null,
+      basePriceEntity:c.entities?.basePrice||null,
+      salesPriceEntity:c.entities?.salesPrice||null,
+      retailDiscountEntity:c.entities?.retailDiscount||null,
+      retailDiscountLineEntity:c.entities?.retailDiscountLine||null,
+      retailDiscountPriceGroupEntity:c.entities?.retailDiscountPriceGroup||null,
+      mixMatchLineGroupEntity:c.entities?.mixMatchLineGroup||null,
       dataAreaField:c.dataAreaField,
       barcodeField:c.barcodeField,
       barcodeProductField:c.barcodeProductField,
@@ -67,7 +76,7 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
 
 export async function getDynamicsDiagnostics({forceToken=false}={}){
   const base={checkedAt:now(),mode:config.dynamics.mode.toUpperCase(),configuration:configured(),expectedAudience:config.dynamics.baseUrl||null,checks:{config:{ok:false},token:{ok:false,skipped:true},metadata:{ok:false,skipped:true}}};
-  if(config.dynamics.mode!=='live')return{...base,connected:false,mode:'SIMULATED',checks:{...base.checks,config:{ok:true,simulated:true}},nextAction:'Passer D365_MODE=live après création de l’application Entra et du compte de service Dynamics.'};
+  if(config.dynamics.mode!=='live')return{...base,connected:false,mode:'SIMULATED',checks:{...base.checks,config:{ok:true,simulated:true}},nextAction:'La connexion Dynamics est désactivée. Activer D365_MODE uniquement quand les domaines READ sont prêts à être testés.'};
   const missing=missingConfig();base.checks.config={ok:missing.length===0,missing};
   if(missing.length)return{...base,connected:false,mode:'LIVE_CONFIG_INCOMPLETE',nextAction:`Configurer ${missing.join(', ')} dans l’environnement sécurisé du backend.`};
   const tokenStart=Date.now();
@@ -79,11 +88,11 @@ export async function getDynamicsDiagnostics({forceToken=false}={}){
   try{
     const payload=await d365Fetch('/Metadata/DataEntities');const rows=payload?.value||payload||[];
     base.checks.metadata={ok:true,skipped:false,latencyMs:Date.now()-metaStart,entityCount:Array.isArray(rows)?rows.length:null};
-    return{...base,connected:true,mode:'LIVE',nextAction:'Connexion établie. Rechercher les Data Entities réelles puis mapper article/EAN en premier.'};
+    return{...base,connected:true,mode:'LIVE',nextAction:'Connexion F&O établie. Les domaines READ restent activés séparément et ne sont LIVE qu’après leur test métier.'};
   }catch(e){base.checks.metadata={ok:false,skipped:false,latencyMs:Date.now()-metaStart,error:e.message,code:e.code||'D365_METADATA_FAILED'};return{...base,connected:false,mode:'LIVE_METADATA_FAILED',nextAction:'Le token fonctionne mais F&O refuse ou ne répond pas sur Metadata/DataEntities. Vérifier le compte de service et ses rôles Dynamics.'}}
 }
 
-export async function getDynamicsHealth(){const d=await getDynamicsDiagnostics();return{connected:d.connected,mode:d.mode,checkedAt:d.checkedAt,baseUrl:d.configuration.baseUrl.value,missing:d.checks.config.missing||[],latencyMs:d.checks.metadata.latencyMs||d.checks.token.latencyMs||null,error:d.checks.metadata.error||d.checks.token.error||null,configuredEntities:{productEntity:config.dynamics.productEntity||null,barcodeEntity:config.dynamics.barcodeEntity||null}}}
+export async function getDynamicsHealth(){const d=await getDynamicsDiagnostics();return{connected:d.connected,mode:d.mode,readModes:d.configuration.readModes||{},checkedAt:d.checkedAt,baseUrl:d.configuration.baseUrl.value,missing:d.checks.config.missing||[],latencyMs:d.checks.metadata.latencyMs||d.checks.token.latencyMs||null,error:d.checks.metadata.error||d.checks.token.error||null,configuredEntities:{productEntity:config.dynamics.productEntity||null,barcodeEntity:config.dynamics.barcodeEntity||null,stockEntity:config.dynamics.stock?.entity||null}}}
 
 export async function listDataEntities(search=''){
   if(config.dynamics.mode!=='live') return [];
@@ -124,7 +133,7 @@ export async function odataGetAll(entity,{filter='',select='',extra='',pageSize=
 }
 
 export async function getProductByEan(ean){
-  if(config.dynamics.mode!=='live') return PRODUCTS[ean] || null;
+  if(!isD365ReadLive('product')) return PRODUCTS[ean] || null;
   const c=config.dynamics;
   if(!c.barcodeEntity) throw Object.assign(new Error('D365_BARCODE_ENTITY non configuré'),{status:503,code:'D365_MAPPING_REQUIRED'});
 
@@ -140,10 +149,15 @@ export async function getProductByEan(ean){
   const barcodeName=barcodeRow[c.barcodeDescriptionField]||barcodeRow.Description||barcodeRow.description||productNumber||ean;
   const unit=barcodeRow[c.barcodeUnitField]||barcodeRow.UnitID||barcodeRow.UnitId||null;
   const dataAreaId=barcodeRow[c.dataAreaField]||barcodeRow.dataAreaId||c.dataAreaId||null;
+  const barcodeProduct={ean,name:barcodeName,price:null,stock:null,category:barcodeRow.Category||'Autre',productNumber:productNumber||null,unit,dataAreaId,source:'D365'};
 
-  if(!c.productEntity || !productNumber)return {ean,name:barcodeName,price:null,stock:null,category:barcodeRow.Category||'Autre',productNumber:productNumber||null,unit,dataAreaId,source:'D365'};
-  const select=[c.productNumberField,c.productNameField].join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1}),p=productPayload?.value?.[0]||{};
-  return {ean,name:p[c.productNameField]||barcodeName||productNumber,price:null,stock:null,category:p.Category||barcodeRow.Category||'Autre',productNumber,unit,dataAreaId,source:'D365'};
+  if(!c.productEntity || !productNumber)return barcodeProduct;
+  try{
+    const select=[c.productNumberField,c.productNameField].join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{};
+    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre'};
+  }catch(e){
+    return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
+  }
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}
@@ -180,13 +194,13 @@ function promoPresentation(header,line){
 function promoExpectedPrice(base,header,line){const b=base==null||base===''?null:Number(base);if(!Number.isFinite(b))return null;if(header?.PeriodicDiscountType==='MixAndMatch')return b;if(line?.OfferDiscountMethod==='PercentOff'){const p=Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0);return Number((b*(1-p/100)).toFixed(2))}if(Number(line?.OfferDiscountAmount||0))return Number(Math.max(0,b-Number(line.OfferDiscountAmount)).toFixed(2));if(Number(line?.OfferPrice||0))return Number(line.OfferPrice);return b}
 
 export async function getCommercialChanges(storeId,businessDate){
-  if(config.dynamics.mode!=='live')return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
+  if(!(isD365ReadLive('price')&&isD365ReadLive('promotion')))return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
   const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),company=config.dynamics.dataAreaId,companyFilter=company?`${config.dynamics.dataAreaField} eq '${escapeOData(company)}'`:'',extra=company?'cross-company=true':'',priceGroup=resolveStorePriceGroup(storeId);
   const [headersPayload,linesPayload,groupsPayload,productsPayload,barcodesPayload]=await Promise.all([
-    odataGetAll('RetailDiscounts',{filter:companyFilter,extra}),
-    odataGetAll('RetailDiscountLines',{filter:companyFilter,extra}),
-    odataGetAll('RetailDiscountPriceGroups',{filter:companyFilter,extra}),
-    odataGetAll('ReleasedProductsV2',{filter:companyFilter,extra}),
+    odataGetAll(config.dynamics.entities?.retailDiscount||'RetailDiscounts',{filter:companyFilter,extra}),
+    odataGetAll(config.dynamics.entities?.retailDiscountLine||'RetailDiscountLines',{filter:companyFilter,extra}),
+    odataGetAll(config.dynamics.entities?.retailDiscountPriceGroup||'RetailDiscountPriceGroups',{filter:companyFilter,extra}),
+    odataGetAll(config.dynamics.entities?.basePrice||'ReleasedProductsV2',{filter:companyFilter,extra}),
     config.dynamics.barcodeEntity?odataGetAll(config.dynamics.barcodeEntity,{filter:companyFilter,extra}):Promise.resolve({value:[],rowCount:0,pages:0,truncated:false})
   ]);
   const candidateHeaders=(headersPayload?.value||[]).filter(h=>activeOffer(h,day)||offerEndedYesterday(h,day));
