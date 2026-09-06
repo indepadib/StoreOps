@@ -5,6 +5,9 @@ export const SALES_PRICE_ENTITY='SalesPriceAgreements';
 export const BASE_PRICE_ENTITY='ReleasedProductsV2';
 
 function escapeOData(v){return String(v).replaceAll("'","''")}
+function priceLive(){return config.dynamics.mode==='live'&&config.dynamics.read?.price==='live'}
+function salesPriceEntity(){return config.dynamics.entities?.salesPrice||SALES_PRICE_ENTITY}
+function basePriceEntity(){return config.dynamics.entities?.basePrice||BASE_PRICE_ENTITY}
 
 const AGREEMENT_SELECT_FIELDS=[
   'RecordId','dataAreaId','ItemNumber','ProductNumber','Price','PriceCurrencyCode',
@@ -22,16 +25,16 @@ const BASE_PRICE_SELECT_FIELDS=[
 ];
 
 export async function getBaseSalesPriceByItem(productNumber){
-  const item=String(productNumber||'').trim();
+  const item=String(productNumber||'').trim(),entity=basePriceEntity();
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_BASE_PRICE_ITEM_REQUIRED'});
 
-  if(config.dynamics.mode!=='live'){
-    return {mode:'SIMULATED',entity:BASE_PRICE_ENTITY,productNumber:item,rowCount:0,row:null};
+  if(!priceLive()){
+    return {mode:'SIMULATED',entity,productNumber:item,rowCount:0,row:null};
   }
 
   const filters=[`ItemNumber eq '${escapeOData(item)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
-  const payload=await odataGet(BASE_PRICE_ENTITY,{
+  const payload=await odataGet(entity,{
     filter:filters.join(' and '),
     select:BASE_PRICE_SELECT_FIELDS.join(','),
     top:1,
@@ -40,7 +43,7 @@ export async function getBaseSalesPriceByItem(productNumber){
   const row=Array.isArray(payload?.value)?payload.value[0]||null:null;
   return {
     mode:'LIVE',
-    entity:BASE_PRICE_ENTITY,
+    entity,
     productNumber:item,
     dataAreaId:config.dynamics.dataAreaId||row?.dataAreaId||null,
     rowCount:row?1:0,
@@ -49,17 +52,17 @@ export async function getBaseSalesPriceByItem(productNumber){
 }
 
 export async function getSalesPriceAgreementsByItem(productNumber){
-  const item=String(productNumber||'').trim();
+  const item=String(productNumber||'').trim(),entity=salesPriceEntity();
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRICE_ITEM_REQUIRED'});
 
   const basePrice=await getBaseSalesPriceByItem(item);
-  if(config.dynamics.mode!=='live'){
-    return {mode:'SIMULATED',entity:SALES_PRICE_ENTITY,productNumber:item,rowCount:0,rows:[],basePrice};
+  if(!priceLive()){
+    return {mode:'SIMULATED',entity,productNumber:item,rowCount:0,rows:[],basePrice};
   }
 
   const filters=[`ItemNumber eq '${escapeOData(item)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
-  const payload=await odataGet(SALES_PRICE_ENTITY,{
+  const payload=await odataGet(entity,{
     filter:filters.join(' and '),
     select:AGREEMENT_SELECT_FIELDS.join(','),
     top:100,
@@ -68,7 +71,7 @@ export async function getSalesPriceAgreementsByItem(productNumber){
   const rows=Array.isArray(payload?.value)?payload.value:[];
   return {
     mode:'LIVE',
-    entity:SALES_PRICE_ENTITY,
+    entity,
     productNumber:item,
     dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||basePrice.dataAreaId||null,
     rowCount:rows.length,
