@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const repair=readFileSync(path.join(root,'frontend/repair.html'),'utf8');
+const redirects=readFileSync(path.join(root,'frontend/_redirects'),'utf8');
+const netlify=readFileSync(path.join(root,'netlify.toml'),'utf8');
+assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair page must unregister legacy service workers');
+assert.match(repair,/caches\.keys\(\)/,'repair page must enumerate browser caches');
+assert.match(repair,/storeops-shell-/,'repair page must remove StoreOps shell caches');
+assert.match(repair,/storeops_showcase_state_v7/,'repair page must reset stale Showcase state');
+assert.match(repair,/index\.html\?storeops_clean=1550/,'repair page must reopen a cache-busted index entrypoint');
+assert.match(redirects,/^\/\s+\/repair\.html\s+302!/m,'site root must pass through repair gateway during pilot');
+assert.match(netlify,/for = "\/repair\.html"[\s\S]*Cache-Control = "no-store, max-age=0"/,'repair gateway must never be cached');
+console.log('StoreOps V1.55 repair gateway contract passed');
