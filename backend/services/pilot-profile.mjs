@@ -33,9 +33,11 @@ db.prepare(`UPDATE users SET name=?,role='ops_director',store_id=NULL,active=1 W
 const appEmail=String(process.env.STOREOPS_VF_MANAGER_EMAIL||'').trim().toLowerCase();
 const dynamicsEmail=String(process.env.STOREOPS_VF_D365_EMAIL||'').trim().toLowerCase();
 const opsEmail=String(process.env.STOREOPS_OPS_DIRECTOR_EMAIL||'').trim().toLowerCase();
+const opsMicrosoftEmail=String(process.env.STOREOPS_OPS_DIRECTOR_D365_EMAIL||process.env.STOREOPS_OPS_DIRECTOR_MICROSOFT_EMAIL||'').trim().toLowerCase();
 if(appEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(appEmail,PILOT_MANAGER_ID);
 if(dynamicsEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(dynamicsEmail,PILOT_MANAGER_ID);
 if(opsEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(opsEmail,OPS_DIRECTOR_ID);
+if(opsMicrosoftEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(opsMicrosoftEmail,OPS_DIRECTOR_ID);
 
 const terminal=db.prepare(`INSERT INTO store_terminals(id,store_id,till_code,label,tpe_mode,expected_float,active)
 VALUES(?,?,?,?,?,?,1)
