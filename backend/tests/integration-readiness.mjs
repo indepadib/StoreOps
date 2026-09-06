@@ -4,6 +4,7 @@ const sim=integrationReadiness({connected:false,mappings:{}});
 assert.equal(sim.length,9);
 assert.equal(sim.find(x=>x.key==='receiving').read.code,'MAPPING');
 assert.equal(sim.find(x=>x.key==='receiving').write.code,'MAPPING');
+assert.equal(sim.find(x=>x.key==='stock').write.code,'MAPPING');
 assert.equal(sim.find(x=>x.key==='inventory').write.code,'MAPPING');
 assert.equal(sim.find(x=>x.key==='loss').write.code,'MAPPING');
 assert.equal(sim.find(x=>x.key==='cash').write.code,'MAPPING');
@@ -17,5 +18,5 @@ assert.equal(live.find(x=>x.key==='receiving').write.code,'MAPPING','backend con
 assert.equal(live.find(x=>x.key==='loss').write.code,'MAPPING','backend connection must not imply loss write mapping');
 const counts=readinessCounts(live);
 assert.equal(counts.ready,9);
-assert.equal(counts.writeMapping,4);
+assert.equal(counts.writeMapping,5);
 console.log('Dynamics integration readiness contract OK');
