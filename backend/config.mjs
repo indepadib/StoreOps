@@ -13,9 +13,13 @@ export const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
   entra: {
+    // tenantId accepts either the Microsoft tenant GUID or the verified tenant domain
+    // (e.g. contoso.onmicrosoft.com) for OIDC discovery/authorization.
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '',
-    allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
+    // Keep the strict tid claim check separate because JWT tid is always a GUID.
+    // Set ENTRA_ALLOWED_TENANT_ID once the Directory (tenant) ID is known.
+    allowedTenantId: process.env.ENTRA_ALLOWED_TENANT_ID || '',
     requiredScope: process.env.ENTRA_REQUIRED_SCOPE || 'StoreOps.Access'
   },
   pilot: {
