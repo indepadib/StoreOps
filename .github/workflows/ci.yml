@@ -56,6 +56,8 @@ jobs:
         run: node backend/tests/manager-commercial-focus.mjs
       - name: Mobile scan and manual entry coverage test
         run: node backend/tests/mobile-dual-entry.mjs
+      - name: Stock signal priority contract test
+        run: node backend/tests/stock-signals.mjs
       - name: Val Fleuri pilot operating profile test
         env: { STOREOPS_DB: /tmp/storeops-pilot-profile-ci.db }
         run: node backend/tests/pilot-profile.mjs
@@ -131,6 +133,9 @@ jobs:
       - name: Dynamics stock store mapping API test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/dynamics-stock-api.mjs
+      - name: Stock signals API integration test
+        env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
+        run: node backend/tests/stock-signals-api.mjs
       - name: Staffing readiness API integration test
         env: { STOREOPS_TEST_BASE: http://127.0.0.1:8787 }
         run: node backend/tests/staffing-api.mjs

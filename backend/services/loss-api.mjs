@@ -2,6 +2,7 @@ import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
 import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
 import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
+import { getStockSignals } from './stock-signals.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
 import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';
@@ -27,6 +28,7 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/dynamics/sales-price-agreements'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'';return{status:200,data:await getSalesPriceAgreementsByItem(item)}}
  if(path==='/api/dynamics/product-price'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'',businessDate=url.searchParams.get('date')||null,priceGroup=url.searchParams.get('priceGroup')||'Franprix';return{status:200,data:await getProductPricing(item,{businessDate,priceGroup})}}
  p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}}}
+ p=route(path,'/api/stores/:storeId/stock-signals');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await getStockSignals(p.storeId)}}
 
  p=route(path,'/api/stores/:storeId/price-check/context/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildPriceCheckContext({storeId:p.storeId,ean:p.ean,businessDate:url.searchParams.get('date')||todayISO()})}}
  p=route(path,'/api/stores/:storeId/price-checks');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:listPriceChecks(p.storeId,url.searchParams.get('date')||todayISO(),url.searchParams.get('limit')||50)}}}

@@ -42,7 +42,20 @@ export const config = {
     defaultPriceGroup: process.env.D365_DEFAULT_PRICE_GROUP || 'Franprix',
     storePriceGroups: parseStoreMap(process.env.D365_STORE_PRICE_GROUPS || ''),
     odataPageSize: Math.max(50,Math.min(2000,Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
-    odataMaxRows: Math.max(500,Math.min(100000,Number(process.env.D365_ODATA_MAX_ROWS)||25000))
+    odataMaxRows: Math.max(500,Math.min(100000,Number(process.env.D365_ODATA_MAX_ROWS)||25000)),
+    stock: {
+      entity: process.env.D365_STOCK_ENTITY || '',
+      productField: process.env.D365_STOCK_PRODUCT_FIELD || 'ItemNumber',
+      nameField: process.env.D365_STOCK_NAME_FIELD || '',
+      eanField: process.env.D365_STOCK_EAN_FIELD || '',
+      warehouseField: process.env.D365_STOCK_WAREHOUSE_FIELD || 'InventoryWarehouseId',
+      availableField: process.env.D365_STOCK_AVAILABLE_FIELD || 'AvailableOnHandQuantity',
+      physicalField: process.env.D365_STOCK_PHYSICAL_FIELD || 'OnHandQuantity',
+      storeWarehouses: parseStoreMap(process.env.D365_STORE_WAREHOUSES || ''),
+      maxOutOfStock: Math.max(1,Math.min(500,Number(process.env.D365_STOCK_MAX_OUT_OF_STOCK)||100)),
+      pageSize: Math.max(50,Math.min(2000,Number(process.env.D365_STOCK_PAGE_SIZE)||Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
+      maxRows: Math.max(500,Math.min(100000,Number(process.env.D365_STOCK_MAX_ROWS)||Number(process.env.D365_ODATA_MAX_ROWS)||25000))
+    }
   }
 };
 
