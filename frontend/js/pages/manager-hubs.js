@@ -25,7 +25,7 @@ export async function renderManagerJourney(){
   syncManagerNav(inbox);
   const phase=managerPhase(d),store=currentStore(),g=guidedCopy(phase,d);
   $('#managerJourneyContent').innerHTML=`
-    <div class="manager-hub-head"><span class="manager-eyebrow">${esc(store?.name||'Magasin')}</span><h2>Votre journée</h2><p>Un parcours continu : vous validez, StoreOps passe automatiquement à la suite.</p></div>
+    <div class="manager-hub-head"><span class="manager-eyebrow">${esc(store?.name||'Magasin')}</span><h2>Votre journée</h2><p>Une seule étape à la fois. Vous validez, StoreOps passe automatiquement à la suite.</p></div>
     ${inbox.summary.p0?`<section class="manager-alert-strip"><div><strong>${inbox.summary.p0} action(s) immédiate(s)</strong><small>Traitez-les avant de poursuivre le jalon magasin.</small></div><button data-manager-go="managerControls">Voir</button></section>`:''}
     <section class="manager-guided-card">
       <span class="manager-eyebrow">${esc(g.eyebrow)}</span><h2>${esc(g.title)}</h2><p>${esc(g.detail)}</p>${phaseDots(phase)}
