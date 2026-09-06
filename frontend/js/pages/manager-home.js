@@ -1,53 +1,58 @@
-import { api } from '../api.js';
 import { app,currentStore } from '../state.js';
 import { $,status,progress,esc } from '../ui.js';
-import { summarizeReceipts,summarizeQualityToday } from '../today-signals.js';
-import { maintenanceSummary } from '../maintenance-model.js';
 import { calculateStoreHealth } from '../store-health.js';
-import { chooseManagerNextAction,managerPhase,managerPhaseLabel } from '../manager-journey.js';
+import { managerPhase,managerPhaseLabel } from '../manager-journey.js';
 import { managerDayCompliance } from '../manager-compliance.js';
+import { loadManagerInbox,actionKind,categoryLabel,syncManagerNav } from '../manager-action-inbox.js';
 
-const phaseSteps=['OPENING','DAY','CLOSING'];
-function stepState(step,phase){
-  const idx=phaseSteps.indexOf(step),cur=phaseSteps.indexOf(phase);
-  if(phase==='CLOSED')return 'done';
-  if(idx<cur)return 'done';
-  if(idx===cur)return 'current';
-  return 'next';
+function actionCard(i){
+  const kind=actionKind(i);
+  return `<button class="manager-action-card ${i.severity==='CRITICAL'?'critical':''}" data-manager-go="${esc(i.page)}"><div><div class="chips"><span class="chip ${kind}">${esc(categoryLabel(i.category))}</span>${i.blocking?'<span class="chip danger">Bloquant</span>':''}${i.meta?`<span class="chip">${esc(i.meta)}</span>`:''}</div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small></div><span class="arrow">›</span></button>`;
 }
-function phaseStrip(phase){return `<div class="manager-phase-strip">${phaseSteps.map((p,i)=>`<div class="manager-phase-step ${stepState(p,phase)}"><span>${stepState(p,phase)==='done'?'✓':i+1}</span><strong>${managerPhaseLabel(p)}</strong></div>`).join('')}</div>`}
-function miniPriority(i){return `<button class="manager-priority" data-manager-go="${esc(i.page)}"><div>${status(i.level,i.level==='CRITICAL'?'danger':i.level==='HIGH'?'warn':'neutral')}</div><div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small></div><span>›</span></button>`}
-function complianceCard(c){const kind=c.state==='BLOCKED'?'danger':c.state==='PENDING'?'warn':'ok',label=c.state==='COMPLETE'?'À jour':`${c.pending.length} à faire`;return`<section class="card manager-compliance"><div class="row"><div><span class="manager-eyebrow">Traçabilité Responsable</span><strong>${c.done}/${c.total} obligation(s) applicable(s) réalisée(s)</strong><div class="small muted">Ce score mesure ce qui a réellement été fait dans StoreOps.</div></div>${status(`${c.percent}% · ${label}`,kind)}</div><div style="margin-top:12px">${progress(c.percent)}</div>${c.next?`<button class="manager-priority" data-manager-go="${esc(c.next.page)}" style="margin-top:8px"><div>${status(c.next.level,c.next.level==='CRITICAL'?'danger':'warn')}</div><div><strong>Prochaine obligation : ${esc(c.next.label)}</strong><small>${esc(c.next.detail)}</small></div><span>›</span></button>`:'<div class="manager-all-good"><strong>Tout ce qui est applicable est tracé.</strong><span>Aucune obligation StoreOps en attente pour le moment.</span></div>'}</section>`}
+
+function phaseStrip(phase){
+  const order=['OPENING','DAY','CLOSING'],labels={OPENING:'Ouverture',DAY:'Exploitation',CLOSING:'Fermeture'};
+  const idx=phase==='CLOSED'?3:Math.max(0,order.indexOf(phase));
+  return `<div class="manager-phase-strip">${order.map((p,i)=>`<div class="manager-phase-step ${i<idx?'done':i===idx?'current':'next'}"><span>${i<idx?'✓':i+1}</span><strong>${labels[p]}</strong></div>`).join('')}</div>`;
+}
 
 export async function renderManagerHome(){
-  const [d,lossData,cashOpenData,coldData,staffData,receiptRows,qualityRows,incidentData]=await Promise.all([
-    api(`/api/stores/${app.storeId}/dashboard`),api(`/api/stores/${app.storeId}/losses`),api(`/api/stores/${app.storeId}/cash-opening`),api(`/api/stores/${app.storeId}/cold-chain`),api(`/api/stores/${app.storeId}/staffing`),api(`/api/stores/${app.storeId}/receipts`),api(`/api/stores/${app.storeId}/quality`),api(`/api/stores/${app.storeId}/incidents?status=OPEN`)
-  ]);
-  const store=currentStore(),loss=lossData.summary||{},cashOpen=cashOpenData.summary||{},cold=coldData.summary||{},staff=staffData.summary||{},receipts=summarizeReceipts(receiptRows),quality=summarizeQualityToday(qualityRows),maintenance=maintenanceSummary(incidentData.items||[]),health=calculateStoreHealth({dashboard:d,staff,cold,cashOpen,receipts,quality,maintenance,loss}),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'',compliance=managerDayCompliance({dashboard:d,staff,cold,cashOpen,receipts,quality,maintenance,loss});
-  const next=chooseManagerNextAction({dashboard:d,staff,cold,cashOpen,maintenance,receipts,quality,loss,incidents:incidentData.items||[]});
-  const priorities=[];
-  if(Number(maintenance.openCount||0)>0)priorities.push({level:maintenance.critical||maintenance.blocking?'CRITICAL':'HIGH',title:'Maintenance',detail:`${maintenance.openCount} panne(s) ouverte(s) · ${maintenance.overdue||0} SLA en retard`,page:'maintenance'});
-  if(Number(receipts.pendingLines||0)>0)priorities.push({level:receipts.overdue?'CRITICAL':'HIGH',title:'Réceptions',detail:`${receipts.pendingLines} ligne(s) à contrôler${receipts.overdue?` · ${receipts.overdue} en retard`:''}`,page:'receipts'});
-  if(Number(quality.nonConform||0)>0)priorities.push({level:quality.temperatureNok?'CRITICAL':'HIGH',title:'Qualité',detail:`${quality.nonConform} non-conformité(s) · ${quality.temperatureNok} température(s) NOK`,page:'quality'});
-  if(Number(d.dlcAtRisk||0)>0)priorities.push({level:Number(d.dlc?.expired||0)+Number(d.dlc?.critical||0)>0?'CRITICAL':'HIGH',title:'DLC / DDM',detail:`${d.dlcAtRisk} lot(s) à risque`,page:'dlc'});
-  if(Number(d.inventory?.pendingRecounts||0)>0)priorities.push({level:'HIGH',title:'Stock',detail:`${d.inventory.pendingRecounts} recomptage(s) en attente`,page:'inventory'});
-  if(Number(d.incidents||0)>0)priorities.push({level:Number(d.criticalIncidents||0)>0?'CRITICAL':'HIGH',title:'Incidents',detail:`${d.incidents} ouvert(s) · ${d.overdueIncidents||0} en retard`,page:'incidents'});
+  const inbox=await loadManagerInbox();
+  syncManagerNav(inbox);
+  const d=inbox.dashboard,store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0];
+  const hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
+  const health=calculateStoreHealth({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}});
+  const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}});
+  const top=inbox.items.slice(0,5),remaining=Math.max(0,inbox.items.length-top.length);
+  const title=phase==='OPENING'?'Préparez le magasin sans rien oublier.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Pilotez les exceptions, pas les menus.';
 
   $('#todayContent').innerHTML=`
     <div class="manager-home manager-home-simple">
-      <div class="manager-welcome manager-welcome-simple"><div><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>${phase==='OPENING'?'On prépare le magasin.':phase==='CLOSING'?'On termine la journée.':phase==='CLOSED'?'C’est terminé pour aujourd’hui.':'Votre magasin est en cours d’exploitation.'}</h2><div class="manager-welcome-meta"><span>${esc(hours||'Horaires magasin')}</span><span>Santé ${health.score}/100</span></div></div></div>
-      ${phaseStrip(phase)}
-      <section class="manager-next ${next.level==='CRITICAL'?'critical':''}"><div class="manager-next-copy"><span class="manager-eyebrow">Maintenant</span><h2>${esc(next.title)}</h2><p>${esc(next.detail)}</p></div><button class="btn brand manager-main-cta" data-manager-go="${esc(next.page)}">${esc(next.cta)} <span>→</span></button></section>
-      <section class="manager-completion-strip"><div class="row"><div><span class="manager-eyebrow">Votre journée dans StoreOps</span><strong>${compliance.done}/${compliance.total} fait${compliance.total>1?'s':''}</strong></div><strong class="manager-completion-percent">${compliance.percent}%</strong></div>${progress(compliance.percent)}</section>
-      <details class="manager-details"><summary>Voir le détail de la journée <span>⌄</span></summary><div class="manager-details-body">
-        ${complianceCard(compliance)}
-        <div class="manager-quick-grid">
-          <button class="manager-quick" data-manager-go="managerJourney"><span>Parcours</span><strong>${managerPhaseLabel(phase)}</strong><small>Ouverture → journée → fermeture</small></button>
-          <button class="manager-quick" data-manager-go="managerControls"><span>Contrôles</span><strong>${Math.max(0,(d.incidents||0)+(d.dlcAtRisk||0)+(d.inventory?.pendingRecounts||0))}</strong><small>sujet(s) à surveiller</small></button>
-          <button class="manager-quick" data-manager-go="incidents"><span>Alertes</span><strong>${d.criticalIncidents||0}</strong><small>critique(s) ouverte(s)</small></button>
-        </div>
-        <section class="card manager-priority-card"><div class="row"><div><strong>À surveiller</strong><div class="small muted">Uniquement les sujets qui demandent votre attention.</div></div><button class="btn ghost" data-manager-go="managerControls">Voir tout</button></div><div class="manager-priority-list">${priorities.length?priorities.slice(0,3).map(miniPriority).join(''):'<div class="manager-all-good"><strong>Tout est sous contrôle.</strong><span>Aucun signal prioritaire détecté pour le moment.</span></div>'}</div></section>
-        <section class="card manager-day-progress"><div class="row"><div><strong>Progression du parcours</strong><div class="small muted">Avancement ouverture / fermeture.</div></div>${status(managerPhaseLabel(phase),phase==='CLOSED'?'ok':phase==='OPENING'||phase==='CLOSING'?'warn':'neutral')}</div><div class="manager-progress-row"><span>Ouverture</span>${progress(d.opening?.percent||0)}<strong>${d.opening?.percent||0}%</strong></div><div class="manager-progress-row"><span>Fermeture</span>${progress(d.closing?.percent||0)}<strong>${d.closing?.percent||0}%</strong></div></section>
-      </div></details>
+      <div class="manager-inbox-head">
+        <span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span>
+        <h2>${esc(title)}</h2>
+        <p>${inbox.summary.total?`${inbox.summary.total} action(s) demandent votre attention.`:'Aucune action urgente pour le moment.'}</p>
+      </div>
+
+      <div class="manager-inbox-stats">
+        <button class="manager-inbox-stat ${inbox.summary.blocking?'danger':''}" data-manager-go="managerControls"><strong>${inbox.summary.total}</strong><span>À valider</span></button>
+        <button class="manager-inbox-stat ${inbox.summary.alertCritical?'danger':''}" data-manager-go="incidents"><strong>${inbox.summary.alerts}</strong><span>Alertes</span></button>
+        <div class="manager-inbox-stat"><strong>${health.score}</strong><span>Santé / 100</span></div>
+      </div>
+
+      ${inbox.summary.alerts?`<div class="manager-alert-strip"><div><strong>${inbox.summary.alerts} alerte(s) ouverte(s)</strong><small>${inbox.summary.alertCritical?`${inbox.summary.alertCritical} critique(s) · `:''}actions correctives, preuves et clôture</small></div><button data-manager-go="incidents">Traiter</button></div>`:''}
+
+      <section class="manager-inbox-section">
+        <div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>Trié par blocage et priorité métier.</span></div>${inbox.summary.blocking?status(`${inbox.summary.blocking} bloquant(s)`,'danger'):status('Priorisé','neutral')}</div>
+        <div class="manager-action-list">${top.length?top.map(actionCard).join(''):'<div class="manager-all-good"><strong>Rien à valider.</strong><span>StoreOps vous préviendra dès qu’un contrôle ou une anomalie apparaît.</span></div>'}</div>
+        ${remaining?`<button class="btn soft" data-manager-go="managerControls" style="width:100%;margin-top:10px">Voir les ${remaining} autres action(s)</button>`:''}
+      </section>
+
+      <section class="manager-journey-compact">
+        <div class="row"><div><span class="manager-eyebrow">Parcours magasin</span><strong>${managerPhaseLabel(phase)} · ${hours||'horaires magasin'}</strong></div><button class="btn ghost" data-manager-go="managerJourney">Ouvrir</button></div>
+        <div style="margin-top:10px">${phaseStrip(phase)}</div>
+      </section>
+
+      <section class="manager-completion-strip" style="margin-top:14px"><div class="row"><div><span class="manager-eyebrow">Traçabilité du jour</span><strong>${compliance.done}/${compliance.total} obligation(s) réalisée(s)</strong></div><strong class="manager-completion-percent">${compliance.percent}%</strong></div>${progress(compliance.percent)}</section>
     </div>`;
 }
