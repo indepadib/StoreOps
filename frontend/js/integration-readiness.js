@@ -16,6 +16,22 @@ export function integrationReadiness({connected=false,mappings={}}={}){
   ];
 }
 
+export function dataProvenance({connected=false,mode='SIMULATED'}={}){
+  const live=connected&&String(mode).toUpperCase()==='LIVE';
+  const dyn=domain=>({key:domain,source:live?'Dynamics 365 F&O':'Moteur Dynamics simulé',status:live?'LIVE':'SIMULATION',tone:live?'ok':'warn'});
+  return [
+    {key:'identity',domain:'Identité & droits',source:'Microsoft Entra + StoreOps',status:'RÉEL',tone:'ok',note:'Compte authentifié et rôle imposé côté backend.'},
+    {key:'stores',domain:'Magasins & périmètres',source:'Base StoreOps',status:'CONFIGURÉ',tone:'ok',note:'Liste magasin pilotée par StoreOps, pas synchronisée depuis D365.'},
+    {...dyn('product'),domain:'Article / EAN',note:live?'Lecture F&O active.':'Les articles affichés ne doivent pas être considérés comme une lecture F&O live.'},
+    {...dyn('stock'),domain:'Stock magasin',note:live?'Lecture stock F&O active.':'Stock Dynamics encore simulé sur ce déploiement.'},
+    {...dyn('pricing'),domain:'Prix & promotions',note:live?'Prix et promotions lus depuis F&O.':'Prix/promotions Dynamics encore simulés sur ce déploiement.'},
+    {key:'ops',domain:'Ouverture, contrôles, incidents, passation',source:'Base StoreOps persistante',status:'STOREOPS',tone:'ok',note:'Les validations réellement saisies sont conservées ; leur exactitude dépend des saisies terrain.'},
+    {key:'staffing',domain:'Équipe / prise de poste',source:'StoreOps',status:'STOREOPS',tone:'ok',note:'Source pilote StoreOps ; planning RH externe non branché.'},
+    {key:'cash',domain:'Caisses ouverture / clôture',source:'StoreOps',status:'PILOTE',tone:'neutral',note:'Ouverture et fallback de clôture manuels ; D365 caisse non branché.'},
+    {key:'writes',domain:'Réception / inventaire / démarque — écritures',source:'StoreOps uniquement',status:'D365 WRITE OFF',tone:'warn',note:'Aucun posting F&O réel n’est activé tant que chaque mapping write n’est pas validé.'}
+  ];
+}
+
 export function readinessCounts(rows=[]){
   return {
     ready:rows.filter(r=>['READY','NATIVE'].includes(r.storeops?.code)).length,
