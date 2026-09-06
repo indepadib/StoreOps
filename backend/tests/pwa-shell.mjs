@@ -36,8 +36,12 @@ assert.match(rescue,/getRegistrations\(\)/,'boot rescue must be able to remove a
 assert.match(rescue,/caches\.delete/,'boot rescue must clear stale StoreOps shell caches');
 assert.match(bootClassic,/STOREOPS_BOOT_PREP/,'classic runtime must prepare a cache-clean startup before modules');
 assert.match(bootClassic,/Impossible de démarrer StoreOps/,'classic runtime must surface module startup failures');
+assert.match(bootClassic,/STOREOPS_BOOT_HEARTBEAT/,'watchdog must respect active authenticated bootstrap progress');
+assert.match(bootClassic,/30000/,'global watchdog must allow OAuth and Netlify cold starts before failing');
 assert.match(netlifyBuild,/cat \.\/js\/boot-classic\.js >> runtime-config\.js/,'Netlify runtime config must include the classic boot guard');
-assert.match(authEntry,/waitForStoreOpsUi/,'auth entry must wait for real profile/store readiness');
+assert.match(authEntry,/waitForStoreOpsUi\(ms=25000\)/,'authenticated bootstrap must allow enough time for profile and store cold-start loading');
+assert.match(authEntry,/STOREOPS_BOOT_HEARTBEAT/,'auth startup phases must refresh the watchdog heartbeat');
+assert.match(authEntry,/innerText/,'real app bootstrap error must be surfaced instead of a generic watchdog message');
 assert.match(authEntry,/STOREOPS_BOOT_PREP/,'auth entry must await cache cleanup before module loading');
 assert.match(authEntry,/import\(`\.\/api\.js\?v=\$\{BUILD\}`\)/,'critical startup modules must be cache-busted');
 assert.doesNotMatch(pwa,/serviceWorker\.register/,'pilot must not re-register a service worker while boot stability is being validated');
@@ -53,4 +57,4 @@ assert.match(netlifyToml,/for = "\/repair\.html"[\s\S]*Cache-Control = "no-store
 const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'manifest.webmanifest'),'utf8'));
 assert.equal(manifest.display,'standalone');
 assert.equal(manifest.start_url,'/');
-console.log(`StoreOps V1.66 OAuth-safe boot contract passed · ${assets.length} cached assets`);
+console.log(`StoreOps V1.67 OAuth/cold-start-safe boot contract passed · ${assets.length} cached assets`);
