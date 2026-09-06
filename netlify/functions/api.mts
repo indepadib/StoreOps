@@ -122,34 +122,6 @@ async function authenticatedUser(request:Request,runtime:{dbModule:typeof import
 async function handleV168Route(request:Request,runtime:{dbModule:typeof import('../../backend/db.mjs')}){
   const url=new URL(request.url),path=url.pathname;
 
-  // Temporary, token-protected smoke probe. STOREOPS_SMOKE_TOKEN exists only in
-  // Deploy Preview, so this route is unreachable in production by design.
-  if(request.method==='GET'&&path==='/api/_ops/d365-smoke'){
-    const expected=Netlify.env.get('STOREOPS_SMOKE_TOKEN'),provided=url.searchParams.get('token')||'';
-    if(!expected||provided!==expected)return Response.json({error:'Not found'},{status:404});
-    const dynamics=await import('../../backend/services/dynamics.mjs');
-    const stockService=await import('../../backend/services/dynamics-stock.mjs');
-    const priceService=await import('../../backend/services/dynamics-price.mjs');
-    const promotionService=await import('../../backend/services/dynamics-promotion.mjs');
-    const ean='5449000206770',storeId='val-fleuri';
-    const diagnostics=await dynamics.getDynamicsDiagnostics({forceToken:true});
-    if(!diagnostics.connected)return Response.json({ok:false,transport:{connected:false,mode:diagnostics.mode,error:diagnostics.checks?.token?.error||diagnostics.checks?.metadata?.error||null},readModes:diagnostics.configuration?.readModes||{}},{status:502});
-    const product=await dynamics.getProductByEan(ean);
-    const productNumber=product?.productNumber||null;
-    const stock=productNumber?await stockService.getStoreStockByProductNumber(storeId,productNumber):null;
-    const price=productNumber?await priceService.getSalesPriceAgreementsByItem(productNumber):null;
-    const promotions=productNumber?await promotionService.getRetailPromotionsByItem(productNumber,{priceGroup:'Franprix'}):null;
-    return Response.json({
-      ok:true,
-      transport:{connected:true,mode:diagnostics.mode},
-      readModes:diagnostics.configuration?.readModes||{},
-      product:{ok:productNumber==='HS-004873',ean,productNumber,name:product?.name||null,source:product?.source||null,enrichment:product?.productEnrichment||'OK'},
-      stock:{ok:!!stock&&stock.source?.startsWith('D365/'),warehouseId:stock?.warehouseId||null,onHandQuantity:stock?.onHandQuantity??null,availableOnHandQuantity:stock?.availableOnHandQuantity??null,source:stock?.source||null},
-      price:{ok:price?.mode==='LIVE'&&!!price?.basePrice?.row,baseSalesPrice:price?.basePrice?.row?.SalesPrice??null,agreementRows:price?.rowCount??0,entity:price?.entity||null},
-      promotions:{ok:promotions?.mode==='LIVE',rowCount:promotions?.rowCount??0,activeCount:(promotions?.promotions||[]).filter((x:any)=>x.activeForRequestedContext).length,entity:'RetailDiscounts'}
-    });
-  }
-
   // Existing frontend diagnostics routes were missing from server.mjs in V1.67.
   if(request.method==='GET'&&(path==='/api/dynamics/diagnostics'||path==='/api/dynamics/probe')){
     const auth=await authenticatedUser(request,runtime);if(auth.response)return auth.response;
