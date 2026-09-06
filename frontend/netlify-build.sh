@@ -9,3 +9,4 @@ const apiScope=process.env.STOREOPS_ENTRA_API_SCOPE||(clientId?'api://'+clientId
 const cfg={apiBase:process.env.STOREOPS_API_BASE||'',mode:process.env.STOREOPS_RUNTIME_MODE||'showcase',entra:{tenantId,spaClientId:clientId,apiScope}};
 process.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\n');
 NODE
+cat ./js/boot-classic.js >> runtime-config.js
