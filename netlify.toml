@@ -1,7 +1,14 @@
 [build]
-  base = "frontend"
-  command = "./netlify-build.sh"
-  publish = "."
+  base = "."
+  command = "cd frontend && ./netlify-build.sh"
+  publish = "frontend"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 [[headers]]
   for = "/*"

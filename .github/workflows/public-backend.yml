@@ -1,0 +1,23 @@
+name: StoreOps Public Backend Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  public-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install Netlify runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Typecheck Netlify Function
+        run: npx tsc -p tsconfig.netlify.json
+      - name: Public backend persistence contract
+        run: node backend/tests/netlify-public-backend.mjs
