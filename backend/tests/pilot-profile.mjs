@@ -1,4 +1,8 @@
 process.env.STOREOPS_DB=process.env.STOREOPS_DB||'/tmp/storeops-pilot-profile.db';
+process.env.STOREOPS_VF_MANAGER_EMAIL='manager@retail.example';
+process.env.STOREOPS_VF_D365_EMAIL='manager@tenant.example';
+process.env.STOREOPS_OPS_DIRECTOR_EMAIL='director@retail.example';
+process.env.STOREOPS_OPS_DIRECTOR_D365_EMAIL='director@tenant.example';
 const {db}=await import('../db.mjs');
 const {storeOperatingProfile,storeTerminals}=await import('../services/pilot-profile.mjs');
 function ok(v,m){if(!v)throw new Error(m)}
@@ -6,6 +10,13 @@ const p=storeOperatingProfile('val-fleuri');
 ok(p?.pilot===true,'Val Fleuri must be flagged as pilot');
 ok(p.store.opening_time==='08:00'&&p.store.closing_time==='23:00','Val Fleuri opening hours mismatch');
 ok(p.manager?.name==='Ayoub Nachiti'&&p.manager?.role==='store_manager','Val Fleuri manager provisioning mismatch');
+const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get();
+ok(manager.email==='manager@retail.example','manager app/contact email mapping mismatch');
+ok(manager.dynamics_email==='manager@tenant.example','manager Microsoft identity mapping mismatch');
+const director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
+ok(director.email==='director@retail.example','director app/contact email mapping mismatch');
+ok(director.dynamics_email==='director@tenant.example','director Microsoft identity mapping mismatch');
+ok(director.role==='ops_director'&&director.store_id==null,'director scope mapping mismatch');
 const terminals=storeTerminals('val-fleuri');
 ok(terminals.length===2,'Val Fleuri must have two active tills');
 ok(terminals[0].till_code==='C01'&&terminals[0].tpe_mode==='INTEGRATED','C01 must use integrated TPE');
@@ -13,4 +24,4 @@ ok(terminals[1].till_code==='C02'&&terminals[1].tpe_mode==='MANUAL','C02 must us
 ok(terminals.every(x=>Number(x.expected_float)===1000),'Val Fleuri must use 1000 DH opening float per till');
 const cols=db.prepare(`PRAGMA table_info(users)`).all();ok(cols.some(x=>x.name==='dynamics_email'),'Dynamics identity column missing');
 const terminalCols=db.prepare(`PRAGMA table_info(store_terminals)`).all();ok(terminalCols.some(x=>x.name==='expected_float'),'Store terminal opening float column missing');
-console.log('Val Fleuri pilot profile OK');
+console.log('Val Fleuri pilot profile and Microsoft identity mapping OK');
