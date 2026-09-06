@@ -1,4 +1,7 @@
 import { config } from '../config.mjs';
+import { scheduleRealOnlyCleanup } from './real-only.mjs';
+
+scheduleRealOnlyCleanup();
 
 function storeOpsPilotSnapshot(storeId,businessDate){
  const code=String(storeId||'STORE').toUpperCase().replaceAll('-','_');
@@ -12,6 +15,7 @@ function storeOpsPilotSnapshot(storeId,businessDate){
 }
 
 export async function getStaffingSnapshot(storeId,businessDate){
+ if(config.realOnly)throw Object.assign(new Error('Planning réel non connecté. Aucune équipe simulée n’est affichée dans StoreOps.'),{status:503,code:'STAFFING_REAL_SOURCE_NOT_CONFIGURED',details:{storeId,businessDate}});
  if(config.pilot.staffingSource==='storeops')return storeOpsPilotSnapshot(storeId,businessDate);
  if(config.dynamics.mode!=='live')return storeOpsPilotSnapshot(storeId,businessDate);
  throw Object.assign(new Error('Planning équipe D365/HR non configuré. Passe STOREOPS_STAFFING_SOURCE=storeops pour le pilote ou mappe la source RH avant activation.'),{status:503,code:'D365_STAFFING_MAPPING_REQUIRED',details:{storeId,businessDate}});

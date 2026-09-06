@@ -41,7 +41,9 @@ ok(x.r.status===200&&Number(x.data.price_tolerance)===0.05,'director commercial 
 x=await call('PUT','/api/commercial/policy','u-ops',{priceTolerance:0.01});
 ok(x.r.status===200,'commercial policy reset failed');
 
-// Even a fully checked opening must remain blocked until Dynamics price/promo actions are verified.
+// Commercial readiness is only one opening gate. Carita has no confirmed real cash
+// master yet, so even after its simulated CI-only commercial queue is verified the
+// store must remain blocked rather than receiving generic tills/float values.
 x=await call('GET','/api/stores/carita/tasks?group=opening','u-ops');
 ok(x.r.status===200&&x.data.tasks?.length===7,'Carita opening task list failed');
 for(const task of x.data.tasks){
@@ -59,7 +61,7 @@ for(const control of x.data.items){
   ok(verified.r.status===200,'Carita commercial control verification failed');
 }
 x=await call('POST','/api/stores/carita/process/opening/validate','u-ops',{});
-ok(x.r.status===200,'opening should validate after all commercial controls are verified');
+ok(x.r.status===409&&Number(x.data.details?.commercialBlocking)===0&&Number(x.data.details?.cashOpeningBlocking)>=1,'unconfirmed real cash master must keep Carita opening blocked after commercial controls');
 
 x=await call('GET','/api/inventory/config','u-vf');
 ok(x.r.status===200&&Number(x.data.policy?.recount_qty_threshold)===2&&Number(x.data.policy?.incident_qty_threshold)===5,'inventory config failed');

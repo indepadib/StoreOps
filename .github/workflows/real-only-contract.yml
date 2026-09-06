@@ -1,0 +1,18 @@
+name: StoreOps Real Data Only Contract
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  real-only:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify real-data-only guardrail
+        run: node backend/tests/real-only-contract.mjs
