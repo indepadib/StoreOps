@@ -16,6 +16,11 @@
     Cache-Control = "no-store, max-age=0"
 
 [[headers]]
+  for = "/repair.html"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
   for = "/runtime-config.js"
   [headers.values]
     Cache-Control = "no-store, max-age=0"
