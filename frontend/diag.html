@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>StoreOps diagnostic</title><style>body{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;background:#faf7f8;color:#241b20;margin:0;padding:24px}.wrap{max-width:620px;margin:20px auto}.logo{width:58px;height:58px;border-radius:16px;background:#df2356;color:white;display:grid;place-items:center;font-size:32px;font-weight:800}h1{font-size:28px;margin:14px 0 6px}.muted{color:#71676c}.box{background:white;border:1px solid #eadfe3;border-radius:16px;padding:16px;margin-top:16px}.step{padding:10px 0;border-top:1px solid #eee}.step:first-child{border-top:0}.ok{color:#0a7a45}.bad{color:#b00020}.run{font-weight:800;font-size:18px}.small{font-size:13px;line-height:1.4;overflow-wrap:anywhere}button{width:100%;min-height:52px;border:0;border-radius:14px;background:#df2356;color:#fff;font-weight:800;font-size:17px;margin-top:16px}</style></head><body><div class="wrap"><div class="logo">f</div><h1>Diagnostic StoreOps</h1><p class="muted">Cette page ne lance pas l’application automatiquement. Elle teste les modules un par un pour repérer exactement où Safari se bloque.</p><div id="status" class="box run">Prêt.</div><div id="log" class="box small"></div><button id="start">Lancer le diagnostic</button></div><script>
+(function(){
+ const status=document.getElementById('status'),log=document.getElementById('log'),btn=document.getElementById('start');
+ const rows=[];
+ function paint(){log.innerHTML=rows.map(r=>'<div class="step '+(r.kind||'')+'">'+r.text.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</div>').join('')}
+ function add(text,kind){rows.push({text,kind});paint()}
+ function set(text){status.textContent=text}
+ window.addEventListener('error',e=>add('ERREUR GLOBALE: '+String(e.message||e.error||'inconnue'),'bad'));
+ window.addEventListener('unhandledrejection',e=>add('PROMESSE REJETÉE: '+String(e.reason?.message||e.reason||'inconnue'),'bad'));
+ async function fetchOne(url){set('Fetch '+url);const r=await fetch(url+'?diag='+Date.now(),{cache:'no-store'});add(url+' HTTP '+r.status+' · '+(r.headers.get('content-type')||'type inconnu'),r.ok?'ok':'bad');if(!r.ok)throw new Error(url+' HTTP '+r.status);await r.text()}
+ async function importOne(url){set('Import '+url);add('→ '+url);await import(url+'?diag='+Date.now());add('✓ '+url,'ok')}
+ async function run(){btn.disabled=true;rows.length=0;paint();try{
+   add('UA: '+navigator.userAgent);
+   add('online='+navigator.onLine+' · origin='+location.origin);
+   try{localStorage.setItem('storeops_diag','1');localStorage.removeItem('storeops_diag');add('localStorage OK','ok')}catch(e){add('localStorage KO: '+e.message,'bad')}
+   const fetches=['/runtime-config.js','/js/ui.js','/js/state.js','/js/mock-api.js','/js/api.js','/js/app.js'];
+   for(const u of fetches)await fetchOne(u);
+   add('Tous les fichiers sont accessibles. Début des imports.','ok');
+   const imports=['/js/ui.js','/js/state.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js','/js/mock-api.js','/js/api.js','/js/mobile-barcode.js','/js/today-signals.js','/js/maintenance-model.js','/js/store-health.js','/js/manager-journey.js','/js/manager-compliance.js','/js/pages/today.js','/js/pages/manager-home.js','/js/pages/manager-hubs.js','/js/pages/process.js','/js/pages/handover.js','/js/pages/staffing.js','/js/pages/cold-chain.js','/js/pages/cash-opening.js','/js/pages/dlc.js','/js/pages/commercial.js','/js/pages/receipts.js','/js/pages/inventory.js','/js/pages/losses.js','/js/pages/quality.js','/js/pages/maintenance.js','/js/pages/cash.js','/js/pages/network.js','/js/pages/system.js','/js/pages/incidents.js'];
+   for(const u of imports)await importOne(u);
+   set('Tous les modules chargent. Test final app.js…');
+   add('→ /js/app.js (si Safari se fige ici, la capture montrera cette ligne)');
+   await import('/js/app.js?diag='+Date.now());
+   add('✓ app.js importé','ok');set('Diagnostic terminé.');
+ }catch(e){add('STOP: '+String(e?.message||e),'bad');set('Blocage identifié.');btn.disabled=false}}
+ btn.addEventListener('click',run);
+})();
+</script></body></html>
