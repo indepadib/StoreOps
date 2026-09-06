@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS storeops_sqlite_state (
+  id TEXT PRIMARY KEY,
+  db_bytes BYTEA NOT NULL,
+  revision BIGINT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
