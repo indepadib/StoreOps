@@ -1,9 +1,12 @@
+import { loadEnhancements } from './enhancements-entry.js';
+
 const BUILD='1560';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 function withTimeout(promise,ms,message){return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>{const e=new Error(message);e.code='API_BOOT_TIMEOUT';reject(e)},ms))])}
+function phase(label){const meta=document.querySelector('#headerMeta');if(meta&&/^(Chargement|Démarrage)/.test((meta.textContent||'').trim()))meta.textContent=`Démarrage · ${label} · v1.56.0`}
 
 function renderStartupFailure(e,{backend=false}={}){
   markStarted();
@@ -30,12 +33,15 @@ async function waitForStoreOpsUi(ms=10000){
 }
 
 async function loadApp(){
+  phase('application');
   await import(`./app.js?v=${BUILD}`);
+  phase('profil & magasin');
   await waitForStoreOpsUi();
   markStarted();
 }
 
 async function prepareBoot(){
+  phase('préparation');
   try{await withTimeout(window.STOREOPS_BOOT_PREP||Promise.resolve(),1500,'Le nettoyage navigateur prend trop de temps. StoreOps poursuit le démarrage.')}catch(e){console.warn('Préparation démarrage StoreOps',e)}
 }
 
@@ -49,6 +55,7 @@ async function start(){
     return;
   }
 
+  phase('connexion');
   const [{health},auth]=await Promise.all([import(`./api.js?v=${BUILD}`),import(`./auth.js?v=${BUILD}`)]);
   const {ensureAccessToken,ensureLocalSession,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive}=auth;
   let h;
@@ -76,4 +83,14 @@ async function start(){
     renderStartupFailure(e);
   }
 }
-start().catch(e=>{console.error(e);renderStartupFailure(e)});
+
+// One module entry point, one ordered startup. This keeps Safari from evaluating
+// several large independent module graphs at the same time during first paint.
+try{
+  phase('modules');
+  await loadEnhancements();
+  await start();
+}catch(e){
+  console.error(e);
+  renderStartupFailure(e);
+}
