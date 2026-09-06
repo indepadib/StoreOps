@@ -3,6 +3,8 @@ process.env.STOREOPS_VF_MANAGER_EMAIL='manager@retail.example';
 process.env.STOREOPS_VF_D365_EMAIL='manager@tenant.example';
 process.env.STOREOPS_OPS_DIRECTOR_EMAIL='director@retail.example';
 process.env.STOREOPS_OPS_DIRECTOR_D365_EMAIL='director@tenant.example';
+process.env.STOREOPS_ADMIN_NAME='Pilot Administrator';
+process.env.STOREOPS_ADMIN_MICROSOFT_EMAIL='admin@tenant.example';
 const {db}=await import('../db.mjs');
 const {storeOperatingProfile,storeTerminals}=await import('../services/pilot-profile.mjs');
 function ok(v,m){if(!v)throw new Error(m)}
@@ -17,6 +19,11 @@ const director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
 ok(director.email==='director@retail.example','director app/contact email mapping mismatch');
 ok(director.dynamics_email==='director@tenant.example','director Microsoft identity mapping mismatch');
 ok(director.role==='ops_director'&&director.store_id==null,'director scope mapping mismatch');
+const admin=db.prepare(`SELECT * FROM users WHERE id='u-admin'`).get();
+ok(admin?.name==='Pilot Administrator','administrator display name mismatch');
+ok(admin?.dynamics_email==='admin@tenant.example','administrator Microsoft identity mapping mismatch');
+ok(admin?.role==='ops_director'&&admin?.store_id==null,'administrator must have full network pilot permissions');
+ok(admin?.id!==director.id,'administrator must never reuse the operations director profile');
 const terminals=storeTerminals('val-fleuri');
 ok(terminals.length===2,'Val Fleuri must have two active tills');
 ok(terminals[0].till_code==='C01'&&terminals[0].tpe_mode==='INTEGRATED','C01 must use integrated TPE');
@@ -24,4 +31,4 @@ ok(terminals[1].till_code==='C02'&&terminals[1].tpe_mode==='MANUAL','C02 must us
 ok(terminals.every(x=>Number(x.expected_float)===1000),'Val Fleuri must use 1000 DH opening float per till');
 const cols=db.prepare(`PRAGMA table_info(users)`).all();ok(cols.some(x=>x.name==='dynamics_email'),'Dynamics identity column missing');
 const terminalCols=db.prepare(`PRAGMA table_info(store_terminals)`).all();ok(terminalCols.some(x=>x.name==='expected_float'),'Store terminal opening float column missing');
-console.log('Val Fleuri pilot profile and Microsoft identity mapping OK');
+console.log('Val Fleuri pilot profile, administrator and Microsoft identity mapping OK');
