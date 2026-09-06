@@ -1,5 +1,6 @@
 import './manager-dlc-focus.js';
 import './manager-commercial-focus.js';
+import './manager-inventory-focus.js';
 import {app} from './state.js';
 
 const MANAGER=()=>document.body.classList.contains('manager-mode');
