@@ -2,7 +2,7 @@
 
 Objectif : permettre à Ayoub et Mourad d'utiliser leur compte Microsoft professionnel dans StoreOps avant le durcissement final de l'hébergement Azure.
 
-## App Registration pilote
+## Une seule App Registration
 
 StoreOps peut fonctionner avec une seule App Registration Microsoft Entra pour le pilote, à condition que le secret existant reste strictement côté backend et ne soit jamais utilisé par le navigateur.
 
