@@ -8,4 +8,8 @@ V1.63 introduces the pilot public API on Netlify Functions while preserving the 
 - Pilot identities and secrets stay in deployment environment variables, never in GitHub.
 - Dynamics remains simulated until live D365 backend credentials and write mappings are explicitly validated.
 
-This document also provides a deterministic `main` push so Netlify publishes the V1.63 production backend after the merge.
+## Production activation
+
+The production frontend is configured to use `https://franprix-storeops.netlify.app` as its StoreOps API base. This switches the built runtime from Showcase mode to API mode and enables the Microsoft Entra login flow. Role and store access remain enforced by the backend after token validation.
+
+This commit intentionally triggers the production build that incorporates the API-mode environment configuration.
