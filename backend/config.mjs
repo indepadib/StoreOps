@@ -6,12 +6,16 @@ function parseStoreMap(v=''){
   return Object.fromEntries(raw.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return i>0?[x.slice(0,i).trim(),x.slice(i+1).trim()]:null}).filter(x=>x&&x[0]&&x[1]));
 }
 function source(v,fallback='storeops'){const s=String(v||fallback).trim().toLowerCase();return ['storeops','d365'].includes(s)?s:fallback}
+function flag(v){return ['1','true','yes','on'].includes(String(v||'').trim().toLowerCase())}
 
 export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
+  // Production pilot rule: never manufacture operational data. A missing source
+  // must stay unavailable/empty until its real connector is configured.
+  realOnly: flag(process.env.STOREOPS_REAL_ONLY),
   entra: {
     // tenantId accepts either the Microsoft tenant GUID or the verified tenant domain
     // (e.g. contoso.onmicrosoft.com) for OIDC discovery/authorization.
