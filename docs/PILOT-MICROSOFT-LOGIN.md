@@ -2,31 +2,24 @@
 
 Objectif : permettre à Ayoub et Mourad d'utiliser leur compte Microsoft professionnel dans StoreOps avant le durcissement final de l'hébergement Azure.
 
-## Une seule App Registration
+## App Registration pilote
 
-Pour le pilote, une seule App Registration Microsoft Entra suffit pour le frontend StoreOps et l'API.
+StoreOps peut fonctionner avec une seule App Registration Microsoft Entra pour le pilote, à condition que le secret existant reste strictement côté backend et ne soit jamais utilisé par le navigateur.
 
-Nous connaissons déjà l'autorité du tenant : `dislogroup.onmicrosoft.com`. StoreOps peut utiliser ce domaine vérifié pour l'autorisation et la découverte OIDC.
+Le Tenant ID et le Client ID sont fournis au runtime via variables d'environnement ; ils ne sont pas versionnés dans GitHub. Le scope StoreOps est fixe : `StoreOps.Access`.
 
-Il reste à récupérer :
+Si l'App Registration existe déjà avec un redirect **Web** et un client secret, ne supprimez rien. Ajoutez simplement la plateforme **Single-page application** pour StoreOps. Le secret existant peut rester utilisé côté backend/D365 si nécessaire.
 
-1. `Application (client) ID`
-2. idéalement ensuite le `Directory (tenant) ID` GUID pour activer le contrôle strict du claim `tid` côté backend.
+## Réglages Microsoft Entra requis
 
-Le scope StoreOps est fixe : `StoreOps.Access`.
+1. Microsoft Entra admin center → **App registrations** → ouvrir l'application StoreOps.
+2. Dans **Authentication** → **Add a platform** → **Single-page application**.
+3. Ajouter comme Redirect URI : `https://franprix-storeops.netlify.app/`.
+4. Conserver les éventuels redirects Web existants ; ils ne gênent pas le flux SPA.
+5. Dans **Expose an API**, définir l'Application ID URI sous la forme `api://<CLIENT_ID>`.
+6. Ajouter un delegated scope nommé `StoreOps.Access` et l'activer.
 
-## Création dans Microsoft Entra
-
-1. Microsoft Entra admin center → **App registrations** → **New registration**.
-2. Nom : `Franprix StoreOps`.
-3. Type de compte : **Accounts in this organizational directory only**.
-4. Après création, copier le **Application (client) ID** et, si disponible, le **Directory (tenant) ID**.
-5. Dans **Authentication** → **Add a platform** → **Single-page application**.
-6. Ajouter comme Redirect URI : `https://franprix-storeops.netlify.app/`.
-7. Dans **Expose an API**, conserver/créer l'Application ID URI `api://<CLIENT_ID>`.
-8. Ajouter un delegated scope nommé `StoreOps.Access` et l'activer.
-
-Aucun client secret n'est nécessaire dans le navigateur. Le frontend utilise Authorization Code + PKCE.
+Aucun client secret n'est nécessaire dans le navigateur. Le frontend utilise Authorization Code + PKCE. Ne jamais copier le secret client dans Netlify ni dans le code frontend.
 
 ## Mapping des utilisateurs
 
@@ -43,9 +36,9 @@ Les vraies adresses ne sont jamais versionnées dans GitHub.
 
 ```text
 AUTH_MODE=entra
-ENTRA_TENANT_ID=dislogroup.onmicrosoft.com
-ENTRA_ALLOWED_TENANT_ID=<GUID tenant quand disponible>
-ENTRA_CLIENT_ID=<CLIENT_ID>
+ENTRA_TENANT_ID=<Directory tenant ID ou domaine tenant>
+ENTRA_ALLOWED_TENANT_ID=<Directory tenant ID GUID>
+ENTRA_CLIENT_ID=<Application client ID>
 STOREOPS_VF_MANAGER_EMAIL=<email One Retail Responsable>
 STOREOPS_VF_D365_EMAIL=<email Microsoft Responsable>
 STOREOPS_OPS_DIRECTOR_NAME=Mourad
@@ -53,19 +46,16 @@ STOREOPS_OPS_DIRECTOR_EMAIL=<email One Retail Directeur>
 STOREOPS_OPS_DIRECTOR_D365_EMAIL=<email Microsoft Directeur>
 ```
 
-`ENTRA_ALLOWED_TENANT_ID` peut rester vide au tout début du pilote. Dès que le GUID du tenant est connu, il doit être renseigné pour verrouiller explicitement le claim `tid`.
-
 `ENTRA_REQUIRED_SCOPE` peut être omis : StoreOps utilise `StoreOps.Access` par défaut.
 
 ## Variables Netlify
 
 ```text
 STOREOPS_API_BASE=<URL publique du backend StoreOps>
-STOREOPS_ENTRA_TENANT_ID=dislogroup.onmicrosoft.com
-STOREOPS_ENTRA_CLIENT_ID=<CLIENT_ID>
+STOREOPS_ENTRA_TENANT_ID=<Directory tenant ID GUID>
+STOREOPS_ENTRA_CLIENT_ID=<Application client ID>
+STOREOPS_ENTRA_API_SCOPE=api://<CLIENT_ID>/StoreOps.Access
 ```
-
-Le frontend construit automatiquement le scope `api://<CLIENT_ID>/StoreOps.Access`.
 
 ## Résultat attendu
 
@@ -77,6 +67,6 @@ Le frontend construit automatiquement le scope `api://<CLIENT_ID>/StoreOps.Acces
 
 ## Ce qui reste pour le vrai login en production
 
-Le frontend Netlify peut être préparé dès maintenant. En revanche, le login réel StoreOps nécessite aussi une URL publique du backend (`STOREOPS_API_BASE`) afin que le jeton Microsoft soit validé côté serveur et que les rôles soient imposés de manière sécurisée.
+Le frontend Netlify peut être préparé dès maintenant. Le login réel StoreOps nécessite aussi une URL publique du backend (`STOREOPS_API_BASE`) afin que le jeton Microsoft soit validé côté serveur et que les rôles soient imposés de manière sécurisée.
 
 L'hébergement Azure du backend, les secrets Dynamics, la supervision et le durcissement réseau peuvent être finalisés ensuite sans changer le parcours de connexion de l'utilisateur.
