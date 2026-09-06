@@ -47,9 +47,10 @@ assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair gateway must u
 assert.match(repair,/caches\.keys\(\)/,'repair gateway must clear legacy browser caches');
 assert.match(repair,/storeops_showcase_state_v7/,'repair gateway must reset potentially stale Showcase state');
 assert.match(repair,/index\.html\?storeops_clean=1550/,'repair gateway must reopen a fresh index URL');
-assert.match(redirects,/^\/\s+\/repair\.html\s+302!/m,'pilot root must route through the repair gateway');
+assert.doesNotMatch(redirects,/^\/\s+\/repair\.html\s+30[12]/m,'root must stay direct so Microsoft OAuth callback query parameters are preserved');
+assert.match(redirects,/^\/repair\s+\/repair\.html\s+200/m,'repair must remain available as an explicit manual route');
 assert.match(netlifyToml,/for = "\/repair\.html"[\s\S]*Cache-Control = "no-store, max-age=0"/,'repair gateway must never be cached');
 const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'manifest.webmanifest'),'utf8'));
 assert.equal(manifest.display,'standalone');
 assert.equal(manifest.start_url,'/');
-console.log(`StoreOps V1.55 repair-gateway boot contract passed · ${assets.length} cached assets`);
+console.log(`StoreOps V1.66 OAuth-safe boot contract passed · ${assets.length} cached assets`);
