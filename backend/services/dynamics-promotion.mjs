@@ -13,6 +13,7 @@ function escapeOData(v){return String(v).replaceAll("'","''")}
 function dateOnly(v){if(!v)return null;const s=String(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function isOpenBoundary(v){const d=dateOnly(v);return !d||d==='1900-01-01'||d==='1900-01-02'}
 function orFilter(field,values){return values.length?`(${values.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
+function chunks(values,size=20){const out=[];for(let i=0;i<values.length;i+=size)out.push(values.slice(i,i+size));return out}
 function promotionStatus(header,businessDate){
   if(!header)return'UNKNOWN';
   if(header.Status!=='Enabled'||header.ProcessingStatus!=='Processed')return'INACTIVE';
@@ -54,36 +55,97 @@ function safeError(error){
   if(!error)return null;
   return {code:clean(error.code)||'D365_PROMOTION_READ_FAILED',status:Number(error.status)||502,message:clean(error.message)||'Lecture promotion Dynamics indisponible.'};
 }
+function companyFilter(){return config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:''}
+function withCompany(filter=''){return[filter,companyFilter()].filter(Boolean).join(' and ')}
+function extraCompany(){return config.dynamics.dataAreaId?'cross-company=true':''}
+function verifiedItemRows(payload,item,itemField){return(Array.isArray(payload?.value)?payload.value:[]).filter(row=>clean(row?.[itemField])===item)}
 
-async function queryPromotionLines(item){
-  const company=config.dynamics.dataAreaId;
-  const itemField=clean(process.env.D365_PROMOTION_ITEM_FIELD)||'ItemId';
-  const filters=[`${itemField} eq '${escapeOData(item)}'`];
-  if(company)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(company)}'`);
+async function queryCandidateLinesByField(item,itemField,field,value,{pageSize=100,maxRows=1000}={}){
+  const filter=withCompany(`${field} eq '${escapeOData(value)}'`);
   const payload=await odataGetAllBySkip(entity('retailDiscountLine',RETAIL_DISCOUNT_LINE_ENTITY),{
-    filter:filters.join(' and '),
-    extra:company?'cross-company=true':'',
-    pageSize:100,
-    maxRows:500
+    filter,extra:extraCompany(),pageSize,maxRows
   });
-  return {payload,itemField};
+  return{payload,rows:verifiedItemRows(payload,item,itemField),filter};
 }
 
-export async function getRetailPromotionsByItem(productNumber,{businessDate=null,priceGroup=null}={}){
+async function queryPromotionLines(item,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
+  const itemField=clean(process.env.D365_PROMOTION_ITEM_FIELD)||'ItemId';
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
+  const resolvedPriceGroup=resolvePriceGroup(priceGroup);
+  const attempts=[];
+
+  if(itemField!=='ItemId'){
+    try{
+      const direct=await queryCandidateLinesByField(item,itemField,itemField,item,{pageSize:100,maxRows:500});
+      attempts.push({strategy:'ITEM_FIELD',filter:direct.filter,rowsScanned:direct.payload?.rowCount??direct.payload?.value?.length??0,pages:direct.payload?.pages||1,truncated:!!direct.payload?.truncated});
+      if(direct.rows.length)return{payload:{...direct.payload,value:direct.rows,rowCount:direct.rows.length},itemField,strategy:'ITEM_FIELD',attempts};
+    }catch(error){attempts.push({strategy:'ITEM_FIELD',error:safeError(error)})}
+  }
+
+  if(clean(productName)){
+    try{
+      const byName=await queryCandidateLinesByField(item,itemField,'Name',clean(productName),{pageSize:100,maxRows:500});
+      attempts.push({strategy:'PRODUCT_NAME',filter:byName.filter,rowsScanned:byName.payload?.rowCount??byName.payload?.value?.length??0,pages:byName.payload?.pages||1,truncated:!!byName.payload?.truncated});
+      if(byName.rows.length)return{payload:{...byName.payload,value:byName.rows,rowCount:byName.rows.length},itemField,strategy:'PRODUCT_NAME',attempts};
+    }catch(error){attempts.push({strategy:'PRODUCT_NAME',error:safeError(error)})}
+  }
+
+  if(clean(productCategory)&&clean(productCategory)!=='Autre'){
+    try{
+      const byCategory=await queryCandidateLinesByField(item,itemField,'CategoryName',clean(productCategory),{pageSize:250,maxRows:2500});
+      attempts.push({strategy:'PRODUCT_CATEGORY',filter:byCategory.filter,rowsScanned:byCategory.payload?.rowCount??byCategory.payload?.value?.length??0,pages:byCategory.payload?.pages||1,truncated:!!byCategory.payload?.truncated});
+      if(byCategory.rows.length)return{payload:{...byCategory.payload,value:byCategory.rows,rowCount:byCategory.rows.length},itemField,strategy:'PRODUCT_CATEGORY',attempts};
+    }catch(error){attempts.push({strategy:'PRODUCT_CATEGORY',error:safeError(error)})}
+  }
+
+  const groupEntity=entity('retailDiscountPriceGroup',RETAIL_DISCOUNT_PRICE_GROUP_ENTITY);
+  const groupPayload=await odataGetAllBySkip(groupEntity,{
+    filter:withCompany(`PriceGroupId eq '${escapeOData(resolvedPriceGroup)}'`),
+    extra:extraCompany(),pageSize:200,maxRows:2000
+  });
+  const groupRows=Array.isArray(groupPayload?.value)?groupPayload.value:[];
+  const offerIds=[...new Set(groupRows.map(x=>clean(x.OfferId)).filter(Boolean))];
+  if(!offerIds.length){
+    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:0});
+    return{payload:{value:[],rowCount:0,pages:groupPayload?.pages||1,truncated:!!groupPayload?.truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
+  }
+
+  const headerEntity=entity('retailDiscount',RETAIL_DISCOUNT_ENTITY),headers=[];
+  for(const batch of chunks(offerIds,20)){
+    const payload=await odataGet(headerEntity,{filter:withCompany(orFilter('OfferId',batch)),top:500,extra:extraCompany()});
+    headers.push(...(Array.isArray(payload?.value)?payload.value:[]));
+  }
+  const activeIds=[...new Set(headers.filter(h=>promotionStatus(h,day)==='ACTIVE').map(h=>clean(h.OfferId)).filter(Boolean))];
+  if(!activeIds.length){
+    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:offerIds.length,activeOfferCount:0});
+    return{payload:{value:[],rowCount:0,pages:groupPayload?.pages||1,truncated:!!groupPayload?.truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
+  }
+
+  const linePayloads=await Promise.all(chunks(activeIds,6).map(batch=>odataGetAllBySkip(entity('retailDiscountLine',RETAIL_DISCOUNT_LINE_ENTITY),{
+    filter:withCompany(orFilter('OfferId',batch)),extra:extraCompany(),pageSize:250,maxRows:5000
+  })));
+  const matches=[];let rowsScanned=0,pages=0,truncated=false;
+  for(const payload of linePayloads){
+    rowsScanned+=Number(payload?.rowCount??payload?.value?.length??0);pages+=Number(payload?.pages||1);truncated=truncated||!!payload?.truncated;
+    matches.push(...verifiedItemRows(payload,item,itemField));
+  }
+  attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:offerIds.length,activeOfferCount:activeIds.length,rowsScanned,pages,truncated});
+  return{payload:{value:matches,rowCount:matches.length,pages,truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
+}
+
+export async function getRetailPromotionsByItem(productNumber,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
   const item=clean(productNumber);
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PROMOTION_ITEM_REQUIRED'});
   const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),resolvedPriceGroup=resolvePriceGroup(priceGroup);
   if(!promotionLive())return{mode:'SIMULATED',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false}};
 
-  const {payload:linePayload,itemField}=await queryPromotionLines(item);
+  const {payload:linePayload,itemField,strategy,attempts}=await queryPromotionLines(item,{businessDate:day,priceGroup:resolvedPriceGroup,productName,productCategory});
   const lines=Array.isArray(linePayload?.value)?linePayload.value:[];
   const offerIds=[...new Set(lines.map(x=>x.OfferId).filter(Boolean))];
-  if(!offerIds.length)return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},scan:{rowsScanned:lines.length,pages:linePayload.pages||1,truncated:!!linePayload.truncated,filteredByItem:true,itemField}};
+  if(!offerIds.length)return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts}};
 
   const offerFilter=orFilter('OfferId',offerIds);
-  const companyFilter=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
-  const withCompany=f=>[f,companyFilter].filter(Boolean).join(' and ');
-  const common={top:500,extra:config.dynamics.dataAreaId?'cross-company=true':''};
+  const common={top:500,extra:extraCompany()};
 
   const [headersResult,groupsResult]=await Promise.allSettled([
     odataGet(entity('retailDiscount',RETAIL_DISCOUNT_ENTITY),{filter:withCompany(offerFilter),...common}),
@@ -112,16 +174,16 @@ export async function getRetailPromotionsByItem(productNumber,{businessDate=null
     const priceGroupEligible=groupError?null:(!resolvedPriceGroup||priceGroups.length===0||priceGroups.includes(resolvedPriceGroup));
     return{offerId,name:header?.Name||line?.Name||offerId,periodicDiscountType:header?.PeriodicDiscountType||null,status,enabled:header?.Status==='Enabled',processingStatus:header?.ProcessingStatus||null,validFrom:header?.ValidFrom||null,validTo:header?.ValidTo||null,currencyCode:header?.CurrencyCode||null,concurrencyMode:header?.ConcurrencyMode||null,pricingPriorityNumber:header?.PricingPriorityNumber??null,priceGroups,priceGroupEligible,itemLine:{lineNum:line?.LineNum??null,itemId:line?.ItemId||item,name:line?.Name||null,unit:line?.UnitOfMeasureSymbol||null,lineType:line?.LineType||null,mixAndMatchLineGroup:line?.MixAndMatchLineGroup||null},mechanic,activeForRequestedContext:status==='ACTIVE'&&priceGroupEligible===true,rawLineCount:offerLines.length};
   });
-  return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions,rowCount:promotions.length,coverage:{directItem:true,category:false},scan:{rowsScanned:lines.length,pages:linePayload.pages||1,truncated:!!linePayload.truncated,filteredByItem:true,itemField},warnings:{priceGroup:groupError,mixAndMatch:mixError}};
+  return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions,rowCount:promotions.length,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts},warnings:{priceGroup:groupError,mixAndMatch:mixError}};
 }
 
-export async function getProductPricing(productNumber,{businessDate=null,priceGroup=null}={}){
+export async function getProductPricing(productNumber,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
   const item=clean(productNumber);
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRODUCT_PRICE_ITEM_REQUIRED'});
   const resolvedPriceGroup=resolvePriceGroup(priceGroup);
   const [priceResult,promoResult]=await Promise.allSettled([
     getSalesPriceAgreementsByItem(item),
-    getRetailPromotionsByItem(item,{businessDate,priceGroup:resolvedPriceGroup})
+    getRetailPromotionsByItem(item,{businessDate,priceGroup:resolvedPriceGroup,productName,productCategory})
   ]);
 
   const priceError=priceResult.status==='rejected'?safeError(priceResult.reason):null;
