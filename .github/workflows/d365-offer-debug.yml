@@ -1,0 +1,27 @@
+name: D365 Offer Debug
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  offer-debug:
+    if: github.head_ref == 'storeops-v1.75-promo-live-smoke'
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Wait for offer debug preview
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          set -euo pipefail
+          BASE="https://deploy-preview-${PR_NUMBER}--franprix-storeops.netlify.app"
+          ready=0
+          for i in $(seq 1 48); do
+            code=$(curl -sS -o /tmp/offer.json -w '%{http_code}' --max-time 30 "$BASE/smoke/d365-offer-debug?offerId=5001-000091" || true)
+            if [ "$code" = "200" ] && grep -q '"header"' /tmp/offer.json 2>/dev/null; then ready=1; break; fi
+            sleep 5
+          done
+          echo "HTTP $code"
+          cat /tmp/offer.json 2>/dev/null || true
+          [ "$ready" = "1" ]
