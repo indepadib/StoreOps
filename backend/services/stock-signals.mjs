@@ -46,12 +46,12 @@ function signalFromAggregate(x,warehouse){
 }
 
 export async function getStockSignals(storeId){
-  if(config.dynamics.mode!=='live')return simulated(storeId);
+  if(config.dynamics.mode!=='live'||config.dynamics.read?.stock!=='live')return simulated(storeId);
   const c=config.dynamics.stock||{};
   const entity=clean(c.entity)||STOCK_ENTITY;
   if(!/^[A-Za-z0-9_]+$/.test(entity))throw Object.assign(new Error('D365_STOCK_ENTITY invalide'),{status:503,code:'D365_STOCK_MAPPING_INVALID'});
   const warehouse=clean(c.storeWarehouses?.[storeId]||STORE_WAREHOUSES[storeId]);
-  if(!warehouse)throw Object.assign(new Error(`Aucun magasin/entrepôt Dynamics mappé pour ${storeId}`),{status:503,code:'D365_STOCK_STORE_MAPPING_REQUIRED',details:{storeId}});
+  if(!warehouse)return {source:'UNMAPPED_D365',storeId,warehouse:null,mappingRequired:true,items:[],summary:{total:0,negative:0,outOfStock:0},checkedAt:new Date().toISOString()};
 
   const productField=requireField('D365_STOCK_PRODUCT_FIELD',c.productField||'ItemNumber');
   const availableField=requireField('D365_STOCK_AVAILABLE_FIELD',c.availableField||'AvailableOnHandQuantity');
