@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Wait for lightweight offer stats
+      - name: Wait for active header filter probe
         env:
           PR_NUMBER: ${{ github.event.number }}
         run: |
@@ -18,12 +18,24 @@ jobs:
           BASE="https://deploy-preview-${PR_NUMBER}--franprix-storeops.netlify.app"
           ready=0
           for i in $(seq 1 60); do
-            code=$(curl -sS -o /tmp/stats.json -w '%{http_code}' --max-time 30 "$BASE/smoke/d365-promo?mode=offer-stats" || true)
-            if [ "$code" = "200" ] && grep -q '"activeCount"' /tmp/stats.json 2>/dev/null; then ready=1; break; fi
+            code=$(curl -sS -o /tmp/filter.json -w '%{http_code}' --max-time 20 "$BASE/smoke/d365-promo?mode=active-filter" || true)
+            if [ "$code" = "200" ] && grep -q '"entity"' /tmp/filter.json 2>/dev/null; then ready=1; break; fi
             sleep 5
           done
-          if [ "$ready" != "1" ]; then cat /tmp/stats.json 2>/dev/null || true; exit 1; fi
+          if [ "$ready" != "1" ]; then cat /tmp/filter.json 2>/dev/null || true; exit 1; fi
+          cat /tmp/filter.json
+
+      - name: Load active Franprix stats
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          set -euo pipefail
+          BASE="https://deploy-preview-${PR_NUMBER}--franprix-storeops.netlify.app"
+          code=$(curl -sS -o /tmp/stats.json -w '%{http_code}' --max-time 45 "$BASE/smoke/d365-promo?mode=active-stats" || true)
+          echo "HTTP $code"
           cat /tmp/stats.json
+          [ "$code" = "200" ]
+          grep -q '"eligibleOffers"' /tmp/stats.json
 
       - name: Validate offer-driven known EANs
         env:
@@ -44,11 +56,12 @@ jobs:
         run: |
           node <<'NODE'
           const fs=require('fs');
-          const s=JSON.parse(fs.readFileSync('/tmp/stats.json','utf8'));
-          console.log('STATS',JSON.stringify(s.diagnostic||s,null,2));
+          for(const file of ['filter','stats']){
+            const x=JSON.parse(fs.readFileSync(`/tmp/${file}.json`,'utf8'));
+            console.log(file.toUpperCase(),JSON.stringify(x.diagnostic||x,null,2));
+          }
           for(const ean of ['5449000206770','6111069004350']){
             const x=JSON.parse(fs.readFileSync(`/tmp/offer-${ean}.json`,'utf8'));
-            const d=x.diagnostic||{};
-            console.log(JSON.stringify({ean,ok:x.ok,product:x.product,groups:d.groups,headers:d.headers,lines:d.lines,matches:d.matches},null,2));
+            console.log(JSON.stringify({ean,ok:x.ok,product:x.product,diagnostic:x.diagnostic},null,2));
           }
           NODE
