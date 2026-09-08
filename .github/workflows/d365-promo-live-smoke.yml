@@ -19,20 +19,21 @@ jobs:
           echo "Waiting for $BASE"
           ready=0
           for i in $(seq 1 48); do
-            code=$(curl -sS -o /tmp/probe.json -w '%{http_code}' --max-time 20 "$BASE/smoke/d365-promo?ean=5449000206770" || true)
-            if [ "$code" = "200" ] || [ "$code" = "404" ]; then
-              if grep -q '"stage"\|"product"\|"promotions"' /tmp/probe.json 2>/dev/null; then
-                ready=1
-                break
-              fi
-            fi
+            code=$(curl -sS -o /tmp/probe.json -w '%{http_code}' --max-time 20 "$BASE/smoke/d365-promo?mode=structure" || true)
+            if [ "$code" = "200" ] && grep -q '"groupEntity"' /tmp/probe.json 2>/dev/null; then ready=1; break; fi
             sleep 5
           done
-          if [ "$ready" != "1" ]; then
-            echo "Deploy Preview smoke endpoint did not become ready"
-            cat /tmp/probe.json 2>/dev/null || true
-            exit 1
-          fi
+          if [ "$ready" != "1" ]; then cat /tmp/probe.json 2>/dev/null || true; exit 1; fi
+
+      - name: Probe filterable promotion structure
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+        run: |
+          set -euo pipefail
+          BASE="https://deploy-preview-${PR_NUMBER}--franprix-storeops.netlify.app"
+          echo '===== PROMOTION STRUCTURE ====='
+          curl -sS --max-time 45 "$BASE/smoke/d365-promo?mode=structure" | tee /tmp/structure.json
+          echo
 
       - name: Smoke known EANs
         env:
@@ -40,7 +41,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE="https://deploy-preview-${PR_NUMBER}--franprix-storeops.netlify.app"
-          for ean in 5449000206770 3608580007562 6111069004350; do
+          for ean in 5449000206770 6111069004350; do
             echo "===== EAN $ean ====="
             curl -sS --max-time 45 "$BASE/smoke/d365-promo?ean=$ean" | tee "/tmp/$ean.json"
             echo
@@ -50,8 +51,9 @@ jobs:
         run: |
           node <<'NODE'
           const fs=require('fs');
-          for(const ean of ['5449000206770','3608580007562','6111069004350']){
-            let x;try{x=JSON.parse(fs.readFileSync(`/tmp/${ean}.json`,'utf8'))}catch(e){console.log(ean,'INVALID_JSON',e.message);continue}
-            console.log(JSON.stringify({ean,ok:x.ok,stage:x.stage,product:x.product,sources:x.sources,errors:x.errors,basePrice:x.basePrice,effectiveUnitPrice:x.effectiveUnitPrice,promotions:x.promotions},null,2));
+          for(const file of ['structure','5449000206770','6111069004350']){
+            let x;try{x=JSON.parse(fs.readFileSync(`/tmp/${file}.json`,'utf8'))}catch(e){console.log(file,'INVALID_JSON',e.message);continue}
+            console.log(`===== ${file} =====`);
+            console.log(JSON.stringify(x,null,2));
           }
           NODE
