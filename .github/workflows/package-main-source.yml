@@ -1,0 +1,23 @@
+name: Package Main Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/package-main-source.yml'
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Package source
+        run: |
+          tar --exclude='.git' -czf /tmp/storeops-main.tar.gz .
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: storeops-main-source
+          path: /tmp/storeops-main.tar.gz
+          retention-days: 1
