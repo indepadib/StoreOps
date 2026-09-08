@@ -2,7 +2,6 @@ import { db,uid,audit,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
 import { getStoreProductByEan } from './dynamics-stock.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
-import { odataGetAllBySkip } from './dynamics-query.mjs';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS price_checks(
@@ -40,17 +39,6 @@ export function promoText(p){
   return x.name||x.periodicDiscountType||'Promotion active';
  }).join(' | ');
 }
-async function categoryForProduct(productNumber,fallback='Autre'){
- if(fallback&&fallback!=='Autre')return fallback;
- if(config.dynamics.mode!=='live')return fallback||'Autre';
- const company=config.dynamics.dataAreaId;
- const filter=company?`${config.dynamics.dataAreaField} eq '${String(company).replaceAll("'","''")}'`:'';
- try{
-  const payload=await odataGetAllBySkip('RetailDiscountLines',{filter,extra:company?'cross-company=true':''});
-  const row=(payload?.value||[]).find(x=>String(x?.ItemId||'').trim()===String(productNumber||'').trim()&&String(x?.CategoryName||'').trim());
-  return String(row?.CategoryName||fallback||'Autre').trim()||'Autre';
- }catch{return fallback||'Autre'}
-}
 function openPriceIncident(storeId,ean){
  const row=db.prepare(`SELECT i.id,i.title,i.criticality,i.requires_evidence,i.created_at,
   (SELECT COUNT(*) FROM incident_actions a WHERE a.incident_id=i.id AND a.status='OPEN') open_actions,
@@ -67,10 +55,8 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
  const product=await getStoreProductByEan(storeId,code);
  if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
  const priceGroup=priceGroupForStore(storeId);
- const [pricing,category]=await Promise.all([
-  getProductPricing(product.productNumber,{businessDate,priceGroup}),
-  categoryForProduct(product.productNumber,product.category)
- ]);
+ const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup});
+ const category=String(product.category||'Autre').trim()||'Autre';
  return{
   storeId,businessDate,ean:code,priceGroup,
   product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
@@ -80,6 +66,9 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
   conditionalPromotions:pricing.conditionalPromotions||[],
   promoLabel:promoText(pricing),
   pricingNote:pricing.pricingNote||null,
+  pricingSources:pricing.sources||null,
+  integrationErrors:pricing.errors||null,
+  promotionError:pricing.errors?.promotion||null,
   promotionScan:pricing.promotions?.scan||null,
   openIncident:openPriceIncident(storeId,code)
  };
@@ -99,7 +88,7 @@ export async function executePriceCheck({storeId,ean,businessDate=todayISO(),obs
  const status=issues.length?'MISMATCH':'CONFORM',id=uid('pc');
  db.prepare(`INSERT INTO price_checks(id,store_id,business_date,ean,product_number,product_name,expected_price,observed_price,promo_label,signage_ok,execution_ok,status,issues_json,checked_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
   .run(id,storeId,businessDate,ctx.ean,ctx.product.productNumber,ctx.product.name,expected,Number.isFinite(observed)?observed:null,ctx.promoLabel,hasPromo?(signageOk===true?1:0):1,executionOk===true?1:0,status,issues.length?JSON.stringify(issues):null,user.id);
- audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,priceGroup:ctx.priceGroup,issues,priorIncidentId:ctx.openIncident?.id||null}});
+ audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,priceGroup:ctx.priceGroup,issues,priorIncidentId:ctx.openIncident?.id||null,promotionError:ctx.promotionError?.code||null}});
  return{check:{id,status,issues,expectedPrice:expected,observedPrice:Number.isFinite(observed)?observed:null},context:ctx};
 }
 
