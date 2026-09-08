@@ -18,10 +18,13 @@ function stockFields(){return{
   onHand:config.dynamics.stock.physicalField||'OnHandQuantity',
   availableOnHand:config.dynamics.stock.availableField||'AvailableOnHandQuantity'
 }}
+function mappedWarehouseForStore(storeId){
+  const key=String(storeId||'');
+  return config.dynamics.stock.storeWarehouses?.[key]||STORE_WAREHOUSES[key]||null;
+}
 
 export function warehouseForStore(storeId){
-  const key=String(storeId||'');
-  const warehouseId=config.dynamics.stock.storeWarehouses?.[key]||STORE_WAREHOUSES[key];
+  const warehouseId=mappedWarehouseForStore(storeId);
   if(!warehouseId)throw Object.assign(new Error(`Warehouse Dynamics non mappé pour le magasin ${storeId}.`),{status:503,code:'D365_STORE_WAREHOUSE_NOT_MAPPED',details:{storeId}});
   return warehouseId;
 }
@@ -49,7 +52,10 @@ export function stockIntegrationConfig(){
 }
 
 export async function getStoreStockByProductNumber(storeId,productNumber){
-  const warehouseId=warehouseForStore(storeId),entity=stockEntity(),fields=stockFields();
+  const warehouseId=mappedWarehouseForStore(storeId),entity=stockEntity(),fields=stockFields();
+  if(!warehouseId){
+    return {warehouseId:null,dataAreaId:config.dynamics.dataAreaId||null,rowCount:0,onHandQuantity:null,availableOnHandQuantity:null,reservedOnHandQuantity:null,orderedQuantity:null,availableOrderedQuantity:null,reservedOrderedQuantity:null,onOrderQuantity:null,totalAvailableQuantity:null,source:'UNMAPPED_D365',mappingRequired:true};
+  }
   if(!stockLive()){
     return {warehouseId,dataAreaId:config.dynamics.dataAreaId||null,rowCount:0,onHandQuantity:null,availableOnHandQuantity:null,reservedOnHandQuantity:null,orderedQuantity:null,availableOrderedQuantity:null,reservedOrderedQuantity:null,onOrderQuantity:null,totalAvailableQuantity:null,source:'SIMULATED_D365'};
   }
@@ -81,7 +87,7 @@ export async function getStoreProductByEan(storeId,ean){
   const product=await getProductByEan(ean);
   if(!product)return null;
   const stock=await getStoreStockByProductNumber(storeId,product.productNumber);
-  if(!stockLive())return {...product,warehouseId:stock.warehouseId,stockSource:stock.source};
+  if(!stockLive()||stock.mappingRequired)return {...product,warehouseId:stock.warehouseId,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:!!stock.mappingRequired};
   return {
     ...product,
     stock:stock.onHandQuantity,
