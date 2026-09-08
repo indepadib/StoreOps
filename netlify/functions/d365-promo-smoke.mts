@@ -17,62 +17,54 @@ function bridge(){
 }
 
 function safeError(error:any){return{code:String(error?.code||'D365_SMOKE_FAILED'),status:Number(error?.status)||500,message:String(error?.message||error||'Erreur inconnue').slice(0,700)}}
-function pickLine(row:any){if(!row)return null;return{OfferId:row.OfferId??null,ItemId:row.ItemId??null,LineType:row.LineType??null,CategoryName:row.CategoryName??null,Name:row.Name??null,OfferDiscountMethod:row.OfferDiscountMethod??null,OfferDiscountPercentage:row.OfferDiscountPercentage??null,OfferDiscountAmount:row.OfferDiscountAmount??null,OfferPrice:row.OfferPrice??null,MixAndMatchDiscountType:row.MixAndMatchDiscountType??null,MixAndMatchLineGroup:row.MixAndMatchLineGroup??null,MixAndMatchNumberOfItemsNeeded:row.MixAndMatchNumberOfItemsNeeded??null,dataAreaId:row.dataAreaId??row.DataAreaId??null}}
-function pickGroup(row:any){if(!row)return null;return{OfferId:row.OfferId??null,PriceGroupId:row.PriceGroupId??null,PriceDiscGroup:row.PriceDiscGroup??null,dataAreaId:row.dataAreaId??row.DataAreaId??null}}
 function esc(v:any){return String(v??'').replaceAll("'","''")}
 function chunks<T>(items:T[],size:number){const out:T[][]=[];for(let i=0;i<items.length;i+=size)out.push(items.slice(i,i+size));return out}
-function orOffer(ids:string[]){return `(${ids.map(id=>`OfferId eq '${esc(id)}'`).join(' or ')})`}
+function orFilter(field:string,ids:string[]){return `(${ids.map(id=>`${field} eq '${esc(id)}'`).join(' or ')})`}
 function dateOnly(v:any){const s=String(v||'');return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function openDate(v:any){const d=dateOnly(v);return !d||d==='1900-01-01'||d==='1900-01-02'}
-function headerActive(h:any,day:string){
-  if(h?.Status&&h.Status!=='Enabled')return false;
-  if(h?.ProcessingStatus&&h.ProcessingStatus!=='Processed')return false;
-  const from=dateOnly(h?.ValidFrom),to=dateOnly(h?.ValidTo);
-  return (openDate(from)||String(from)<=day)&&(openDate(to)||String(to)>=day);
-}
+function activeOnDay(h:any,day:string){const from=dateOnly(h?.ValidFrom),to=dateOnly(h?.ValidTo);return (openDate(from)||String(from)<=day)&&(openDate(to)||String(to)>=day)}
 
-async function loadOfferUniverse(dynamics:any,priceGroup='Franprix'){
+async function activeHeaderProbe(dynamics:any){
   const company=String(process.env.D365_DATA_AREA_ID||'5001');
-  const groupEntity=String(process.env.D365_RETAIL_DISCOUNT_PRICE_GROUP_ENTITY||'RetailDiscountPriceGroups');
   const headerEntity=String(process.env.D365_RETAIL_DISCOUNT_ENTITY||'RetailDiscounts');
-  const companyFilter=`dataAreaId eq '${esc(company)}'`,extra='cross-company=true';
-  const groupPayload=await dynamics.odataGetAll(groupEntity,{filter:`PriceGroupId eq '${esc(priceGroup)}' and ${companyFilter}`,pageSize:200,maxRows:2000,extra});
-  const groups=Array.isArray(groupPayload.value)?groupPayload.value:[];
-  const offerIds=[...new Set(groups.map((x:any)=>String(x.OfferId||'').trim()).filter(Boolean))] as string[];
-  const batches=chunks(offerIds,20);
-  const payloads=await Promise.all(batches.map(batch=>dynamics.odataGet(headerEntity,{filter:`${orOffer(batch)} and ${companyFilter}`,top:500,extra})));
-  const headers=payloads.flatMap((payload:any)=>Array.isArray(payload?.value)?payload.value:[]);
+  const filter=`Status eq 'Enabled' and ProcessingStatus eq 'Processed' and dataAreaId eq '${esc(company)}'`;
+  try{
+    const payload=await dynamics.probeDataEntity(headerEntity,{top:20,filter});
+    return{ok:true,entity:headerEntity,filter,rowCount:payload.rowCount,rows:(payload.rows||[]).map((h:any)=>({OfferId:h.OfferId??null,Name:h.Name??null,PeriodicDiscountType:h.PeriodicDiscountType??null,Status:h.Status??null,ProcessingStatus:h.ProcessingStatus??null,ValidFrom:h.ValidFrom??null,ValidTo:h.ValidTo??null,keys:Object.keys(h).sort()}))};
+  }catch(error){return{ok:false,entity:headerEntity,filter,error:safeError(error)}}
+}
+
+async function loadActiveFranprixUniverse(dynamics:any,priceGroup='Franprix'){
+  const company=String(process.env.D365_DATA_AREA_ID||'5001'),extra='cross-company=true';
+  const headerEntity=String(process.env.D365_RETAIL_DISCOUNT_ENTITY||'RetailDiscounts');
+  const groupEntity=String(process.env.D365_RETAIL_DISCOUNT_PRICE_GROUP_ENTITY||'RetailDiscountPriceGroups');
+  const companyFilter=`dataAreaId eq '${esc(company)}'`;
+  const activeFilter=`Status eq 'Enabled' and ProcessingStatus eq 'Processed' and ${companyFilter}`;
+  const headerPayload=await dynamics.odataGetAll(headerEntity,{filter:activeFilter,pageSize:100,maxRows:1000,extra});
   const day=new Date().toISOString().slice(0,10);
-  const activeHeaders=headers.filter(h=>headerActive(h,day));
-  const activeIds=[...new Set(activeHeaders.map(h=>String(h.OfferId||'').trim()).filter(Boolean))] as string[];
-  return {company,priceGroup,groupPayload,groups,offerIds,headers,activeHeaders,activeIds,day};
+  const headers=(headerPayload.value||[]).filter((h:any)=>activeOnDay(h,day));
+  const ids=[...new Set(headers.map((h:any)=>String(h.OfferId||'').trim()).filter(Boolean))] as string[];
+  const groupPayloads=await Promise.all(chunks(ids,15).map(batch=>dynamics.odataGet(groupEntity,{filter:`${orFilter('OfferId',batch)} and PriceGroupId eq '${esc(priceGroup)}' and ${companyFilter}`,top:500,extra})));
+  const groups=groupPayloads.flatMap((p:any)=>Array.isArray(p?.value)?p.value:[]);
+  const eligible=new Set(groups.map((g:any)=>String(g.OfferId||'').trim()).filter(Boolean));
+  const eligibleHeaders=headers.filter((h:any)=>eligible.has(String(h.OfferId||'').trim()));
+  return{company,priceGroup,day,headerPayload,headers,groups,eligibleHeaders,eligibleIds:[...eligible] as string[]};
 }
 
-async function offerStats(dynamics:any,priceGroup='Franprix'){
-  const u=await loadOfferUniverse(dynamics,priceGroup);
-  return{
-    company:u.company,priceGroup:u.priceGroup,businessDate:u.day,
-    groups:{rowCount:u.groups.length,pages:u.groupPayload.pages,truncated:u.groupPayload.truncated,offerCount:u.offerIds.length},
-    headers:{rowCount:u.headers.length,activeCount:u.activeHeaders.length,activeOfferIds:u.activeIds,active:u.activeHeaders.map((h:any)=>({OfferId:h.OfferId,Name:h.Name,PeriodicDiscountType:h.PeriodicDiscountType,Status:h.Status,ProcessingStatus:h.ProcessingStatus,ValidFrom:h.ValidFrom,ValidTo:h.ValidTo}))}
-  };
+async function activeStats(dynamics:any){
+  const u=await loadActiveFranprixUniverse(dynamics,'Franprix');
+  return{company:u.company,businessDate:u.day,priceGroup:u.priceGroup,headers:{read:u.headerPayload.rowCount,pages:u.headerPayload.pages,truncated:u.headerPayload.truncated,activeToday:u.headers.length},priceGroups:{rows:u.groups.length,eligibleOffers:u.eligibleHeaders.length},eligible:u.eligibleHeaders.map((h:any)=>({OfferId:h.OfferId,Name:h.Name,PeriodicDiscountType:h.PeriodicDiscountType,ValidFrom:h.ValidFrom,ValidTo:h.ValidTo}))};
 }
 
-async function offerDriven(dynamics:any,productNumber:string,priceGroup='Franprix'){
-  const u=await loadOfferUniverse(dynamics,priceGroup);
-  const lineEntity=String(process.env.D365_RETAIL_DISCOUNT_LINE_ENTITY||'RetailDiscountLines');
-  const companyFilter=`dataAreaId eq '${esc(u.company)}'`,extra='cross-company=true';
-  const lineBatches=chunks(u.activeIds,6);
-  const payloads=await Promise.all(lineBatches.map(batch=>dynamics.odataGetAll(lineEntity,{filter:`${orOffer(batch)} and ${companyFilter}`,pageSize:250,maxRows:5000,extra})));
-  const matched:any[]=[];let rowsRead=0,truncated=false;
-  for(const payload of payloads){rowsRead+=Number(payload.rowCount||0);truncated=truncated||!!payload.truncated;for(const row of payload.value||[])if(String(row?.ItemId||'').trim()===productNumber)matched.push(row)}
-  const headerById=new Map(u.activeHeaders.map((h:any)=>[String(h.OfferId),h]));
-  return{
-    priceGroup:u.priceGroup,company:u.company,productNumber,
-    groups:{rowCount:u.groups.length,pages:u.groupPayload.pages,truncated:u.groupPayload.truncated,offerCount:u.offerIds.length},
-    headers:{rowCount:u.headers.length,activeCount:u.activeHeaders.length,activeOfferIds:u.activeIds},
-    lines:{rowsRead,batchesRead:payloads.length,truncated,matchedCount:matched.length},
-    matches:matched.map(row=>({line:pickLine(row),header:(()=>{const h:any=headerById.get(String(row.OfferId))||{};return{OfferId:h.OfferId??row.OfferId,Name:h.Name??null,PeriodicDiscountType:h.PeriodicDiscountType??null,Status:h.Status??null,ProcessingStatus:h.ProcessingStatus??null,ValidFrom:h.ValidFrom??null,ValidTo:h.ValidTo??null,MixAndMatchDiscountType:h.MixAndMatchDiscountType??null,MixAndMatchDealPrice:h.MixAndMatchDealPrice??null,MixAndMatchNoOfLeastExpensiveLines:h.MixAndMatchNoOfLeastExpensiveLines??null,DiscountPercentValue:h.DiscountPercentValue??null}})()})
-  };
+async function offerDriven(dynamics:any,productNumber:string){
+  const u=await loadActiveFranprixUniverse(dynamics,'Franprix');
+  const lineEntity=String(process.env.D365_RETAIL_DISCOUNT_LINE_ENTITY||'RetailDiscountLines'),extra='cross-company=true',companyFilter=`dataAreaId eq '${esc(u.company)}'`;
+  const batches=chunks(u.eligibleIds,5);
+  const payloads=await Promise.all(batches.map(batch=>dynamics.odataGetAll(lineEntity,{filter:`${orFilter('OfferId',batch)} and ${companyFilter}`,pageSize:250,maxRows:5000,extra})));
+  const matches:any[]=[];let rowsRead=0,truncated=false;
+  for(const p of payloads){rowsRead+=Number(p.rowCount||0);truncated=truncated||!!p.truncated;for(const row of p.value||[])if(String(row?.ItemId||'').trim()===productNumber)matches.push(row)}
+  const headerById=new Map(u.eligibleHeaders.map((h:any)=>[String(h.OfferId),h]));
+  return{company:u.company,businessDate:u.day,priceGroup:u.priceGroup,headers:{activeToday:u.headers.length,eligible:u.eligibleHeaders.length},lines:{batches:batches.length,rowsRead,truncated,matched:matches.length},matches:matches.map((row:any)=>{const h:any=headerById.get(String(row.OfferId))||{};return{OfferId:row.OfferId,ItemId:row.ItemId,Name:row.Name||h.Name||null,CategoryName:row.CategoryName||null,LineType:row.LineType||null,OfferDiscountMethod:row.OfferDiscountMethod||null,OfferDiscountPercentage:row.OfferDiscountPercentage??null,OfferDiscountAmount:row.OfferDiscountAmount??null,OfferPrice:row.OfferPrice??null,MixAndMatchDiscountType:h.MixAndMatchDiscountType||row.MixAndMatchDiscountType||null,MixAndMatchLineGroup:row.MixAndMatchLineGroup||null,MixAndMatchNumberOfItemsNeeded:row.MixAndMatchNumberOfItemsNeeded??null,PeriodicDiscountType:h.PeriodicDiscountType||null,ValidFrom:h.ValidFrom||null,ValidTo:h.ValidTo||null,MixAndMatchDealPrice:h.MixAndMatchDealPrice??null,MixAndMatchNoOfLeastExpensiveLines:h.MixAndMatchNoOfLeastExpensiveLines??null,DiscountPercentValue:h.DiscountPercentValue??null}})};
 }
 
 export default async(request:Request)=>{
@@ -81,27 +73,14 @@ export default async(request:Request)=>{
   bridge();
   try{
     const dynamics=await import('../../backend/services/dynamics.mjs');
-    const mode=String(url.searchParams.get('mode')||'pricing');
-    if(mode==='structure'){
-      const company=String(process.env.D365_DATA_AREA_ID||'5001').replaceAll("'","''");
-      const groupEntity=String(process.env.D365_RETAIL_DISCOUNT_PRICE_GROUP_ENTITY||'RetailDiscountPriceGroups');
-      const lineEntity=String(process.env.D365_RETAIL_DISCOUNT_LINE_ENTITY||'RetailDiscountLines');
-      const out:any={ok:true,company,groupEntity,lineEntity};
-      try{const g=await dynamics.probeDataEntity(groupEntity,{top:20,filter:`PriceGroupId eq 'Franprix' and dataAreaId eq '${company}'`});out.priceGroupFilter={ok:true,rowCount:g.rowCount,rows:(g.rows||[]).map(pickGroup)}}catch(error){out.priceGroupFilter={ok:false,error:safeError(error)}}
-      const offerId=out.priceGroupFilter?.rows?.find((x:any)=>x.OfferId)?.OfferId||null;
-      if(offerId){try{const l=await dynamics.probeDataEntity(lineEntity,{top:20,filter:`OfferId eq '${esc(offerId)}' and dataAreaId eq '${company}'`});out.offerLineFilter={ok:true,offerId,rowCount:l.rowCount,rows:(l.rows||[]).map(pickLine)}}catch(error){out.offerLineFilter={ok:false,offerId,error:safeError(error)}}}
-      return Response.json(out);
-    }
-    if(mode==='offer-stats')return Response.json({ok:true,diagnostic:await offerStats(dynamics,'Franprix')});
-
+    const mode=String(url.searchParams.get('mode')||'active-filter');
+    if(mode==='active-filter')return Response.json({ok:true,diagnostic:await activeHeaderProbe(dynamics)});
+    if(mode==='active-stats')return Response.json({ok:true,diagnostic:await activeStats(dynamics)});
     const ean=String(url.searchParams.get('ean')||'5449000206770').trim();
     const product=await dynamics.getProductByEan(ean);
     if(!product)return Response.json({ok:false,ean,stage:'product',found:false},{status:404});
-    if(mode==='offer-driven')return Response.json({ok:true,ean,product:{productNumber:product.productNumber,name:product.name},diagnostic:await offerDriven(dynamics,product.productNumber,'Franprix')});
-
-    const promotion=await import('../../backend/services/dynamics-promotion.mjs');
-    const pricing=await promotion.getProductPricing(product.productNumber,{priceGroup:'Franprix'});
-    return Response.json({ok:true,ean,product:{productNumber:product.productNumber,name:product.name,unit:product.unit},mode:pricing.mode,sources:pricing.sources,errors:pricing.errors,basePrice:pricing.basePrice?.price??null,effectiveUnitPrice:pricing.effectiveUnitPrice??null,promotions:{rowCount:pricing.promotions?.rowCount??0,activeCount:pricing.promotions?.activeCount??0,scan:pricing.promotions?.scan??null,warnings:pricing.promotions?.warnings??null,items:(pricing.promotions?.items||[]).map((x:any)=>({offerId:x.offerId,name:x.name,status:x.status,active:x.activeForRequestedContext,priceGroups:x.priceGroups,priceGroupEligible:x.priceGroupEligible,mechanic:x.mechanic,validFrom:x.validFrom,validTo:x.validTo}))}});
+    if(mode==='offer-driven')return Response.json({ok:true,ean,product:{productNumber:product.productNumber,name:product.name},diagnostic:await offerDriven(dynamics,product.productNumber)});
+    return Response.json({ok:true,ean,product:{productNumber:product.productNumber,name:product.name}});
   }catch(error){return Response.json({ok:false,stage:'unhandled',error:safeError(error)},{status:200});}
 };
 
