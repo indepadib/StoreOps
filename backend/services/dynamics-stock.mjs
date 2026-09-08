@@ -87,7 +87,8 @@ export async function getStoreProductByEan(storeId,ean){
   const product=await getProductByEan(ean);
   if(!product)return null;
   const stock=await getStoreStockByProductNumber(storeId,product.productNumber);
-  if(!stockLive()||stock.mappingRequired)return {...product,warehouseId:stock.warehouseId,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:!!stock.mappingRequired};
+  if(!stockLive())return {...product,warehouseId:stock.warehouseId,stockSource:stock.source};
+  if(stock.mappingRequired)return {...product,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true};
   return {
     ...product,
     stock:stock.onHandQuantity,
