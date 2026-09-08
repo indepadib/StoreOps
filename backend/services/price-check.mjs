@@ -55,8 +55,8 @@ export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO(
  const product=await getStoreProductByEan(storeId,code);
  if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
  const priceGroup=priceGroupForStore(storeId);
- const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup});
  const category=String(product.category||'Autre').trim()||'Autre';
+ const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup,productName:product.name,productCategory:category});
  return{
   storeId,businessDate,ean:code,priceGroup,
   product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
