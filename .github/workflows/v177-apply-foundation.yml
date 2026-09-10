@@ -15,136 +15,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: storeops-v1.77-finalization-foundation
-      - name: Apply validated foundation changes
+      - name: Apply validated foundation patch
         shell: bash
         run: |
           set -euo pipefail
-          python3 <<'PY'
-          from pathlib import Path
-
-          def replace(path, old, new):
-              p=Path(path); s=p.read_text()
-              if old not in s:
-                  raise SystemExit(f'Expected fragment missing in {path}: {old[:100]!r}')
-              p.write_text(s.replace(old,new,1))
-
-          # Canonical inventory route: store-aware stock, no generic article-only lookup.
-          replace('backend/server.mjs',
-              "import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';",
-              "import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';\nimport { getStoreProductByEan } from './services/dynamics-stock.mjs';")
-          replace('backend/server.mjs',
-              "const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))",
-              "const b=await body(req),product=await getStoreProductByEan(inv.store_id,String(b.ean||'').trim());if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))")
-
-          # Shared store commerce context for product API and loss valuation.
-          replace('backend/services/loss-api.mjs',
-              "import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';",
-              "import { buildPriceCheckContext,executePriceCheck,listPriceChecks,priceGroupForStore } from './price-check.mjs';")
-          marker="function requireDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}\n"
-          helper="""
-
-function finitePrice(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)&&n>=0?n:null}
-async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
- const product=await getStoreProductByEan(storeId,String(ean||'').trim());
- if(!product)return null;
- if(!product.productNumber)return product;
- try{
-  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category});
-  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price);
-  const price=effective??base??fallback;
-  return{...product,price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0)};
- }catch(error){
-  return{...product,pricingError:{code:error?.code||'D365_PRICING_UNAVAILABLE',message:error?.message||'Prix Dynamics indisponible'}};
- }
-}
-"""
-          p=Path('backend/services/loss-api.mjs'); s=p.read_text()
-          if 'async function getStoreCommerceProduct' not in s:
-              if marker not in s: raise SystemExit('loss-api helper marker missing')
-              s=s.replace(marker,marker+helper,1)
-          s=s.replace("const product=await getStoreProductByEan(p.storeId,p.ean);return product?{status:200,data:product}","const product=await getStoreCommerceProduct(p.storeId,p.ean,url.searchParams.get('date')||todayISO());return product?{status:200,data:product}",1)
-          s=s.replace("const b=await body(req),product=await getProductByEan(String(b.ean||'').trim());if(!product)throw Object.assign(new Error('Article introuvable Dynamics.')", "const b=await body(req),product=await getStoreCommerceProduct(p.storeId,String(b.ean||'').trim(),businessDate);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.')",1)
-          p.write_text(s)
-
-          # Netlify becomes a persistence/auth bridge only; canonical business routes stay in backend/server.mjs.
-          p=Path('netlify/functions/api.mts'); s=p.read_text()
-          start=s.find("  // Price-check API is implemented as a Netlify bridge")
-          end=s.find("\n  return null;", start)
-          if start < 0 or end < 0: raise SystemExit('Netlify canonical-route legacy block not found')
-          replacement="  // Canonical business routes (price check, inventory, losses, etc.) are served by backend/server.mjs.\n  // Keeping one router prevents Netlify-only behavior from diverging from local/API behavior.\n"
-          p.write_text(s[:start]+replacement+s[end:])
-
-          Path('backend/tests/promotion-query-filter.mjs').write_text("""import fs from 'node:fs';
-import assert from 'node:assert/strict';
-const source=fs.readFileSync(new URL('../services/dynamics-promotion.mjs',import.meta.url),'utf8');
-assert.doesNotMatch(source,/`ItemId eq '/,'RetailDiscountLines.ItemId is virtual in One Retail D365 and must not be filtered directly');
-assert.match(source,/verifiedItemRows/,'promotion candidates must be verified locally against the returned ItemId');
-assert.match(source,/strategy:'PRODUCT_NAME'/,'product-name targeted lookup must be available');
-assert.match(source,/strategy:'ACTIVE_OFFERS'/,'active Franprix offer fallback must be available');
-assert.match(source,/PriceGroupId eq/,'promotion fallback must be scoped to the store price group');
-console.log('D365 promotion virtual-ItemId-safe lookup contract OK');
-""")
-
-          Path('backend/tests/repair-gateway.mjs').write_text("""import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {fileURLToPath} from 'node:url';
-import path from 'node:path';
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
-const repair=readFileSync(path.join(root,'frontend/repair.html'),'utf8');
-const redirects=readFileSync(path.join(root,'frontend/_redirects'),'utf8');
-const netlify=readFileSync(path.join(root,'netlify.toml'),'utf8');
-assert.match(repair,/serviceWorker\\.getRegistrations\\(\\)/,'repair page must unregister legacy service workers');
-assert.match(repair,/caches\\.keys\\(\\)/,'repair page must enumerate browser caches');
-assert.match(repair,/storeops-shell-/,'repair page must remove StoreOps shell caches');
-assert.match(repair,/storeops_showcase_state_v7/,'repair page must reset stale Showcase state');
-assert.match(redirects,/^\\/repair\\s+\\/repair\\.html\\s+200$/m,'repair utility must stay directly reachable');
-assert.doesNotMatch(redirects,/^\\/\\s+\\/repair\\.html/m,'normal users must not be forced through the repair page');
-assert.match(netlify,/for = \"\\/repair\\.html\"[\\s\\S]*Cache-Control = \"no-store, max-age=0\"/,'repair utility must never be cached');
-console.log('StoreOps repair utility contract passed');
-""")
-
-          Path('backend/tests/canonical-api-routing.mjs').write_text("""import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
-const bridge=readFileSync(new URL('../../netlify/functions/api.mts',import.meta.url),'utf8');
-const lossApi=readFileSync(new URL('../services/loss-api.mjs',import.meta.url),'utf8');
-assert.match(server,/getStoreProductByEan/,'inventory router must use store-aware stock lookup');
-assert.match(server,/getStoreProductByEan\\(inv\\.store_id/,'inventory theoretical quantity must be store-specific');
-assert.match(lossApi,/getStoreCommerceProduct/,'loss and product routes must use the shared store commerce context');
-assert.match(lossApi,/effectiveUnitPrice/,'loss valuation must use current effective retail price when available');
-assert.doesNotMatch(bridge,/priceContextMatch|priceChecksMatch|priceCheckMatch|inventoryLineMatch/,'Netlify must not fork canonical price/inventory business routing');
-console.log('StoreOps canonical API routing contract passed');
-""")
-
-          p=Path('.github/workflows/ci.yml'); s=p.read_text()
-          anchor="""          node backend/tests/commercial-operational-filter.mjs
-          node backend/tests/commercial-lifecycle.mjs
-"""
-          insert="""          node backend/tests/commercial-operational-filter.mjs
-          node backend/tests/commercial-lifecycle.mjs
-          node backend/tests/promotion-query-filter.mjs
-      - name: Repair utility contract test
-        run: node backend/tests/repair-gateway.mjs
-      - name: Canonical API routing contract test
-        run: node backend/tests/canonical-api-routing.mjs
-"""
-          if 'Canonical API routing contract test' not in s:
-              if anchor not in s: raise SystemExit('CI pricing anchor missing')
-              s=s.replace(anchor,insert,1)
-          p.write_text(s)
-
-          # Remove temporary Netlify-credit recovery artifacts; they are not product code.
-          Path('.netlify-deploy-trigger').unlink(missing_ok=True)
-          Path('.github/workflows/package-main-source.yml').unlink(missing_ok=True)
-          Path('.github/workflows/v177-apply-foundation.yml').unlink(missing_ok=True)
-          PY
-
+          echo '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' | base64 -d | gzip -d > /tmp/v177.patch
+          git apply /tmp/v177.patch
+          rm -f .netlify-deploy-trigger .github/workflows/package-main-source.yml .github/workflows/v177-apply-foundation.yml
           node --check backend/server.mjs
           node --check backend/services/loss-api.mjs
           node backend/tests/promotion-query-filter.mjs
           node backend/tests/repair-gateway.mjs
           node backend/tests/canonical-api-routing.mjs
-
           git config user.name 'storeops-ci'
           git config user.email 'storeops-ci@users.noreply.github.com'
           git add -A
