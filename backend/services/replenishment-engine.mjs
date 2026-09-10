@@ -29,7 +29,7 @@ export function recommendReplenishment(input={}){
   recommendedQty:recommendedQty??null,
   actionQty,
   reason,
-  inputs:{storeAvailable:round3(storeAvailable),supplyAvailable:round3(supplyAvailable),confirmedInbound:round3(confirmedInbound),dailySales7:input.dailySales7??null,dailySales28:input.dailySales28??null,leadTimeDays,safetyDays,promoFactor,dayOfWeekFactor,packSize,minOrderQty},
+  inputs:{storeAvailable:round3(storeAvailable),supplyAvailable:round3(supplyAvailable),confirmedInbound:round3(confirmedInbound),dailySales7:input.dailySales7??null,dailySales28:input.dailySales28??null,leadTimeDays,safetyDays,promoFactor,dayOfWeekFactor:dayFactor,packSize,minOrderQty},
   metrics:{dailyVelocity:velocity,adjustedDailyVelocity:adjustedVelocity,coverDays,targetDays,targetDemand,rawNeed,remainingSupply},
   explanation:[
    velocity===null?'Ventes moyennes indisponibles':`Ventes pondérées ≈ ${velocity}/jour`,
