@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+const bridge=readFileSync(new URL('../../netlify/functions/api.mts',import.meta.url),'utf8');
+const lossApi=readFileSync(new URL('../services/loss-api.mjs',import.meta.url),'utf8');
+assert.match(server,/getStoreProductByEan/,'inventory router must use store-aware stock lookup');
+assert.match(server,/getStoreProductByEan\(inv\.store_id/,'inventory theoretical quantity must be store-specific');
+assert.match(lossApi,/getStoreCommerceProduct/,'loss and product routes must use the shared store commerce context');
+assert.match(lossApi,/effectiveUnitPrice/,'loss valuation must use current effective retail price when available');
+assert.doesNotMatch(bridge,/priceContextMatch|priceChecksMatch|priceCheckMatch|inventoryLineMatch/,'Netlify must not fork canonical price/inventory business routing');
+console.log('StoreOps canonical API routing contract passed');

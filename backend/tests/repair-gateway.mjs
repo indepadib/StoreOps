@@ -10,7 +10,7 @@ assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair page must unre
 assert.match(repair,/caches\.keys\(\)/,'repair page must enumerate browser caches');
 assert.match(repair,/storeops-shell-/,'repair page must remove StoreOps shell caches');
 assert.match(repair,/storeops_showcase_state_v7/,'repair page must reset stale Showcase state');
-assert.match(repair,/index\.html\?storeops_clean=1550/,'repair page must reopen a cache-busted index entrypoint');
-assert.match(redirects,/^\/\s+\/repair\.html\s+302!/m,'site root must pass through repair gateway during pilot');
-assert.match(netlify,/for = "\/repair\.html"[\s\S]*Cache-Control = "no-store, max-age=0"/,'repair gateway must never be cached');
-console.log('StoreOps V1.55 repair gateway contract passed');
+assert.match(redirects,/^\/repair\s+\/repair\.html\s+200$/m,'repair utility must stay directly reachable');
+assert.doesNotMatch(redirects,/^\/\s+\/repair\.html/m,'normal users must not be forced through the repair page');
+assert.match(netlify,/for = "\/repair\.html"[\s\S]*Cache-Control = "no-store, max-age=0"/,'repair utility must never be cached');
+console.log('StoreOps repair utility contract passed');
