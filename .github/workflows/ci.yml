@@ -80,6 +80,11 @@ jobs:
           node backend/tests/pricing-hardening.mjs
           node backend/tests/commercial-operational-filter.mjs
           node backend/tests/commercial-lifecycle.mjs
+          node backend/tests/promotion-query-filter.mjs
+      - name: Repair utility contract test
+        run: node backend/tests/repair-gateway.mjs
+      - name: Canonical API routing contract test
+        run: node backend/tests/canonical-api-routing.mjs
       - name: Dynamics diagnostics engine test
         run: node backend/tests/dynamics-diagnostics.mjs
       - name: Cash showcase engine test

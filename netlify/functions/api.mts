@@ -134,63 +134,8 @@ async function handleV168Route(request:Request,runtime:{dbModule:typeof import('
     }
   }
 
-  // Price-check API is implemented as a Netlify bridge because the public SPA
-  // already uses these routes while the legacy Node router does not expose them.
-  const priceContextMatch=path.match(/^\/api\/stores\/([^/]+)\/price-check\/context\/([^/]+)$/);
-  if(request.method==='GET'&&priceContextMatch){
-    const auth=await authenticatedUser(request,runtime);if(auth.response)return auth.response;
-    const permissions=await import('../../backend/services/permissions.mjs');
-    const priceCheck=await import('../../backend/services/price-check.mjs');
-    const storeId=decodeURIComponent(priceContextMatch[1]),ean=decodeURIComponent(priceContextMatch[2]);
-    if(!permissions.canAccessStore(auth.user,storeId))return Response.json({error:'Accès interdit à ce magasin.'},{status:403});
-    try{
-      return Response.json(await priceCheck.buildPriceCheckContext({storeId,ean,businessDate:url.searchParams.get('date')||undefined}));
-    }catch(error:any){
-      return Response.json({error:error?.message||'Erreur contrôle prix Dynamics',code:error?.code,details:error?.details},{status:Number(error?.status)||500});
-    }
-  }
-
-  const priceChecksMatch=path.match(/^\/api\/stores\/([^/]+)\/price-checks$/);
-  if(request.method==='GET'&&priceChecksMatch){
-    const auth=await authenticatedUser(request,runtime);if(auth.response)return auth.response;
-    const permissions=await import('../../backend/services/permissions.mjs');
-    const priceCheck=await import('../../backend/services/price-check.mjs');
-    const storeId=decodeURIComponent(priceChecksMatch[1]);
-    if(!permissions.canAccessStore(auth.user,storeId))return Response.json({error:'Accès interdit à ce magasin.'},{status:403});
-    return Response.json({items:priceCheck.listPriceChecks(storeId,url.searchParams.get('date')||undefined,Number(url.searchParams.get('limit')||50))});
-  }
-
-  const priceCheckMatch=path.match(/^\/api\/stores\/([^/]+)\/price-check$/);
-  if(request.method==='POST'&&priceCheckMatch){
-    const auth=await authenticatedUser(request,runtime);if(auth.response)return auth.response;
-    const permissions=await import('../../backend/services/permissions.mjs');
-    const priceCheck=await import('../../backend/services/price-check.mjs');
-    const storeId=decodeURIComponent(priceCheckMatch[1]);
-    if(!permissions.canManageStore(auth.user,storeId))return Response.json({error:'Réservé au Responsable magasin ou Directeur d’exploitation'},{status:403});
-    const payload:any=await request.clone().json().catch(()=>({}));
-    try{
-      const result=await priceCheck.executePriceCheck({storeId,ean:payload.ean,businessDate:payload.businessDate||undefined,observedPrice:payload.observedPrice,signageOk:payload.signageOk===true,executionOk:payload.executionOk===true,user:auth.user,tolerance:payload.tolerance});
-      if(result.check.status==='MISMATCH')return Response.json({...result,error:'Écart prix/promo détecté.',details:result.check.issues},{status:409});
-      return Response.json(result);
-    }catch(error:any){
-      return Response.json({error:error?.message||'Erreur contrôle prix Dynamics',code:error?.code,details:error?.details},{status:Number(error?.status)||500});
-    }
-  }
-
-  const inventoryLineMatch=path.match(/^\/api\/inventory\/([^/]+)\/lines$/);
-  if(request.method==='POST'&&inventoryLineMatch){
-    const auth=await authenticatedUser(request,runtime);if(auth.response)return auth.response;
-    const inventory=await import('../../backend/services/inventory.mjs');
-    const permissions=await import('../../backend/services/permissions.mjs');
-    const stock=await import('../../backend/services/dynamics-stock.mjs');
-    const sessionId=decodeURIComponent(inventoryLineMatch[1]),session=inventory.inventorySession(sessionId);
-    if(!session)return Response.json({error:'Inventaire introuvable'},{status:404});
-    if(!permissions.canManageStore(auth.user,session.store_id))return Response.json({error:'Réservé au Responsable magasin ou Directeur d’exploitation'},{status:403});
-    const payload:any=await request.clone().json().catch(()=>({}));
-    const product=await stock.getStoreProductByEan(session.store_id,String(payload.ean||'').trim());
-    if(!product)return Response.json({error:'Article introuvable Dynamics'},{status:404});
-    return Response.json(inventory.addInventoryLine({sessionId,user:auth.user,product}),{status:201});
-  }
+  // Canonical business routes (price check, inventory, losses, etc.) are served by backend/server.mjs.
+  // Keeping one router prevents Netlify-only behavior from diverging from local/API behavior.
 
   return null;
 }

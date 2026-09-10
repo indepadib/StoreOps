@@ -5,7 +5,7 @@ import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mj
 import { getStockSignals } from './stock-signals.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
-import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';
+import { buildPriceCheckContext,executePriceCheck,listPriceChecks,priceGroupForStore } from './price-check.mjs';
 import { createIncident,addAction,completeAction,addEvidence,resolveIncident,incidentById } from './incidents.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
@@ -20,6 +20,21 @@ function requireStore(user,storeId){if(!canAccessStore(user,storeId))throw Objec
 function requireManage(user,storeId){if(!canManageStore(user,storeId))throw Object.assign(new Error('Réservé au Responsable magasin ou Directeur d’exploitation'),{status:403})}
 function requireDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 
+function finitePrice(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)&&n>=0?n:null}
+async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
+ const product=await getStoreProductByEan(storeId,String(ean||'').trim());
+ if(!product)return null;
+ if(!product.productNumber)return product;
+ try{
+  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category});
+  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price);
+  const price=effective??base??fallback;
+  return{...product,price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0)};
+ }catch(error){
+  return{...product,pricingError:{code:error?.code||'D365_PRICING_UNAVAILABLE',message:error?.message||'Prix Dynamics indisponible'}};
+ }
+}
+
 export async function handleLossApi({req,url,user}){
  const path=url.pathname;let p;
  if(path==='/api/dynamics/diagnostics'&&req.method==='GET'){requireDirector(user);return{status:200,data:await getDynamicsDiagnostics({forceToken:url.searchParams.get('force')==='1'})}}
@@ -27,7 +42,7 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/dynamics/stock/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:stockIntegrationConfig()}}
  if(path==='/api/dynamics/sales-price-agreements'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'';return{status:200,data:await getSalesPriceAgreementsByItem(item)}}
  if(path==='/api/dynamics/product-price'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'',businessDate=url.searchParams.get('date')||null,priceGroup=url.searchParams.get('priceGroup')||'Franprix';return{status:200,data:await getProductPricing(item,{businessDate,priceGroup})}}
- p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}}}
+ p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);const product=await getStoreCommerceProduct(p.storeId,p.ean,url.searchParams.get('date')||todayISO());return product?{status:200,data:product}:{status:404,data:{error:'Article introuvable Dynamics'}}}
  p=route(path,'/api/stores/:storeId/stock-signals');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await getStockSignals(p.storeId)}}
 
  p=route(path,'/api/stores/:storeId/price-check/context/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildPriceCheckContext({storeId:p.storeId,ean:p.ean,businessDate:url.searchParams.get('date')||todayISO()})}}
@@ -68,7 +83,7 @@ export async function handleLossApi({req,url,user}){
 
  if(path==='/api/loss/config'&&req.method==='GET')return{status:200,data:lossConfig()};
  if(path==='/api/loss/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateLossPolicy({user,evidenceThreshold:b.evidenceThreshold,approvalThreshold:b.approvalThreshold})}}
- p=route(path,'/api/stores/:storeId/losses');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();if(req.method==='GET'){const status=(url.searchParams.get('status')||'ALL').toUpperCase();return{status:200,data:{summary:lossSummary(p.storeId,businessDate),items:listLossRecords(p.storeId,businessDate,status)}}}if(req.method==='POST'){requireManage(user,p.storeId);const b=await body(req),product=await getProductByEan(String(b.ean||'').trim());if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});return{status:201,data:createLossRecord({storeId:p.storeId,businessDate,user,product,reasonCode:b.reasonCode,quantity:b.quantity,unit:b.unit,note:b.note,sourceType:b.sourceType||'MANUAL',sourceId:b.sourceId||null})}}}
+ p=route(path,'/api/stores/:storeId/losses');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();if(req.method==='GET'){const status=(url.searchParams.get('status')||'ALL').toUpperCase();return{status:200,data:{summary:lossSummary(p.storeId,businessDate),items:listLossRecords(p.storeId,businessDate,status)}}}if(req.method==='POST'){requireManage(user,p.storeId);const b=await body(req),product=await getStoreCommerceProduct(p.storeId,String(b.ean||'').trim(),businessDate);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});return{status:201,data:createLossRecord({storeId:p.storeId,businessDate,user,product,reasonCode:b.reasonCode,quantity:b.quantity,unit:b.unit,note:b.note,sourceType:b.sourceType||'MANUAL',sourceId:b.sourceId||null})}}}
  p=route(path,'/api/losses/:lossId');if(p&&req.method==='GET'){const row=lossRecord(p.lossId);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});requireStore(user,row.store_id);return{status:200,data:row}}
  p=route(path,'/api/losses/:lossId/approve');if(p&&req.method==='POST'){const row=lossRecord(p.lossId);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});requireStore(user,row.store_id);requireDirector(user);return{status:200,data:approveLossRecord({id:p.lossId,user})}}
  p=route(path,'/api/losses/:lossId/post');if(p&&req.method==='POST'){const row=lossRecord(p.lossId);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const postable=ensureLossPostable(p.lossId);const dynamics=await postLossToDynamics(postable.id,{storeId:postable.store_id,businessDate:postable.business_date,ean:postable.ean,productNumber:postable.product_number,quantity:-Math.abs(Number(postable.quantity)),unit:postable.unit,reasonCode:postable.reason_code,sourceType:postable.source_type,sourceId:postable.source_id});return{status:200,data:{dynamics,record:markLossPosted({id:p.lossId,user})}}}
