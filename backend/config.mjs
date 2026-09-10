@@ -34,7 +34,8 @@ export const config = {
       product: readMode(process.env.D365_PRODUCT_READ_MODE,'simulated'),
       stock: readMode(process.env.D365_STOCK_READ_MODE,'simulated'),
       price: readMode(process.env.D365_PRICE_READ_MODE,'simulated'),
-      promotion: readMode(process.env.D365_PROMOTION_READ_MODE,'simulated')
+      promotion: readMode(process.env.D365_PROMOTION_READ_MODE,'simulated'),
+      receiving: readMode(process.env.D365_RECEIVING_READ_MODE,'simulated')
     },
     dataAreaId: process.env.D365_DATA_AREA_ID || '',
     dataAreaField: process.env.D365_DATA_AREA_FIELD || 'dataAreaId',
@@ -70,6 +71,28 @@ export const config = {
       maxOutOfStock: Math.max(1,Math.min(500,Number(process.env.D365_STOCK_MAX_OUT_OF_STOCK)||100)),
       pageSize: Math.max(50,Math.min(2000,Number(process.env.D365_STOCK_PAGE_SIZE)||Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
       maxRows: Math.max(500,Math.min(100000,Number(process.env.D365_STOCK_MAX_ROWS)||Number(process.env.D365_ODATA_MAX_ROWS)||25000))
+    },
+    receiving: {
+      headerEntity: process.env.D365_PO_HEADER_ENTITY || 'PurchaseOrderHeadersV2',
+      lineEntity: process.env.D365_PO_LINE_ENTITY || 'PurchaseOrderLinesV2',
+      purchaseOrderField: process.env.D365_PO_NUMBER_FIELD || 'PurchaseOrderNumber',
+      vendorField: process.env.D365_PO_VENDOR_FIELD || 'OrderVendorAccountNumber',
+      headerDateField: process.env.D365_PO_HEADER_DATE_FIELD || 'RequestedDeliveryDate',
+      headerStatusField: process.env.D365_PO_STATUS_FIELD || 'PurchaseOrderStatus',
+      headerWarehouseField: process.env.D365_PO_HEADER_WAREHOUSE_FIELD || 'DefaultReceivingWarehouseId',
+      lineNumberField: process.env.D365_PO_LINE_NUMBER_FIELD || 'LineNumber',
+      productField: process.env.D365_PO_PRODUCT_FIELD || 'ItemNumber',
+      descriptionField: process.env.D365_PO_DESCRIPTION_FIELD || 'LineDescription',
+      barcodeField: process.env.D365_PO_BARCODE_FIELD || 'Barcode',
+      categoryField: process.env.D365_PO_CATEGORY_FIELD || 'ProcurementProductCategoryName',
+      orderedQtyField: process.env.D365_PO_ORDERED_QTY_FIELD || 'OrderedPurchaseQuantity',
+      receivedQtyField: process.env.D365_PO_RECEIVED_QTY_FIELD || 'ReceivedPurchaseQuantity',
+      remainingQtyField: process.env.D365_PO_REMAINING_QTY_FIELD || 'RemainingPurchaseQuantity',
+      unitField: process.env.D365_PO_UNIT_FIELD || 'PurchaseUnitSymbol',
+      lineDateField: process.env.D365_PO_LINE_DATE_FIELD || 'RequestedDeliveryDate',
+      warehouseField: process.env.D365_PO_WAREHOUSE_FIELD || 'ReceivingWarehouseId',
+      pageSize: Math.max(50,Math.min(1000,Number(process.env.D365_PO_PAGE_SIZE)||250)),
+      maxRows: Math.max(500,Math.min(25000,Number(process.env.D365_PO_MAX_ROWS)||10000))
     }
   }
 };
@@ -93,6 +116,7 @@ export function productionMisconfig(){
     if(!config.dynamics.clientSecret) issues.push('D365_CLIENT_SECRET manquant');
     if(config.dynamics.read.product==='live'&&!config.dynamics.barcodeEntity)issues.push('D365_BARCODE_ENTITY manquant pour Article/EAN LIVE');
     if(config.dynamics.read.stock==='live'&&!config.dynamics.stock.entity)issues.push('D365_STOCK_ENTITY manquant pour Stock LIVE');
+    if(config.dynamics.read.receiving==='live'&&(!config.dynamics.receiving.headerEntity||!config.dynamics.receiving.lineEntity))issues.push('Entités Purchase Order manquantes pour Réception/PO LIVE');
   }
   return issues;
 }
