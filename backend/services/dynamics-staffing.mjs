@@ -1,4 +1,5 @@
 import { config } from '../config.mjs';
+import { staffingSnapshotFromPublishedShifts } from './workforce.mjs';
 
 function storeOpsPilotSnapshot(storeId,businessDate){
  const code=String(storeId||'STORE').toUpperCase().replaceAll('-','_');
@@ -11,8 +12,13 @@ function storeOpsPilotSnapshot(storeId,businessDate){
  ]};
 }
 
+function storeOpsSnapshot(storeId,businessDate){
+ const planned=staffingSnapshotFromPublishedShifts(storeId,businessDate);
+ return planned.lines.length?planned:storeOpsPilotSnapshot(storeId,businessDate)
+}
+
 export async function getStaffingSnapshot(storeId,businessDate){
- if(config.pilot.staffingSource==='storeops')return storeOpsPilotSnapshot(storeId,businessDate);
- if(config.dynamics.mode!=='live')return storeOpsPilotSnapshot(storeId,businessDate);
+ if(config.pilot.staffingSource==='storeops')return storeOpsSnapshot(storeId,businessDate);
+ if(config.dynamics.mode!=='live')return storeOpsSnapshot(storeId,businessDate);
  throw Object.assign(new Error('Planning équipe D365/HR non configuré. Passe STOREOPS_STAFFING_SOURCE=storeops pour le pilote ou mappe la source RH avant activation.'),{status:503,code:'D365_STAFFING_MAPPING_REQUIRED',details:{storeId,businessDate}});
 }
