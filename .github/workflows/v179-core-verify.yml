@@ -6,8 +6,13 @@ on:
       - 'backend/services/workforce.mjs'
       - 'backend/services/replenishment-engine.mjs'
       - 'backend/services/dynamics-staffing.mjs'
+      - 'backend/services/process-template-engine.mjs'
+      - 'backend/services/retail-insights.mjs'
+      - 'backend/services/export-template.mjs'
       - 'backend/tests/workforce-engine.mjs'
       - 'backend/tests/replenishment-engine.mjs'
+      - 'backend/tests/saas-retail-kernel.mjs'
+      - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
   verify:
@@ -21,5 +26,9 @@ jobs:
           node --check backend/services/workforce.mjs
           node --check backend/services/replenishment-engine.mjs
           node --check backend/services/dynamics-staffing.mjs
+          node --check backend/services/process-template-engine.mjs
+          node --check backend/services/retail-insights.mjs
+          node --check backend/services/export-template.mjs
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
+          node backend/tests/saas-retail-kernel.mjs
