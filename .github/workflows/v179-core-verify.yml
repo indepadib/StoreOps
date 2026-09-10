@@ -1,0 +1,25 @@
+name: V1.79 Core Verify
+on:
+  push:
+    branches: [storeops-v1.79-manager-experience]
+    paths:
+      - 'backend/services/workforce.mjs'
+      - 'backend/services/replenishment-engine.mjs'
+      - 'backend/services/dynamics-staffing.mjs'
+      - 'backend/tests/workforce-engine.mjs'
+      - 'backend/tests/replenishment-engine.mjs'
+      - '.github/workflows/v179-core-verify.yml'
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: |
+          node --check backend/services/workforce.mjs
+          node --check backend/services/replenishment-engine.mjs
+          node --check backend/services/dynamics-staffing.mjs
+          node backend/tests/workforce-engine.mjs
+          node backend/tests/replenishment-engine.mjs
