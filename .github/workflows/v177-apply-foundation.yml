@@ -1,0 +1,152 @@
+name: V1.77 Apply Foundation
+
+on:
+  push:
+    branches: [storeops-v1.77-finalization-foundation]
+    paths: ['.github/workflows/v177-apply-foundation.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.77-finalization-foundation
+      - name: Apply validated foundation changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p=Path(path); s=p.read_text()
+              if old not in s:
+                  raise SystemExit(f'Expected fragment missing in {path}: {old[:100]!r}')
+              p.write_text(s.replace(old,new,1))
+
+          # Canonical inventory route: store-aware stock, no generic article-only lookup.
+          replace('backend/server.mjs',
+              "import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';",
+              "import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';\nimport { getStoreProductByEan } from './services/dynamics-stock.mjs';")
+          replace('backend/server.mjs',
+              "const b=await body(req),product=await getProductByEan(b.ean);if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))",
+              "const b=await body(req),product=await getStoreProductByEan(inv.store_id,String(b.ean||'').trim());if(!product)return json(req,res,404,{error:'Article introuvable Dynamics'});return json(req,res,201,addInventoryLine({sessionId:p.sessionId,user,product}))")
+
+          # Shared store commerce context for product API and loss valuation.
+          replace('backend/services/loss-api.mjs',
+              "import { buildPriceCheckContext,executePriceCheck,listPriceChecks } from './price-check.mjs';",
+              "import { buildPriceCheckContext,executePriceCheck,listPriceChecks,priceGroupForStore } from './price-check.mjs';")
+          marker="function requireDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}\n"
+          helper="""
+
+function finitePrice(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)&&n>=0?n:null}
+async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
+ const product=await getStoreProductByEan(storeId,String(ean||'').trim());
+ if(!product)return null;
+ if(!product.productNumber)return product;
+ try{
+  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category});
+  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price);
+  const price=effective??base??fallback;
+  return{...product,price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0)};
+ }catch(error){
+  return{...product,pricingError:{code:error?.code||'D365_PRICING_UNAVAILABLE',message:error?.message||'Prix Dynamics indisponible'}};
+ }
+}
+"""
+          p=Path('backend/services/loss-api.mjs'); s=p.read_text()
+          if 'async function getStoreCommerceProduct' not in s:
+              if marker not in s: raise SystemExit('loss-api helper marker missing')
+              s=s.replace(marker,marker+helper,1)
+          s=s.replace("const product=await getStoreProductByEan(p.storeId,p.ean);return product?{status:200,data:product}","const product=await getStoreCommerceProduct(p.storeId,p.ean,url.searchParams.get('date')||todayISO());return product?{status:200,data:product}",1)
+          s=s.replace("const b=await body(req),product=await getProductByEan(String(b.ean||'').trim());if(!product)throw Object.assign(new Error('Article introuvable Dynamics.')", "const b=await body(req),product=await getStoreCommerceProduct(p.storeId,String(b.ean||'').trim(),businessDate);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.')",1)
+          p.write_text(s)
+
+          # Netlify becomes a persistence/auth bridge only; canonical business routes stay in backend/server.mjs.
+          p=Path('netlify/functions/api.mts'); s=p.read_text()
+          start=s.find("  // Price-check API is implemented as a Netlify bridge")
+          end=s.find("\n  return null;", start)
+          if start < 0 or end < 0: raise SystemExit('Netlify canonical-route legacy block not found')
+          replacement="  // Canonical business routes (price check, inventory, losses, etc.) are served by backend/server.mjs.\n  // Keeping one router prevents Netlify-only behavior from diverging from local/API behavior.\n"
+          p.write_text(s[:start]+replacement+s[end:])
+
+          Path('backend/tests/promotion-query-filter.mjs').write_text("""import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const source=fs.readFileSync(new URL('../services/dynamics-promotion.mjs',import.meta.url),'utf8');
+assert.doesNotMatch(source,/`ItemId eq '/,'RetailDiscountLines.ItemId is virtual in One Retail D365 and must not be filtered directly');
+assert.match(source,/verifiedItemRows/,'promotion candidates must be verified locally against the returned ItemId');
+assert.match(source,/strategy:'PRODUCT_NAME'/,'product-name targeted lookup must be available');
+assert.match(source,/strategy:'ACTIVE_OFFERS'/,'active Franprix offer fallback must be available');
+assert.match(source,/PriceGroupId eq/,'promotion fallback must be scoped to the store price group');
+console.log('D365 promotion virtual-ItemId-safe lookup contract OK');
+""")
+
+          Path('backend/tests/repair-gateway.mjs').write_text("""import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import path from 'node:path';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const repair=readFileSync(path.join(root,'frontend/repair.html'),'utf8');
+const redirects=readFileSync(path.join(root,'frontend/_redirects'),'utf8');
+const netlify=readFileSync(path.join(root,'netlify.toml'),'utf8');
+assert.match(repair,/serviceWorker\\.getRegistrations\\(\\)/,'repair page must unregister legacy service workers');
+assert.match(repair,/caches\\.keys\\(\\)/,'repair page must enumerate browser caches');
+assert.match(repair,/storeops-shell-/,'repair page must remove StoreOps shell caches');
+assert.match(repair,/storeops_showcase_state_v7/,'repair page must reset stale Showcase state');
+assert.match(redirects,/^\\/repair\\s+\\/repair\\.html\\s+200$/m,'repair utility must stay directly reachable');
+assert.doesNotMatch(redirects,/^\\/\\s+\\/repair\\.html/m,'normal users must not be forced through the repair page');
+assert.match(netlify,/for = \"\\/repair\\.html\"[\\s\\S]*Cache-Control = \"no-store, max-age=0\"/,'repair utility must never be cached');
+console.log('StoreOps repair utility contract passed');
+""")
+
+          Path('backend/tests/canonical-api-routing.mjs').write_text("""import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+const bridge=readFileSync(new URL('../../netlify/functions/api.mts',import.meta.url),'utf8');
+const lossApi=readFileSync(new URL('../services/loss-api.mjs',import.meta.url),'utf8');
+assert.match(server,/getStoreProductByEan/,'inventory router must use store-aware stock lookup');
+assert.match(server,/getStoreProductByEan\\(inv\\.store_id/,'inventory theoretical quantity must be store-specific');
+assert.match(lossApi,/getStoreCommerceProduct/,'loss and product routes must use the shared store commerce context');
+assert.match(lossApi,/effectiveUnitPrice/,'loss valuation must use current effective retail price when available');
+assert.doesNotMatch(bridge,/priceContextMatch|priceChecksMatch|priceCheckMatch|inventoryLineMatch/,'Netlify must not fork canonical price/inventory business routing');
+console.log('StoreOps canonical API routing contract passed');
+""")
+
+          p=Path('.github/workflows/ci.yml'); s=p.read_text()
+          anchor="""          node backend/tests/commercial-operational-filter.mjs
+          node backend/tests/commercial-lifecycle.mjs
+"""
+          insert="""          node backend/tests/commercial-operational-filter.mjs
+          node backend/tests/commercial-lifecycle.mjs
+          node backend/tests/promotion-query-filter.mjs
+      - name: Repair utility contract test
+        run: node backend/tests/repair-gateway.mjs
+      - name: Canonical API routing contract test
+        run: node backend/tests/canonical-api-routing.mjs
+"""
+          if 'Canonical API routing contract test' not in s:
+              if anchor not in s: raise SystemExit('CI pricing anchor missing')
+              s=s.replace(anchor,insert,1)
+          p.write_text(s)
+
+          # Remove temporary Netlify-credit recovery artifacts; they are not product code.
+          Path('.netlify-deploy-trigger').unlink(missing_ok=True)
+          Path('.github/workflows/package-main-source.yml').unlink(missing_ok=True)
+          Path('.github/workflows/v177-apply-foundation.yml').unlink(missing_ok=True)
+          PY
+
+          node --check backend/server.mjs
+          node --check backend/services/loss-api.mjs
+          node backend/tests/promotion-query-filter.mjs
+          node backend/tests/repair-gateway.mjs
+          node backend/tests/canonical-api-routing.mjs
+
+          git config user.name 'storeops-ci'
+          git config user.email 'storeops-ci@users.noreply.github.com'
+          git add -A
+          git commit -m 'V1.77: unify store-aware inventory, pricing and API routing'
+          git push origin HEAD:storeops-v1.77-finalization-foundation
