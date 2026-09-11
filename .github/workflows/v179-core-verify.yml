@@ -10,6 +10,9 @@ on:
       - 'backend/services/replenishment-engine.mjs'
       - 'backend/services/dynamics-staffing.mjs'
       - 'backend/services/dynamics-stock.mjs'
+      - 'backend/services/dynamics-sales.mjs'
+      - 'backend/services/business-pulse.mjs'
+      - 'backend/services/business-pulse-api.mjs'
       - 'backend/services/price-check.mjs'
       - 'backend/services/item-assistant.mjs'
       - 'backend/services/process-template-engine.mjs'
@@ -24,16 +27,21 @@ on:
       - 'backend/tests/workforce-engine.mjs'
       - 'backend/tests/workforce-api.mjs'
       - 'backend/tests/replenishment-engine.mjs'
+      - 'backend/tests/business-pulse.mjs'
+      - 'backend/tests/business-pulse-api.mjs'
       - 'backend/tests/saas-retail-kernel.mjs'
       - 'backend/tests/merchandising-kernel.mjs'
       - 'backend/tests/dynamics-merchandising.mjs'
       - 'backend/tests/merchandising-api.mjs'
       - 'frontend/index.html'
       - 'frontend/js/app.js'
+      - 'frontend/js/pages/manager-home.js'
       - 'frontend/js/pages/manager-scan.js'
       - 'frontend/js/pages/manager-team.js'
+      - 'frontend/js/pages/manager-performance.js'
       - 'frontend/manager-scan.css'
       - 'frontend/manager-team.css'
+      - 'frontend/manager-pulse.css'
       - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
@@ -52,6 +60,9 @@ jobs:
           node --check backend/services/replenishment-engine.mjs
           node --check backend/services/dynamics-staffing.mjs
           node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check backend/services/business-pulse-api.mjs
           node --check backend/services/price-check.mjs
           node --check backend/services/item-assistant.mjs
           node --check backend/services/process-template-engine.mjs
@@ -64,10 +75,13 @@ jobs:
           node --check backend/services/dynamics-merchandising.mjs
           node --check backend/services/merchandising-api.mjs
           node --check frontend/js/app.js
+          node --check frontend/js/pages/manager-home.js
           node --check frontend/js/pages/manager-scan.js
           node --check frontend/js/pages/manager-team.js
+          node --check frontend/js/pages/manager-performance.js
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
+          node backend/tests/business-pulse.mjs
           node backend/tests/saas-retail-kernel.mjs
           STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
           STOREOPS_DB=/tmp/storeops-d365-merchandising.db node backend/tests/dynamics-merchandising.mjs
@@ -81,6 +95,7 @@ jobs:
           )" = "4"
           grep -q 'data-page="managerScan"' frontend/index.html
           grep -q 'data-page="managerTeam"' frontend/index.html
+          grep -q 'managerPerformancePage' frontend/index.html
       - name: Manager API contracts
         run: |
           PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-v179-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
@@ -92,3 +107,4 @@ jobs:
           done
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/workforce-api.mjs
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/business-pulse-api.mjs
