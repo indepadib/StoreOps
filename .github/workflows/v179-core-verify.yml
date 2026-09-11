@@ -2,48 +2,8 @@ name: V1.79 Core Verify
 on:
   push:
     branches: [storeops-v1.79-manager-experience]
-    paths:
-      - 'backend/server.mjs'
-      - 'netlify/functions/api.mts'
-      - 'backend/services/workforce.mjs'
-      - 'backend/services/workforce-api.mjs'
-      - 'backend/services/replenishment-engine.mjs'
-      - 'backend/services/dynamics-staffing.mjs'
-      - 'backend/services/dynamics-stock.mjs'
-      - 'backend/services/dynamics-sales.mjs'
-      - 'backend/services/business-pulse.mjs'
-      - 'backend/services/business-pulse-api.mjs'
-      - 'backend/services/price-check.mjs'
-      - 'backend/services/item-assistant.mjs'
-      - 'backend/services/process-template-engine.mjs'
-      - 'backend/services/retail-insights.mjs'
-      - 'backend/services/export-template.mjs'
-      - 'backend/services/assortment.mjs'
-      - 'backend/services/connector-contract.mjs'
-      - 'backend/services/retail-process-catalog.mjs'
-      - 'backend/services/stock-signals.mjs'
-      - 'backend/services/dynamics-merchandising.mjs'
-      - 'backend/services/merchandising-api.mjs'
-      - 'backend/tests/workforce-engine.mjs'
-      - 'backend/tests/workforce-api.mjs'
-      - 'backend/tests/replenishment-engine.mjs'
-      - 'backend/tests/business-pulse.mjs'
-      - 'backend/tests/business-pulse-api.mjs'
-      - 'backend/tests/saas-retail-kernel.mjs'
-      - 'backend/tests/merchandising-kernel.mjs'
-      - 'backend/tests/dynamics-merchandising.mjs'
-      - 'backend/tests/merchandising-api.mjs'
-      - 'frontend/index.html'
-      - 'frontend/js/app.js'
-      - 'frontend/js/pages/manager-home.js'
-      - 'frontend/js/pages/manager-scan.js'
-      - 'frontend/js/pages/manager-team.js'
-      - 'frontend/js/pages/manager-performance.js'
-      - 'frontend/manager-scan.css'
-      - 'frontend/manager-team.css'
-      - 'frontend/manager-pulse.css'
-      - 'docs/SAAS-RETAIL-OS.md'
-      - '.github/workflows/v179-core-verify.yml'
+  pull_request:
+    branches: [main]
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -52,9 +12,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Kernel contracts
+      - name: Syntax and kernel contracts
         run: |
           node --check backend/server.mjs
+          node --check backend/config.mjs
           node --check backend/services/workforce.mjs
           node --check backend/services/workforce-api.mjs
           node --check backend/services/replenishment-engine.mjs
@@ -68,6 +29,9 @@ jobs:
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/retail-insights.mjs
           node --check backend/services/export-template.mjs
+          node --check backend/services/loss.mjs
+          node --check backend/services/loss-export.mjs
+          node --check backend/services/loss-export-api.mjs
           node --check backend/services/assortment.mjs
           node --check backend/services/connector-contract.mjs
           node --check backend/services/retail-process-catalog.mjs
@@ -75,27 +39,23 @@ jobs:
           node --check backend/services/dynamics-merchandising.mjs
           node --check backend/services/merchandising-api.mjs
           node --check frontend/js/app.js
+          node --check frontend/js/integration-readiness.js
+          node --check frontend/js/pages/system.js
+          node --check frontend/js/pages/losses.js
           node --check frontend/js/pages/manager-home.js
           node --check frontend/js/pages/manager-scan.js
           node --check frontend/js/pages/manager-team.js
           node --check frontend/js/pages/manager-performance.js
+          node --check netlify/functions/api.mts
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
           node backend/tests/business-pulse.mjs
+          node backend/tests/stock-dimensions.mjs
           node backend/tests/saas-retail-kernel.mjs
           STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
           STOREOPS_DB=/tmp/storeops-d365-merchandising.db node backend/tests/dynamics-merchandising.mjs
-          test "$(python - <<'PY'
-          from pathlib import Path
-          import re
-          s=Path('frontend/index.html').read_text()
-          m=re.search(r'<nav class="manager-nav".*?</nav>',s,re.S)
-          print(len(re.findall(r'<button ',m.group(0))) if m else 0)
-          PY
-          )" = "4"
-          grep -q 'data-page="managerScan"' frontend/index.html
-          grep -q 'data-page="managerTeam"' frontend/index.html
-          grep -q 'managerPerformancePage' frontend/index.html
+          STOREOPS_DB=/tmp/storeops-loss-closing.db node backend/tests/loss-closing-pack.mjs
+          node backend/tests/v179-release-readiness.mjs
       - name: Manager API contracts
         run: |
           PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-v179-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
@@ -108,3 +68,16 @@ jobs:
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/workforce-api.mjs
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/business-pulse-api.mjs
+      - name: Manager shell stays intentionally simple
+        run: |
+          test "$(python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('frontend/index.html').read_text()
+          m=re.search(r'<nav class="manager-nav".*?</nav>',s,re.S)
+          print(len(re.findall(r'<button ',m.group(0))) if m else 0)
+          PY
+          )" = "4"
+          grep -q 'data-page="managerScan"' frontend/index.html
+          grep -q 'data-page="managerTeam"' frontend/index.html
+          grep -q 'managerPerformancePage' frontend/index.html
