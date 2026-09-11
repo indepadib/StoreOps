@@ -3,6 +3,8 @@ on:
   push:
     branches: [storeops-v1.79-manager-experience]
     paths:
+      - 'backend/server.mjs'
+      - 'netlify/functions/api.mts'
       - 'backend/services/workforce.mjs'
       - 'backend/services/replenishment-engine.mjs'
       - 'backend/services/dynamics-staffing.mjs'
@@ -14,11 +16,13 @@ on:
       - 'backend/services/retail-process-catalog.mjs'
       - 'backend/services/stock-signals.mjs'
       - 'backend/services/dynamics-merchandising.mjs'
+      - 'backend/services/merchandising-api.mjs'
       - 'backend/tests/workforce-engine.mjs'
       - 'backend/tests/replenishment-engine.mjs'
       - 'backend/tests/saas-retail-kernel.mjs'
       - 'backend/tests/merchandising-kernel.mjs'
       - 'backend/tests/dynamics-merchandising.mjs'
+      - 'backend/tests/merchandising-api.mjs'
       - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
@@ -29,7 +33,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: |
+      - name: Kernel contracts
+        run: |
+          node --check backend/server.mjs
           node --check backend/services/workforce.mjs
           node --check backend/services/replenishment-engine.mjs
           node --check backend/services/dynamics-staffing.mjs
@@ -41,8 +47,19 @@ jobs:
           node --check backend/services/retail-process-catalog.mjs
           node --check backend/services/stock-signals.mjs
           node --check backend/services/dynamics-merchandising.mjs
+          node --check backend/services/merchandising-api.mjs
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
           node backend/tests/saas-retail-kernel.mjs
           STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
           STOREOPS_DB=/tmp/storeops-d365-merchandising.db node backend/tests/dynamics-merchandising.mjs
+      - name: Merchandising API contract
+        run: |
+          PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-merchandising-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null; then break; fi
+            sleep 0.25
+          done
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs
