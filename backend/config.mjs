@@ -12,7 +12,7 @@ export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
-  authMode: process.env.AUTH_MODE || 'demo', // demo | local | entra
+  authMode: process.env.AUTH_MODE || 'demo',
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '',
@@ -24,7 +24,7 @@ export const config = {
     cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops')
   },
   dynamics: {
-    mode: readMode(process.env.D365_MODE,'simulated'), // transport/auth mode; writes stay explicitly blocked in services
+    mode: readMode(process.env.D365_MODE,'simulated'),
     baseUrl: cleanUrl(process.env.D365_BASE_URL),
     tenantId: process.env.D365_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
     clientId: process.env.D365_CLIENT_ID || '',
@@ -35,7 +35,10 @@ export const config = {
       stock: readMode(process.env.D365_STOCK_READ_MODE,'simulated'),
       price: readMode(process.env.D365_PRICE_READ_MODE,'simulated'),
       promotion: readMode(process.env.D365_PROMOTION_READ_MODE,'simulated'),
-      receiving: readMode(process.env.D365_RECEIVING_READ_MODE,'simulated')
+      receiving: readMode(process.env.D365_RECEIVING_READ_MODE,'simulated'),
+      assortment: readMode(process.env.D365_ASSORTMENT_READ_MODE,'simulated'),
+      taxonomy: readMode(process.env.D365_TAXONOMY_READ_MODE,'simulated'),
+      sales: readMode(process.env.D365_SALES_READ_MODE,'simulated')
     },
     dataAreaId: process.env.D365_DATA_AREA_ID || '',
     dataAreaField: process.env.D365_DATA_AREA_FIELD || 'dataAreaId',
@@ -67,7 +70,11 @@ export const config = {
       warehouseField: process.env.D365_STOCK_WAREHOUSE_FIELD || 'InventoryWarehouseId',
       availableField: process.env.D365_STOCK_AVAILABLE_FIELD || 'AvailableOnHandQuantity',
       physicalField: process.env.D365_STOCK_PHYSICAL_FIELD || 'OnHandQuantity',
+      batchField: process.env.D365_STOCK_BATCH_FIELD || '',
+      locationField: process.env.D365_STOCK_LOCATION_FIELD || '',
+      statusField: process.env.D365_STOCK_STATUS_FIELD || '',
       storeWarehouses: parseStoreMap(process.env.D365_STORE_WAREHOUSES || ''),
+      supplyWarehouses: parseStoreMap(process.env.D365_STORE_SUPPLY_WAREHOUSES || ''),
       maxOutOfStock: Math.max(1,Math.min(500,Number(process.env.D365_STOCK_MAX_OUT_OF_STOCK)||100)),
       pageSize: Math.max(50,Math.min(2000,Number(process.env.D365_STOCK_PAGE_SIZE)||Number(process.env.D365_ODATA_PAGE_SIZE)||500)),
       maxRows: Math.max(500,Math.min(100000,Number(process.env.D365_STOCK_MAX_ROWS)||Number(process.env.D365_ODATA_MAX_ROWS)||25000))
@@ -117,6 +124,8 @@ export function productionMisconfig(){
     if(config.dynamics.read.product==='live'&&!config.dynamics.barcodeEntity)issues.push('D365_BARCODE_ENTITY manquant pour Article/EAN LIVE');
     if(config.dynamics.read.stock==='live'&&!config.dynamics.stock.entity)issues.push('D365_STOCK_ENTITY manquant pour Stock LIVE');
     if(config.dynamics.read.receiving==='live'&&(!config.dynamics.receiving.headerEntity||!config.dynamics.receiving.lineEntity))issues.push('Entités Purchase Order manquantes pour Réception/PO LIVE');
+    if(config.dynamics.read.sales==='live'&&!process.env.D365_SALES_ENTITY)issues.push('D365_SALES_ENTITY manquant pour Ventes LIVE');
+    if(config.dynamics.read.assortment==='live'&&!process.env.D365_ASSORTMENT_ENTITY)issues.push('D365_ASSORTMENT_ENTITY manquant pour Assortiment LIVE');
   }
   return issues;
 }
