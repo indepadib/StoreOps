@@ -6,6 +6,7 @@ on:
       - 'backend/server.mjs'
       - 'netlify/functions/api.mts'
       - 'backend/services/workforce.mjs'
+      - 'backend/services/workforce-api.mjs'
       - 'backend/services/replenishment-engine.mjs'
       - 'backend/services/dynamics-staffing.mjs'
       - 'backend/services/dynamics-stock.mjs'
@@ -21,6 +22,7 @@ on:
       - 'backend/services/dynamics-merchandising.mjs'
       - 'backend/services/merchandising-api.mjs'
       - 'backend/tests/workforce-engine.mjs'
+      - 'backend/tests/workforce-api.mjs'
       - 'backend/tests/replenishment-engine.mjs'
       - 'backend/tests/saas-retail-kernel.mjs'
       - 'backend/tests/merchandising-kernel.mjs'
@@ -29,7 +31,9 @@ on:
       - 'frontend/index.html'
       - 'frontend/js/app.js'
       - 'frontend/js/pages/manager-scan.js'
+      - 'frontend/js/pages/manager-team.js'
       - 'frontend/manager-scan.css'
+      - 'frontend/manager-team.css'
       - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
@@ -44,6 +48,7 @@ jobs:
         run: |
           node --check backend/server.mjs
           node --check backend/services/workforce.mjs
+          node --check backend/services/workforce-api.mjs
           node --check backend/services/replenishment-engine.mjs
           node --check backend/services/dynamics-staffing.mjs
           node --check backend/services/dynamics-stock.mjs
@@ -60,6 +65,7 @@ jobs:
           node --check backend/services/merchandising-api.mjs
           node --check frontend/js/app.js
           node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/pages/manager-team.js
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
           node backend/tests/saas-retail-kernel.mjs
@@ -74,10 +80,10 @@ jobs:
           PY
           )" = "4"
           grep -q 'data-page="managerScan"' frontend/index.html
-          grep -q '>Équipe</button>' frontend/index.html
-      - name: Merchandising and item assistant API contract
+          grep -q 'data-page="managerTeam"' frontend/index.html
+      - name: Manager API contracts
         run: |
-          PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-merchandising-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
+          PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-v179-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
           pid=$!
           trap 'kill $pid 2>/dev/null || true' EXIT
           for i in $(seq 1 40); do
@@ -85,3 +91,4 @@ jobs:
             sleep 0.25
           done
           STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/workforce-api.mjs
