@@ -13,10 +13,12 @@ on:
       - 'backend/services/connector-contract.mjs'
       - 'backend/services/retail-process-catalog.mjs'
       - 'backend/services/stock-signals.mjs'
+      - 'backend/services/dynamics-merchandising.mjs'
       - 'backend/tests/workforce-engine.mjs'
       - 'backend/tests/replenishment-engine.mjs'
       - 'backend/tests/saas-retail-kernel.mjs'
       - 'backend/tests/merchandising-kernel.mjs'
+      - 'backend/tests/dynamics-merchandising.mjs'
       - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
@@ -38,7 +40,9 @@ jobs:
           node --check backend/services/connector-contract.mjs
           node --check backend/services/retail-process-catalog.mjs
           node --check backend/services/stock-signals.mjs
+          node --check backend/services/dynamics-merchandising.mjs
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
           node backend/tests/saas-retail-kernel.mjs
           STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
+          STOREOPS_DB=/tmp/storeops-d365-merchandising.db node backend/tests/dynamics-merchandising.mjs
