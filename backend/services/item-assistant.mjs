@@ -3,19 +3,10 @@ import { assortmentIndex,assortmentMembership,productTaxonomy,classifyAvailabili
 import { getSupplyStockByProductNumber,supplyWarehouseForStore } from './dynamics-stock.mjs';
 import { readStoreProductSalesVelocity } from './dynamics-sales.mjs';
 import { recommendReplenishment,decisionPresentation } from './replenishment-engine.mjs';
+import { resolveReplenishmentPolicy } from './replenishment-policy.mjs';
 
 const maxAgeHours=()=>Math.max(1,Math.min(24*30,Number(process.env.STOREOPS_ASSORTMENT_MAX_AGE_HOURS)||36));
 const finiteOrNull=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)?n:null};
-const positiveEnv=(name,fallback)=>{const n=Number(process.env[name]);return Number.isFinite(n)&&n>=0?n:fallback};
-
-function replenishmentPolicy(hasPromotion=false){return{
- leadTimeDays:positiveEnv('STOREOPS_REPLENISHMENT_LEAD_TIME_DAYS',1),
- safetyDays:positiveEnv('STOREOPS_REPLENISHMENT_SAFETY_DAYS',1),
- packSize:Math.max(.001,positiveEnv('STOREOPS_REPLENISHMENT_PACK_SIZE',1)||1),
- minOrderQty:positiveEnv('STOREOPS_REPLENISHMENT_MIN_ORDER_QTY',0),
- promoFactor:hasPromotion?Math.max(.1,positiveEnv('STOREOPS_REPLENISHMENT_PROMO_FACTOR',1)||1):1,
- dayOfWeekFactor:Math.max(.1,positiveEnv('STOREOPS_REPLENISHMENT_DAY_FACTOR',1)||1)
-}}
 
 function primaryAction({availability,ctx,membership,replenishment}){
  if(ctx.openIncident)return{code:'CORRECT_PRICE',label:'Corriger le prix / promo',page:'commercial',tone:'danger'};
@@ -23,8 +14,8 @@ function primaryAction({availability,ctx,membership,replenishment}){
  if(availability.state==='RESIDUAL_STOCK_OUTSIDE_ASSORTMENT')return{code:'TREAT_RESIDUAL',label:'Traiter le stock hors assortiment',page:'inventory',tone:'warn'};
  if(membership.status==='UNKNOWN')return{code:'ASSORTMENT_UNKNOWN',label:'Référentiel assortiment à synchroniser',page:'managerMore',tone:'neutral'};
  if(membership.status==='NOT_ASSORTED')return{code:'NOT_ASSORTED',label:'Article hors assortiment',page:'managerMore',tone:'neutral'};
- if(replenishment?.decision==='REPLENISH')return{code:'REPLENISH',label:`Commander ${replenishment.actionQty}`,page:'inventory',tone:'brand'};
- if(replenishment?.decision==='PARTIAL')return{code:'REPLENISH_PARTIAL',label:`Commander ${replenishment.actionQty}`,page:'inventory',tone:'warn'};
+ if(replenishment?.decision==='REPLENISH')return{code:'REPLENISH',label:`Demander ${replenishment.actionQty}`,page:'inventory',tone:'brand'};
+ if(replenishment?.decision==='PARTIAL')return{code:'REPLENISH_PARTIAL',label:`Demander ${replenishment.actionQty}`,page:'inventory',tone:'warn'};
  if(replenishment?.decision==='WAREHOUSE_OUT')return{code:'WAREHOUSE_OUT',label:'Signaler la rupture entrepôt',page:'incidents',tone:'danger'};
  if(replenishment?.decision==='NEED_SUPPLY_DATA')return{code:'SUPPLY_UNMAPPED',label:'Connecter le stock entrepôt',page:'managerMore',tone:'neutral'};
  if(replenishment?.decision==='NEED_STOCK_DATA')return{code:'STOCK_UNMAPPED',label:'Connecter le stock magasin',page:'managerMore',tone:'neutral'};
@@ -51,9 +42,9 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
  }catch(error){supply={...supply,source:'ERROR',error:error.message}}
  let velocity={status:'UNAVAILABLE',dailySales7:null,dailySales28:null};
  try{velocity=await readStoreProductSalesVelocity(storeId,p.productNumber,{businessDate:ctx.businessDate,days:28})}catch(error){velocity={status:'ERROR',dailySales7:null,dailySales28:null,error:error.message}}
- const policy=replenishmentPolicy(!!ctx.promoLabel);
+ const policyResolution=resolveReplenishmentPolicy({storeId,productNumber:p.productNumber,taxonomy,businessDate:ctx.businessDate,hasPromotion:!!ctx.promoLabel}),policy=policyResolution.policy;
  const replenishmentResult=membership.status==='ASSORTED'?recommendReplenishment({storeAvailable:available,supplyAvailable:supply.availableStock,confirmedInbound:finiteOrNull(p.onOrderStock)??0,dailySales7:velocity.status==='READY'?velocity.dailySales7:null,dailySales28:velocity.status==='READY'?velocity.dailySales28:null,...policy}):null;
- const replenishment=replenishmentResult?{...replenishmentResult,presentation:decisionPresentation(replenishmentResult),ready:!['NEED_SALES_DATA','NEED_SUPPLY_DATA','NEED_STOCK_DATA'].includes(replenishmentResult.decision),missingInputs:missingInputsForDecision(replenishmentResult.decision),salesVelocity:velocity,policy}:{ready:false,decision:'NOT_APPLICABLE',missingInputs:[],salesVelocity:velocity,policy};
+ const replenishment=replenishmentResult?{...replenishmentResult,presentation:decisionPresentation(replenishmentResult),ready:!['NEED_SALES_DATA','NEED_SUPPLY_DATA','NEED_STOCK_DATA'].includes(replenishmentResult.decision),missingInputs:missingInputsForDecision(replenishmentResult.decision),salesVelocity:velocity,policy,policySource:policyResolution.source,appliedRules:policyResolution.appliedRules,configuredPromoFactor:policyResolution.configuredPromoFactor,promotionFactorApplied:policyResolution.promotionApplied}:{ready:false,decision:'NOT_APPLICABLE',missingInputs:[],salesVelocity:velocity,policy,policySource:policyResolution.source,appliedRules:policyResolution.appliedRules,configuredPromoFactor:policyResolution.configuredPromoFactor,promotionFactorApplied:policyResolution.promotionApplied};
  const primary=primaryAction({availability,ctx,membership,replenishment});
  return{
   storeId,businessDate:ctx.businessDate,ean:ctx.ean,
