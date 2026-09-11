@@ -46,52 +46,31 @@ function openPriceIncident(storeId,ean){
   FROM incidents i JOIN price_checks p ON p.id=i.source_id
   WHERE i.store_id=? AND i.source_type='PRICE_CHECK' AND i.status='OPEN' AND p.ean=?
   ORDER BY i.created_at DESC LIMIT 1`).get(storeId,ean);
- return row||null;
+ return row||null
 }
 
 export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO()}){
- const code=String(ean||'').trim();
- if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
- const product=await getStoreProductByEan(storeId,code);
- if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
- const priceGroup=priceGroupForStore(storeId);
- const category=String(product.category||'Autre').trim()||'Autre';
+ const code=String(ean||'').trim();if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
+ const product=await getStoreProductByEan(storeId,code);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
+ const priceGroup=priceGroupForStore(storeId),category=String(product.category||'Autre').trim()||'Autre';
  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup,productName:product.name,productCategory:category});
  return{
   storeId,businessDate,ean:code,priceGroup,
-  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock},
-  basePrice:pricing.basePrice,
-  expectedUnitPrice:pricing.effectiveUnitPrice,
-  promotions:pricing.promotions,
-  conditionalPromotions:pricing.conditionalPromotions||[],
-  promoLabel:promoText(pricing),
-  pricingNote:pricing.pricingNote||null,
-  pricingSources:pricing.sources||null,
-  integrationErrors:pricing.errors||null,
-  promotionError:pricing.errors?.promotion||null,
-  promotionScan:pricing.promotions?.scan||null,
-  openIncident:openPriceIncident(storeId,code)
- };
+  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock,reservedStock:product.reservedStock??null,onOrderStock:product.onOrderStock??null,totalAvailableStock:product.totalAvailableStock??null,warehouseId:product.warehouseId??null,stockRowCount:product.stockRowCount??null,stockSource:product.stockSource??null,stockMappingRequired:!!product.stockMappingRequired},
+  basePrice:pricing.basePrice,expectedUnitPrice:pricing.effectiveUnitPrice,promotions:pricing.promotions,conditionalPromotions:pricing.conditionalPromotions||[],promoLabel:promoText(pricing),pricingNote:pricing.pricingNote||null,pricingSources:pricing.sources||null,integrationErrors:pricing.errors||null,promotionError:pricing.errors?.promotion||null,promotionScan:pricing.promotions?.scan||null,openIncident:openPriceIncident(storeId,code)
+ }
 }
 
 export async function executePriceCheck({storeId,ean,businessDate=todayISO(),observedPrice,signageOk,executionOk,user,tolerance=0.01}){
- const ctx=await buildPriceCheckContext({storeId,ean,businessDate});
- const issues=[];
- const expected=ctx.expectedUnitPrice==null?null:Number(ctx.expectedUnitPrice),observed=observedPrice==null||observedPrice===''?null:Number(observedPrice);
- if(expected!=null){
-  if(!Number.isFinite(observed)||observed<0)issues.push('Prix rayon obligatoire.');
-  else if(Math.abs(observed-expected)>Number(tolerance||0.01))issues.push(`Prix rayon ${money(observed)} ≠ prix Dynamics ${money(expected)}.`);
- }
- const hasPromo=!!ctx.promoLabel;
- if(hasPromo&&signageOk!==true)issues.push('Signalétique promotionnelle non conforme à Dynamics.');
- if(executionOk!==true)issues.push('Exécution rayon non confirmée.');
+ const ctx=await buildPriceCheckContext({storeId,ean,businessDate}),issues=[],expected=ctx.expectedUnitPrice==null?null:Number(ctx.expectedUnitPrice),observed=observedPrice==null||observedPrice===''?null:Number(observedPrice);
+ if(expected!=null){if(!Number.isFinite(observed)||observed<0)issues.push('Prix rayon obligatoire.');else if(Math.abs(observed-expected)>Number(tolerance||0.01))issues.push(`Prix rayon ${money(observed)} ≠ prix Dynamics ${money(expected)}.`)}
+ const hasPromo=!!ctx.promoLabel;if(hasPromo&&signageOk!==true)issues.push('Signalétique promotionnelle non conforme à Dynamics.');if(executionOk!==true)issues.push('Exécution rayon non confirmée.');
  const status=issues.length?'MISMATCH':'CONFORM',id=uid('pc');
- db.prepare(`INSERT INTO price_checks(id,store_id,business_date,ean,product_number,product_name,expected_price,observed_price,promo_label,signage_ok,execution_ok,status,issues_json,checked_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-  .run(id,storeId,businessDate,ctx.ean,ctx.product.productNumber,ctx.product.name,expected,Number.isFinite(observed)?observed:null,ctx.promoLabel,hasPromo?(signageOk===true?1:0):1,executionOk===true?1:0,status,issues.length?JSON.stringify(issues):null,user.id);
+ db.prepare(`INSERT INTO price_checks(id,store_id,business_date,ean,product_number,product_name,expected_price,observed_price,promo_label,signage_ok,execution_ok,status,issues_json,checked_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,storeId,businessDate,ctx.ean,ctx.product.productNumber,ctx.product.name,expected,Number.isFinite(observed)?observed:null,ctx.promoLabel,hasPromo?(signageOk===true?1:0):1,executionOk===true?1:0,status,issues.length?JSON.stringify(issues):null,user.id);
  audit({storeId,businessDate,userId:user.id,action:status==='CONFORM'?'PRICE_CHECK_CONFORM':'PRICE_CHECK_MISMATCH',entityType:'PRICE_CHECK',entityId:id,details:{ean:ctx.ean,productNumber:ctx.product.productNumber,expectedPrice:expected,observedPrice:observed,promoLabel:ctx.promoLabel,priceGroup:ctx.priceGroup,issues,priorIncidentId:ctx.openIncident?.id||null,promotionError:ctx.promotionError?.code||null}});
- return{check:{id,status,issues,expectedPrice:expected,observedPrice:Number.isFinite(observed)?observed:null},context:ctx};
+ return{check:{id,status,issues,expectedPrice:expected,observedPrice:Number.isFinite(observed)?observed:null},context:ctx}
 }
 
 export function listPriceChecks(storeId,businessDate=todayISO(),limit=50){
- return db.prepare(`SELECT p.*,u.name checked_by_name FROM price_checks p LEFT JOIN users u ON u.id=p.checked_by WHERE p.store_id=? AND p.business_date=? ORDER BY p.checked_at DESC LIMIT ?`).all(storeId,businessDate,Math.max(1,Math.min(200,Number(limit)||50))).map(r=>{let issues=[];try{issues=r.issues_json?JSON.parse(r.issues_json):[]}catch{}return{...r,issues}});
+ return db.prepare(`SELECT p.*,u.name checked_by_name FROM price_checks p LEFT JOIN users u ON u.id=p.checked_by WHERE p.store_id=? AND p.business_date=? ORDER BY p.checked_at DESC LIMIT ?`).all(storeId,businessDate,Math.max(1,Math.min(200,Number(limit)||50))).map(r=>{let issues=[];try{issues=r.issues_json?JSON.parse(r.issues_json):[]}catch{}return{...r,issues}})
 }

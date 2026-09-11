@@ -1,0 +1,83 @@
+name: V1.79 Core Verify
+on:
+  push:
+    branches: [storeops-v1.79-manager-experience]
+  pull_request:
+    branches: [main]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax and kernel contracts
+        run: |
+          node --check backend/server.mjs
+          node --check backend/config.mjs
+          node --check backend/services/workforce.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/services/replenishment-engine.mjs
+          node --check backend/services/dynamics-staffing.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check backend/services/business-pulse-api.mjs
+          node --check backend/services/price-check.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check backend/services/process-template-engine.mjs
+          node --check backend/services/retail-insights.mjs
+          node --check backend/services/export-template.mjs
+          node --check backend/services/loss.mjs
+          node --check backend/services/loss-export.mjs
+          node --check backend/services/loss-export-api.mjs
+          node --check backend/services/assortment.mjs
+          node --check backend/services/connector-contract.mjs
+          node --check backend/services/retail-process-catalog.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/dynamics-merchandising.mjs
+          node --check backend/services/merchandising-api.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/integration-readiness.js
+          node --check frontend/js/pages/system.js
+          node --check frontend/js/pages/losses.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/pages/manager-team.js
+          node --check frontend/js/pages/manager-performance.js
+          node --check netlify/functions/api.mts
+          node backend/tests/workforce-engine.mjs
+          node backend/tests/replenishment-engine.mjs
+          node backend/tests/business-pulse.mjs
+          node backend/tests/stock-dimensions.mjs
+          node backend/tests/saas-retail-kernel.mjs
+          STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
+          STOREOPS_DB=/tmp/storeops-d365-merchandising.db node backend/tests/dynamics-merchandising.mjs
+          STOREOPS_DB=/tmp/storeops-loss-closing.db node backend/tests/loss-closing-pack.mjs
+          node backend/tests/v179-release-readiness.mjs
+      - name: Manager API contracts
+        run: |
+          PORT=8787 AUTH_MODE=demo STOREOPS_DB=/tmp/storeops-v179-api.db node backend/server.mjs >/tmp/storeops-v179.log 2>&1 &
+          pid=$!
+          trap 'kill $pid 2>/dev/null || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/dev/null; then break; fi
+            sleep 0.25
+          done
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/workforce-api.mjs
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/business-pulse-api.mjs
+      - name: Manager shell stays intentionally simple
+        run: |
+          test "$(python - <<'PY'
+          from pathlib import Path
+          import re
+          s=Path('frontend/index.html').read_text()
+          m=re.search(r'<nav class="manager-nav".*?</nav>',s,re.S)
+          print(len(re.findall(r'<button ',m.group(0))) if m else 0)
+          PY
+          )" = "4"
+          grep -q 'data-page="managerScan"' frontend/index.html
+          grep -q 'data-page="managerTeam"' frontend/index.html
+          grep -q 'managerPerformancePage' frontend/index.html

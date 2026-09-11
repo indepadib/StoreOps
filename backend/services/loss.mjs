@@ -42,6 +42,8 @@ function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA tab
 ensureColumn('loss_records','evidence_satisfied','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('loss_records','evidence_source_type','TEXT NULL');
 ensureColumn('loss_records','evidence_source_id','TEXT NULL');
+ensureColumn('loss_records','posted_method','TEXT NULL');
+ensureColumn('loss_records','posted_reference','TEXT NULL');
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_loss_source_idempotency ON loss_records(source_type,source_id) WHERE source_id IS NOT NULL;`);
 db.prepare(`INSERT OR IGNORE INTO loss_policies(id,evidence_threshold_dh,approval_threshold_dh) VALUES('default',100,500)`).run();
 
@@ -81,7 +83,7 @@ export function createLossRecord({storeId,businessDate=todayISO(),user,product,r
  if(sourceId){const existing=db.prepare(`SELECT * FROM loss_records WHERE source_type=? AND source_id=?`).get(sourceType||'MANUAL',sourceId);if(existing)return hydrate(existing)}
  if(!validReason(reasonCode))throw Object.assign(new Error('Motif de perte invalide.'),{status:400});
  const qty=Number(quantity);if(!Number.isFinite(qty)||qty<=0)throw Object.assign(new Error('Quantité de perte invalide.'),{status:400});
- if(!product?.ean||!product?.name)throw Object.assign(new Error('Article Dynamics invalide.'),{status:400});
+ if(!product?.ean||!product?.name)throw Object.assign(new Error('Article invalide.'),{status:400});
  const price=product?.price==null?null:Number(product.price),total=Number.isFinite(price)?round(price*qty):null,policy=lossPolicy();
  const requiresEvidence=total==null||total>=Number(policy.evidence_threshold_dh),requiresApproval=total==null||total>=Number(policy.approval_threshold_dh),status=requiresApproval?'APPROVAL_REQUIRED':'READY_TO_POST',id=uid('loss');
  db.prepare(`INSERT INTO loss_records(id,store_id,business_date,ean,product_number,product_name,category,reason_code,source_type,source_id,quantity,unit,unit_retail_value,total_retail_value,requires_evidence,evidence_satisfied,evidence_source_type,evidence_source_id,status,note,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,storeId,businessDate,product.ean,product.productNumber||null,product.name,product.category||null,reasonCode,sourceType||'MANUAL',sourceId||null,qty,unit||'pièce',Number.isFinite(price)?price:null,total,requiresEvidence?1:0,evidenceAlreadySatisfied?1:0,evidenceSourceType||null,evidenceSourceId||null,status,note||null,user.id);
@@ -105,8 +107,10 @@ export function ensureLossPostable(id){
  if(row.requires_evidence&&!row.evidence_satisfied&&row.incident?.status!=='RESOLVED')throw Object.assign(new Error('La preuve et l’action corrective doivent être clôturées avant posting.'),{status:409,details:{incidentId:row.incident_id}});
  return row;
 }
-export function markLossPosted({id,user}){
- const row=ensureLossPostable(id);db.prepare(`UPDATE loss_records SET status='POSTED',posted_by=?,posted_at=CURRENT_TIMESTAMP WHERE id=?`).run(user.id,id);audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:'LOSS_POSTED',entityType:'LOSS_RECORD',entityId:id});return lossRecord(id);
+export function markLossPosted({id,user,method='API',reference=null}){
+ const row=ensureLossPostable(id),postedMethod=String(method||'API').trim().toUpperCase(),postedReference=reference?String(reference).trim():null;
+ db.prepare(`UPDATE loss_records SET status='POSTED',posted_by=?,posted_at=CURRENT_TIMESTAMP,posted_method=?,posted_reference=? WHERE id=?`).run(user.id,postedMethod,postedReference,id);
+ audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:'LOSS_POSTED',entityType:'LOSS_RECORD',entityId:id,details:{method:postedMethod,reference:postedReference}});return lossRecord(id);
 }
 export function updateLossPolicy({user,evidenceThreshold,approvalThreshold}){
  const e=Number(evidenceThreshold),a=Number(approvalThreshold);if(!Number.isFinite(e)||!Number.isFinite(a)||e<0||a<e)throw Object.assign(new Error('Seuils invalides : approbation ≥ preuve ≥ 0.'),{status:400});
