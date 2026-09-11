@@ -1,0 +1,51 @@
+name: V1.80 Admin Studio Contract
+
+on:
+  pull_request:
+    paths:
+      - 'backend/services/process-template-engine.mjs'
+      - 'backend/services/process-studio.mjs'
+      - 'backend/services/process-studio-api.mjs'
+      - 'backend/services/workforce-api.mjs'
+      - 'backend/services/workflow.mjs'
+      - 'backend/tests/process-studio.mjs'
+      - 'frontend/js/pages/admin-studio.js'
+      - 'frontend/js/custom-process-runs.js'
+      - 'frontend/js/app.js'
+      - 'frontend/admin-studio.css'
+      - 'frontend/index.html'
+      - 'frontend/sw.js'
+      - '.github/workflows/v1.80-admin-studio.yml'
+  push:
+    branches: [storeops-v1.80-admin-studio]
+
+jobs:
+  admin-studio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/process-template-engine.mjs
+          node --check backend/services/process-studio.mjs
+          node --check backend/services/process-studio-api.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/services/workflow.mjs
+          node --check frontend/js/pages/admin-studio.js
+          node --check frontend/js/custom-process-runs.js
+          node --check frontend/js/app.js
+          node --check frontend/sw.js
+      - name: Process Studio contracts
+        env:
+          STOREOPS_DB: /tmp/storeops-v180-process-studio.db
+        run: node backend/tests/process-studio.mjs
+      - name: Shell wiring
+        run: |
+          grep -q 'id="adminStudioNav"' frontend/index.html
+          grep -q 'id="adminStudioPage"' frontend/index.html
+          grep -q '/admin-studio.css' frontend/index.html
+          grep -q '/js/pages/admin-studio.js' frontend/sw.js
+          grep -q '/js/custom-process-runs.js' frontend/sw.js
