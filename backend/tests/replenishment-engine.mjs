@@ -15,4 +15,9 @@ r=recommendReplenishment({storeAvailable:-2,supplyAvailable:100,dailySales7:10,d
 assert.equal(r.decision,'CHECK_STOCK');
 r=recommendReplenishment({storeAvailable:3,supplyAvailable:100});
 assert.equal(r.decision,'NEED_SALES_DATA');
+r=recommendReplenishment({storeAvailable:null,supplyAvailable:100,dailySales7:10,dailySales28:10});
+assert.equal(r.decision,'NEED_STOCK_DATA');
+r=recommendReplenishment({storeAvailable:0,supplyAvailable:null,dailySales7:10,dailySales28:10});
+assert.equal(r.decision,'NEED_SUPPLY_DATA');
+assert.equal(r.metrics.remainingSupply,null);
 console.log('StoreOps replenishment recommendation engine contract OK');
