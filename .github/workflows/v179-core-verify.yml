@@ -9,9 +9,14 @@ on:
       - 'backend/services/process-template-engine.mjs'
       - 'backend/services/retail-insights.mjs'
       - 'backend/services/export-template.mjs'
+      - 'backend/services/assortment.mjs'
+      - 'backend/services/connector-contract.mjs'
+      - 'backend/services/retail-process-catalog.mjs'
+      - 'backend/services/stock-signals.mjs'
       - 'backend/tests/workforce-engine.mjs'
       - 'backend/tests/replenishment-engine.mjs'
       - 'backend/tests/saas-retail-kernel.mjs'
+      - 'backend/tests/merchandising-kernel.mjs'
       - 'docs/SAAS-RETAIL-OS.md'
       - '.github/workflows/v179-core-verify.yml'
 jobs:
@@ -29,6 +34,11 @@ jobs:
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/retail-insights.mjs
           node --check backend/services/export-template.mjs
+          node --check backend/services/assortment.mjs
+          node --check backend/services/connector-contract.mjs
+          node --check backend/services/retail-process-catalog.mjs
+          node --check backend/services/stock-signals.mjs
           node backend/tests/workforce-engine.mjs
           node backend/tests/replenishment-engine.mjs
           node backend/tests/saas-retail-kernel.mjs
+          STOREOPS_DB=/tmp/storeops-merchandising-kernel.db node backend/tests/merchandising-kernel.mjs
