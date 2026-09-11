@@ -1,0 +1,54 @@
+name: V1.79 Apply Merchandising API
+on:
+  push:
+    branches: [storeops-v1.79-manager-experience]
+    paths: ['.github/workflows/v179-apply-merch-api.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.79-manager-experience
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wire canonical merchandising API
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('backend/server.mjs')
+          s=p.read_text()
+          imp="import { handleMerchandisingApi } from './services/merchandising-api.mjs';"
+          if imp not in s:
+              s=s.replace("import { handleLossApi } from './services/loss-api.mjs';", "import { handleLossApi } from './services/loss-api.mjs';\n"+imp)
+          hook="const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);"
+          if hook not in s:
+              s=s.replace("const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);", "const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);\n  "+hook)
+          p.write_text(s)
+
+          p=Path('netlify/functions/api.mts')
+          s=p.read_text()
+          old="'D365_MODE','D365_PRODUCT_READ_MODE','D365_STOCK_READ_MODE','D365_PRICE_READ_MODE','D365_PROMOTION_READ_MODE','D365_RECEIVING_READ_MODE',"
+          new="'D365_MODE','D365_PRODUCT_READ_MODE','D365_STOCK_READ_MODE','D365_PRICE_READ_MODE','D365_PROMOTION_READ_MODE','D365_RECEIVING_READ_MODE','D365_ASSORTMENT_READ_MODE','D365_TAXONOMY_READ_MODE',"
+          s=s.replace(old,new)
+          marker="    'D365_ODATA_PAGE_SIZE','D365_ODATA_MAX_ROWS','CLOSING_VARIANCE_TOLERANCE_DH'"
+          merch="    'STOREOPS_ASSORTMENT_MAX_AGE_HOURS',\n    'D365_CATEGORY_ENTITY','D365_PRODUCT_CATEGORY_ASSIGNMENT_ENTITY','D365_CATEGORY_HIERARCHY_KEY','D365_CATEGORY_ID_FIELD','D365_CATEGORY_NAME_FIELD','D365_CATEGORY_PARENT_FIELD','D365_CATEGORY_LEVEL_FIELD','D365_CATEGORY_PATH_FIELD','D365_CATEGORY_HIERARCHY_FIELD','D365_PRODUCT_CATEGORY_PRODUCT_FIELD','D365_PRODUCT_CATEGORY_CATEGORY_FIELD','D365_PRODUCT_CATEGORY_HIERARCHY_FIELD','D365_MERCH_PAGE_SIZE','D365_MERCH_MAX_ROWS',\n    'D365_ASSORTMENT_ENTITY','D365_ASSORTMENT_STORE_FIELD','D365_ASSORTMENT_PRODUCT_FIELD','D365_ASSORTMENT_ID_FIELD','D365_ASSORTMENT_NAME_FIELD','D365_ASSORTMENT_INCLUDED_FIELD','D365_ASSORTMENT_VALID_FROM_FIELD','D365_ASSORTMENT_VALID_TO_FIELD','D365_STORE_CHANNELS','D365_ASSORTMENT_PAGE_SIZE','D365_ASSORTMENT_MAX_ROWS',\n"+marker
+          if "'D365_ASSORTMENT_ENTITY'" not in s:
+              s=s.replace(marker,merch)
+          p.write_text(s)
+          PY
+          node --check backend/server.mjs
+          node --check backend/services/merchandising-api.mjs
+          node --check backend/services/dynamics-merchandising.mjs
+      - name: Commit wiring
+        run: |
+          git config user.name 'indepadib'
+          git config user.email '55211714+indepadib@users.noreply.github.com'
+          git add backend/server.mjs netlify/functions/api.mts
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(v1.79): wire merchandising API and integration env'
+          git push origin HEAD:storeops-v1.79-manager-experience
