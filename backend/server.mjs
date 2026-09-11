@@ -20,6 +20,7 @@ import { commercialConfig, syncCommercialControls, listCommercialControls, comme
 import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
 import { handleLossApi } from './services/loss-api.mjs';
 import { handleMerchandisingApi } from './services/merchandising-api.mjs';
+import { handleWorkforceApi } from './services/workforce-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -54,6 +55,7 @@ async function api(req,res,url){
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
   const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);
   const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);
+  const workforceResponse=await handleWorkforceApi({req,url,user});if(workforceResponse)return json(req,res,workforceResponse.status,workforceResponse.data);
 
   let p;
   if(path==='/api/stores'){const rows=user.role==='ops_director'?db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all():db.prepare(`SELECT * FROM stores WHERE id=? AND active=1`).all(user.store_id);return json(req,res,200,rows)}
