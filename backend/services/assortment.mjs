@@ -56,6 +56,19 @@ function activeWindow(from,to,day){
  const f=isoDate(from),t=isoDate(to),d=isoDate(day)||new Date().toISOString().slice(0,10);
  return (!f||f<=d)&&(!t||t>=d)
 }
+function timestampMs(value){
+ const s=clean(value);if(!s)return null;const normalized=/Z$|[+-]\d\d:\d\d$/.test(s)?s:s.replace(' ','T')+'Z',ms=Date.parse(normalized);return Number.isFinite(ms)?ms:null
+}
+function isFresh(value,maxAgeHours){
+ const limit=Number(maxAgeHours);if(!Number.isFinite(limit)||limit<=0)return true;const ms=timestampMs(value);return ms!==null&&Date.now()-ms<=limit*3600000
+}
+function insertAssortment(tx,{store,source,key,name=null,products=[],complete=true,validFrom=null,validTo=null}){
+ const ins=tx.prepare(`INSERT INTO store_assortment_products(store_id,source,assortment_key,product_number,included,reason,valid_from,valid_to,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`);
+ let inserted=0;
+ for(const raw of Array.isArray(products)?products:[]){const row=typeof raw==='string'?{productNumber:raw}:raw||{},p=clean(row.productNumber??row.itemNumber??row.product);if(!p)continue;ins.run(store,source,key,p,row.included===false?0:1,clean(row.reason)||null,isoDate(row.validFrom??validFrom),isoDate(row.validTo??validTo));inserted++}
+ tx.prepare(`INSERT INTO store_assortment_state(store_id,source,assortment_key,assortment_name,complete,valid_from,valid_to,row_count,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(store_id,source,assortment_key) DO UPDATE SET assortment_name=excluded.assortment_name,complete=excluded.complete,valid_from=excluded.valid_from,valid_to=excluded.valid_to,row_count=excluded.row_count,synced_at=CURRENT_TIMESTAMP`).run(store,source,key,clean(name)||null,complete?1:0,isoDate(validFrom),isoDate(validTo),inserted);
+ return inserted
+}
 
 export function syncCategoryHierarchy({source='GENERIC',hierarchyKey='PROCUREMENT',categories=[]}={}){
  const s=clean(source)||'GENERIC',h=clean(hierarchyKey)||'PROCUREMENT';
@@ -89,25 +102,37 @@ export function syncStoreAssortmentSnapshot({storeId,source='GENERIC',assortment
  db.exec('BEGIN');
  try{
   db.prepare(`DELETE FROM store_assortment_products WHERE store_id=? AND source=? AND assortment_key=?`).run(store,s,key);
-  const ins=db.prepare(`INSERT INTO store_assortment_products(store_id,source,assortment_key,product_number,included,reason,valid_from,valid_to,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`);
-  let inserted=0;
-  for(const raw of Array.isArray(products)?products:[]){const row=typeof raw==='string'?{productNumber:raw}:raw||{},p=clean(row.productNumber??row.itemNumber??row.product);if(!p)continue;ins.run(store,s,key,p,row.included===false?0:1,clean(row.reason)||null,isoDate(row.validFrom??validFrom),isoDate(row.validTo??validTo));inserted++}
-  db.prepare(`INSERT INTO store_assortment_state(store_id,source,assortment_key,assortment_name,complete,valid_from,valid_to,row_count,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(store_id,source,assortment_key) DO UPDATE SET assortment_name=excluded.assortment_name,complete=excluded.complete,valid_from=excluded.valid_from,valid_to=excluded.valid_to,row_count=excluded.row_count,synced_at=CURRENT_TIMESTAMP`).run(store,s,key,clean(assortmentName)||null,complete?1:0,isoDate(validFrom),isoDate(validTo),inserted);
+  const inserted=insertAssortment(db,{store,source:s,key,name:assortmentName,products,complete,validFrom,validTo});
   db.exec('COMMIT');return{storeId:store,source:s,assortmentKey:key,complete:!!complete,rowCount:inserted};
  }catch(error){db.exec('ROLLBACK');throw error}
 }
 
-export function assortmentIndex(storeId,{businessDate=null,source=null}={}){
+export function replaceStoreAssortmentSnapshots({storeId,source='GENERIC',assortments=[]}={}){
+ const store=clean(storeId),s=clean(source)||'GENERIC';if(!store)throw Object.assign(new Error('storeId obligatoire pour synchroniser les assortiments.'),{status:400,code:'ASSORTMENT_STORE_REQUIRED'});
+ const rows=Array.isArray(assortments)?assortments:[];if(!rows.length)throw Object.assign(new Error('Snapshot assortiment vide refusé : conserver le dernier snapshot fiable.'),{status:409,code:'ASSORTMENT_EMPTY_SNAPSHOT'});
+ db.exec('BEGIN');
+ try{
+  db.prepare(`DELETE FROM store_assortment_products WHERE store_id=? AND source=?`).run(store,s);
+  db.prepare(`DELETE FROM store_assortment_state WHERE store_id=? AND source=?`).run(store,s);
+  let productRows=0;
+  for(const a of rows){const key=clean(a.assortmentKey??a.key??a.id);if(!key)continue;productRows+=insertAssortment(db,{store,source:s,key,name:a.assortmentName??a.name,products:a.products||[],complete:a.complete!==false,validFrom:a.validFrom,validTo:a.validTo})}
+  if(!db.prepare(`SELECT COUNT(*) n FROM store_assortment_state WHERE store_id=? AND source=?`).get(store,s).n)throw Object.assign(new Error('Aucun assortiment valide dans le snapshot.'),{status:409,code:'ASSORTMENT_NO_VALID_SET'});
+  db.exec('COMMIT');return{storeId:store,source:s,assortmentCount:rows.length,productRows};
+ }catch(error){db.exec('ROLLBACK');throw error}
+}
+
+export function assortmentIndex(storeId,{businessDate=null,source=null,maxAgeHours=null}={}){
  const store=clean(storeId),day=isoDate(businessDate)||new Date().toISOString().slice(0,10),states=(source?db.prepare(`SELECT * FROM store_assortment_state WHERE store_id=? AND source=?`).all(store,clean(source)):db.prepare(`SELECT * FROM store_assortment_state WHERE store_id=?`).all(store)).filter(x=>activeWindow(x.valid_from,x.valid_to,day));
  const completeStates=states.filter(x=>Number(x.complete)===1);if(!completeStates.length)return{status:'UNKNOWN',storeId:store,businessDate:day,source:source||null,included:new Set(),excluded:new Set(),assortments:[],syncedAt:null};
+ const syncedAt=completeStates.map(x=>x.synced_at).sort().at(-1)||null;
+ if(!isFresh(syncedAt,maxAgeHours))return{status:'STALE',storeId:store,businessDate:day,source:source||null,included:new Set(),excluded:new Set(),assortments:completeStates.map(x=>({source:x.source,key:x.assortment_key,name:x.assortment_name,rowCount:x.row_count,validFrom:x.valid_from,validTo:x.valid_to,syncedAt:x.synced_at})),syncedAt};
  const allowedKeys=new Set(completeStates.map(x=>`${x.source}::${x.assortment_key}`)),rows=db.prepare(`SELECT * FROM store_assortment_products WHERE store_id=?`).all(store).filter(x=>allowedKeys.has(`${x.source}::${x.assortment_key}`)&&activeWindow(x.valid_from,x.valid_to,day));
  const included=new Set(),excluded=new Set();for(const row of rows){if(Number(row.included)===0)excluded.add(row.product_number);else included.add(row.product_number)}for(const p of excluded)included.delete(p);
- const syncedAt=completeStates.map(x=>x.synced_at).sort().at(-1)||null;
  return{status:'READY',storeId:store,businessDate:day,source:source||null,included,excluded,assortments:completeStates.map(x=>({source:x.source,key:x.assortment_key,name:x.assortment_name,rowCount:x.row_count,validFrom:x.valid_from,validTo:x.valid_to,syncedAt:x.synced_at})),syncedAt};
 }
 
-export function assortmentMembership(storeId,productNumber,{businessDate=null,source=null,index=null}={}){
- const p=clean(productNumber),idx=index||assortmentIndex(storeId,{businessDate,source});if(!p||idx.status!=='READY')return{status:'UNKNOWN',productNumber:p||null,storeId:clean(storeId),assortmentReady:false};
+export function assortmentMembership(storeId,productNumber,{businessDate=null,source=null,index=null,maxAgeHours=null}={}){
+ const p=clean(productNumber),idx=index||assortmentIndex(storeId,{businessDate,source,maxAgeHours});if(!p||idx.status!=='READY')return{status:'UNKNOWN',productNumber:p||null,storeId:clean(storeId),assortmentReady:false,assortmentState:idx.status};
  if(idx.excluded.has(p))return{status:'NOT_ASSORTED',productNumber:p,storeId:clean(storeId),assortmentReady:true,reason:'EXCLUDED'};
  if(idx.included.has(p))return{status:'ASSORTED',productNumber:p,storeId:clean(storeId),assortmentReady:true};
  return{status:'NOT_ASSORTED',productNumber:p,storeId:clean(storeId),assortmentReady:true,reason:'NOT_IN_ACTIVE_ASSORTMENT'};
@@ -119,8 +144,8 @@ export function productTaxonomy(productNumber,{hierarchyKey=null,source=null}={}
  return db.prepare(`SELECT pc.source,pc.hierarchy_key,pc.category_id,c.category_name,c.parent_category_id,c.level,c.path,c.active FROM merchandising_product_categories pc LEFT JOIN merchandising_categories c ON c.source=pc.source AND c.hierarchy_key=pc.hierarchy_key AND c.category_id=pc.category_id WHERE ${where.join(' AND ')} ORDER BY pc.hierarchy_key,c.level,c.category_name`).all(...args)
 }
 
-export function classifyAvailability({storeId,productNumber,availableQty,businessDate=null,index=null}={}){
- const qty=Number(availableQty),membership=assortmentMembership(storeId,productNumber,{businessDate,index});
+export function classifyAvailability({storeId,productNumber,availableQty,businessDate=null,index=null,maxAgeHours=null}={}){
+ const qty=Number(availableQty),membership=assortmentMembership(storeId,productNumber,{businessDate,index,maxAgeHours});
  if(Number.isFinite(qty)&&qty<0)return{state:'STOCK_ANOMALY',membership,operational:true};
  if(membership.status==='UNKNOWN')return{state:'ASSORTMENT_UNKNOWN',membership,operational:false};
  if(membership.status==='NOT_ASSORTED')return{state:Number(qty)>0?'RESIDUAL_STOCK_OUTSIDE_ASSORTMENT':'NOT_ASSORTED',membership,operational:Number(qty)>0};
