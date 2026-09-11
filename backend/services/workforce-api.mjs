@@ -1,6 +1,7 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
 import { workforceConfig,listEmployees,createEmployee,endEmployeeContract,listShifts,createShift,setShiftStatus,listObjectives,createObjective } from './workforce.mjs';
+import { handleProcessStudioApi } from './process-studio-api.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
@@ -11,6 +12,7 @@ function storeForEmployee(id){return db.prepare(`SELECT store_id FROM employees 
 function storeForShift(id){return db.prepare(`SELECT store_id FROM work_shifts WHERE id=?`).get(id)?.store_id||null}
 
 export async function handleWorkforceApi({req,url,user}){
+ const processResponse=await handleProcessStudioApi({req,url,user});if(processResponse)return processResponse;
  const path=url.pathname;
  if(path==='/api/workforce/config'&&req.method==='GET')return{status:200,data:workforceConfig()};
  let p=route(path,'/api/stores/:storeId/workforce');
