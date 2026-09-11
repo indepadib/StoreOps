@@ -15,6 +15,7 @@ on:
       - 'backend/tests/replenishment-policy.mjs'
       - 'frontend/js/pages/admin-studio.js'
       - 'frontend/js/custom-process-runs.js'
+      - 'frontend/js/admin-studio-replenishment.js'
       - 'frontend/js/app.js'
       - 'frontend/admin-studio.css'
       - 'frontend/index.html'
@@ -43,6 +44,7 @@ jobs:
           node --check backend/services/workflow.mjs
           node --check frontend/js/pages/admin-studio.js
           node --check frontend/js/custom-process-runs.js
+          node --check frontend/js/admin-studio-replenishment.js
           node --check frontend/js/app.js
           node --check frontend/sw.js
       - name: Process Studio contracts
@@ -58,5 +60,7 @@ jobs:
           grep -q 'id="adminStudioNav"' frontend/index.html
           grep -q 'id="adminStudioPage"' frontend/index.html
           grep -q '/admin-studio.css' frontend/index.html
+          grep -q '/js/admin-studio-replenishment.js' frontend/index.html
+          grep -q '/js/admin-studio-replenishment.js' frontend/sw.js
           grep -q '/js/pages/admin-studio.js' frontend/sw.js
           grep -q '/js/custom-process-runs.js' frontend/sw.js
