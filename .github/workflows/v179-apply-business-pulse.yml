@@ -17,7 +17,6 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           p=Path('backend/server.mjs');s=p.read_text()
           imp="import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';"
           if imp not in s:s=s.replace("import { handleWorkforceApi } from './services/workforce-api.mjs';", "import { handleWorkforceApi } from './services/workforce-api.mjs';\n"+imp)
@@ -45,22 +44,6 @@ jobs:
           s=s.replace(old,new)
           if "if(page==='managerPerformance')return renderManagerPerformance();" not in s:s=s.replace("if(page==='managerTeam')return renderManagerTeam();", "if(page==='managerTeam')return renderManagerTeam();if(page==='managerPerformance')return renderManagerPerformance();")
           p.write_text(s)
-
-          p=Path('.github/workflows/v179-core-verify.yml');s=p.read_text()
-          for path in [
-            'backend/services/dynamics-sales.mjs','backend/services/business-pulse.mjs','backend/services/business-pulse-api.mjs','backend/tests/business-pulse.mjs','backend/tests/business-pulse-api.mjs','frontend/js/pages/manager-home.js','frontend/js/pages/manager-performance.js','frontend/manager-pulse.css'
-          ]:
-            line=f"      - '{path}'\n"
-            if line not in s:s=s.replace("      - 'docs/SAAS-RETAIL-OS.md'\n",line+"      - 'docs/SAAS-RETAIL-OS.md'\n")
-          checks=[
-            '          node --check backend/services/dynamics-sales.mjs\n','          node --check backend/services/business-pulse.mjs\n','          node --check backend/services/business-pulse-api.mjs\n','          node --check frontend/js/pages/manager-home.js\n','          node --check frontend/js/pages/manager-performance.js\n','          node backend/tests/business-pulse.mjs\n'
-          ]
-          anchor='          node backend/tests/replenishment-engine.mjs\n'
-          for line in checks:
-            if line not in s:s=s.replace(anchor,anchor+line);anchor=line
-          api_line='          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/business-pulse-api.mjs\n'
-          if api_line not in s:s=s.replace('          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs\n','          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/merchandising-api.mjs\n'+api_line)
-          p.write_text(s)
           PY
           node --check backend/server.mjs
           node --check backend/services/dynamics-sales.mjs
@@ -76,7 +59,7 @@ jobs:
         run: |
           git config user.name 'indepadib'
           git config user.email '55211714+indepadib@users.noreply.github.com'
-          git add backend/server.mjs netlify/functions/api.mts frontend/index.html frontend/js/app.js .github/workflows/v179-core-verify.yml
+          git add backend/server.mjs netlify/functions/api.mts frontend/index.html frontend/js/app.js
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'feat(v1.79): wire Business Pulse and manager performance'
           git push origin HEAD:storeops-v1.79-manager-experience
