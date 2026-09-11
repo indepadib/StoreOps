@@ -1,5 +1,5 @@
 const MANAGER=()=>document.body.classList.contains('manager-mode');
-let mode='home';
+let mode='auto';
 let queued=false;
 
 function ensureStyles(){
@@ -57,12 +57,17 @@ function simplify(){
   const scan=c.querySelector('.price-check-card'),history=c.querySelector('#priceCheckHistory'),readiness=c.querySelector('.commercial-readiness'),list=c.querySelector('.commercial-list');
   const directKpi=[...c.children].find(x=>x.matches?.('.grid.g4'));hide(directKpi);hide(readiness);hide(history);
   const syncBanner=[...c.children].find(x=>x.matches?.('.banner.ban-danger'));if(syncBanner)show(syncBanner);
-  const h=home(),qh=document.querySelector('#managerCommercialQueueHead');
+  const h=home(),qh=document.querySelector('#managerCommercialQueueHead'),pending=pendingCards();
+  if(mode==='auto')mode=pending.length?'actions':'home';
   if(mode==='home'){show(h);hide(scan);hide(list);hide(qh)}
   else if(mode==='scan'){hide(h);hide(qh);show(scan);hide(list);simplifyScan(scan)}
-  else{hide(h);hide(scan);show(list);const pending=pendingCards(),head=queueHead(pending.length);show(head);focusQueue(pending)}
+  else{hide(h);hide(scan);show(list);const head=queueHead(pending.length);show(head);focusQueue(pending)}
 }
 function watch(){
+  document.addEventListener('click',e=>{
+    const nav=e.target.closest?.('[data-page="commercial"],[data-manager-go="commercial"]');
+    if(MANAGER()&&nav)mode='auto';
+  },true);
   document.addEventListener('click',e=>{if(MANAGER()&&mode==='actions'&&e.target.closest('[data-commercial-submit]'))setTimeout(()=>{mode='actions'},0)},true);
   document.addEventListener('click',e=>{if(MANAGER()&&mode==='scan'&&e.target.closest('#priceCheckSubmit'))setTimeout(()=>{mode='scan'},0)},true);
 }
