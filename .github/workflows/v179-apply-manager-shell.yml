@@ -1,0 +1,53 @@
+name: V1.79 Apply Manager Shell
+on:
+  push:
+    branches: [storeops-v1.79-manager-experience]
+    paths: ['.github/workflows/v179-apply-manager-shell.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.79-manager-experience
+      - name: Wire 4-tab manager shell and universal scan
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('frontend/index.html');s=p.read_text()
+          if '/manager-scan.css' not in s:
+              s=s.replace('<link rel="stylesheet" href="/manager.css">','<link rel="stylesheet" href="/manager.css"><link rel="stylesheet" href="/manager-scan.css">')
+          old='''<nav class="manager-nav" id="managerNav" aria-label="Navigation Responsable magasin" hidden>\n<button data-page="today" class="active">Aujourd’hui</button><button data-page="managerJourney">Journée</button><button data-page="managerControls">Contrôles</button><button data-page="incidents">Alertes</button><button data-page="managerMore">Plus</button>\n</nav>'''
+          new='''<nav class="manager-nav" id="managerNav" aria-label="Navigation Responsable magasin" hidden>\n<button data-page="today" class="active">Aujourd’hui</button><button data-page="managerScan">Scanner</button><button data-page="staffing">Équipe</button><button data-page="managerMore">Plus</button>\n</nav>'''
+          if old in s:s=s.replace(old,new)
+          scan='<section class="page" id="managerScanPage"><div id="managerScanContent"></div></section>'
+          if 'id="managerScanPage"' not in s:s=s.replace('<section class="page" id="managerJourneyPage">',scan+'\n<section class="page" id="managerJourneyPage">')
+          p.write_text(s)
+
+          p=Path('frontend/js/app.js');s=p.read_text()
+          imp="import { renderManagerScan } from './pages/manager-scan.js';"
+          if imp not in s:s=s.replace("import { renderManagerHome } from './pages/manager-home.js';", "import { renderManagerHome } from './pages/manager-home.js';\n"+imp)
+          start="function managerTabFor(page){"
+          end="}\nfunction pilotSession"
+          a=s.find(start);b=s.find(end,a)
+          if a>=0 and b>=0:
+              repl="function managerTabFor(page){if(page==='today')return'today';if(page==='managerScan')return'managerScan';if(page==='staffing')return'staffing';return'managerMore'"
+              s=s[:a]+repl+s[b:]
+          if "if(page==='managerScan')return renderManagerScan();" not in s:
+              s=s.replace("if(page==='today')return isManager()?renderManagerHome():renderToday();", "if(page==='today')return isManager()?renderManagerHome():renderToday();if(page==='managerScan')return renderManagerScan();")
+          p.write_text(s)
+          PY
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/manager-scan.js
+          grep -q 'data-page="managerScan"' frontend/index.html
+          grep -q '>Équipe</button>' frontend/index.html
+      - name: Commit manager shell
+        run: |
+          git config user.name 'indepadib'
+          git config user.email '55211714+indepadib@users.noreply.github.com'
+          git add frontend/index.html frontend/js/app.js
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(v1.79): switch manager UX to Today Scan Team More'
+          git push origin HEAD:storeops-v1.79-manager-experience
