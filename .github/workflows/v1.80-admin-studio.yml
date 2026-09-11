@@ -6,9 +6,13 @@ on:
       - 'backend/services/process-template-engine.mjs'
       - 'backend/services/process-studio.mjs'
       - 'backend/services/process-studio-api.mjs'
+      - 'backend/services/replenishment-policy.mjs'
+      - 'backend/services/replenishment-policy-api.mjs'
+      - 'backend/services/item-assistant.mjs'
       - 'backend/services/workforce-api.mjs'
       - 'backend/services/workflow.mjs'
       - 'backend/tests/process-studio.mjs'
+      - 'backend/tests/replenishment-policy.mjs'
       - 'frontend/js/pages/admin-studio.js'
       - 'frontend/js/custom-process-runs.js'
       - 'frontend/js/app.js'
@@ -32,6 +36,9 @@ jobs:
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/process-studio.mjs
           node --check backend/services/process-studio-api.mjs
+          node --check backend/services/replenishment-policy.mjs
+          node --check backend/services/replenishment-policy-api.mjs
+          node --check backend/services/item-assistant.mjs
           node --check backend/services/workforce-api.mjs
           node --check backend/services/workflow.mjs
           node --check frontend/js/pages/admin-studio.js
@@ -42,6 +49,10 @@ jobs:
         env:
           STOREOPS_DB: /tmp/storeops-v180-process-studio.db
         run: node backend/tests/process-studio.mjs
+      - name: Replenishment policy contracts
+        env:
+          STOREOPS_DB: /tmp/storeops-v180-replenishment.db
+        run: node backend/tests/replenishment-policy.mjs
       - name: Shell wiring
         run: |
           grep -q 'id="adminStudioNav"' frontend/index.html
