@@ -8,11 +8,14 @@ on:
       - 'backend/services/process-studio-api.mjs'
       - 'backend/services/replenishment-policy.mjs'
       - 'backend/services/replenishment-policy-api.mjs'
+      - 'backend/services/replenishment-requests.mjs'
+      - 'backend/services/replenishment-request-api.mjs'
       - 'backend/services/item-assistant.mjs'
       - 'backend/services/workforce-api.mjs'
       - 'backend/services/workflow.mjs'
       - 'backend/tests/process-studio.mjs'
       - 'backend/tests/replenishment-policy.mjs'
+      - 'backend/tests/replenishment-requests.mjs'
       - 'frontend/js/pages/admin-studio.js'
       - 'frontend/js/custom-process-runs.js'
       - 'frontend/js/admin-studio-replenishment.js'
@@ -39,6 +42,8 @@ jobs:
           node --check backend/services/process-studio-api.mjs
           node --check backend/services/replenishment-policy.mjs
           node --check backend/services/replenishment-policy-api.mjs
+          node --check backend/services/replenishment-requests.mjs
+          node --check backend/services/replenishment-request-api.mjs
           node --check backend/services/item-assistant.mjs
           node --check backend/services/workforce-api.mjs
           node --check backend/services/workflow.mjs
@@ -55,6 +60,10 @@ jobs:
         env:
           STOREOPS_DB: /tmp/storeops-v180-replenishment.db
         run: node backend/tests/replenishment-policy.mjs
+      - name: Replenishment request lifecycle contracts
+        env:
+          STOREOPS_DB: /tmp/storeops-v180-requests.db
+        run: node backend/tests/replenishment-requests.mjs
       - name: Shell wiring
         run: |
           grep -q 'id="adminStudioNav"' frontend/index.html
