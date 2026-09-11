@@ -31,7 +31,7 @@ assert.equal(vf.body.stock,17);
 const tr=await get('/api/stores/trefle/products/3017620422003','u-tr');
 assert.equal(tr.status,200);
 assert.equal(tr.body.warehouseId,null);
-assert.equal(tr.body.stockSource,'SIMULATED_D365');
+assert.equal(tr.body.stockSource,'UNMAPPED_D365');
 
 const forbidden=await get('/api/stores/trefle/products/3017620422003','u-vf');
 assert.equal(forbidden.status,403);
