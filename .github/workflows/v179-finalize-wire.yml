@@ -13,32 +13,22 @@ jobs:
         with: {ref: storeops-v1.79-manager-experience}
       - uses: actions/setup-node@v4
         with: {node-version: '22'}
-      - name: Wire closing pack API and final env bridge
+      - name: Final diagnostics wiring
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('backend/server.mjs');s=p.read_text()
-          imp="import { handleLossExportApi } from './services/loss-export-api.mjs';"
-          if imp not in s:s=s.replace("import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';", "import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';\n"+imp)
-          hook="const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);"
-          anchor="const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);"
-          if hook not in s:s=s.replace(anchor,anchor+"\n  "+hook)
-          p.write_text(s)
-
-          p=Path('netlify/functions/api.mts');s=p.read_text()
-          extra="    'D365_STOCK_BATCH_FIELD','D365_STOCK_LOCATION_FIELD','D365_STOCK_STATUS_FIELD',\n    'D365_SALES_QTY_SIGN','STOREOPS_SALES_VELOCITY_CACHE_SECONDS','STOREOPS_REPLENISHMENT_LEAD_TIME_DAYS','STOREOPS_REPLENISHMENT_SAFETY_DAYS','STOREOPS_REPLENISHMENT_PACK_SIZE','STOREOPS_REPLENISHMENT_MIN_ORDER_QTY','STOREOPS_REPLENISHMENT_PROMO_FACTOR','STOREOPS_REPLENISHMENT_DAY_FACTOR','STOREOPS_LOSS_EXPORT_TEMPLATE_JSON',\n"
-          marker="    'D365_ODATA_PAGE_SIZE','D365_ODATA_MAX_ROWS','CLOSING_VARIANCE_TOLERANCE_DH'"
-          if "'D365_STOCK_BATCH_FIELD'" not in s:s=s.replace(marker,extra+marker)
+          p=Path('backend/services/dynamics.mjs');s=p.read_text()
+          anchor="      purchaseOrderLineEntity:c.receiving?.lineEntity||null,"
+          extra="""      purchaseOrderLineEntity:c.receiving?.lineEntity||null,\n      assortmentEntity:process.env.D365_ASSORTMENT_ENTITY||null,\n      categoryEntity:process.env.D365_CATEGORY_ENTITY||'ProcurementProductCategories',\n      productCategoryAssignmentEntity:process.env.D365_PRODUCT_CATEGORY_ASSIGNMENT_ENTITY||'ProductCategoryAssignments',\n      salesEntity:process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities',\n      stockBatchField:c.stock?.batchField||null,\n      stockLocationField:c.stock?.locationField||null,\n      stockStatusField:c.stock?.statusField||null,\n      storeSupplyWarehouses:c.stock?.supplyWarehouses||{},"""
+          if 'assortmentEntity:process.env.D365_ASSORTMENT_ENTITY' not in s:s=s.replace(anchor,extra)
           p.write_text(s)
           PY
-          node --check backend/server.mjs
-          node --check backend/services/loss-export-api.mjs
-          node --check netlify/functions/api.mts
-      - name: Commit app wiring
+          node --check backend/services/dynamics.mjs
+      - name: Commit final diagnostics wiring
         run: |
           git config user.name 'indepadib'
           git config user.email '55211714+indepadib@users.noreply.github.com'
-          git add backend/server.mjs netlify/functions/api.mts
+          git add backend/services/dynamics.mjs
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'feat(v1.79): wire loss closing pack and final connector envs'
+          git commit -m 'feat(v1.79): expose merchandising sales and stock dimension readiness'
           git push origin HEAD:storeops-v1.79-manager-experience
