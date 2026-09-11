@@ -1,0 +1,36 @@
+name: V1.79 Apply Workforce API
+on:
+  push:
+    branches: [storeops-v1.79-manager-experience]
+    paths: ['.github/workflows/v179-apply-workforce-api.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.79-manager-experience
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Wire workforce API
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('backend/server.mjs');s=p.read_text()
+          imp="import { handleWorkforceApi } from './services/workforce-api.mjs';"
+          if imp not in s:s=s.replace("import { handleMerchandisingApi } from './services/merchandising-api.mjs';", "import { handleMerchandisingApi } from './services/merchandising-api.mjs';\n"+imp)
+          hook="const workforceResponse=await handleWorkforceApi({req,url,user});if(workforceResponse)return json(req,res,workforceResponse.status,workforceResponse.data);"
+          if hook not in s:s=s.replace("const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);", "const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);\n  "+hook)
+          p.write_text(s)
+          PY
+          node --check backend/server.mjs
+          node --check backend/services/workforce-api.mjs
+      - name: Commit wiring
+        run: |
+          git config user.name 'indepadib'
+          git config user.email '55211714+indepadib@users.noreply.github.com'
+          git add backend/server.mjs
+          git commit -m 'feat(v1.79): wire workforce lifecycle API'
+          git push origin HEAD:storeops-v1.79-manager-experience
