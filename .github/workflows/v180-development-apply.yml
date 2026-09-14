@@ -1,0 +1,58 @@
+name: V1.80 Development Apply
+
+on:
+  push:
+    branches: [storeops-v1.80-admin-studio]
+    paths:
+      - '.github/workflows/v180-development-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.80-admin-studio
+      - name: Patch profile and API routing
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('backend/services/access-management.mjs')
+          s=p.read_text()
+          old=" QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Lecture réseau et gestion qualité/audit sans posting opérationnel.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},\n STORE_MANAGER:"
+          new=" QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Lecture réseau et gestion qualité/audit sans posting opérationnel.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},\n DEVELOPMENT:{code:'DEVELOPMENT',label:'Développement réseau',description:'Sourcing de locaux, négociation, contrats, travaux et ouvertures.',role:'employee',permissionsProfile:'development',scope:'NETWORK',sensitive:false},\n STORE_MANAGER:"
+          if old not in s:
+              raise SystemExit('PROFILE_DEFS insertion point not found')
+          s=s.replace(old,new,1)
+          old2=" if(row.permissions_profile==='quality_audit')return PROFILE_DEFS.QUALITY_AUDIT;\n if(row.role==='store_manager')"
+          new2=" if(row.permissions_profile==='quality_audit')return PROFILE_DEFS.QUALITY_AUDIT;\n if(row.permissions_profile==='development')return PROFILE_DEFS.DEVELOPMENT;\n if(row.role==='store_manager')"
+          if old2 not in s:
+              raise SystemExit('profileFromUser insertion point not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+
+          p=Path('backend/services/workforce-api.mjs')
+          s=p.read_text()
+          old="import { deactivateAccountsForEmployee } from './access-management.mjs';\n"
+          new=old+"import { handleDevelopmentApi } from './development-api.mjs';\n"
+          if old not in s:
+              raise SystemExit('workforce import insertion point not found')
+          s=s.replace(old,new,1)
+          old2="export async function handleWorkforceApi({req,url,user}){\n const processResponse=await handleProcessStudioApi({req,url,user});"
+          new2="export async function handleWorkforceApi({req,url,user}){\n const developmentResponse=await handleDevelopmentApi({req,url,user});if(developmentResponse)return developmentResponse;\n const processResponse=await handleProcessStudioApi({req,url,user});"
+          if old2 not in s:
+              raise SystemExit('workforce routing insertion point not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+      - name: Commit
+        run: |
+          git config user.name "storeops-bot"
+          git config user.email "storeops-bot@users.noreply.github.com"
+          git add backend/services/access-management.mjs backend/services/workforce-api.mjs
+          git commit -m "feat(v1.80): wire development profile and API" || exit 0
+          git push origin HEAD:storeops-v1.80-admin-studio
