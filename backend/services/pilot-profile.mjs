@@ -33,13 +33,12 @@ db.prepare(`UPDATE stores SET opening_time='08:00',closing_time='23:00',active=1
 db.prepare(`UPDATE users SET name='Ayoub Nachiti',role='store_manager',store_id=?,active=1,permissions_profile=NULL WHERE id=?`).run(PILOT_STORE_ID,PILOT_MANAGER_ID);
 db.prepare(`UPDATE users SET name=?,role='ops_director',store_id=NULL,active=1,permissions_profile=NULL WHERE id=?`).run(String(process.env.STOREOPS_OPS_DIRECTOR_NAME||'Mourad').trim()||'Mourad',OPS_DIRECTOR_ID);
 
-// Separate technical pilot administrator. It deliberately uses the existing
-// ops_director permission envelope so the administrator can validate every
-// store/system screen without being confused with Mourad's identity.
+// Separate platform administrator: same runtime role envelope for legacy routes,
+// but a distinct permissions profile is required for sensitive access governance.
 const adminName=String(process.env.STOREOPS_ADMIN_NAME||'Admin StoreOps').trim()||'Admin StoreOps';
 db.prepare(`INSERT INTO users(id,name,email,entra_oid,role,store_id,active,dynamics_email,permissions_profile)
-VALUES(?,?,NULL,NULL,'ops_director',NULL,1,NULL,NULL)
-ON CONFLICT(id) DO UPDATE SET name=excluded.name,role='ops_director',store_id=NULL,active=1,permissions_profile=NULL`).run(ADMIN_ID,adminName);
+VALUES(?,?,NULL,NULL,'ops_director',NULL,1,NULL,'platform_admin')
+ON CONFLICT(id) DO UPDATE SET name=excluded.name,role='ops_director',store_id=NULL,active=1,permissions_profile='platform_admin'`).run(ADMIN_ID,adminName);
 
 // Quality & Audit lead: network-wide audit/quality perimeter without operational posting rights.
 const qualityAuditName=String(process.env.STOREOPS_QUALITY_AUDIT_NAME||'Responsable Qualité & Audit').trim()||'Responsable Qualité & Audit';
