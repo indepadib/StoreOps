@@ -1,6 +1,6 @@
 import { config } from '../config.mjs';
 import { getProductByEan,odataGetAll } from './dynamics.mjs';
-import { storeOperationalSettings,allStoreOperationalSettings } from './store-settings.mjs';
+import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
 
 // Pilot fallback only. Other stores must be explicitly mapped in configuration.
 export const STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
@@ -30,16 +30,17 @@ export function warehouseForStore(storeId){
 }
 
 export function stockIntegrationConfig(){
-  const fields=stockFields();
+  const fields=stockFields(),network=networkOperationalSettings();
   return {
     mode:stockLive()?'LIVE':'SIMULATED',entity:stockEntity(),dataAreaId:config.dynamics.dataAreaId||null,
-    stores:allStoreOperationalSettings().map(s=>({storeId:s.id,storeName:s.name,warehouseId:s.settings.storeWarehouseId,supplyWarehouseId:s.settings.supplyWarehouseId,settingsSource:s.settings.source})),
+    network:{defaultSupplyWarehouseId:network.defaultSupplyWarehouseId,settingsSource:network.source},
+    stores:allStoreOperationalSettings().map(s=>({storeId:s.id,storeName:s.name,warehouseId:s.settings.storeWarehouseId,supplyWarehouseId:s.settings.supplyWarehouseId,supplyWarehouseSource:s.settings.supplyWarehouseSource,settingsSource:s.settings.source})),
     fields:{item:fields.item,warehouse:fields.warehouse,onHand:fields.onHand,availableOnHand:fields.availableOnHand,batch:fields.batch||null,location:fields.location||null,status:fields.status||null,reservedOnHand:'ReservedOnHandQuantity',ordered:'OrderedQuantity',availableOrdered:'AvailableOrderedQuantity',reservedOrdered:'ReservedOrderedQuantity',onOrder:'OnOrderQuantity',totalAvailable:'TotalAvailableQuantity'}
   }
 }
 
 export async function listWarehouseOptions(){
-  const known=new Set();for(const s of allStoreOperationalSettings()){if(s.settings.storeWarehouseId)known.add(s.settings.storeWarehouseId);if(s.settings.supplyWarehouseId)known.add(s.settings.supplyWarehouseId);for(const x of s.settings.secondarySupplyWarehouseIds||[])known.add(x)}
+  const known=new Set(),network=networkOperationalSettings();if(network.defaultSupplyWarehouseId)known.add(network.defaultSupplyWarehouseId);for(const s of allStoreOperationalSettings()){if(s.settings.storeWarehouseId)known.add(s.settings.storeWarehouseId);if(s.settings.supplyWarehouseOverrideId)known.add(s.settings.supplyWarehouseOverrideId);for(const x of s.settings.secondarySupplyWarehouseIds||[])known.add(x)}
   if(!stockLive())return{status:'CONFIG_ONLY',source:'STOREOPS',items:[...known].sort().map(id=>({id,name:id})),partial:false};
   const fields=stockFields(),directoryEntity=clean(process.env.D365_WAREHOUSE_DIRECTORY_ENTITY),directoryIdField=clean(process.env.D365_WAREHOUSE_DIRECTORY_ID_FIELD)||fields.warehouse,directoryNameField=clean(process.env.D365_WAREHOUSE_DIRECTORY_NAME_FIELD),entity=directoryEntity||stockEntity(),select=[directoryIdField,directoryNameField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(','),filters=[];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
