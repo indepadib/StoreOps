@@ -1,0 +1,63 @@
+name: V1.81 Tenant Apply
+
+on:
+  push:
+    branches: [storeops-v1.81-tenant-studio]
+    paths:
+      - '.github/workflows/v181-tenant-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.81-tenant-studio
+      - name: Wire tenant profile
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('backend/services/workforce-api.mjs')
+          s=p.read_text()
+          anchor="import { handleIntegrationRegistryApi } from './integration-registry-api.mjs';\n"
+          if "tenant-profile-api" not in s:
+              if anchor not in s: raise SystemExit('integration api import anchor not found')
+              s=s.replace(anchor,anchor+"import { handleTenantProfileApi } from './tenant-profile-api.mjs';\n",1)
+          anchor2=" const integrationResponse=await handleIntegrationRegistryApi({req,url,user});if(integrationResponse)return integrationResponse;\n"
+          if "tenantResponse" not in s:
+              if anchor2 not in s: raise SystemExit('integration api route anchor not found')
+              s=s.replace(anchor2,anchor2+" const tenantResponse=await handleTenantProfileApi({req,url,user});if(tenantResponse)return tenantResponse;\n",1)
+          p.write_text(s)
+
+          p=Path('frontend/index.html')
+          s=p.read_text()
+          if '/admin-studio-tenant.css' not in s:
+              s=s.replace('<link rel="stylesheet" href="/admin-studio-integrations.css">','<link rel="stylesheet" href="/admin-studio-integrations.css"><link rel="stylesheet" href="/admin-studio-tenant.css">',1)
+          if '/js/tenant-branding.js' not in s:
+              s=s.replace('<script src="/runtime-config.js"></script>','<script src="/runtime-config.js"></script><script type="module" src="/js/tenant-branding.js"></script>',1)
+          if '/js/admin-studio-tenant.js' not in s:
+              s=s.replace('<script type="module" src="/js/admin-studio-integrations.js"></script>','<script type="module" src="/js/admin-studio-integrations.js"></script><script type="module" src="/js/admin-studio-tenant.js"></script>',1)
+          p.write_text(s)
+
+          p=Path('frontend/sw.js')
+          s=p.read_text()
+          s=s.replace("const CACHE='storeops-shell-v1.80.3';","const CACHE='storeops-shell-v1.81.0';")
+          if "'/admin-studio-tenant.css'" not in s:
+              s=s.replace("'/admin-studio-access.css','/runtime-config.js'","'/admin-studio-access.css','/admin-studio-integrations.css','/admin-studio-tenant.css','/development.css','/runtime-config.js'",1)
+          if "'/js/tenant-branding.js'" not in s:
+              s=s.replace("'/js/admin-studio-access.js','/js/auth-entry.js'","'/js/admin-studio-access.js','/js/admin-studio-integrations.js','/js/admin-studio-tenant.js','/js/tenant-branding.js','/js/auth-entry.js'",1)
+          if "'/js/pages/development.js'" not in s:
+              s=s.replace("'/js/pages/admin-studio.js','/js/pages/system.js'","'/js/pages/admin-studio.js','/js/pages/development.js','/js/pages/system.js'",1)
+          p.write_text(s)
+          PY
+      - name: Commit product wiring
+        run: |
+          git config user.name "storeops-bot"
+          git config user.email "storeops-bot@users.noreply.github.com"
+          git add backend/services/workforce-api.mjs frontend/index.html frontend/sw.js
+          git commit -m "feat(v1.81): wire tenant profile into runtime" || exit 0
+          git push origin HEAD:storeops-v1.81-tenant-studio
