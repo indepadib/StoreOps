@@ -6,6 +6,8 @@ import { handleReplenishmentPolicyApi } from './replenishment-policy-api.mjs';
 import { handleReplenishmentRequestApi } from './replenishment-request-api.mjs';
 import { handleStoreSettingsApi } from './store-settings-api.mjs';
 import { handlePriceHistoryApi } from './price-history-api.mjs';
+import { handleAccessManagementApi } from './access-management-api.mjs';
+import { deactivateAccountsForEmployee } from './access-management.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
@@ -21,6 +23,7 @@ export async function handleWorkforceApi({req,url,user}){
  const requestResponse=await handleReplenishmentRequestApi({req,url,user});if(requestResponse)return requestResponse;
  const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return storeSettingsResponse;
  const priceHistoryResponse=await handlePriceHistoryApi({req,url,user});if(priceHistoryResponse)return priceHistoryResponse;
+ const accessResponse=await handleAccessManagementApi({req,url,user});if(accessResponse)return accessResponse;
  const path=url.pathname;
  if(path==='/api/workforce/config'&&req.method==='GET')return{status:200,data:workforceConfig()};
  let p=route(path,'/api/stores/:storeId/workforce');
@@ -38,7 +41,7 @@ export async function handleWorkforceApi({req,url,user}){
  p=route(path,'/api/employees/:employeeId/end');
  if(p&&req.method==='POST'){
   const storeId=storeForEmployee(p.employeeId);if(!storeId)return{status:404,data:{error:'Employé introuvable.'}};if(!manageStore(user,storeId))return forbidden();
-  const b=await body(req);return{status:200,data:endEmployeeContract({employeeId:p.employeeId,user,endDate:b.endDate||todayISO(),reason:b.reason||''})}
+  const b=await body(req),employee=endEmployeeContract({employeeId:p.employeeId,user,endDate:b.endDate||todayISO(),reason:b.reason||''}),access=deactivateAccountsForEmployee({actor:user,employeeId:p.employeeId,reason:'CONTRACT_ENDED'});return{status:200,data:{...employee,accessDeprovisioning:access}}
  }
  p=route(path,'/api/stores/:storeId/shifts');
  if(p&&req.method==='POST'){
