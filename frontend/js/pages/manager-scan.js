@@ -3,9 +3,11 @@ import { app,currentStore } from '../state.js';
 import { $,esc,toast } from '../ui.js';
 
 let lastContext=null,lastRequest=null;
+const priceHistoryCache=new Map();
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})+' DH';
 const qty=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:3});
 const requestStatus={REQUESTED:'En attente Direction',APPROVED:'Approuvée',SENT:'Envoyée',PARTIAL_RECEIVED:'Partiellement reçue',RECEIVED:'Reçue',REJECTED:'Refusée',CANCELLED:'Annulée'};
+const dateLabel=v=>{if(!v)return'—';try{return new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(`${String(v).slice(0,10)}T00:00:00`))}catch{return String(v)}};
 
 function assortmentPresentation(a={}){
  if(a.status==='ASSORTED')return{label:'Dans l’assortiment',tone:'ok',detail:'Cet article fait partie du référentiel actif de ce magasin.'};
@@ -46,6 +48,19 @@ function requestCard(c){
  const closed=['RECEIVED','REJECTED','CANCELLED'].includes(lastRequest.status),remaining=lastRequest.remainingQty??Math.max(0,Number(lastRequest.requested_qty||0)-Number(lastRequest.received_qty||0));
  return `<section class="manager-replenishment-request ${closed?'closed':''}"><div><span>Demande de réappro</span><strong>${esc(lastRequest.id)}</strong><p>${esc(requestStatus[lastRequest.status]||lastRequest.status)} · ${qty(lastRequest.requested_qty)} ${esc(lastRequest.unit||c.item.unit||'')}</p></div><div class="manager-request-right"><b>${closed?'Clôturée':`${qty(remaining)} restant`}</b>${lastRequest.external_reference?`<small>ERP ${esc(lastRequest.external_reference)}</small>`:'<small>Aucun posting ERP simulé</small>'}</div></section>`
 }
+function observedChanges(items=[]){
+ const out=[];let last=null;
+ for(const item of items||[]){const p=item.weightedUnitPrice;if(p==null)continue;if(last===null||Math.abs(Number(p)-Number(last))>.004){out.push(item);last=p}}
+ return out.slice(0,12)
+}
+function priceHistoryHtml(h){
+ const agreements=(h?.tradeAgreements?.items||[]).slice(0,10),observed=observedChanges(h?.observedSales?.items||[]),hasAny=agreements.length||observed.length;
+ if(!hasAny)return `<section class="manager-price-history"><div class="manager-price-history-head"><div><span class="manager-eyebrow">HISTORIQUE DE PRIX</span><strong>Aucun historique exploitable pour le moment</strong></div></div><p class="manager-price-history-note">Le prix actuel reste disponible. StoreOps n’invente pas d’anciennes valeurs lorsqu’aucune source fiable n’est exposée.</p></section>`;
+ const agreementsHtml=agreements.length?`<div class="manager-price-history-group"><div class="manager-price-history-title"><strong>Tarifs paramétrés</strong><span>Accords / périodes de validité</span></div>${agreements.map(x=>`<div class="manager-price-row"><div><strong>${money(x.price)}</strong><span>${esc(x.priceGroup||x.customer||x.warehouse||'Tarif')}</span></div><small>${x.from?dateLabel(x.from):'Début non renseigné'}${x.to?` → ${dateLabel(x.to)}`:' → en cours'}</small></div>`).join('')}</div>`:'';
+ const observedHtml=observed.length?`<div class="manager-price-history-group"><div class="manager-price-history-title"><strong>Prix constatés en caisse</strong><span>Ventes réelles · prix moyen pondéré</span></div>${observed.map(x=>`<div class="manager-price-row"><div><strong>${money(x.weightedUnitPrice)}</strong><span>${qty(x.units)} unité(s) observée(s)</span></div><small>${dateLabel(x.date)}${x.minUnitPrice!=null&&x.maxUnitPrice!=null&&Math.abs(x.maxUnitPrice-x.minUnitPrice)>.004?` · ${money(x.minUnitPrice)}–${money(x.maxUnitPrice)}`:''}</small></div>`).join('')}</div>`:'';
+ return `<section class="manager-price-history"><div class="manager-price-history-head"><div><span class="manager-eyebrow">HISTORIQUE DE PRIX</span><strong>${esc(h.productNumber||'Article')}</strong></div><span>${esc(h.observedSales?.windowDays?`${h.observedSales.windowDays} jours`:'')}</span></div><div class="manager-price-history-grid">${agreementsHtml}${observedHtml}</div><p class="manager-price-history-note">Les tarifs paramétrés et les prix réellement vendus sont volontairement séparés : une promotion ou remise caisse peut faire varier le prix constaté.</p></section>`
+}
+function showcasePriceHistory(c){return{storeId:app.storeId,productNumber:c.item.productNumber,currentBase:{price:c.pricing?.basePrice},tradeAgreements:{status:'DEMO',items:[{price:c.pricing?.basePrice??19.9,from:'2026-09-11',to:null,priceGroup:'Franprix'},{price:18.5,from:'2026-08-18',to:'2026-09-10',priceGroup:'Franprix'}]},observedSales:{status:'DEMO',windowDays:90,items:[{date:'2026-09-14',weightedUnitPrice:c.pricing?.expectedUnitPrice??19.9,units:7,minUnitPrice:c.pricing?.expectedUnitPrice??19.9,maxUnitPrice:c.pricing?.expectedUnitPrice??19.9},{date:'2026-09-08',weightedUnitPrice:17.9,units:11,minUnitPrice:17.9,maxUnitPrice:17.9},{date:'2026-08-18',weightedUnitPrice:18.5,units:5,minUnitPrice:18.5,maxUnitPrice:18.5}]}}}
 
 function resultHtml(c){
  const ap=assortmentPresentation(c.merchandising?.assortment),av=availabilityPresentation(c.availability?.state),taxonomy=taxPath(c.merchandising?.taxonomy),missing=sourceState(c),store=currentStore();
@@ -55,10 +70,11 @@ function resultHtml(c){
  return `<div class="manager-scan-result">
    <section class="manager-item-hero">
     <div class="manager-item-top"><div><span class="manager-eyebrow">${esc(c.item.productNumber||c.ean)} · ${esc(c.item.unit||'')}</span><h2>${esc(c.item.name)}</h2>${taxonomy?`<p>${esc(taxonomy)}</p>`:''}</div><span class="manager-state ${av.tone}">${esc(av.label)}</span></div>
-    <div class="manager-item-price"><div><span>Prix attendu</span><strong>${money(c.pricing?.expectedUnitPrice)}</strong>${c.pricing?.basePrice!=null&&Number(c.pricing.basePrice)!==Number(c.pricing.expectedUnitPrice)?`<small>Prix fiche ${money(c.pricing.basePrice)}</small>`:''}</div>${c.pricing?.promoLabel?`<div class="manager-promo-pill"><span>Promo active</span><strong>${esc(c.pricing.promoLabel)}</strong></div>`:'<div class="manager-promo-empty">Aucune promo active détectée</div>'}</div>
+    <div class="manager-item-price"><div><span>Prix attendu</span><strong>${money(c.pricing?.expectedUnitPrice)}</strong>${c.pricing?.basePrice!=null&&Number(c.pricing.basePrice)!==Number(c.pricing.expectedUnitPrice)?`<small>Prix fiche ${money(c.pricing.basePrice)}</small>`:''}<button class="manager-price-history-trigger" data-price-history>Historique de prix <span>›</span></button></div>${c.pricing?.promoLabel?`<div class="manager-promo-pill"><span>Promo active</span><strong>${esc(c.pricing.promoLabel)}</strong></div>`:'<div class="manager-promo-empty">Aucune promo active détectée</div>'}</div>
    </section>
+   <div id="managerPriceHistory"></div>
    <section class="manager-assortment-line ${ap.tone}"><div><strong>${esc(ap.label)}</strong><small>${esc(ap.detail)}</small></div></section>
-   <section class="manager-stock-glance"><div><span>${esc(store?.name||'Magasin')}</span><strong>${qty(c.storeStock?.availableStock)}</strong><small>disponible${c.storeStock?.warehouseId?` · ${esc(c.storeStock.warehouseId)}`:''}</small></div><div><span>Entrepôt</span><strong>${supplyMapped?qty(c.supplyStock.availableStock):'—'}</strong><small>${supplyMapped?`disponible · ${esc(c.supplyStock.warehouseId)}`:'source à connecter'}</small></div><div><span>En arrivée</span><strong>${incoming==null?'—':qty(incoming)}</strong><small>confirmé / en commande</small></div></section>
+   <section class="manager-stock-glance"><div><span>${esc(store?.name||'Magasin')}</span><strong>${qty(c.storeStock?.availableStock)}</strong><small>disponible${c.storeStock?.warehouseId?` · ${esc(c.storeStock.warehouseId)}`:''}</small></div><div><span>Entrepôt source</span><strong>${supplyMapped?qty(c.supplyStock.availableStock):'—'}</strong><small>${supplyMapped?`disponible · ${esc(c.supplyStock.warehouseId)}`:'source à choisir dans Admin Studio'}</small></div><div><span>En arrivée</span><strong>${incoming==null?'—':qty(incoming)}</strong><small>confirmé / en commande</small></div></section>
    ${recommendation}${requestCard(c)}${primary}
    ${!c.replenishment?.ready&&c.merchandising?.assortment?.status==='ASSORTED'?`<div class="manager-reco-pending"><strong>Commande intelligente en préparation</strong><span>${missing.length?`Il manque encore : ${esc(missing.join(', '))}.`:'Les signaux de demande ne sont pas encore suffisants.'} Aucun volume n’est inventé.</span></div>`:''}
    <details class="manager-item-details"><summary>Voir les détails article <span>⌄</span></summary><div class="manager-item-details-body"><div><span>EAN</span><strong>${esc(c.ean)}</strong></div><div><span>Physique magasin</span><strong>${qty(c.storeStock?.physicalStock)}</strong></div><div><span>Réservé</span><strong>${qty(c.storeStock?.reservedStock)}</strong></div><div><span>Lignes stock</span><strong>${c.storeStock?.rowCount??c.storeStock?.stockRowCount??'—'}</strong></div><div><span>Assortiment</span><strong>${esc(ap.label)}</strong></div><div><span>Catégorie</span><strong>${esc(taxonomy||c.item.category||'—')}</strong></div></div></details>
@@ -69,7 +85,16 @@ function resultHtml(c){
 export async function renderManagerScan(){
  const store=currentStore();
  $('#managerScanContent').innerHTML=`<div class="manager-scan-shell"><div class="manager-scan-head"><span class="manager-eyebrow">${esc(store?.name||'Votre magasin')}</span><h2>Que voulez-vous vérifier ?</h2><p>Scannez un article. StoreOps rassemble prix, promo, assortiment et stock pour vous dire quoi faire.</p></div><div class="manager-scan-search"><input id="managerScanEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir un code-barres" aria-label="Code-barres"><button id="managerScanGo" class="btn brand">Rechercher</button></div><div id="managerScanResult">${lastContext?resultHtml(lastContext):'<div class="manager-scan-empty"><strong>Prêt à scanner</strong><span>La fiche article s’affichera ici sans vous envoyer dans plusieurs menus.</span></div>'}</div></div>`;
- $('#managerScanGo')?.addEventListener('click',lookup);$('#managerScanEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('#managerScanResult')?.addEventListener('click',e=>{const btn=e.target.closest('[data-create-replenishment]');if(btn)createRequest(btn)});setTimeout(()=>$('#managerScanEan')?.focus(),50)
+ $('#managerScanGo')?.addEventListener('click',lookup);$('#managerScanEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('#managerScanResult')?.addEventListener('click',e=>{const requestBtn=e.target.closest('[data-create-replenishment]');if(requestBtn)return createRequest(requestBtn);const historyBtn=e.target.closest('[data-price-history]');if(historyBtn)return loadPriceHistory(historyBtn)});setTimeout(()=>$('#managerScanEan')?.focus(),50)
+}
+
+async function loadPriceHistory(btn){
+ if(!lastContext||btn?.disabled)return;const sku=lastContext.item.productNumber,host=$('#managerPriceHistory');if(!host)return;
+ btn.disabled=true;const original=btn.innerHTML;btn.textContent='Chargement…';
+ try{
+  let history=priceHistoryCache.get(`${app.storeId}|${sku}`);if(!history){history=app.showcase?showcasePriceHistory(lastContext):await api(`/api/stores/${app.storeId}/items/${encodeURIComponent(sku)}/price-history?days=90`);priceHistoryCache.set(`${app.storeId}|${sku}`,history)}
+  host.innerHTML=priceHistoryHtml(history);btn.innerHTML='Historique affiché <span>✓</span>'
+ }catch(e){host.innerHTML=`<div class="manager-reco-pending"><strong>Historique indisponible</strong><span>${esc(e.message||'Impossible de charger les anciens prix.')}</span></div>`;btn.innerHTML=original;btn.disabled=false}
 }
 
 async function createRequest(btn){
