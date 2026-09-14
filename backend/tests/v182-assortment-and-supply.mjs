@@ -5,9 +5,10 @@ const {db}=await import('../db.mjs');
 const {parseAssortmentLabel,normalizeProductAssortmentCategoryRows,syncProductAssortmentCategoryRows,PRODUCT_ASSORTMENT_SOURCE}=await import('../services/assortment-category-mapping.mjs');
 const {saveStoreAssortmentAssignments}=await import('../services/assortment-admin.mjs');
 const {assortmentIndex,assortmentMembership}=await import('../services/assortment-resolver.mjs');
+const {classifyAvailability}=await import('../services/assortment.mjs');
 const {saveNetworkOperationalSettings,saveStoreOperationalSettings,storeOperationalSettings}=await import('../services/store-settings.mjs');
 
-for(const table of ['store_assortment_assignments','store_assortment_assignment_state','assortment_product_assignments','assortment_product_assignment_state','store_operational_settings','network_operational_settings'])db.prepare(`DELETE FROM ${table}`).run();
+for(const table of ['store_assortment_assignments','store_assortment_assignment_state','assortment_product_assignments','assortment_product_assignment_state','store_operational_settings','network_operational_settings','network_operational_settings_history'])db.prepare(`DELETE FROM ${table}`).run();
 
 assert.deepEqual(parseAssortmentLabel('Franprix - Dépannage').brands,['FRANPRIX']);
 assert.equal(parseAssortmentLabel('Franprix - Dépannage').tier,'DEPANNAGE');
@@ -35,6 +36,9 @@ assert.equal(assortmentMembership('val-fleuri','SKU-F-D',{index}).status,'ASSORT
 assert.equal(assortmentMembership('val-fleuri','SKU-SHARED-C',{index}).status,'ASSORTED');
 assert.equal(assortmentMembership('val-fleuri','SKU-M-CP',{index}).status,'NOT_ASSORTED');
 assert.equal(assortmentMembership('val-fleuri','SKU-OTHER',{index}).status,'NOT_ASSORTED');
+assert.equal(classifyAvailability({storeId:'val-fleuri',productNumber:'SKU-F-D',availableQty:0,index}).state,'OUT_OF_STOCK');
+assert.equal(classifyAvailability({storeId:'val-fleuri',productNumber:'SKU-M-CP',availableQty:0,index}).state,'NOT_ASSORTED');
+assert.equal(classifyAvailability({storeId:'val-fleuri',productNumber:'SKU-M-CP',availableQty:2,index}).state,'RESIDUAL_STOCK_OUTSIDE_ASSORTMENT');
 
 saveNetworkOperationalSettings({defaultSupplyWarehouseId:'LVE-ELKHYAYTA'});
 saveStoreOperationalSettings({storeId:'val-fleuri',storeWarehouseId:'FRP0001',supplyWarehouseId:null,secondarySupplyWarehouseIds:[]});
