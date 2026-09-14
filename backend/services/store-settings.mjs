@@ -11,6 +11,13 @@ CREATE TABLE IF NOT EXISTS network_operational_settings(
  updated_by TEXT NULL REFERENCES users(id),
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS network_operational_settings_history(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ setting_key TEXT NOT NULL,
+ value_text TEXT NULL,
+ user_id TEXT NULL REFERENCES users(id),
+ created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS store_operational_settings(
  store_id TEXT PRIMARY KEY REFERENCES stores(id),
  store_warehouse_id TEXT NULL,
@@ -36,7 +43,7 @@ export function networkOperationalSettings(){
 export function saveNetworkOperationalSettings({user,defaultSupplyWarehouseId=null}={}){
  const value=clean(defaultSupplyWarehouseId)||null;
  db.prepare(`INSERT INTO network_operational_settings(id,default_supply_warehouse_id,updated_by,updated_at) VALUES('default',?,?,CURRENT_TIMESTAMP) ON CONFLICT(id) DO UPDATE SET default_supply_warehouse_id=excluded.default_supply_warehouse_id,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP`).run(value,user?.id||null);
- audit({storeId:null,userId:user?.id||null,action:'NETWORK_OPERATIONAL_SETTINGS_UPDATED',entityType:'NETWORK',entityId:'default',details:{defaultSupplyWarehouseId:value}});
+ db.prepare(`INSERT INTO network_operational_settings_history(setting_key,value_text,user_id,created_at) VALUES('default_supply_warehouse_id',?,?,CURRENT_TIMESTAMP)`).run(value,user?.id||null);
  return networkOperationalSettings()
 }
 
