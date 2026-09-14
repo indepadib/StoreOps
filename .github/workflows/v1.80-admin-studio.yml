@@ -55,12 +55,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Syntax
+      - name: Syntax — backend security
         run: |
           node --check backend/auth/session.mjs
           node --check backend/services/pilot-profile.mjs
           node --check backend/services/access-management.mjs
           node --check backend/services/access-management-api.mjs
+          node --check backend/services/workforce-api.mjs
+      - name: Syntax — backend retail kernel
+        run: |
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/process-studio.mjs
           node --check backend/services/process-studio-api.mjs
@@ -69,7 +72,6 @@ jobs:
           node --check backend/services/replenishment-requests.mjs
           node --check backend/services/replenishment-request-api.mjs
           node --check backend/services/item-assistant.mjs
-          node --check backend/services/workforce-api.mjs
           node --check backend/services/workflow.mjs
           node --check backend/services/store-settings.mjs
           node --check backend/services/store-settings-api.mjs
@@ -79,12 +81,18 @@ jobs:
           node --check backend/services/assortment-resolver.mjs
           node --check backend/services/stock-signals.mjs
           node --check backend/services/dynamics-stock.mjs
-          node --check frontend/js/pages/admin-studio.js
-          node --check frontend/js/pages/manager-scan.js
+      - name: Syntax — guided Admin Studio
+        run: node --check frontend/js/pages/admin-studio.js
+      - name: Syntax — scanner
+        run: node --check frontend/js/pages/manager-scan.js
+      - name: Syntax — admin extensions
+        run: |
           node --check frontend/js/custom-process-runs.js
           node --check frontend/js/admin-studio-replenishment.js
           node --check frontend/js/admin-studio-stores.js
           node --check frontend/js/admin-studio-access.js
+      - name: Syntax — shell
+        run: |
           node --check frontend/js/app.js
           node --check frontend/sw.js
       - name: Process Studio contracts
