@@ -22,8 +22,8 @@ function renderHome(){
   <button class="studio-intent-card" data-studio-action="existing"><span class="studio-intent-icon">☷</span><strong>Mes process</strong><small>${activeTemplates} process · ${activeAssignments} affectation(s) actives</small><em>Gérer →</em></button>
   <button class="studio-intent-card" data-studio-target="replenishmentRulesSection"><span class="studio-intent-icon">↗</span><strong>Règles de réappro</strong><small>Couverture, délai, sécurité, colisage et règles par périmètre.</small><em>Configurer →</em></button>
   <button class="studio-intent-card" data-studio-target="storeSettingsSection"><span class="studio-intent-icon">🏬</span><strong>Magasins & entrepôts</strong><small>Warehouse magasin, entrepôt source et paramètres opérationnels.</small><em>Configurer →</em></button>
-  <button class="studio-intent-card future" data-studio-action="users"><span class="studio-intent-icon">👥</span><strong>Équipe & accès</strong><small>Collaborateurs, comptes StoreOps, rôles et périmètres.</small><em>Prochain bloc</em></button>
-  <button class="studio-intent-card future" data-studio-action="integrations"><span class="studio-intent-icon">⇄</span><strong>Intégrations</strong><small>ERP, POS, WMS, PIM, RH et APIs par capacité.</small><em>Prochain bloc</em></button>
+  <button class="studio-intent-card" data-studio-action="users"><span class="studio-intent-icon">👥</span><strong>Équipe & accès</strong><small>Collaborateurs, comptes StoreOps, rôles et périmètres.</small><em>Configurer →</em></button>
+  <button class="studio-intent-card" data-studio-action="integrations"><span class="studio-intent-icon">⇄</span><strong>Intégrations</strong><small>ERP, POS, WMS, PIM, RH et APIs par capacité.</small><em>Configurer →</em></button>
  </div><div id="studioExtensions"></div>`;
  bindHome()
 }
