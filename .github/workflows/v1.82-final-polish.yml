@@ -28,8 +28,8 @@ jobs:
         run: node backend/tests/v182-assortment-and-supply.mjs
       - name: Existing assortment safety
         run: |
-          node backend/tests/v180-store-merchandising.mjs
-          node backend/tests/stock-signals.mjs
+          STOREOPS_DB=/tmp/storeops-v180-merch-ci.db node backend/tests/v180-store-merchandising.mjs
+          STOREOPS_DB=/tmp/storeops-stock-signals-ci.db node backend/tests/stock-signals.mjs
       - name: Resolver safety
         run: |
           grep -q "assortment-resolver.mjs" backend/services/merchandising-api.mjs
