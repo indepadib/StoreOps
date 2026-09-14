@@ -18,6 +18,7 @@ const PROFILE_DEFS=Object.freeze({
  PLATFORM_ADMIN:{code:'PLATFORM_ADMIN',label:'Administrateur StoreOps',description:'Configuration complète du tenant, accès, intégrations et réseau.',role:'ops_director',permissionsProfile:'platform_admin',scope:'NETWORK',sensitive:true},
  OPS_DIRECTOR:{code:'OPS_DIRECTOR',label:'Direction d’exploitation',description:'Pilotage de tous les magasins et opérations réseau.',role:'ops_director',permissionsProfile:null,scope:'NETWORK',sensitive:true},
  QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Lecture réseau et gestion qualité/audit sans posting opérationnel.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},
+ DEVELOPMENT:{code:'DEVELOPMENT',label:'Développement réseau',description:'Sourcing de locaux, négociation, contrats, travaux et ouvertures.',role:'employee',permissionsProfile:'development',scope:'NETWORK',sensitive:false},
  STORE_MANAGER:{code:'STORE_MANAGER',label:'Responsable magasin',description:'Pilotage opérationnel complet de son magasin uniquement.',role:'store_manager',permissionsProfile:null,scope:'STORE',sensitive:false},
  STORE_USER:{code:'STORE_USER',label:'Utilisateur magasin',description:'Accès terrain à son magasin sans droits de Responsable.',role:'employee',permissionsProfile:'store_user',scope:'STORE',sensitive:false}
 });
@@ -31,6 +32,7 @@ function profileFromUser(row){
  if(row.permissions_profile==='platform_admin'||row.id==='u-admin')return PROFILE_DEFS.PLATFORM_ADMIN;
  if(row.role==='ops_director')return PROFILE_DEFS.OPS_DIRECTOR;
  if(row.permissions_profile==='quality_audit')return PROFILE_DEFS.QUALITY_AUDIT;
+ if(row.permissions_profile==='development')return PROFILE_DEFS.DEVELOPMENT;
  if(row.role==='store_manager')return PROFILE_DEFS.STORE_MANAGER;
  return PROFILE_DEFS.STORE_USER
 }
