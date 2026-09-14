@@ -85,12 +85,13 @@ jobs:
         run: node --check frontend/js/pages/admin-studio.js
       - name: Syntax — scanner
         run: node --check frontend/js/pages/manager-scan.js
-      - name: Syntax — admin extensions
+      - name: Syntax — existing admin extensions
         run: |
           node --check frontend/js/custom-process-runs.js
           node --check frontend/js/admin-studio-replenishment.js
           node --check frontend/js/admin-studio-stores.js
-          node --check frontend/js/admin-studio-access.js
+      - name: Syntax — access admin extension
+        run: node --check frontend/js/admin-studio-access.js
       - name: Syntax — shell
         run: |
           node --check frontend/js/app.js
