@@ -11,9 +11,17 @@ async function get(path,user){
 const config=await get('/api/dynamics/stock/config','u-ops');
 assert.equal(config.status,200);
 assert.equal(config.body.entity,'WarehousesOnHandV2');
-assert.deepEqual(config.body.stores,[
-  {storeId:'val-fleuri',warehouseId:'FRP0001',supplyWarehouseId:null}
-]);
+assert(Array.isArray(config.body.stores));
+const vfConfig=config.body.stores.find(x=>x.storeId==='val-fleuri');
+assert(vfConfig,'Val Fleuri stock configuration must be exposed');
+assert.equal(vfConfig.warehouseId,'FRP0001');
+assert.equal(vfConfig.supplyWarehouseId,null);
+assert(['PILOT_FALLBACK','STOREOPS_CONFIG','ENV_CONFIG'].includes(vfConfig.settingsSource));
+for(const row of config.body.stores.filter(x=>x.storeId!=='val-fleuri')){
+  assert.equal(row.warehouseId,null,`${row.storeId} must remain unmapped until explicitly configured`);
+  assert.equal(row.supplyWarehouseId,null);
+  assert.equal(row.settingsSource,'UNMAPPED');
+}
 assert.equal(config.body.fields.ordered,'OrderedQuantity');
 assert.equal(config.body.fields.availableOrdered,'AvailableOrderedQuantity');
 assert.equal(config.body.fields.reservedOrdered,'ReservedOrderedQuantity');

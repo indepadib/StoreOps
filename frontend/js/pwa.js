@@ -1,4 +1,5 @@
 import './mobile-barcode.js';
+import './development.js';
 
 const bannerId='storeopsConnectivity';
 function banner(){let el=document.getElementById(bannerId);if(el)return el;el=document.createElement('div');el.id=bannerId;el.className='banner ban-danger storeops-connectivity';el.hidden=true;el.style.margin='12px 0 0';el.setAttribute('role','status');el.setAttribute('aria-live','polite');const shell=document.querySelector('.app-shell'),nav=document.querySelector('.nav');if(shell&&nav)shell.insertBefore(el,nav);else document.body.prepend(el);return el}

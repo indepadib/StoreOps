@@ -1,5 +1,6 @@
 import { config } from '../config.mjs';
 import { getProductByEan,odataGetAll } from './dynamics.mjs';
+import { storeOperationalSettings,allStoreOperationalSettings } from './store-settings.mjs';
 
 // Pilot fallback only. Other stores must be explicitly mapped in configuration.
 export const STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
@@ -19,8 +20,8 @@ function stockFields(){return{
   location:config.dynamics.stock.locationField||'',
   status:config.dynamics.stock.statusField||''
 }}
-function mappedWarehouseForStore(storeId){const key=String(storeId||'');return config.dynamics.stock.storeWarehouses?.[key]||STORE_WAREHOUSES[key]||null}
-export function supplyWarehouseForStore(storeId){return config.dynamics.stock.supplyWarehouses?.[String(storeId||'')]||null}
+function mappedWarehouseForStore(storeId){return storeOperationalSettings(storeId).storeWarehouseId||null}
+export function supplyWarehouseForStore(storeId){return storeOperationalSettings(storeId).supplyWarehouseId||null}
 
 export function warehouseForStore(storeId){
   const warehouseId=mappedWarehouseForStore(storeId);
@@ -29,12 +30,24 @@ export function warehouseForStore(storeId){
 }
 
 export function stockIntegrationConfig(){
-  const fields=stockFields(),stores={...STORE_WAREHOUSES,...(config.dynamics.stock.storeWarehouses||{})},supply=config.dynamics.stock.supplyWarehouses||{};
+  const fields=stockFields();
   return {
     mode:stockLive()?'LIVE':'SIMULATED',entity:stockEntity(),dataAreaId:config.dynamics.dataAreaId||null,
-    stores:Object.entries(stores).map(([storeId,warehouseId])=>({storeId,warehouseId,supplyWarehouseId:supply[storeId]||null})),
+    stores:allStoreOperationalSettings().map(s=>({storeId:s.id,storeName:s.name,warehouseId:s.settings.storeWarehouseId,supplyWarehouseId:s.settings.supplyWarehouseId,settingsSource:s.settings.source})),
     fields:{item:fields.item,warehouse:fields.warehouse,onHand:fields.onHand,availableOnHand:fields.availableOnHand,batch:fields.batch||null,location:fields.location||null,status:fields.status||null,reservedOnHand:'ReservedOnHandQuantity',ordered:'OrderedQuantity',availableOrdered:'AvailableOrderedQuantity',reservedOrdered:'ReservedOrderedQuantity',onOrder:'OnOrderQuantity',totalAvailable:'TotalAvailableQuantity'}
   }
+}
+
+export async function listWarehouseOptions(){
+  const known=new Set();for(const s of allStoreOperationalSettings()){if(s.settings.storeWarehouseId)known.add(s.settings.storeWarehouseId);if(s.settings.supplyWarehouseId)known.add(s.settings.supplyWarehouseId);for(const x of s.settings.secondarySupplyWarehouseIds||[])known.add(x)}
+  if(!stockLive())return{status:'CONFIG_ONLY',source:'STOREOPS',items:[...known].sort().map(id=>({id,name:id})),partial:false};
+  const fields=stockFields(),directoryEntity=clean(process.env.D365_WAREHOUSE_DIRECTORY_ENTITY),directoryIdField=clean(process.env.D365_WAREHOUSE_DIRECTORY_ID_FIELD)||fields.warehouse,directoryNameField=clean(process.env.D365_WAREHOUSE_DIRECTORY_NAME_FIELD),entity=directoryEntity||stockEntity(),select=[directoryIdField,directoryNameField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(','),filters=[];
+  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+  try{
+    const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_WAREHOUSE_DIRECTORY_PAGE_SIZE)||500)),maxRows:Math.max(500,Math.min(50000,Number(process.env.D365_WAREHOUSE_DIRECTORY_MAX_ROWS)||10000))});
+    const map=new Map();for(const row of fetched.value||[]){const id=clean(row[directoryIdField]);if(!id)continue;const name=clean(directoryNameField?row[directoryNameField]:'')||id;if(!map.has(id))map.set(id,{id,name})}for(const id of known)if(!map.has(id))map.set(id,{id,name:id});
+    return{status:'READY',source:`D365/${entity}`,items:[...map.values()].sort((a,b)=>a.id.localeCompare(b.id)),partial:!!fetched.truncated,rowCount:fetched.rowCount}
+  }catch(error){return{status:'DEGRADED',source:`D365/${entity}`,items:[...known].sort().map(id=>({id,name:id})),partial:true,error:error.message}}
 }
 
 export function aggregateDimensionRows(rows,fields){

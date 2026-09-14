@@ -7,6 +7,7 @@ import { blockingLossCount } from './loss.mjs';
 import { cashOpeningSummary,markCashOpeningOpened } from './cash-opening.mjs';
 import { coldChainSummary,markColdChainOpened } from './cold-chain.mjs';
 import { staffingSummary,markStaffingOpened } from './staffing.mjs';
+import { customProcessBlockers } from './process-studio.mjs';
 
 export function processProgress(storeDayId, group){
   const rows=db.prepare(`SELECT id,status,blocking_level,step_order,title FROM tasks WHERE store_day_id=? AND group_name=? ORDER BY step_order`).all(storeDayId,group);
@@ -31,7 +32,9 @@ export function validateProcess({storeDay,user,group}){
   if(group==='closing'&&storeDay.opening_status!=='OPENED')throw Object.assign(new Error('La fermeture ne peut être validée avant l’ouverture du magasin.'),{status:409});
   if(group==='closing'&&storeDay.closing_status==='CLOSED')throw Object.assign(new Error('Le magasin est déjà déclaré fermé.'),{status:409});
   const fresh=db.prepare(`SELECT * FROM store_days WHERE id=?`).get(storeDay.id),p=processProgress(storeDay.id,group);
-  const openCritical=db.prepare(`SELECT COUNT(*) n FROM incidents WHERE store_id=? AND status='OPEN' AND blocking_level=?`).get(storeDay.store_id,group==='opening'?'STORE_OPENING':'STORE_CLOSING').n;
+  const blockingLevel=group==='opening'?'STORE_OPENING':'STORE_CLOSING';
+  const customBlockers=customProcessBlockers(storeDay.store_id,storeDay.business_date,blockingLevel);
+  const openCritical=db.prepare(`SELECT COUNT(*) n FROM incidents WHERE store_id=? AND status='OPEN' AND blocking_level=?`).get(storeDay.store_id,blockingLevel).n;
   const handoverBlocking=group==='opening'?blockingHandoverCount(storeDay.store_id,storeDay.business_date):0;
   const handoverReviewed=group==='closing'?!!fresh.handover_reviewed_at:true;
   const dlcBlocking=group==='closing'?blockingDlcCount(storeDay.store_id):0;
@@ -43,14 +46,11 @@ export function validateProcess({storeDay,user,group}){
   const cashOpen=group==='opening'?cashOpeningSummary(storeDay.store_id,storeDay.business_date):{blocking:0,status:'NA'};
   const cashOpeningBlocking=group==='opening'?Number(cashOpen.blocking||0):0;
   const cash=group==='closing'?cashClosingSummary(storeDay.store_id,storeDay.business_date):{exists:false,blocking:0,status:'NA'};
-  // Pilot fallback: when no dedicated cash-closing snapshot exists yet, the mandatory
-  // generic closing task remains the source of truth. p.done/p.total still prevents
-  // closure until that manual control is completed, so this does not bypass the process.
   const cashBlocking=group==='closing'&&cash.exists?Number(cash.blocking||0):0;
   const lossBlocking=group==='closing'?Number(blockingLossCount(storeDay.store_id,storeDay.business_date)||0):0;
-  if(p.blockers>0||p.done<p.total||openCritical>0||handoverBlocking>0||commercialBlocking>0||staffingBlocking>0||coldBlocking>0||cashOpeningBlocking>0||!handoverReviewed||dlcBlocking>0||cashBlocking>0||lossBlocking>0){
-    const reason=!handoverReviewed?'La passation de fin de journée doit être revue avant fermeture.':handoverBlocking?`${handoverBlocking} passation(s) bloquante(s) doivent être résolues avant ouverture.`:commercialBlocking?`${commercialBlocking} changement(s) prix/promo restent à vérifier avant ouverture.`:staffingBlocking?`L’équipe d’ouverture n’est pas prête : ${staffing.pending||0} pointage(s) en attente et/ou couverture minimale non atteinte.`:coldBlocking?`${coldBlocking} zone(s) froid ne sont pas conformes. Relevé, porte et recontrôle doivent être validés avant ouverture.`:cashOpeningBlocking?`${cashOpeningBlocking} caisse(s) ne sont pas prêtes. Affectation, fond, POS, TPE, imprimante et shift Dynamics doivent être conformes avant ouverture.`:cashBlocking?'La clôture caisses doit être rapprochée et validée avant fermeture magasin.':lossBlocking?`${lossBlocking} perte(s) / démarque(s) restent à documenter ou poster avant fermeture.`:dlcBlocking?`${dlcBlocking} lot(s) DLC/DDM périmé(s) ou critique(s) restent à traiter avant fermeture.`:'Tous les contrôles obligatoires ne sont pas conformes.';
-    const err=new Error(reason);err.status=409;err.details={...p,openCritical,handoverBlocking,commercialBlocking,staffingBlocking,staffingStatus:staffing.status,staffingGaps:staffing.gaps,coldBlocking,coldStatus:cold.status,cashOpeningBlocking,cashOpeningStatus:cashOpen.status,handoverReviewed,dlcBlocking,cashBlocking,cashStatus:cash.status,cashDedicatedClosing:!!cash.exists,lossBlocking};throw err;
+  if(customBlockers.length||p.blockers>0||p.done<p.total||openCritical>0||handoverBlocking>0||commercialBlocking>0||staffingBlocking>0||coldBlocking>0||cashOpeningBlocking>0||!handoverReviewed||dlcBlocking>0||cashBlocking>0||lossBlocking>0){
+    const reason=customBlockers.length?`${customBlockers.length} process personnalisé(s) obligatoire(s) doivent être terminés avant ${group==='opening'?'ouverture':'fermeture'}.`:!handoverReviewed?'La passation de fin de journée doit être revue avant fermeture.':handoverBlocking?`${handoverBlocking} passation(s) bloquante(s) doivent être résolues avant ouverture.`:commercialBlocking?`${commercialBlocking} changement(s) prix/promo restent à vérifier avant ouverture.`:staffingBlocking?`L’équipe d’ouverture n’est pas prête : ${staffing.pending||0} pointage(s) en attente et/ou couverture minimale non atteinte.`:coldBlocking?`${coldBlocking} zone(s) froid ne sont pas conformes. Relevé, porte et recontrôle doivent être validés avant ouverture.`:cashOpeningBlocking?`${cashOpeningBlocking} caisse(s) ne sont pas prêtes. Affectation, fond, POS, TPE, imprimante et shift Dynamics doivent être conformes avant ouverture.`:cashBlocking?'La clôture caisses doit être rapprochée et validée avant fermeture magasin.':lossBlocking?`${lossBlocking} perte(s) / démarque(s) restent à documenter ou poster avant fermeture.`:dlcBlocking?`${dlcBlocking} lot(s) DLC/DDM périmé(s) ou critique(s) restent à traiter avant fermeture.`:'Tous les contrôles obligatoires ne sont pas conformes.';
+    const err=new Error(reason);err.status=409;err.details={...p,customProcessBlockers:customBlockers,openCritical,handoverBlocking,commercialBlocking,staffingBlocking,staffingStatus:staffing.status,staffingGaps:staffing.gaps,coldBlocking,coldStatus:cold.status,cashOpeningBlocking,cashOpeningStatus:cashOpen.status,handoverReviewed,dlcBlocking,cashBlocking,cashStatus:cash.status,cashDedicatedClosing:!!cash.exists,lossBlocking};throw err;
   }
   if(group==='opening'){
     db.prepare(`UPDATE store_days SET opening_status='OPENED',opened_at=CURRENT_TIMESTAMP WHERE id=?`).run(storeDay.id);
