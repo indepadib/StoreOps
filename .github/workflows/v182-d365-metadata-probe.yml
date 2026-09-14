@@ -1,0 +1,55 @@
+name: V1.82 D365 Metadata Probe
+
+on:
+  push:
+    branches: [storeops-v1.82-mapping-discovery]
+    paths:
+      - '.github/workflows/v182-d365-metadata-probe.yml'
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    env:
+      D365_BASE_URL: ${{ secrets.D365_BASE_URL }}
+      D365_TENANT_ID: ${{ secrets.D365_TENANT_ID }}
+      D365_CLIENT_ID: ${{ secrets.D365_CLIENT_ID }}
+      D365_CLIENT_SECRET: ${{ secrets.D365_CLIENT_SECRET }}
+    steps:
+      - name: Discover assortment/category/channel metadata
+        shell: bash
+        run: |
+          node <<'NODE'
+          const required=['D365_BASE_URL','D365_TENANT_ID','D365_CLIENT_ID','D365_CLIENT_SECRET'];
+          const missing=required.filter(k=>!process.env[k]);
+          if(missing.length){console.error(`MISSING_SECRETS:${missing.join(',')}`);process.exit(2)}
+          const base=process.env.D365_BASE_URL.replace(/\/$/,'');
+          const tokenUrl=`https://login.microsoftonline.com/${encodeURIComponent(process.env.D365_TENANT_ID)}/oauth2/v2.0/token`;
+          const form=new URLSearchParams({client_id:process.env.D365_CLIENT_ID,client_secret:process.env.D365_CLIENT_SECRET,grant_type:'client_credentials',scope:`${base}/.default`});
+          const tr=await fetch(tokenUrl,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:form});
+          if(!tr.ok){console.error(`TOKEN_FAILED:${tr.status}`);process.exit(3)}
+          const token=(await tr.json()).access_token;
+          const mr=await fetch(`${base}/data/$metadata`,{headers:{authorization:`Bearer ${token}`,accept:'application/xml'}});
+          if(!mr.ok){console.error(`METADATA_FAILED:${mr.status}`);process.exit(4)}
+          const xml=await mr.text();
+          const sets=new Map();
+          for(const m of xml.matchAll(/<EntitySet\s+Name="([^"]+)"\s+EntityType="([^"]+)"[^>]*>/g)){
+            const [,name,type]=m;const short=type.split('.').pop();if(!sets.has(short))sets.set(short,[]);sets.get(short).push(name)
+          }
+          const terms=/assort|category|categor|channel|retail|store|procurement|hierarch|productcategory/i;
+          const rows=[];
+          for(const m of xml.matchAll(/<EntityType\s+Name="([^"]+)"[^>]*>([\s\S]*?)<\/EntityType>/g)){
+            const [,name,body]=m;const props=[...body.matchAll(/<Property\s+Name="([^"]+)"/g)].map(x=>x[1]);
+            const entitySets=sets.get(name)||[];
+            if(terms.test(name)||entitySets.some(x=>terms.test(x))||props.some(x=>terms.test(x))){
+              rows.push({entityType:name,entitySets,properties:props});
+            }
+          }
+          const score=r=>{
+            const s=`${r.entityType} ${r.entitySets.join(' ')} ${r.properties.join(' ')}`.toLowerCase();
+            return ['assort','productcategory','procurementproduct','categoryhierarch','channel','retailchannel'].reduce((n,k)=>n+(s.includes(k)?1:0),0)
+          };
+          rows.sort((a,b)=>score(b)-score(a)||a.entityType.localeCompare(b.entityType));
+          console.log('D365_METADATA_DISCOVERY_BEGIN');
+          for(const r of rows.slice(0,80))console.log(JSON.stringify(r));
+          console.log('D365_METADATA_DISCOVERY_END');
+          NODE
