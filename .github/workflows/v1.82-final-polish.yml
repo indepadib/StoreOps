@@ -1,0 +1,38 @@
+name: V1.82 Final Polish Contract
+
+on:
+  push:
+    branches: [storeops-v1.82-final-polish]
+  pull_request:
+    branches: [main]
+
+jobs:
+  final-polish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/assortment-category-mapping.mjs
+          node --check backend/services/assortment-admin.mjs
+          node --check backend/services/dynamics-product-assortment.mjs
+          node --check backend/services/store-settings.mjs
+          node --check backend/services/store-settings-api.mjs
+          node --check backend/services/merchandising-api.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check frontend/js/admin-studio-stores.js
+      - name: Product assortment and supply contract
+        run: node backend/tests/v182-assortment-and-supply.mjs
+      - name: Existing assortment safety
+        run: |
+          node backend/tests/v180-store-merchandising.mjs
+          node backend/tests/stock-signals.mjs
+      - name: Resolver safety
+        run: |
+          grep -q "assortment-resolver.mjs" backend/services/merchandising-api.mjs
+          grep -q "ProductCategoryHierarchyName" backend/services/dynamics-product-assortment.mjs
+          grep -q "NETWORK_DEFAULT" backend/services/store-settings.mjs
+          grep -q "api/admin/assortments/catalog" frontend/js/admin-studio-stores.js
