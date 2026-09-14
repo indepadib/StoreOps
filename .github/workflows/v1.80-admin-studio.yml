@@ -32,6 +32,7 @@ on:
       - 'frontend/js/admin-studio-stores.js'
       - 'frontend/js/app.js'
       - 'frontend/admin-studio.css'
+      - 'frontend/admin-studio-guided.css'
       - 'frontend/manager-scan.css'
       - 'frontend/index.html'
       - 'frontend/sw.js'
@@ -95,6 +96,8 @@ jobs:
           grep -q 'id="adminStudioNav"' frontend/index.html
           grep -q 'id="adminStudioPage"' frontend/index.html
           grep -q '/admin-studio.css' frontend/index.html
+          grep -q '/admin-studio-guided.css' frontend/index.html
+          grep -q '/admin-studio-guided.css' frontend/sw.js
           grep -q '/manager-scan.css' frontend/index.html
           grep -q '/js/admin-studio-replenishment.js' frontend/index.html
           grep -q '/js/admin-studio-stores.js' frontend/index.html
