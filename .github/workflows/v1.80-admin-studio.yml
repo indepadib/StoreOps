@@ -10,6 +10,9 @@ on:
       - 'backend/services/development.mjs'
       - 'backend/services/development-api.mjs'
       - 'backend/services/permissions.mjs'
+      - 'backend/services/connector-contract.mjs'
+      - 'backend/services/integration-registry.mjs'
+      - 'backend/services/integration-registry-api.mjs'
       - 'backend/services/process-template-engine.mjs'
       - 'backend/services/process-studio.mjs'
       - 'backend/services/process-studio-api.mjs'
@@ -34,18 +37,23 @@ on:
       - 'backend/tests/v180-store-merchandising.mjs'
       - 'backend/tests/v180-access-management.mjs'
       - 'backend/tests/v180-development.mjs'
+      - 'backend/tests/v180-integrations.mjs'
       - 'frontend/js/pages/admin-studio.js'
       - 'frontend/js/pages/manager-scan.js'
       - 'frontend/js/custom-process-runs.js'
       - 'frontend/js/admin-studio-replenishment.js'
       - 'frontend/js/admin-studio-stores.js'
       - 'frontend/js/admin-studio-access.js'
+      - 'frontend/js/admin-studio-integrations.js'
       - 'frontend/js/development.js'
+      - 'frontend/js/pages/development.js'
       - 'frontend/js/pwa.js'
       - 'frontend/js/app.js'
+      - 'frontend/js/state.js'
       - 'frontend/admin-studio.css'
       - 'frontend/admin-studio-guided.css'
       - 'frontend/admin-studio-access.css'
+      - 'frontend/admin-studio-integrations.css'
       - 'frontend/development.css'
       - 'frontend/manager-scan.css'
       - 'frontend/index.html'
@@ -62,7 +70,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Syntax — backend security
+      - name: Syntax — backend security + SaaS
         run: |
           node --check backend/auth/session.mjs
           node --check backend/services/pilot-profile.mjs
@@ -71,8 +79,11 @@ jobs:
           node --check backend/services/development.mjs
           node --check backend/services/development-api.mjs
           node --check backend/services/permissions.mjs
+          node --check backend/services/connector-contract.mjs
+          node --check backend/services/integration-registry.mjs
+          node --check backend/services/integration-registry-api.mjs
           node --check backend/services/workforce-api.mjs
-      - name: Syntax — backend retail kernel
+      - name: Syntax — retail kernel
         run: |
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/process-studio.mjs
@@ -91,67 +102,54 @@ jobs:
           node --check backend/services/assortment-resolver.mjs
           node --check backend/services/stock-signals.mjs
           node --check backend/services/dynamics-stock.mjs
-      - name: Syntax — guided Admin Studio
-        run: node --check frontend/js/pages/admin-studio.js
-      - name: Syntax — scanner
-        run: node --check frontend/js/pages/manager-scan.js
-      - name: Syntax — existing admin extensions
+      - name: Syntax — frontend
         run: |
+          node --check frontend/js/pages/admin-studio.js
+          node --check frontend/js/pages/manager-scan.js
           node --check frontend/js/custom-process-runs.js
           node --check frontend/js/admin-studio-replenishment.js
           node --check frontend/js/admin-studio-stores.js
-      - name: Syntax — access admin extension
-        run: node --check frontend/js/admin-studio-access.js
-      - name: Syntax — development workspace
-        run: node --check frontend/js/development.js
-      - name: Syntax — shell
-        run: |
+          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/admin-studio-integrations.js
+          node --check frontend/js/development.js
+          node --check frontend/js/pages/development.js
           node --check frontend/js/pwa.js
           node --check frontend/js/app.js
+          node --check frontend/js/state.js
           node --check frontend/sw.js
       - name: Process Studio contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-process-studio.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-process-studio.db }
         run: node backend/tests/process-studio.mjs
       - name: Replenishment policy contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-replenishment.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-replenishment.db }
         run: node backend/tests/replenishment-policy.mjs
       - name: Replenishment request lifecycle contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-requests.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-requests.db }
         run: node backend/tests/replenishment-requests.mjs
       - name: Store + assortment + price history contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-store-merch.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-store-merch.db }
         run: node backend/tests/v180-store-merchandising.mjs
       - name: Access governance contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-access.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-access.db }
         run: node backend/tests/v180-access-management.mjs
       - name: Development workspace contracts
-        env:
-          STOREOPS_DB: /tmp/storeops-v180-development.db
+        env: { STOREOPS_DB: /tmp/storeops-v180-development.db }
         run: node backend/tests/v180-development.mjs
+      - name: Multi-connector integration contracts
+        env: { STOREOPS_DB: /tmp/storeops-v180-integrations.db }
+        run: node backend/tests/v180-integrations.mjs
       - name: Shell wiring
         run: |
           grep -q 'id="adminStudioNav"' frontend/index.html
           grep -q 'id="adminStudioPage"' frontend/index.html
-          grep -q '/admin-studio.css' frontend/index.html
-          grep -q '/admin-studio-guided.css' frontend/index.html
-          grep -q '/admin-studio-access.css' frontend/index.html
-          grep -q '/admin-studio-guided.css' frontend/sw.js
-          grep -q '/admin-studio-access.css' frontend/sw.js
-          grep -q '/manager-scan.css' frontend/index.html
-          grep -q '/js/admin-studio-replenishment.js' frontend/index.html
-          grep -q '/js/admin-studio-stores.js' frontend/index.html
+          grep -q 'id="developmentNav"' frontend/index.html
+          grep -q 'id="developmentPage"' frontend/index.html
+          grep -q '/development.css' frontend/index.html
+          grep -q '/admin-studio-integrations.css' frontend/index.html
+          grep -q '/js/admin-studio-integrations.js' frontend/index.html
           grep -q '/js/admin-studio-access.js' frontend/index.html
-          grep -q '/js/admin-studio-replenishment.js' frontend/sw.js
-          grep -q '/js/admin-studio-stores.js' frontend/sw.js
-          grep -q '/js/admin-studio-access.js' frontend/sw.js
-          grep -q '/js/pages/manager-scan.js' frontend/sw.js
-          grep -q '/js/pages/admin-studio.js' frontend/sw.js
-          grep -q '/js/custom-process-runs.js' frontend/sw.js
+          grep -q '/manager-scan.css' frontend/index.html
           grep -q "import './development.js'" frontend/js/pwa.js
           grep -q "permissionsProfile:'development'" backend/services/access-management.mjs
+          grep -q "handleIntegrationRegistryApi" backend/services/workforce-api.mjs
           grep -q "active=1" backend/auth/session.mjs
