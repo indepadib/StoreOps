@@ -13,14 +13,26 @@ on:
       - 'backend/services/item-assistant.mjs'
       - 'backend/services/workforce-api.mjs'
       - 'backend/services/workflow.mjs'
+      - 'backend/services/store-settings.mjs'
+      - 'backend/services/store-settings-api.mjs'
+      - 'backend/services/price-history.mjs'
+      - 'backend/services/price-history-api.mjs'
+      - 'backend/services/assortment-relations.mjs'
+      - 'backend/services/assortment-resolver.mjs'
+      - 'backend/services/stock-signals.mjs'
+      - 'backend/services/dynamics-stock.mjs'
       - 'backend/tests/process-studio.mjs'
       - 'backend/tests/replenishment-policy.mjs'
       - 'backend/tests/replenishment-requests.mjs'
+      - 'backend/tests/v180-store-merchandising.mjs'
       - 'frontend/js/pages/admin-studio.js'
+      - 'frontend/js/pages/manager-scan.js'
       - 'frontend/js/custom-process-runs.js'
       - 'frontend/js/admin-studio-replenishment.js'
+      - 'frontend/js/admin-studio-stores.js'
       - 'frontend/js/app.js'
       - 'frontend/admin-studio.css'
+      - 'frontend/manager-scan.css'
       - 'frontend/index.html'
       - 'frontend/sw.js'
       - '.github/workflows/v1.80-admin-studio.yml'
@@ -47,9 +59,19 @@ jobs:
           node --check backend/services/item-assistant.mjs
           node --check backend/services/workforce-api.mjs
           node --check backend/services/workflow.mjs
+          node --check backend/services/store-settings.mjs
+          node --check backend/services/store-settings-api.mjs
+          node --check backend/services/price-history.mjs
+          node --check backend/services/price-history-api.mjs
+          node --check backend/services/assortment-relations.mjs
+          node --check backend/services/assortment-resolver.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/dynamics-stock.mjs
           node --check frontend/js/pages/admin-studio.js
+          node --check frontend/js/pages/manager-scan.js
           node --check frontend/js/custom-process-runs.js
           node --check frontend/js/admin-studio-replenishment.js
+          node --check frontend/js/admin-studio-stores.js
           node --check frontend/js/app.js
           node --check frontend/sw.js
       - name: Process Studio contracts
@@ -64,12 +86,20 @@ jobs:
         env:
           STOREOPS_DB: /tmp/storeops-v180-requests.db
         run: node backend/tests/replenishment-requests.mjs
+      - name: Store + assortment + price history contracts
+        env:
+          STOREOPS_DB: /tmp/storeops-v180-store-merch.db
+        run: node backend/tests/v180-store-merchandising.mjs
       - name: Shell wiring
         run: |
           grep -q 'id="adminStudioNav"' frontend/index.html
           grep -q 'id="adminStudioPage"' frontend/index.html
           grep -q '/admin-studio.css' frontend/index.html
+          grep -q '/manager-scan.css' frontend/index.html
           grep -q '/js/admin-studio-replenishment.js' frontend/index.html
+          grep -q '/js/admin-studio-stores.js' frontend/index.html
           grep -q '/js/admin-studio-replenishment.js' frontend/sw.js
+          grep -q '/js/admin-studio-stores.js' frontend/sw.js
+          grep -q '/js/pages/manager-scan.js' frontend/sw.js
           grep -q '/js/pages/admin-studio.js' frontend/sw.js
           grep -q '/js/custom-process-runs.js' frontend/sw.js
