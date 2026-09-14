@@ -1,0 +1,53 @@
+name: V1.81 Tenant Studio Contract
+
+on:
+  pull_request:
+    paths:
+      - 'backend/services/tenant-profile.mjs'
+      - 'backend/services/tenant-profile-api.mjs'
+      - 'backend/services/workforce-api.mjs'
+      - 'backend/tests/v181-tenant-profile.mjs'
+      - 'frontend/js/tenant-branding.js'
+      - 'frontend/js/admin-studio-tenant.js'
+      - 'frontend/admin-studio-tenant.css'
+      - 'frontend/index.html'
+      - 'frontend/sw.js'
+      - '.github/workflows/v1.81-tenant-studio.yml'
+  push:
+    branches: [storeops-v1.81-tenant-studio]
+
+jobs:
+  tenant-studio:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/tenant-profile.mjs
+          node --check backend/services/tenant-profile-api.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/tests/v181-tenant-profile.mjs
+          node --check frontend/js/tenant-branding.js
+          node --check frontend/js/admin-studio-tenant.js
+          node --check frontend/sw.js
+      - name: Tenant profile contract
+        env:
+          STOREOPS_DB: /tmp/storeops-v181-tenant.db
+        run: node backend/tests/v181-tenant-profile.mjs
+      - name: Runtime wiring
+        run: |
+          grep -q "handleTenantProfileApi" backend/services/workforce-api.mjs
+          grep -q '/admin-studio-tenant.css' frontend/index.html
+          grep -q '/js/tenant-branding.js' frontend/index.html
+          grep -q '/js/admin-studio-tenant.js' frontend/index.html
+          grep -q "storeops-shell-v1.81.0" frontend/sw.js
+          grep -q "'/admin-studio-tenant.css'" frontend/sw.js
+          grep -q "'/js/tenant-branding.js'" frontend/sw.js
+          grep -q "'/js/admin-studio-tenant.js'" frontend/sw.js
+      - name: Safety contract
+        run: |
+          grep -q "isPlatformAdmin(user)" backend/services/tenant-profile-api.mjs
+          grep -q "availableModules" backend/services/tenant-profile.mjs
