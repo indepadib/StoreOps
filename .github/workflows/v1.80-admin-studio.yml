@@ -3,6 +3,10 @@ name: V1.80 Admin Studio Contract
 on:
   pull_request:
     paths:
+      - 'backend/auth/session.mjs'
+      - 'backend/services/pilot-profile.mjs'
+      - 'backend/services/access-management.mjs'
+      - 'backend/services/access-management-api.mjs'
       - 'backend/services/process-template-engine.mjs'
       - 'backend/services/process-studio.mjs'
       - 'backend/services/process-studio-api.mjs'
@@ -25,14 +29,17 @@ on:
       - 'backend/tests/replenishment-policy.mjs'
       - 'backend/tests/replenishment-requests.mjs'
       - 'backend/tests/v180-store-merchandising.mjs'
+      - 'backend/tests/v180-access-management.mjs'
       - 'frontend/js/pages/admin-studio.js'
       - 'frontend/js/pages/manager-scan.js'
       - 'frontend/js/custom-process-runs.js'
       - 'frontend/js/admin-studio-replenishment.js'
       - 'frontend/js/admin-studio-stores.js'
+      - 'frontend/js/admin-studio-access.js'
       - 'frontend/js/app.js'
       - 'frontend/admin-studio.css'
       - 'frontend/admin-studio-guided.css'
+      - 'frontend/admin-studio-access.css'
       - 'frontend/manager-scan.css'
       - 'frontend/index.html'
       - 'frontend/sw.js'
@@ -50,6 +57,10 @@ jobs:
           node-version: 22
       - name: Syntax
         run: |
+          node --check backend/auth/session.mjs
+          node --check backend/services/pilot-profile.mjs
+          node --check backend/services/access-management.mjs
+          node --check backend/services/access-management-api.mjs
           node --check backend/services/process-template-engine.mjs
           node --check backend/services/process-studio.mjs
           node --check backend/services/process-studio-api.mjs
@@ -73,6 +84,7 @@ jobs:
           node --check frontend/js/custom-process-runs.js
           node --check frontend/js/admin-studio-replenishment.js
           node --check frontend/js/admin-studio-stores.js
+          node --check frontend/js/admin-studio-access.js
           node --check frontend/js/app.js
           node --check frontend/sw.js
       - name: Process Studio contracts
@@ -91,18 +103,27 @@ jobs:
         env:
           STOREOPS_DB: /tmp/storeops-v180-store-merch.db
         run: node backend/tests/v180-store-merchandising.mjs
+      - name: Access governance contracts
+        env:
+          STOREOPS_DB: /tmp/storeops-v180-access.db
+        run: node backend/tests/v180-access-management.mjs
       - name: Shell wiring
         run: |
           grep -q 'id="adminStudioNav"' frontend/index.html
           grep -q 'id="adminStudioPage"' frontend/index.html
           grep -q '/admin-studio.css' frontend/index.html
           grep -q '/admin-studio-guided.css' frontend/index.html
+          grep -q '/admin-studio-access.css' frontend/index.html
           grep -q '/admin-studio-guided.css' frontend/sw.js
+          grep -q '/admin-studio-access.css' frontend/sw.js
           grep -q '/manager-scan.css' frontend/index.html
           grep -q '/js/admin-studio-replenishment.js' frontend/index.html
           grep -q '/js/admin-studio-stores.js' frontend/index.html
+          grep -q '/js/admin-studio-access.js' frontend/index.html
           grep -q '/js/admin-studio-replenishment.js' frontend/sw.js
           grep -q '/js/admin-studio-stores.js' frontend/sw.js
+          grep -q '/js/admin-studio-access.js' frontend/sw.js
           grep -q '/js/pages/manager-scan.js' frontend/sw.js
           grep -q '/js/pages/admin-studio.js' frontend/sw.js
           grep -q '/js/custom-process-runs.js' frontend/sw.js
+          grep -q "active=1" backend/auth/session.mjs
