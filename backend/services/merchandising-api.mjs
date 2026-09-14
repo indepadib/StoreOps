@@ -1,25 +1,46 @@
-import { assortmentIndex,assortmentMembership,productTaxonomy } from './assortment.mjs';
+import { productTaxonomy } from './assortment.mjs';
+import { assortmentIndex,assortmentMembership } from './assortment-resolver.mjs';
 import { merchandisingReadiness,syncTaxonomyFromDynamics,syncStoreAssortmentFromDynamics } from './dynamics-merchandising.mjs';
+import { productAssortmentReadiness,syncProductAssortmentsFromDynamics } from './dynamics-product-assortment.mjs';
+import { listProductAssortmentCatalog,getStoreAssortmentAssignments,saveStoreAssortmentAssignments } from './assortment-admin.mjs';
 import { buildItemAssistant } from './item-assistant.mjs';
 import { canAccessStore } from './permissions.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
+async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
 function forbidden(message='Accès interdit'){return{status:403,data:{error:message}}}
 function director(user){return user?.role==='ops_director'}
 function storeAccess(user,storeId){return canAccessStore(user,storeId)}
-function serializeIndex(idx){return{status:idx.status,storeId:idx.storeId,businessDate:idx.businessDate,source:idx.source,syncedAt:idx.syncedAt,assortments:idx.assortments||[],includedCount:idx.included?.size||0,excludedCount:idx.excluded?.size||0}}
+function serializeIndex(idx){return{status:idx.status,model:idx.model||'SNAPSHOT',storeId:idx.storeId,businessDate:idx.businessDate,source:idx.source||null,syncedAt:idx.syncedAt,assortments:idx.assortments||[],includedCount:idx.included?.size||0,excludedCount:idx.excluded?.size||0}}
 
 export async function handleMerchandisingApi({req,url,user}){
  const path=url.pathname;
  if(path==='/api/merchandising/readiness'&&req.method==='GET'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
-  const storeId=url.searchParams.get('storeId')||null;return{status:200,data:merchandisingReadiness(storeId)}
+  const storeId=url.searchParams.get('storeId')||null;return{status:200,data:{...merchandisingReadiness(storeId),productAssortments:productAssortmentReadiness()}}
  }
  if(path==='/api/merchandising/taxonomy/sync'&&req.method==='POST'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:await syncTaxonomyFromDynamics()}
  }
- let p=route(path,'/api/stores/:storeId/item-assistant/:ean');
+ if(path==='/api/merchandising/product-assortments/sync'&&req.method==='POST'){
+  if(!director(user))return forbidden('Synchronisation assortiment produit réservée à la Direction StoreOps');
+  return{status:200,data:await syncProductAssortmentsFromDynamics()}
+ }
+ if(path==='/api/admin/assortments/catalog'&&req.method==='GET'){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');
+  return{status:200,data:{items:listProductAssortmentCatalog(),readiness:productAssortmentReadiness()}}
+ }
+ let p=route(path,'/api/admin/stores/:storeId/assortments');
+ if(p&&req.method==='GET'){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');
+  return{status:200,data:getStoreAssortmentAssignments(p.storeId)}
+ }
+ if(p&&(req.method==='PUT'||req.method==='PATCH')){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');const b=await body(req);
+  return{status:200,data:saveStoreAssortmentAssignments({storeId:p.storeId,user,assortmentKeys:b.assortmentKeys||[]})}
+ }
+ p=route(path,'/api/stores/:storeId/item-assistant/:ean');
  if(p&&req.method==='GET'){
   if(!storeAccess(user,p.storeId))return forbidden('Accès interdit à ce magasin.');
   return{status:200,data:await buildItemAssistant({storeId:p.storeId,ean:p.ean,businessDate:url.searchParams.get('date')||null})}
