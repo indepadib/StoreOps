@@ -1,5 +1,6 @@
 import { buildPriceCheckContext } from './price-check.mjs';
-import { assortmentIndex,assortmentMembership,productTaxonomy,classifyAvailability } from './assortment.mjs';
+import { assortmentIndex,assortmentMembership } from './assortment-resolver.mjs';
+import { productTaxonomy,classifyAvailability } from './assortment.mjs';
 import { getSupplyStockByProductNumber,supplyWarehouseForStore } from './dynamics-stock.mjs';
 import { readStoreProductSalesVelocity } from './dynamics-sales.mjs';
 import { recommendReplenishment,decisionPresentation } from './replenishment-engine.mjs';
@@ -52,7 +53,7 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
   pricing:{basePrice:ctx.basePrice?.price??null,expectedUnitPrice:ctx.expectedUnitPrice,promoLabel:ctx.promoLabel,promotionError:ctx.promotionError||null,priceGroup:ctx.priceGroup,openIncident:ctx.openIncident||null},
   storeStock:{warehouseId:p.warehouseId??null,physicalStock:finiteOrNull(p.stock),availableStock:available,reservedStock:finiteOrNull(p.reservedStock),incomingStock:finiteOrNull(p.onOrderStock),totalAvailableStock:finiteOrNull(p.totalAvailableStock),source:p.stockSource??null,mappingRequired:!!p.stockMappingRequired,batches:p.batches||[]},
   supplyStock:supply,
-  merchandising:{assortment:membership,assortmentState:index.status,assortmentSyncedAt:index.syncedAt||null,assortmentMaxAgeHours:age,taxonomy},
+  merchandising:{assortment:membership,assortmentModel:index.model||'SNAPSHOT',assortmentState:index.status,assortmentSyncedAt:index.syncedAt||null,assortmentMaxAgeHours:age,taxonomy},
   availability,
   replenishment,
   primaryAction:primary,
