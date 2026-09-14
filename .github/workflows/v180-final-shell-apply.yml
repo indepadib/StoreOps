@@ -1,0 +1,85 @@
+name: V1.80 Final Shell Apply
+
+on:
+  push:
+    branches: [storeops-v1.80-admin-studio]
+    paths:
+      - '.github/workflows/v180-final-shell-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: storeops-v1.80-admin-studio
+      - name: Wire integrations and development shell
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p=Path('backend/services/workforce-api.mjs')
+          s=p.read_text()
+          needle="import { handleDevelopmentApi } from './development-api.mjs';\n"
+          if "integration-registry-api" not in s:
+              s=s.replace(needle, needle+"import { handleIntegrationRegistryApi } from './integration-registry-api.mjs';\n")
+          needle2=" const developmentResponse=await handleDevelopmentApi({req,url,user});if(developmentResponse)return developmentResponse;\n"
+          if "integrationResponse" not in s:
+              s=s.replace(needle2, needle2+" const integrationResponse=await handleIntegrationRegistryApi({req,url,user});if(integrationResponse)return integrationResponse;\n")
+          p.write_text(s)
+
+          p=Path('frontend/js/state.js')
+          s=p.read_text()
+          s=s.replace("showcase:false};","showcase:false,developmentAccess:false};")
+          p.write_text(s)
+
+          p=Path('frontend/js/app.js')
+          s=p.read_text()
+          if "renderDevelopment" not in s:
+              s=s.replace("import { renderAdminStudio } from './pages/admin-studio.js';", "import { renderAdminStudio } from './pages/admin-studio.js';\nimport { renderDevelopment } from './pages/development.js';")
+          old="async function bootstrap(){const h=await health();app.authMode=h.authMode||'demo';app.version=h.version||'1.4';app.showcase=!!h.showcase;if(app.authMode==='entra'&&!sessionStorage.getItem('storeops_access_token'))throw new Error('Authentification Entra activée : connecter le frontend MSAL et fournir un access token à StoreOps.');const s=pilotSession(await api('/api/session'));app.user=s.user;app.users=s.availableDemoUsers||[];renderUserSelect();await loadStores();bind();setPage('today')}"
+          new="async function detectDevelopmentAccess(){try{await api('/api/development/config');app.developmentAccess=true}catch{app.developmentAccess=false}}\nasync function bootstrap(){const h=await health();app.authMode=h.authMode||'demo';app.version=h.version||'1.4';app.showcase=!!h.showcase;if(app.authMode==='entra'&&!sessionStorage.getItem('storeops_access_token'))throw new Error('Authentification Entra activée : connecter le frontend MSAL et fournir un access token à StoreOps.');const s=pilotSession(await api('/api/session'));app.user=s.user;app.users=s.availableDemoUsers||[];renderUserSelect();await loadStores();await detectDevelopmentAccess();bind();setPage(app.developmentAccess&&!isDirector()?'development':'today')}"
+          if old not in s: raise SystemExit('bootstrap target not found')
+          s=s.replace(old,new,1)
+          old="function updateHeader(){const store=currentStore(),manager=isManager();$('#headerMeta').textContent=`${store?.name||'Réseau'} · ${roleLabel(app.user.role)}${app.showcase?' · MVP Showcase':''}`;$('#rolePill').textContent=app.showcase?'MVP · '+roleLabel(app.user.role):roleLabel(app.user.role);$('#networkNav').hidden=!isDirector();$('#adminStudioNav').hidden=!isDirector();$('#systemNav').hidden=!isDirector();document.body.classList.toggle('manager-mode',manager);$('#managerNav').hidden=!manager;$('#nav').hidden=manager;$('#storeSelect').classList.toggle('manager-single-store',manager&&app.stores.length===1);ensureShowcaseControls()}"
+          new="function updateHeader(){const store=currentStore(),manager=isManager(),developmentOnly=app.developmentAccess&&!isDirector();$('#headerMeta').textContent=developmentOnly?`Réseau · Développement${app.showcase?' · MVP Showcase':''}`:`${store?.name||'Réseau'} · ${roleLabel(app.user.role)}${app.showcase?' · MVP Showcase':''}`;$('#rolePill').textContent=developmentOnly?'Développement':(app.showcase?'MVP · '+roleLabel(app.user.role):roleLabel(app.user.role));$('#networkNav').hidden=!isDirector();$('#adminStudioNav').hidden=!isDirector();$('#systemNav').hidden=!isDirector();$('#developmentNav').hidden=!app.developmentAccess;document.body.classList.toggle('manager-mode',manager);document.body.classList.toggle('development-only',developmentOnly);$('#managerNav').hidden=!manager;$('#developmentNavBar').hidden=!developmentOnly;$('#nav').hidden=manager||developmentOnly;$('#storeSelect').classList.toggle('manager-single-store',manager&&app.stores.length===1);ensureShowcaseControls()}"
+          if old not in s: raise SystemExit('header target not found')
+          s=s.replace(old,new,1)
+          old="export function setPage(page){if((page==='network'||page==='system'||page==='adminStudio')&&!isDirector())page='today';app.page=page;"
+          new="export function setPage(page){if((page==='network'||page==='system'||page==='adminStudio')&&!isDirector())page='today';if(page==='development'&&!app.developmentAccess)page='today';if(app.developmentAccess&&!isDirector()&&page!=='development')page='development';app.page=page;"
+          if old not in s: raise SystemExit('setPage target not found')
+          s=s.replace(old,new,1)
+          s=s.replace("$$('#managerNav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===managerTab));", "$$('#managerNav button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===managerTab));$$('#developmentNavBar button[data-page]').forEach(x=>x.classList.toggle('active',x.dataset.page===page));")
+          s=s.replace("if(page==='adminStudio')return renderAdminStudio();if(page==='system')return renderSystem()", "if(page==='adminStudio')return renderAdminStudio();if(page==='development')return renderDevelopment();if(page==='system')return renderSystem()")
+          s=s.replace("$$('#nav button[data-page],#managerNav button[data-page]').forEach", "$$('#nav button[data-page],#managerNav button[data-page],#developmentNavBar button[data-page]').forEach")
+          p.write_text(s)
+
+          p=Path('frontend/index.html')
+          s=p.read_text()
+          s=s.replace('<link rel="stylesheet" href="/admin-studio-access.css">','<link rel="stylesheet" href="/admin-studio-access.css"><link rel="stylesheet" href="/admin-studio-integrations.css"><link rel="stylesheet" href="/development.css">')
+          s=s.replace('<button data-page="network" id="networkNav">Direction</button>', '<button data-page="network" id="networkNav">Direction</button><button data-page="development" id="developmentNav" hidden>Développement</button>')
+          marker='</nav>\n<main>'
+          insert='</nav>\n<nav class="manager-nav" id="developmentNavBar" aria-label="Navigation Développement" hidden><button data-page="development" class="active">Développement</button></nav>\n<main>'
+          if 'id="developmentNavBar"' not in s:
+              s=s.replace(marker,insert,1)
+          s=s.replace('<section class="page" id="adminStudioPage">', '<section class="page" id="developmentPage"><div class="page-title"><div><h1>Développement réseau</h1><p>Sourcing de locaux, contrats, travaux et préparation des ouvertures.</p></div><span class="pill">Développement</span></div><div id="developmentContent"></div></section>\n<section class="page" id="adminStudioPage">')
+          s=s.replace('<script type="module" src="/js/admin-studio-access.js"></script>', '<script type="module" src="/js/admin-studio-access.js"></script><script type="module" src="/js/admin-studio-integrations.js"></script>')
+          p.write_text(s)
+
+          p=Path('frontend/js/pages/admin-studio.js')
+          s=p.read_text()
+          s=s.replace('class="studio-intent-card future" data-studio-action="users"','class="studio-intent-card" data-studio-action="users"')
+          s=s.replace('<em>Prochain bloc</em></button>\n  <button class="studio-intent-card future" data-studio-action="integrations"','<em>Configurer →</em></button>\n  <button class="studio-intent-card" data-studio-action="integrations"',1)
+          s=s.replace('<em>Prochain bloc</em></button>\n </div><div id="studioExtensions">','<em>Configurer →</em></button>\n </div><div id="studioExtensions">',1)
+          p.write_text(s)
+          PY
+      - name: Commit product wiring
+        run: |
+          git config user.name "storeops-bot"
+          git config user.email "storeops-bot@users.noreply.github.com"
+          git add backend/services/workforce-api.mjs frontend/js/state.js frontend/js/app.js frontend/index.html frontend/js/pages/admin-studio.js
+          git commit -m "feat(v1.80): wire development workspace and integrations studio" || exit 0
+          git push origin HEAD:storeops-v1.80-admin-studio
