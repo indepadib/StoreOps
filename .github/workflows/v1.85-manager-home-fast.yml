@@ -22,7 +22,7 @@ jobs:
       - name: Fast-path contract
         run: node backend/tests/v185-manager-home-fast.mjs
       - name: Performance P0 regression
-        run: node backend/tests/v184-persistence-fast-reads.mjs
+        run: node backend/tests/v184-performance-p0.mjs
       - name: Static guards
         run: |
           grep -q "/manager-home-fast" frontend/js/pages/manager-home.js
