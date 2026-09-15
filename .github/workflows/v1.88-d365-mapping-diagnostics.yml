@@ -1,0 +1,36 @@
+name: V1.88 D365 Mapping Diagnostics Contract
+
+on:
+  push:
+    branches: [storeops-v1.88-d365-data-mapping-studio]
+  pull_request:
+    branches: [main]
+
+jobs:
+  d365-mapping-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check frontend/js/admin-d365-mapping.js
+          node --check frontend/js/enhancements-entry.js
+      - name: V1.88 diagnostics contract
+        run: node backend/tests/v188-d365-mapping-diagnostics.mjs
+      - name: V1.87 assortment regression
+        run: STOREOPS_DB=/tmp/storeops-v188-assortment.db node backend/tests/v187-store-assortment-channel.mjs
+      - name: V1.85 fastlane regression
+        run: STOREOPS_DB=/tmp/storeops-v188-manager.db node backend/tests/v185-manager-fastlane.mjs
+      - name: Static guards
+        run: |
+          grep -q "unknownCostBecomesZero:false" backend/services/d365-mapping-diagnostics.mjs
+          grep -q "configurationChanged:false" backend/services/d365-mapping-diagnostics.mjs
+          grep -q "d365-mapping/diagnose" backend/services/integration-registry-api.mjs
+          grep -q "Coût non identifié" frontend/js/admin-d365-mapping.js
+          grep -q "admin-d365-mapping.js" frontend/js/enhancements-entry.js
