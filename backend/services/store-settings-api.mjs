@@ -19,7 +19,7 @@ export async function handleStoreSettingsApi({req,url,user}){
  }
  if(p&&(req.method==='PUT'||req.method==='PATCH')){
   director(user);const b=await body(req);
-  return{status:200,data:saveStoreOperationalSettings({storeId:p.storeId,user,storeWarehouseId:b.storeWarehouseId,supplyWarehouseId:b.supplyWarehouseId,secondarySupplyWarehouseIds:b.secondarySupplyWarehouseIds||[]})}
+  return{status:200,data:saveStoreOperationalSettings({storeId:p.storeId,user,storeWarehouseId:b.storeWarehouseId,supplyWarehouseId:b.supplyWarehouseId,secondarySupplyWarehouseIds:b.secondarySupplyWarehouseIds||[],d365StoreNumber:b.d365StoreNumber,d365RetailChannelId:b.d365RetailChannelId,d365OperatingUnitNumber:b.d365OperatingUnitNumber,d365LegalEntityId:b.d365LegalEntityId})}
  }
  return null
 }
