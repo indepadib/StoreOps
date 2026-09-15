@@ -3,6 +3,7 @@ import { todayISO } from '../db.mjs';
 import { getBusinessPulse,clearBusinessPulseCache } from './business-pulse.mjs';
 import { getManagerHomeFast } from './manager-home-fast.mjs';
 import { getManagerInboxBatch } from './manager-inbox-batch.mjs';
+import { commercialSummary,listCommercialControls } from './commercial.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 const forbidden=()=>({status:403,data:{error:'Accès interdit à ce magasin.'}});
@@ -17,6 +18,20 @@ export async function handleBusinessPulseApi({req,url,user}){
  if(p&&req.method==='GET'){
   if(!canAccessStore(user,p.storeId))return forbidden();
   return{status:200,data:await getManagerInboxBatch(p.storeId,url.searchParams.get('date')||todayISO())};
+ }
+ // Compatibility reads are intercepted here before the legacy monolithic routes.
+ // They must never create a store-day or synchronize D365 as a side effect of GET.
+ p=route(url.pathname,'/api/stores/:storeId/dashboard');
+ if(p&&req.method==='GET'){
+  if(!canAccessStore(user,p.storeId))return forbidden();
+  const snapshot=getManagerHomeFast(p.storeId,url.searchParams.get('date')||todayISO());
+  return{status:200,data:{...snapshot.dashboard,commercialSync:{ok:false,skipped:true,readOnly:true}}};
+ }
+ p=route(url.pathname,'/api/stores/:storeId/commercial');
+ if(p&&req.method==='GET'){
+  if(!canAccessStore(user,p.storeId))return forbidden();
+  const businessDate=url.searchParams.get('date')||todayISO();
+  return{status:200,data:{summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate),sync:{ok:false,skipped:true,readOnly:true}}};
  }
  p=route(url.pathname,'/api/stores/:storeId/business-pulse');
  if(p&&req.method==='GET'){
