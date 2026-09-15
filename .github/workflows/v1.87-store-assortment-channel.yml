@@ -19,6 +19,8 @@ jobs:
         run: |
           node --check backend/services/dynamics-store-assortment.mjs
           node --check backend/services/merchandising-api.mjs
+          node --check frontend/js/admin-assortment-auto.js
+          node --check frontend/js/enhancements-entry.js
       - name: Store assortment channel contract
         run: node backend/tests/v187-store-assortment-channel.mjs
       - name: Assortment regression
@@ -31,3 +33,5 @@ jobs:
           grep -q "D365_STORE_ASSORTMENT_KEYS_UNRESOLVED" backend/services/dynamics-store-assortment.mjs
           grep -q "assortments/dynamics-preview" backend/services/merchandising-api.mjs
           grep -q "assortments/sync-channel" backend/services/merchandising-api.mjs
+          grep -q "Détecter depuis D365" frontend/js/admin-assortment-auto.js
+          grep -q "admin-assortment-auto.js" frontend/js/enhancements-entry.js
