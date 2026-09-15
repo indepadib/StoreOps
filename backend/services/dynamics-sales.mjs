@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -44,7 +45,7 @@ function hourOf(v){
 }
 
 export function salesIntegrationConfig(storeId=null){
- const entity=clean(process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities'),stores=parseMap(process.env.D365_STORE_RETAIL_IDS||''),retailId=storeId?clean(stores[storeId]):null;
+ const entity=clean(process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities'),stores=parseMap(process.env.D365_STORE_RETAIL_IDS||''),storeSettings=storeId?storeOperationalSettings(storeId):null,retailId=storeId?(clean(stores[storeId])||clean(storeSettings?.d365?.retailChannelId)||null):null;
  const fields={
   store:field('D365_SALES_STORE_FIELD','store'),date:field('D365_SALES_DATE_FIELD','businessDate'),transaction:field('D365_SALES_TRANSACTION_FIELD','transactionId'),
   net:field('D365_SALES_NET_FIELD','netAmountInclTax'),quantity:field('D365_SALES_QTY_FIELD','qty'),product:field('D365_SALES_PRODUCT_FIELD','itemId'),
@@ -53,7 +54,7 @@ export function salesIntegrationConfig(storeId=null){
  const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
  const missing=required.filter(([,ok])=>!ok).map(([k])=>k);
  if(storeId&&!retailId)missing.push('storeMapping');
- return{mode:salesLive()?'LIVE':'DISABLED',entity,storeId,retailId,stores,fields,missing,ready:salesLive()&&missing.length===0,pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:Number(process.env.D365_SALES_SIGN||-1)||-1,costSign:Number(process.env.D365_SALES_COST_SIGN||-1)||-1,quantitySign:Number(process.env.D365_SALES_QTY_SIGN||1)||1};
+ return{mode:salesLive()?'LIVE':'DISABLED',entity,storeId,retailId,retailIdSource:clean(stores[storeId])?'ENV_CONFIG':storeSettings?.d365?.retailChannelId?'STORE_SETTINGS':null,stores,fields,missing,ready:salesLive()&&missing.length===0,pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:Number(process.env.D365_SALES_SIGN||-1)||-1,costSign:Number(process.env.D365_SALES_COST_SIGN||-1)||-1,quantitySign:Number(process.env.D365_SALES_QTY_SIGN||1)||1};
 }
 
 function taxonomyLabels(productNumber){
@@ -81,12 +82,12 @@ export function aggregateSalesRows(rows=[],cfg={}){
 }
 
 export async function readStoreSalesDay(storeId,businessDate){
- const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,missing:c.missing},data:null};
+ const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
  const filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateFilter(c.fields.date,businessDate)];
  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
  const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
- return{status:'READY',source:`D365/${c.entity}`,storeId,businessDate,config:{entity:c.entity,retailId:c.retailId},data:{...aggregateSalesRows(fetched.value,c),pages:fetched.pages,truncated:!!fetched.truncated}};
+ return{status:'READY',source:`D365/${c.entity}`,storeId,businessDate,config:{entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource},data:{...aggregateSalesRows(fetched.value,c),pages:fetched.pages,truncated:!!fetched.truncated}};
 }
 
 export async function readStoreProductSalesVelocity(storeId,productNumber,{businessDate=new Date().toISOString().slice(0,10),days=28}={}){
