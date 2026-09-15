@@ -2,6 +2,7 @@ import { productTaxonomy } from './assortment.mjs';
 import { assortmentIndex,assortmentMembership } from './assortment-resolver.mjs';
 import { merchandisingReadiness,syncTaxonomyFromDynamics,syncStoreAssortmentFromDynamics } from './dynamics-merchandising.mjs';
 import { productAssortmentReadiness,syncProductAssortmentsFromDynamics } from './dynamics-product-assortment.mjs';
+import { storeAssortmentLookupReadiness,previewStoreAssortmentsFromDynamics,syncStoreAssortmentsFromDynamicsChannel } from './dynamics-store-assortment.mjs';
 import { listProductAssortmentCatalog,getStoreAssortmentAssignments,saveStoreAssortmentAssignments } from './assortment-admin.mjs';
 import { buildItemAssistant } from './item-assistant.mjs';
 import { canAccessStore } from './permissions.mjs';
@@ -17,7 +18,7 @@ export async function handleMerchandisingApi({req,url,user}){
  const path=url.pathname;
  if(path==='/api/merchandising/readiness'&&req.method==='GET'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
-  const storeId=url.searchParams.get('storeId')||null;return{status:200,data:{...merchandisingReadiness(storeId),productAssortments:productAssortmentReadiness()}}
+  const storeId=url.searchParams.get('storeId')||null;return{status:200,data:{...merchandisingReadiness(storeId),productAssortments:productAssortmentReadiness(),storeChannelAssortments:storeAssortmentLookupReadiness(storeId)}}
  }
  if(path==='/api/merchandising/taxonomy/sync'&&req.method==='POST'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
@@ -31,7 +32,17 @@ export async function handleMerchandisingApi({req,url,user}){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:{items:listProductAssortmentCatalog(),readiness:productAssortmentReadiness()}}
  }
- let p=route(path,'/api/admin/stores/:storeId/assortments');
+ let p=route(path,'/api/admin/stores/:storeId/assortments/dynamics-preview');
+ if(p&&req.method==='GET'){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');
+  return{status:200,data:await previewStoreAssortmentsFromDynamics(p.storeId)}
+ }
+ p=route(path,'/api/admin/stores/:storeId/assortments/sync-channel');
+ if(p&&req.method==='POST'){
+  if(!director(user))return forbidden('Synchronisation canal → assortiment réservée à la Direction StoreOps');
+  return{status:200,data:await syncStoreAssortmentsFromDynamicsChannel(p.storeId)}
+ }
+ p=route(path,'/api/admin/stores/:storeId/assortments');
  if(p&&req.method==='GET'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:getStoreAssortmentAssignments(p.storeId)}
