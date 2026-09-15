@@ -1,0 +1,35 @@
+name: V1.85 Manager Fastlane Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-manager-today-fastlane]
+  pull_request:
+    branches: [main]
+
+jobs:
+  manager-fastlane:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-fast-api.mjs
+          node --check backend/services/manager-home-fast.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check frontend/js/pages/manager-home.js
+      - name: Manager fastlane contract
+        run: node backend/tests/v185-manager-fastlane.mjs
+      - name: Performance P0 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Static guards
+        run: |
+          grep -q "manager-home-fast" backend/services/manager-fast-api.mjs
+          grep -q "manager-inbox-batch" backend/services/manager-fast-api.mjs
+          grep -q "handleManagerFastApi" backend/services/workforce-api.mjs
+          grep -q "api(\`/api/stores/\${storeId}/manager-home-fast\`" frontend/js/pages/manager-home.js
+          grep -q "api(\`/api/stores/\${storeId}/manager-inbox-batch\`" frontend/js/pages/manager-home.js
