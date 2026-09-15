@@ -1,0 +1,36 @@
+name: V1.83 Development & Real Data Contract
+
+on:
+  push:
+    branches: [storeops-v1.83-development-realdata]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/development.mjs
+          node --check backend/services/development-api.mjs
+          node --check backend/services/store-settings.mjs
+          node --check backend/services/store-settings-api.mjs
+          node --check frontend/js/development.js
+          node --check frontend/js/admin-studio-stores.js
+      - name: V1.83 contract
+        run: node backend/tests/v183-development-realdata.mjs
+      - name: Access profile contract
+        run: node backend/tests/access-management.mjs
+      - name: Existing merchandising contract
+        run: STOREOPS_DB=/tmp/storeops-v183-merch.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Static guards
+        run: |
+          grep -q "DEVELOPMENT_STAGE_GATE_BLOCKED" backend/services/development.mjs
+          grep -q "LVE Lakhya" backend/services/store-settings.mjs
+          grep -q "retailChannelId:'10001'" backend/services/store-settings.mjs
+          grep -q "DÉVELOPPEMENT RÉSEAU" frontend/js/development.js
