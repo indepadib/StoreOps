@@ -1,0 +1,33 @@
+name: V1.87 Store Assortment Channel Contract
+
+on:
+  push:
+    branches: [storeops-v1.87-boot-process-fastlane]
+  pull_request:
+    branches: [main]
+
+jobs:
+  store-assortment-channel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-store-assortment.mjs
+          node --check backend/services/merchandising-api.mjs
+      - name: Store assortment channel contract
+        run: node backend/tests/v187-store-assortment-channel.mjs
+      - name: Assortment regression
+        run: STOREOPS_DB=/tmp/storeops-v187-assortment-regression.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Manager fastlane regression
+        run: STOREOPS_DB=/tmp/storeops-v187-manager-regression.db node backend/tests/v185-manager-fastlane.mjs
+      - name: Static guards
+        run: |
+          grep -q "RetailAssortmentLookupChannelGroupEntity" backend/services/dynamics-store-assortment.mjs
+          grep -q "D365_STORE_ASSORTMENT_KEYS_UNRESOLVED" backend/services/dynamics-store-assortment.mjs
+          grep -q "assortments/dynamics-preview" backend/services/merchandising-api.mjs
+          grep -q "assortments/sync-channel" backend/services/merchandising-api.mjs
