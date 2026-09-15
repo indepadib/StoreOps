@@ -12,9 +12,14 @@ const MEDIA_PATH='/tmp/storeops-media';
 const LOCAL_PORT='48787';
 const STATE_ID='primary';
 const ADVISORY_LOCK_KEY=63876143;
+const READ_METHODS=new Set(['GET','HEAD','OPTIONS']);
+const REVISION_CACHE_MS=750;
 
 let runtimePromise: Promise<{dbModule: typeof import('../../backend/db.mjs')}> | null=null;
 let localRevision: string | null=null;
+let readSyncPromise: Promise<{dbModule: typeof import('../../backend/db.mjs')}> | null=null;
+let revisionProbePromise: Promise<string> | null=null;
+let revisionCache:{value:string|null,checkedAt:number}={value:null,checkedAt:0};
 
 function bridgeBackendEnvironment(){
   const keys=[
@@ -22,7 +27,7 @@ function bridgeBackendEnvironment(){
     'STOREOPS_VERSION','STOREOPS_VF_MANAGER_EMAIL','STOREOPS_VF_D365_EMAIL','STOREOPS_OPS_DIRECTOR_NAME','STOREOPS_OPS_DIRECTOR_EMAIL','STOREOPS_OPS_DIRECTOR_D365_EMAIL',
     'STOREOPS_ADMIN_NAME','STOREOPS_ADMIN_MICROSOFT_EMAIL','STOREOPS_ADMIN_D365_EMAIL',
     'STOREOPS_QUALITY_AUDIT_NAME','STOREOPS_QUALITY_AUDIT_EMAIL','STOREOPS_QUALITY_AUDIT_MICROSOFT_EMAIL',
-    'STOREOPS_STAFFING_SOURCE','STOREOPS_CASH_OPENING_SOURCE',
+    'STOREOPS_STAFFING_SOURCE','STOREOPS_CASH_OPENING_SOURCE','STOREOPS_STOCK_SIGNALS_CACHE_SECONDS',
     'D365_MODE','D365_PRODUCT_READ_MODE','D365_STOCK_READ_MODE','D365_PRICE_READ_MODE','D365_PROMOTION_READ_MODE','D365_RECEIVING_READ_MODE','D365_ASSORTMENT_READ_MODE','D365_TAXONOMY_READ_MODE',
     'D365_BASE_URL','D365_TENANT_ID','D365_CLIENT_ID','D365_CLIENT_SECRET','D365_OAUTH_VERSION','D365_DATA_AREA_ID','D365_DATA_AREA_FIELD',
     'D365_BARCODE_ENTITY','D365_PRODUCT_ENTITY','D365_BARCODE_FIELD','D365_BARCODE_PRODUCT_FIELD','D365_BARCODE_DESCRIPTION_FIELD','D365_BARCODE_UNIT_FIELD','D365_PRODUCT_NUMBER_FIELD','D365_PRODUCT_NAME_FIELD',
@@ -88,7 +93,7 @@ async function loadRuntime(){
   return runtimePromise;
 }
 
-async function refreshOpenDatabase(dbModule: typeof import('../../backend/db.mjs'),bytes: Buffer){
+async function refreshOpenDatabase(dbModule: typeof import('../../backend/db.mjs'),bytes: Buffer | null){
   try{dbModule.db.exec('PRAGMA wal_checkpoint(TRUNCATE);')}catch{}
   try{dbModule.db.close()}catch{}
   await replaceLocalDatabase(bytes);
@@ -111,7 +116,7 @@ async function callLocalPath(request:Request,path:string,{method='GET',body}: {m
 
 async function callLocalApi(request: Request){
   const incoming=new URL(request.url);
-  const body=!['GET','HEAD'].includes(request.method)?Buffer.from(await request.arrayBuffer()):undefined;
+  const body=!READ_METHODS.has(request.method)?Buffer.from(await request.arrayBuffer()):undefined;
   const upstream=await callLocalPath(request,`${incoming.pathname}${incoming.search}`,{method:request.method,body});
   const responseHeaders=new Headers(upstream.headers);
   for(const name of ['content-length','transfer-encoding','content-encoding','connection'])responseHeaders.delete(name);
@@ -144,9 +149,6 @@ async function handleV168Route(request:Request,runtime:{dbModule:typeof import('
     }
   }
 
-  // Canonical business routes (price check, inventory, losses, etc.) are served by backend/server.mjs.
-  // Keeping one router prevents Netlify-only behavior from diverging from local/API behavior.
-
   return null;
 }
 
@@ -166,8 +168,103 @@ async function persistSnapshot(client: any,dbModule: typeof import('../../backen
   return String(result.rows[0].revision);
 }
 
-export default async (request: Request)=>{
-  const database=getDatabase();
+function rememberRevision(revision:string){
+  localRevision=revision;
+  revisionCache={value:revision,checkedAt:Date.now()};
+}
+
+async function probeCentralRevision(database:any){
+  const now=Date.now();
+  if(revisionCache.value!==null&&now-revisionCache.checkedAt<REVISION_CACHE_MS)return revisionCache.value;
+  if(revisionProbePromise)return revisionProbePromise;
+  revisionProbePromise=(async()=>{
+    const client=await database.pool.connect();
+    try{
+      const state=await client.query('SELECT revision FROM storeops_sqlite_state WHERE id=$1',[STATE_ID]);
+      const revision=state.rows[0]?String(state.rows[0].revision):'0';
+      revisionCache={value:revision,checkedAt:Date.now()};
+      return revision;
+    }finally{client.release()}
+  })();
+  try{return await revisionProbePromise}finally{revisionProbePromise=null}
+}
+
+async function initializeCentralRuntime(database:any){
+  const client=await database.pool.connect();
+  let committed=false;
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)',[ADVISORY_LOCK_KEY]);
+    const state=await client.query('SELECT db_bytes,revision FROM storeops_sqlite_state WHERE id=$1',[STATE_ID]);
+    const row=state.rows[0]||null;
+    const revision=row?String(row.revision):'0';
+    const bytes=row?.db_bytes?Buffer.from(row.db_bytes):null;
+    if(!runtimePromise)await replaceLocalDatabase(bytes);
+    const runtime=await loadRuntime();
+    if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
+    if(row){
+      rememberRevision(revision);
+    }else{
+      const nextRevision=await persistSnapshot(client,runtime.dbModule);
+      rememberRevision(nextRevision);
+    }
+    await client.query('COMMIT');
+    committed=true;
+    return runtime;
+  }catch(error){
+    localRevision=null;
+    revisionCache={value:null,checkedAt:0};
+    if(!committed)await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release()}
+}
+
+async function syncReadRuntime(database:any){
+  const targetRevision=await probeCentralRevision(database);
+  if(runtimePromise&&localRevision===targetRevision)return loadRuntime();
+  if(readSyncPromise)return readSyncPromise;
+
+  readSyncPromise=(async()=>{
+    const client=await database.pool.connect();
+    let row:any=null;
+    try{
+      const state=await client.query('SELECT db_bytes,revision FROM storeops_sqlite_state WHERE id=$1',[STATE_ID]);
+      row=state.rows[0]||null;
+    }finally{client.release()}
+    if(!row)return initializeCentralRuntime(database);
+
+    const revision=String(row.revision);
+    const bytes=row.db_bytes?Buffer.from(row.db_bytes):null;
+    if(!runtimePromise)await replaceLocalDatabase(bytes);
+    const runtime=await loadRuntime();
+    if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
+    rememberRevision(revision);
+    return runtime;
+  })();
+  try{return await readSyncPromise}finally{readSyncPromise=null}
+}
+
+function withTiming(response:Response,mode:'read-fast'|'write-sync',startedAt:number,syncAt:number,backendAt:number){
+  const headers=new Headers(response.headers);
+  const now=Date.now();
+  const sync=Math.max(0,syncAt-startedAt),backend=Math.max(0,backendAt-syncAt),total=Math.max(0,now-startedAt);
+  headers.set('Server-Timing',`state;dur=${sync}, backend;dur=${backend}, total;dur=${total}`);
+  headers.set('X-StoreOps-Bridge',mode);
+  if(localRevision!==null)headers.set('X-StoreOps-Revision',localRevision);
+  return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
+
+async function serveRead(request:Request,database:any){
+  const startedAt=Date.now();
+  const runtime=await syncReadRuntime(database);
+  const syncAt=Date.now();
+  const response=await handleV168Route(request.clone(),runtime)||await callLocalApi(request);
+  const backendAt=Date.now();
+  return withTiming(response,'read-fast',startedAt,syncAt,backendAt);
+}
+
+async function serveWrite(request:Request,database:any){
+  const startedAt=Date.now();
   const client=await database.pool.connect();
   let committed=false;
   try{
@@ -178,34 +275,38 @@ export default async (request: Request)=>{
     const revision=row?String(row.revision):'0';
     const bytes=row?.db_bytes?Buffer.from(row.db_bytes):null;
 
-    if(!runtimePromise){
-      await replaceLocalDatabase(bytes);
-    }
+    if(!runtimePromise)await replaceLocalDatabase(bytes);
     const runtime=await loadRuntime();
-
-    if(localRevision!==null&&revision!==localRevision){
-      if(!bytes)throw new Error('État StoreOps central absent après initialisation.');
-      await refreshOpenDatabase(runtime.dbModule,bytes);
-    }
+    if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
     if(localRevision===null)localRevision=revision;
+    const syncAt=Date.now();
 
     const response=await handleV168Route(request.clone(),runtime)||await callLocalApi(request);
+    const backendAt=Date.now();
     const nextRevision=await persistSnapshot(client,runtime.dbModule);
     await client.query('COMMIT');
     committed=true;
-    localRevision=nextRevision;
-    return response;
+    rememberRevision(nextRevision);
+    return withTiming(response,'write-sync',startedAt,syncAt,backendAt);
   }catch(error){
     localRevision=null;
+    revisionCache={value:null,checkedAt:0};
     if(!committed)await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release()}
+}
+
+export default async (request: Request)=>{
+  const database=getDatabase();
+  try{
+    return READ_METHODS.has(request.method)?await serveRead(request,database):await serveWrite(request,database);
+  }catch(error){
     console.error('StoreOps public API failure',error);
     return Response.json({
       error:'Backend StoreOps indisponible',
       code:'STOREOPS_PUBLIC_BACKEND_FAILED',
       details:error instanceof Error?error.message:String(error)
     },{status:503});
-  }finally{
-    client.release();
   }
 };
 

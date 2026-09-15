@@ -1,7 +1,7 @@
 import { loadEnhancements } from './enhancements-entry.js';
 
-const BUILD='1670';
-const BUILD_LABEL='1.67.0';
+const BUILD='1840';
+const BUILD_LABEL='1.84.0';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
@@ -52,7 +52,7 @@ async function loadApp(){
 
 async function prepareBoot(){
   phase('préparation');
-  try{await withTimeout(window.STOREOPS_BOOT_PREP||Promise.resolve(),2000,'Le nettoyage navigateur prend trop de temps. StoreOps poursuit le démarrage.')}catch(e){console.warn('Préparation démarrage StoreOps',e)}
+  try{await withTimeout(window.STOREOPS_BOOT_PREP||Promise.resolve(),750,'Le nettoyage navigateur prend trop de temps. StoreOps poursuit le démarrage.')}catch(e){console.warn('Préparation démarrage StoreOps',e)}
 }
 
 async function start(){
@@ -96,10 +96,16 @@ async function start(){
   }
 }
 
+function loadEnhancementsDeferred(){
+  const run=()=>loadEnhancements().catch(e=>console.warn('StoreOps enhancements différés',e));
+  if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1800});
+  else setTimeout(run,120);
+}
+
 try{
-  phase('modules');
-  await loadEnhancements();
+  phase('démarrage rapide');
   await start();
+  loadEnhancementsDeferred();
 }catch(e){
   console.error(e);
   renderStartupFailure(e);

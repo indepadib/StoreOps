@@ -1,0 +1,56 @@
+name: V1.84 Performance P0 Contract
+
+on:
+  push:
+    branches: [storeops-v1.84-performance-p0]
+  pull_request:
+    branches: [main]
+
+jobs:
+  performance-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/stock-signals.mjs
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: Performance P0 contract
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Public backend regression
+        run: node backend/tests/netlify-public-backend.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v184-stock.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v184-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v184-api.log 2>&1 &
+          echo $! > /tmp/storeops-v184-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/storeops-v184-health.json; then cat /tmp/storeops-v184-health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v184-api.log
+          exit 1
+      - name: Stock signal regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/stock-signals-api.mjs
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-v184-api.pid ]; then kill "$(cat /tmp/storeops-v184-api.pid)" || true; fi
