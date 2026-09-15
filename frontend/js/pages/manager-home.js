@@ -71,6 +71,6 @@ export async function renderManagerHome(){
  else renderState({fast,inbox:null,pulse:null,pulseLoading:true,detailsLoading:true});
  const redraw=()=>{if(app.storeId===storeId)renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
  const pulsePromise=api(`/api/stores/${storeId}/business-pulse`).then(x=>{pulse=x}).catch(()=>{pulse=null}).finally(()=>{pulseLoading=false;redraw()});
- const inboxPromise=(inbox?Promise.resolve(inbox):loadManagerInbox()).then(x=>{inbox=x;syncManagerNav(inbox)}).catch(()=>{}).finally(()=>{detailsLoading=false;redraw()});
+ const inboxPromise=(inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox())).then(x=>{inbox=x;syncManagerNav(inbox)}).catch(()=>{}).finally(()=>{detailsLoading=false;redraw()});
  await Promise.allSettled([pulsePromise,inboxPromise]);
 }
