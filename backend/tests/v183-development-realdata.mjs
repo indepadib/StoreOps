@@ -5,6 +5,7 @@ const {db}=await import('../db.mjs');
 const {createDevelopmentProject,updateDevelopmentProject,setDevelopmentMilestone,setDevelopmentStage,developmentProject}=await import('../services/development.mjs');
 const {canAccessDevelopment}=await import('../services/permissions.mjs');
 const {networkOperationalSettings,saveNetworkOperationalSettings,storeOperationalSettings,saveStoreOperationalSettings}=await import('../services/store-settings.mjs');
+const {salesIntegrationConfig}=await import('../services/dynamics-sales.mjs');
 
 for(const t of ['development_history','development_milestones','development_projects','store_operational_settings','network_operational_settings_history','network_operational_settings'])db.prepare(`DELETE FROM ${t}`).run();
 if(!db.prepare(`SELECT id FROM users WHERE id='u-admin'`).get())db.prepare(`INSERT INTO users(id,name,role,active) VALUES('u-admin','Admin StoreOps','ops_director',1)`).run();
@@ -57,6 +58,9 @@ store=saveStoreOperationalSettings({storeId:'val-fleuri',user:actor,storeWarehou
 assert.equal(store.d365.source,'STOREOPS_CONFIG');
 assert.equal(store.supplyWarehouseId,'LVE Lakhya');
 assert.equal(store.supplyWarehouseSource,'NETWORK_DEFAULT');
+const sales=salesIntegrationConfig('val-fleuri');
+assert.equal(sales.retailId,'10001');
+assert.equal(sales.retailIdSource,'STORE_SETTINGS');
 
 assert.equal(developmentProject(p.id)?.name,'Franprix Racine');
 console.log('V1.83 development + confirmed One Retail mapping contract: OK');
