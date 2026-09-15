@@ -28,5 +28,29 @@ jobs:
         run: node backend/tests/v184-performance-p0.mjs
       - name: Public backend regression
         run: node backend/tests/netlify-public-backend.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v184-stock.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v184-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v184-api.log 2>&1 &
+          echo $! > /tmp/storeops-v184-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/storeops-v184-health.json; then cat /tmp/storeops-v184-health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v184-api.log
+          exit 1
       - name: Stock signal regression
-        run: STOREOPS_DB=/tmp/storeops-v184-stock.db node backend/tests/stock-signals-api.mjs
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/stock-signals-api.mjs
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-v184-api.pid ]; then kill "$(cat /tmp/storeops-v184-api.pid)" || true; fi
