@@ -189,6 +189,36 @@ async function probeCentralRevision(database:any){
   try{return await revisionProbePromise}finally{revisionProbePromise=null}
 }
 
+async function initializeCentralRuntime(database:any){
+  const client=await database.pool.connect();
+  let committed=false;
+  try{
+    await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock($1)',[ADVISORY_LOCK_KEY]);
+    const state=await client.query('SELECT db_bytes,revision FROM storeops_sqlite_state WHERE id=$1',[STATE_ID]);
+    const row=state.rows[0]||null;
+    const revision=row?String(row.revision):'0';
+    const bytes=row?.db_bytes?Buffer.from(row.db_bytes):null;
+    if(!runtimePromise)await replaceLocalDatabase(bytes);
+    const runtime=await loadRuntime();
+    if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
+    if(row){
+      rememberRevision(revision);
+    }else{
+      const nextRevision=await persistSnapshot(client,runtime.dbModule);
+      rememberRevision(nextRevision);
+    }
+    await client.query('COMMIT');
+    committed=true;
+    return runtime;
+  }catch(error){
+    localRevision=null;
+    revisionCache={value:null,checkedAt:0};
+    if(!committed)await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release()}
+}
+
 async function syncReadRuntime(database:any){
   const targetRevision=await probeCentralRevision(database);
   if(runtimePromise&&localRevision===targetRevision)return loadRuntime();
@@ -196,34 +226,20 @@ async function syncReadRuntime(database:any){
 
   readSyncPromise=(async()=>{
     const client=await database.pool.connect();
-    let committed=false;
+    let row:any=null;
     try{
-      await client.query('BEGIN');
-      await client.query('SELECT pg_advisory_xact_lock($1)',[ADVISORY_LOCK_KEY]);
       const state=await client.query('SELECT db_bytes,revision FROM storeops_sqlite_state WHERE id=$1',[STATE_ID]);
-      const row=state.rows[0]||null;
-      const revision=row?String(row.revision):'0';
-      const bytes=row?.db_bytes?Buffer.from(row.db_bytes):null;
-
-      if(!runtimePromise)await replaceLocalDatabase(bytes);
-      const runtime=await loadRuntime();
-      if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
-      if(localRevision===null)localRevision=revision;
-
-      if(!row){
-        const nextRevision=await persistSnapshot(client,runtime.dbModule);
-        rememberRevision(nextRevision);
-      }else rememberRevision(revision);
-
-      await client.query('COMMIT');
-      committed=true;
-      return runtime;
-    }catch(error){
-      localRevision=null;
-      revisionCache={value:null,checkedAt:0};
-      if(!committed)await client.query('ROLLBACK').catch(()=>{});
-      throw error;
+      row=state.rows[0]||null;
     }finally{client.release()}
+    if(!row)return initializeCentralRuntime(database);
+
+    const revision=String(row.revision);
+    const bytes=row.db_bytes?Buffer.from(row.db_bytes):null;
+    if(!runtimePromise)await replaceLocalDatabase(bytes);
+    const runtime=await loadRuntime();
+    if(localRevision!==null&&revision!==localRevision)await refreshOpenDatabase(runtime.dbModule,bytes);
+    rememberRevision(revision);
+    return runtime;
   })();
   try{return await readSyncPromise}finally{readSyncPromise=null}
 }
