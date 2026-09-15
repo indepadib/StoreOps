@@ -6,11 +6,12 @@ const modules=[
   './manager-handover.js',
   './manager-control-focus.js',
   './manager-receiving-focus.js',
-  './manager-replenishment-v2.js'
+  './manager-replenishment-v2.js',
+  './admin-assortment-auto.js'
 ];
 
 export async function loadEnhancements(){
-  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1840`)));
+  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1870`)));
   const failed=results.filter(x=>x.status==='rejected');
   if(failed.length)console.warn(`${failed.length} module(s) StoreOps différé(s) non chargés`,failed.map(x=>x.reason));
 }
