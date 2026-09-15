@@ -13,9 +13,15 @@ const stock=read('backend/services/stock-signals.mjs');
 
 const readBlock=bridge.match(/async function serveRead[\s\S]*?async function serveWrite/)?.[0]||'';
 const writeBlock=bridge.match(/async function serveWrite[\s\S]*?export default/)?.[0]||'';
-assert(readBlock&&writeBlock,'Netlify read/write paths must be explicit');
+const readSyncBlock=bridge.match(/async function syncReadRuntime[\s\S]*?function withTiming/)?.[0]||'';
+const initBlock=bridge.match(/async function initializeCentralRuntime[\s\S]*?async function syncReadRuntime/)?.[0]||'';
+assert(readBlock&&writeBlock&&readSyncBlock&&initBlock,'Netlify read/write paths must be explicit');
 assert.doesNotMatch(readBlock,/persistSnapshot\(/,'read path must not rewrite SQLite blob');
-assert.doesNotMatch(readBlock,/pg_advisory_xact_lock/,'warm read path must not take global DB lock');
+assert.doesNotMatch(readBlock,/pg_advisory_xact_lock/,'read response path must not take global DB lock');
+assert.doesNotMatch(readSyncBlock,/pg_advisory_xact_lock/,'cold/stale reads of an existing central snapshot must not serialize globally');
+assert.doesNotMatch(readSyncBlock,/persistSnapshot\(/,'cold/stale reads of an existing central snapshot must not persist');
+assert.match(initBlock,/pg_advisory_xact_lock/,'first-ever central state initialization must remain serialized');
+assert.match(initBlock,/persistSnapshot\(/,'first-ever central state initialization must persist exactly one baseline');
 assert.match(writeBlock,/persistSnapshot\(/,'write path must stay durable');
 assert.match(writeBlock,/pg_advisory_xact_lock/,'write path must stay serialized');
 assert.match(bridge,/REVISION_CACHE_MS/,'read state revision must be short-lived cached');
