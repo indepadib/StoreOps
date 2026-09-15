@@ -14,7 +14,7 @@ export async function handleDevelopmentApi({req,url,user}){
  }
  let p=route(path,'/api/development/projects/:projectId');
  if(p){if(req.method==='GET'){const item=developmentProject(p.projectId);return item?{status:200,data:item}:{status:404,data:{error:'Projet développement introuvable.'}}}if(req.method==='PUT'||req.method==='PATCH'){const b=await body(req);return{status:200,data:updateDevelopmentProject({user,id:p.projectId,input:b})}}}
- p=route(path,'/api/development/projects/:projectId/stage');if(p&&req.method==='POST'){const b=await body(req);return{status:200,data:setDevelopmentStage({user,id:p.projectId,stage:b.stage,note:b.note||''})}}
+ p=route(path,'/api/development/projects/:projectId/stage');if(p&&req.method==='POST'){const b=await body(req);return{status:200,data:setDevelopmentStage({user,id:p.projectId,stage:b.stage,note:b.note||'',force:b.force===true})}}
  p=route(path,'/api/development/projects/:projectId/milestones/:code');if(p&&req.method==='POST'){const b=await body(req);return{status:200,data:setDevelopmentMilestone({user,id:p.projectId,code:p.code,status:b.status||'DONE',dueDate:b.dueDate,note:b.note||''})}}
  return null
 }
