@@ -10,6 +10,9 @@ const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const validField=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
 const esc=v=>String(v).replaceAll("'","''");
 const assortmentMaxAgeHours=()=>Math.max(1,Math.min(24*30,Number(process.env.STOREOPS_ASSORTMENT_MAX_AGE_HOURS)||36));
+const stockSignalsCacheSeconds=()=>Math.max(5,Math.min(300,Number(process.env.STOREOPS_STOCK_SIGNALS_CACHE_SECONDS)||45));
+const signalCache=new Map();
+const signalInflight=new Map();
 
 function requireField(name,value){
   if(!validField(value))throw Object.assign(new Error(`${name} non configuré ou invalide`),{status:503,code:'D365_STOCK_MAPPING_REQUIRED',details:{field:name}});
@@ -52,7 +55,7 @@ function signalFromClassification(x,warehouse,classification){
   return null
 }
 
-export async function getStockSignals(storeId,{businessDate=null}={}){
+async function computeStockSignals(storeId,{businessDate=null}={}){
   if(config.dynamics.mode!=='live'||config.dynamics.read?.stock!=='live')return simulated(storeId);
   const c=config.dynamics.stock||{},entity=clean(c.entity)||STOCK_ENTITY;
   if(!/^[A-Za-z0-9_]+$/.test(entity))throw Object.assign(new Error('D365_STOCK_ENTITY invalide'),{status:503,code:'D365_STOCK_MAPPING_INVALID'});
@@ -80,4 +83,19 @@ export async function getStockSignals(storeId,{businessDate=null}={}){
   const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
   const items=[...negative,...out,...residual];
   return {source:`D365/${entity}`,storeId,warehouse,checkedAt:new Date().toISOString(),entity,items,summary:{total:items.length,negative:negative.length,outOfStock:out.length,residualOutsideAssortment:residual.length,assortmentUnknownZero:unknownZero,assortmentReady:index.status==='READY',assortmentState:index.status,assortmentModel:index.model||'SNAPSHOT',assortmentMaxAgeHours:maxAgeHours,assortmentSyncedAt:index.syncedAt||null,activeAssortments:index.assortments?.length||0,aggregatedProducts:aggregated.length,rowsRead:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated}}
+}
+
+export async function getStockSignals(storeId,{businessDate=null,force=false}={}){
+  const key=`${clean(storeId)}|${clean(businessDate)||'today'}`;
+  const ttl=stockSignalsCacheSeconds()*1000,now=Date.now(),cached=signalCache.get(key);
+  if(!force&&cached&&now<cached.expiresAt)return {...cached.value,cache:{status:'HIT',ttlSeconds:stockSignalsCacheSeconds()}};
+  if(!force&&signalInflight.has(key))return signalInflight.get(key);
+
+  const promise=(async()=>{
+    const value=await computeStockSignals(storeId,{businessDate});
+    signalCache.set(key,{value,expiresAt:Date.now()+ttl});
+    return {...value,cache:{status:'MISS',ttlSeconds:stockSignalsCacheSeconds()}}
+  })();
+  signalInflight.set(key,promise);
+  try{return await promise}finally{signalInflight.delete(key)}
 }
