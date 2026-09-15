@@ -1,0 +1,36 @@
+name: V1.85 Manager Home Fast Path
+
+on:
+  push:
+    branches: [storeops-v1.85-manager-home-fastpath]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-home-fast.mjs
+          node --check backend/services/business-pulse-api.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pwa.js
+      - name: Fast-path contract
+        run: node backend/tests/v185-manager-home-fast.mjs
+      - name: Performance P0 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Static guards
+        run: |
+          grep -q "/manager-home-fast" frontend/js/pages/manager-home.js
+          grep -q "externalCalls:0" backend/services/manager-home-fast.mjs
+          grep -q "readOnly:true" backend/services/manager-home-fast.mjs
+          grep -q "Business Pulse · chargement en arrière-plan" frontend/js/pages/manager-home.js
+          grep -q "var BUILD='1.85.0'" frontend/js/boot-classic.js
+          grep -q "storeops-runtime-cleaned-build" frontend/js/boot-classic.js
+          ! grep -q "getRegistrations" frontend/js/pwa.js
