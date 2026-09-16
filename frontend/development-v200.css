@@ -1,0 +1,105 @@
+/* V2.00 — Development mobile cockpit: risk/action first without changing business rules. */
+@media(max-width:820px){
+  #developmentPage{padding-bottom:calc(74px + env(safe-area-inset-bottom,0px))}
+  #developmentPage .dev-shell{max-width:none}
+  #developmentPage .dev-hero{padding:16px;border-radius:20px;gap:12px;margin-bottom:10px;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center}
+  #developmentPage .dev-hero .label{font-size:8.5px}
+  #developmentPage .dev-hero h2{font-size:24px;line-height:1.02;margin:4px 0 0;letter-spacing:-.035em}
+  #developmentPage .dev-hero p{display:none}
+  #developmentPage .dev-hero .btn{width:auto;min-height:40px;padding:8px 11px;font-size:10px;border-radius:11px}
+
+  #developmentPage .dev-kpis-5{display:grid;grid-auto-flow:column;grid-auto-columns:122px;grid-template-columns:none;gap:7px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding:1px 1px 8px;margin:8px 0 2px;scrollbar-width:none}
+  #developmentPage .dev-kpis-5::-webkit-scrollbar{display:none}
+  #developmentPage .dev-kpi{padding:10px;border-radius:15px;min-height:72px;scroll-snap-align:start}
+  #developmentPage .dev-kpi span{font-size:8px;line-height:1.18;min-height:19px}
+  #developmentPage .dev-kpi strong{font-size:23px;line-height:1;margin-top:5px}
+  #developmentPage .dev-kpis-5 .dev-kpi:nth-child(4){order:-3;border-color:#efc4d1;background:#fff7fa}
+  #developmentPage .dev-kpis-5 .dev-kpi:nth-child(5){order:-2}
+  #developmentPage .dev-kpis-5 .dev-kpi:nth-child(1){order:-1}
+
+  #developmentPage .dev-stage-strip{gap:6px;padding:4px 0 8px;scroll-snap-type:x proximity;scrollbar-width:none}
+  #developmentPage .dev-stage-strip::-webkit-scrollbar{display:none}
+  #developmentPage .dev-stage-chip{padding:7px 10px;font-size:9px;min-height:34px;scroll-snap-align:start}
+
+  #developmentPage .dev-board{grid-template-columns:1fr;gap:8px}
+  #developmentPage .dev-project{padding:13px;border-radius:18px;box-shadow:none}
+  #developmentPage .dev-project-top{gap:8px}
+  #developmentPage .dev-project h3{font-size:16px;line-height:1.15;margin:3px 0}
+  #developmentPage .dev-project p{font-size:9.5px;line-height:1.25}
+  #developmentPage .dev-card-status{gap:4px}
+  #developmentPage .dev-card-status .status{font-size:8px;padding:4px 6px}
+  #developmentPage .dev-project-meta{grid-template-columns:1fr 1fr;gap:6px;margin-top:9px}
+  #developmentPage .dev-project-meta>div{padding:8px;border-radius:11px;min-width:0}
+  #developmentPage .dev-project-meta>div:nth-child(3){grid-column:1/-1;grid-row:1;order:-1;background:var(--brand-soft);border:1px solid #efd4dd}
+  #developmentPage .dev-project-meta span{font-size:8px}
+  #developmentPage .dev-project-meta strong{font-size:10.5px;line-height:1.25;white-space:normal}
+  #developmentPage .dev-project-meta small{font-size:8px}
+  #developmentPage .dev-blocker{margin-top:7px;padding:7px 9px;font-size:9px;border-radius:10px}
+  #developmentPage .dev-progress{height:5px;margin-top:9px}
+
+  #developmentPage .dev-detail-head{display:grid;grid-template-columns:1fr;gap:9px;margin-bottom:8px}
+  #developmentPage .dev-detail-head h2{font-size:24px;line-height:1.05;margin:4px 0}
+  #developmentPage .dev-detail-head p{font-size:10px;margin:0}
+  #developmentPage .dev-detail-head .label{font-size:8.5px}
+  #developmentPage .dev-inline-status{margin-top:6px;gap:5px}
+  #developmentPage .dev-inline-status .status{font-size:8px;padding:4px 6px}
+  #developmentPage .dev-actions{display:grid;grid-template-columns:1fr 1.35fr;gap:7px;width:100%}
+  #developmentPage .dev-actions .btn{min-height:42px;padding:8px 9px;font-size:9.5px;border-radius:11px}
+
+  #developmentPage .dev-stage-rail{display:grid;grid-auto-flow:column;grid-auto-columns:112px;grid-template-columns:none;gap:6px;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x mandatory;padding:2px 0 8px;margin:8px 0;scrollbar-width:none}
+  #developmentPage .dev-stage-rail::-webkit-scrollbar{display:none}
+  #developmentPage .dev-stage-step{padding:8px 7px;font-size:8.5px;line-height:1.2;min-height:38px;display:grid;place-items:center;scroll-snap-align:center}
+  #developmentPage .dev-stage-step.current{box-shadow:0 0 0 1px var(--brand) inset}
+
+  #developmentPage .dev-gate{padding:10px 11px;border-radius:14px;gap:8px;align-items:flex-start;margin-bottom:8px}
+  #developmentPage .dev-gate strong{font-size:11px;line-height:1.25}
+  #developmentPage .dev-gate small{font-size:8.5px;line-height:1.3}
+  #developmentPage .dev-gate .status{font-size:8px;padding:4px 6px;white-space:nowrap}
+
+  #developmentPage .dev-detail-grid{display:flex;flex-direction:column;gap:8px}
+  #developmentPage .dev-detail-grid>div:nth-child(2){display:contents}
+  #developmentPage .dev-next-card{order:-3;margin-top:0!important;background:linear-gradient(135deg,var(--brand-soft),#fff);border-color:#eac6d3;padding:13px}
+  #developmentPage .dev-next-card h3{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--brand);margin-bottom:6px}
+  #developmentPage .dev-next-card>strong{font-size:15px;line-height:1.25}
+  #developmentPage .dev-next-card>small{font-size:9px;margin-top:5px}
+  #developmentPage .dev-detail-grid>div:first-child{order:-2}
+  #developmentPage .dev-detail-grid>div:nth-child(2)>.dev-card:first-child{order:0}
+  #developmentPage .dev-detail-grid>div:nth-child(2)>.dev-card:last-child{order:1}
+
+  #developmentPage .dev-card{padding:13px;border-radius:17px}
+  #developmentPage .dev-card h3{font-size:13px;margin-bottom:8px}
+  #developmentPage .dev-milestones{display:flex;flex-direction:column;gap:6px}
+  #developmentPage .dev-milestone{padding:9px 10px;border-radius:12px;gap:8px;order:-2}
+  #developmentPage .dev-milestone.done{order:2;padding:7px 9px;opacity:.72;background:#f8faf9}
+  #developmentPage .dev-milestone strong{font-size:10.5px;line-height:1.2}
+  #developmentPage .dev-milestone small{font-size:8px;line-height:1.25;margin-top:2px}
+  #developmentPage .dev-milestone .btn{min-height:34px;padding:6px 8px;font-size:8.5px;border-radius:9px}
+  #developmentPage .dev-milestone.done .btn{min-height:30px;padding:5px 7px}
+
+  #developmentPage .dev-facts{grid-template-columns:1fr 1fr;gap:6px}
+  #developmentPage .dev-facts>div{padding:8px;border-radius:11px}
+  #developmentPage .dev-facts span{font-size:8px}
+  #developmentPage .dev-facts strong{font-size:10.5px;line-height:1.2}
+  #developmentPage .dev-history{gap:5px}
+  #developmentPage .dev-history-item{padding:5px 0 5px 9px}
+  #developmentPage .dev-history-item strong{font-size:9.5px}
+  #developmentPage .dev-history-item small{font-size:8px}
+  #developmentPage .dev-risk-card{margin-top:8px}
+
+  #developmentPage .dev-form{padding:13px;border-radius:18px}
+  #developmentPage .dev-form-grid{grid-template-columns:1fr;gap:8px;margin-top:9px}
+  #developmentPage .dev-form input,#developmentPage .dev-form select,#developmentPage .dev-form textarea{min-height:44px;font-size:16px;border-radius:11px}
+  #developmentPage .dev-form textarea{min-height:78px}
+  #developmentPage .studio-savebar{gap:8px}
+  #developmentPage .studio-savebar .small{font-size:8.5px;line-height:1.25}
+  #developmentPage .studio-savebar .btn{min-height:44px}
+}
+
+@media(max-width:390px){
+  #developmentPage .dev-hero{grid-template-columns:1fr}
+  #developmentPage .dev-hero .btn{width:100%}
+  #developmentPage .dev-kpis-5{grid-auto-columns:112px}
+  #developmentPage .dev-actions{grid-template-columns:1fr}
+  #developmentPage .dev-project-meta{grid-template-columns:1fr 1fr}
+  #developmentPage .dev-stage-rail{grid-auto-columns:106px}
+}
