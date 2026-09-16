@@ -17,7 +17,8 @@ function phaseStrip(phase){
  const order=['OPENING','DAY','CLOSING'],labels={OPENING:'Ouverture',DAY:'Exploitation',CLOSING:'Fermeture'},idx=phase==='CLOSED'?3:Math.max(0,order.indexOf(phase));
  return `<div class="manager-phase-strip">${order.map((p,i)=>`<div class="manager-phase-step ${i<idx?'done':i===idx?'current':'next'}"><span>${i<idx?'✓':i+1}</span><strong>${labels[p]}</strong></div>`).join('')}</div>`;
 }
-function businessPulseCard(p){
+function businessPulseCard(p,{loading=false}={}){
+ if(loading)return `<section class="business-pulse"><div class="pulse-card" aria-busy="true"><div class="pulse-head"><div><span class="manager-eyebrow">Business Pulse · aujourd’hui</span><h2>…</h2><p>Chargement des ventes en arrière-plan</p></div></div><div class="pulse-main"><div class="pulse-metric primary"><span>Ventes</span><strong>…</strong></div><div class="pulse-metric"><span>Marge</span><strong>…</strong></div><div class="pulse-metric"><span>Tickets</span><strong>…</strong></div><div class="pulse-metric"><span>Ruptures</span><strong>…</strong></div></div></div></section>`;
  if(!p||p.status!=='READY'||!p.snapshot){return `<section class="business-pulse"><div class="pulse-unavailable"><strong>Business Pulse · ventes non connectées</strong><span>StoreOps garde les KPI vides plutôt que d’estimer le CA. Les opérations magasin restent disponibles.</span></div></section>`}
  const k=p.snapshot.kpis||{},change=k.changeVsComparison,changeClass=change==null?'':change>=0?'up':'down';
  return `<section class="business-pulse"><div class="pulse-card">
@@ -31,18 +32,36 @@ function businessPulseCard(p){
   <div class="pulse-actions"><span class="pulse-source">Actualisé ${new Date(p.refreshedAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span><button class="btn soft" data-manager-go="managerPerformance">Rayons & articles →</button></div>
  </div></section>`;
 }
-
-export async function renderManagerHome(){
- const [inbox,pulse]=await Promise.all([loadManagerInbox(),api(`/api/stores/${app.storeId}/business-pulse`).catch(()=>null)]);syncManagerNav(inbox);
- const d=inbox.dashboard,store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
- const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}}),top=inbox.items.slice(0,3),remaining=Math.max(0,inbox.items.length-top.length);
+function renderSkeleton(){
+ const store=currentStore(),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0];
+ $('#todayContent').innerHTML=`<div class="manager-home manager-home-simple"><div class="manager-inbox-head"><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>Je prépare vos priorités.</h2><p>Les opérations essentielles arrivent en premier.</p></div><section class="manager-inbox-section" aria-busy="true"><div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>Analyse des exceptions magasin…</span></div></div><div class="manager-action-list"><div class="manager-all-good"><strong>Chargement en cours…</strong><span>Vous pouvez déjà utiliser la navigation et le Scanner.</span></div></div></section>${businessPulseCard(null,{loading:true})}</div>`;
+}
+function renderHome(inbox,pulse,{pulseLoading=false}={}){
+ syncManagerNav(inbox);
+ const d=inbox.dashboard||{},store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
+ const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff||{},cold:inbox.cold||{},cashOpen:inbox.cashOpen||{},receipts:inbox.receipts||{},quality:inbox.quality||{},maintenance:inbox.maintenance||{},loss:inbox.lossData?.summary||{}}),top=(inbox.items||[]).slice(0,3),remaining=Math.max(0,(inbox.items||[]).length-top.length);
  const title=phase==='OPENING'?'Préparez le magasin.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui compte maintenant.';
  $('#todayContent').innerHTML=`<div class="manager-home manager-home-simple">
-  <div class="manager-inbox-head"><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>${esc(title)}</h2><p>${inbox.summary.total?`${inbox.summary.total} action(s) demandent votre attention${inbox.summary.p0?` · ${inbox.summary.p0} immédiate(s)`:''}.`:'Aucune action urgente pour le moment.'}</p></div>
-  ${businessPulseCard(pulse)}
-  <section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>StoreOps vous montre uniquement les exceptions utiles.</span></div>${inbox.summary.p0?status(`${inbox.summary.p0} immédiat(s)`,'danger'):status(`${inbox.summary.total} action(s)`,'neutral')}</div><div class="manager-action-list">${top.length?top.map(actionCard).join(''):'<div class="manager-all-good"><strong>Tout est sous contrôle.</strong><span>Aucune action prioritaire à traiter maintenant.</span></div>'}</div>${remaining?`<button class="btn soft" data-manager-go="managerControls" style="width:100%;margin-top:10px">Voir les ${remaining} autres action(s)</button>`:''}</section>
-  ${inbox.summary.alerts?`<div class="manager-alert-strip"><div><strong>${inbox.summary.alerts} alerte(s) ouverte(s)</strong><small>${inbox.summary.alertCritical?`${inbox.summary.alertCritical} critique(s) · `:''}action corrective, preuve et clôture</small></div><button data-manager-go="incidents">Traiter</button></div>`:''}
+  <div class="manager-inbox-head"><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>${esc(title)}</h2><p>${inbox.summary?.total?`${inbox.summary.total} action(s) demandent votre attention${inbox.summary.p0?` · ${inbox.summary.p0} immédiate(s)`:''}.`:'Aucune action urgente pour le moment.'}</p></div>
+  <section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>StoreOps vous montre uniquement les exceptions utiles.</span></div>${inbox.summary?.p0?status(`${inbox.summary.p0} immédiat(s)`,'danger'):status(`${inbox.summary?.total||0} action(s)`,'neutral')}</div><div class="manager-action-list">${top.length?top.map(actionCard).join(''):'<div class="manager-all-good"><strong>Tout est sous contrôle.</strong><span>Aucune action prioritaire à traiter maintenant.</span></div>'}</div>${remaining?`<button class="btn soft" data-manager-go="managerControls" style="width:100%;margin-top:10px">Voir les ${remaining} autres action(s)</button>`:''}</section>
+  ${businessPulseCard(pulse,{loading:pulseLoading})}
+  ${inbox.summary?.alerts?`<div class="manager-alert-strip"><div><strong>${inbox.summary.alerts} alerte(s) ouverte(s)</strong><small>${inbox.summary.alertCritical?`${inbox.summary.alertCritical} critique(s) · `:''}action corrective, preuve et clôture</small></div><button data-manager-go="incidents">Traiter</button></div>`:''}
   <section class="manager-journey-compact"><div class="row"><div><span class="manager-eyebrow">Parcours magasin</span><strong>${managerPhaseLabel(phase)} · ${hours||'horaires magasin'}</strong></div><button class="btn ghost" data-manager-go="managerJourney">Ouvrir</button></div><div style="margin-top:10px">${phaseStrip(phase)}</div></section>
   <section class="manager-completion-strip" style="margin-top:14px"><div class="row"><div><span class="manager-eyebrow">Traçabilité du jour</span><strong>${compliance.done}/${compliance.total} obligation(s) réalisée(s)</strong></div><strong class="manager-completion-percent">${compliance.percent}%</strong></div>${progress(compliance.percent)}</section>
  </div>`;
+}
+
+export async function renderManagerHome(){
+ const storeId=app.storeId;
+ renderSkeleton();
+ const pulsePromise=api(`/api/stores/${storeId}/business-pulse`).catch(()=>null);
+ let inbox=null;
+ try{inbox=await api(`/api/stores/${storeId}/manager-inbox-batch`)}catch{
+  try{inbox=await loadManagerInbox()}catch{return}
+ }
+ if(app.storeId!==storeId)return;
+ renderHome(inbox,null,{pulseLoading:true});
+ const pulse=await pulsePromise;
+ if(app.storeId!==storeId)return;
+ renderHome(inbox,pulse,{pulseLoading:false});
 }
