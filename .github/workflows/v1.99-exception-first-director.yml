@@ -23,7 +23,7 @@ jobs:
           node --check frontend/js/boot-classic.js
           node --check backend/tests/v198-action-first-mobile.mjs
           node --check backend/tests/v199-exception-first-director.mjs
-      - name: V1.99 exception-first Director contract
+      - name: V1.99 exception-first Director regression
         run: node backend/tests/v199-exception-first-director.mjs
       - name: V1.98 action-first regression
         run: node backend/tests/v198-action-first-mobile.mjs
@@ -31,15 +31,14 @@ jobs:
         run: STOREOPS_DB=/tmp/storeops-v199-v197.db node backend/tests/v197-mobile-instant-today.mjs
       - name: Release coherence regression
         run: node backend/tests/v196-release-candidate.mjs
-      - name: Exact V1.99 frontend build
+      - name: Current frontend build preserves V1.99 behavior
         shell: bash
         run: |
           rm -rf /tmp/storeops-v199-publish
           cp -R frontend /tmp/storeops-v199-publish
           cd /tmp/storeops-v199-publish
-          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=1990 sh ./netlify-build.sh
+          STOREOPS_API_BASE=https://storeops.ma sh ./netlify-build.sh
           grep -q 'apiBase":"https://storeops.ma"' runtime-config.js
-          grep -q "BUILD='1.99.0'" runtime-config.js
-          grep -q '/js/auth-entry.js?v=1990' index.html
+          grep -Eq '/js/auth-entry.js\?v=[0-9]+' index.html
           grep -q 'mobile-v199.css' js/enhancements-entry.js
           grep -q 'director-exception-first.js' js/enhancements-entry.js
