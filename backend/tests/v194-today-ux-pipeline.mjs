@@ -8,11 +8,12 @@ const read=p=>readFileSync(path.join(root,p),'utf8');
 const deploy=read('.github/workflows/production-deploy.yml');
 const html=read('frontend/index.html');
 const home=read('frontend/js/pages/manager-home.js');
-const css=read('frontend/manager-today.css');
+const baseCss=read('frontend/manager-today.css');
+const previewCss=read('frontend/manager-today-v185.css');
 const auth=read('frontend/js/auth-entry.js');
 const enhancements=read('frontend/js/enhancements-entry.js');
 
-// Production credits: code pushes must never trigger Netlify production automatically.
+// Production remains explicitly controlled.
 assert.match(deploy,/workflow_dispatch:/,'production deploy must be manual');
 assert.match(deploy,/confirm_production/,'manual deploy must require explicit production confirmation');
 assert.doesNotMatch(deploy,/\n\s*push:/,'production deploy must not trigger on push');
@@ -36,20 +37,21 @@ for(const eager of ['manager-polish.js','manager-alerts.js','admin-studio-access
 assert.match(auth,/loadEnhancementsDeferred\(\)/,'enhancements must remain outside the critical boot path');
 assert.match(enhancements,/Promise\.allSettled/,'deferred enhancements should load concurrently');
 
-// Today: one clear action, contextual CTA, progressive disclosure, KPI second.
+// Manager Today: store pulse first, then no more than three visible priorities.
 assert.match(home,/function ctaLabel/,'Today must use contextual action labels');
-assert.match(home,/MAINTENANT/,'Today primary action label missing');
-assert.match(home,/<details class="today-queue/,'secondary queue must be progressively disclosed');
-assert.match(home,/slice\(1,3\)/,'only two next actions may be prepared on Today');
+assert.match(home,/BUSINESS PULSE/,'Business Pulse is mandatory on manager Today');
+assert.match(home,/items\.slice\(0,3\)/,'manager Today may expose at most three immediate priorities');
+assert.match(home,/VOS PRIORITÉS/,'manager priority block missing');
 assert.match(home,/phaseRail\(phase\)/,'opening / day / closing orientation must be visible');
-assert(home.indexOf('${primaryAction(primary')<home.indexOf('${pulseCompact(pulse'),'primary action must render before business KPIs');
-assert.match(css,/\.today-command\{/,'dominant action surface missing');
-assert.match(css,/\.today-dayrail\{/,'simple day orientation missing');
-assert.doesNotMatch(css,/#[0-9a-f]{3,8}\b/i,'Today redesign must reuse StoreOps color tokens instead of introducing a new palette');
+assert(home.indexOf('${pulseCompact(pulse,pulseLoading)}')<home.indexOf('${prioritiesSection(actions,detailsLoading,phase,total)}'),'Business Pulse must render before priorities');
+assert.match(previewCss,/\.today-priority-card/,'approved priority surface missing');
+assert.match(previewCss,/\.today-pulse-grid-4/,'approved four-KPI pulse missing');
+assert.match(baseCss,/\.today-dayrail\{/,'simple day orientation missing');
+assert.doesNotMatch(previewCss,/#[0-9a-f]{3,8}\b/i,'Today redesign must reuse StoreOps color tokens instead of introducing a new palette');
 
 const authBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
 const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1];
 assert(authBuild&&enhancementBuild,'runtime build ids must be present');
 assert.equal(authBuild,enhancementBuild,'auth and deferred enhancement runtime must share one cache generation');
 
-console.log('Guided Today UX + manual release contract OK');
+console.log('Approved manager Today UX + manual release contract OK');
