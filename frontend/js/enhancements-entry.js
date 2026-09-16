@@ -1,8 +1,9 @@
 import {isDirector} from './state.js';
 
-const BUILD='1940';
+const BUILD='1850';
 
 const modules=[
+  './ux-v185.js',
   './pwa.js',
   './manager-polish.js',
   './manager-alerts.js',
