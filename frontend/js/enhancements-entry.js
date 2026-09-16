@@ -35,7 +35,8 @@ const operationGroups=[
 ];
 function addCss(href,key){if(document.querySelector(`link[data-storeops-${key}]`))return;const link=document.createElement('link');link.rel='stylesheet';link.href=href;link.dataset[`storeops${key[0].toUpperCase()}${key.slice(1)}`]='1';document.head.appendChild(link)}
 function injectExperienceCss(){addCss(`/experience-v191.css?v=${BUILD}`,'experience');addCss(`/mobile-v197.css?v=${BUILD}`,'mobile')}
-function goPage(page){const btn=document.querySelector(`#nav button[data-page="${page}"]`);if(btn)return btn.click()}
+function clearOperationsActive(){document.getElementById('storeopsOperationsNav')?.classList.remove('active')}
+function goPage(page){clearOperationsActive();const btn=document.querySelector(`#nav button[data-page="${page}"]`);if(btn)return btn.click()}
 function ensureOperationsPage(){let page=document.getElementById('operationsHubPage');if(page)return page;page=document.createElement('section');page.className='page';page.id='operationsHubPage';page.innerHTML='<div id="operationsHubContent"></div>';document.querySelector('main')?.appendChild(page);return page}
 function activateOperations(){const page=ensureOperationsPage();document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));page.classList.add('active');document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.getElementById('storeopsOperationsNav')?.classList.add('active');renderOperations()}
 function renderOperations(){const root=document.getElementById('operationsHubContent');if(!root)return;root.innerHTML=`<div class="ux191-shell"><div class="ux191-hero"><div><div class="ux191-eyebrow">OPÉRATIONS</div><h2>Que voulez-vous faire ?</h2><p>Choisissez un domaine puis StoreOps vous amène au parcours opérationnel existant.</p></div></div><div class="ux191-grid">${operationGroups.map((g,i)=>`<button class="ux191-choice" data-ops-group="${i}"><span class="icon">${g.icon}</span><strong>${g.title}</strong><small>${g.subtitle}</small><em>Ouvrir →</em></button>`).join('')}</div><div id="storeopsOpsCommands"></div></div>`;root.querySelectorAll('[data-ops-group]').forEach(b=>b.onclick=()=>renderOperationGroup(Number(b.dataset.opsGroup)))}
@@ -48,7 +49,7 @@ function installDirectorExperience(){
   const nav=document.getElementById('nav');if(!nav)return;
   nav.classList.add('ux191-network-nav');
   const allowed=new Set(['today','network','development','adminStudio']);
-  nav.querySelectorAll('button[data-page]').forEach(b=>b.hidden=!allowed.has(b.dataset.page));
+  nav.querySelectorAll('button[data-page]').forEach(b=>{b.hidden=!allowed.has(b.dataset.page);if(allowed.has(b.dataset.page)&&b.dataset.directorStateBound!=='1'){b.dataset.directorStateBound='1';b.addEventListener('click',clearOperationsActive)}});
   const today=nav.querySelector('[data-page="today"]');setMobileLabel(today,'Aujourd’hui');
   let ops=document.getElementById('storeopsOperationsNav');
   if(!ops){ops=document.createElement('button');ops.id='storeopsOperationsNav';ops.textContent='Opérations';ops.onclick=activateOperations;today?.after(ops)}setMobileLabel(ops,'Opérations');
