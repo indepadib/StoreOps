@@ -2,7 +2,28 @@ import { api } from '../api.js';
 import { app,currentStore } from '../state.js';
 import { $,status,progress,esc } from '../ui.js';
 import { managerPhase,managerPhaseLabel } from '../manager-journey.js';
-import { loadManagerInbox,actionKind,categoryLabel,priorityLabel,syncManagerNav } from '../manager-action-inbox.js';
+import { loadManagerInbox as loadManagerInboxLegacy,actionKind,categoryLabel,priorityLabel,syncManagerNav } from '../manager-action-inbox.js';
+
+let inboxFlight=null,inboxCache={storeId:null,at:0,data:null};
+async function loadManagerInbox(){
+  const storeId=app.storeId,now=Date.now();
+  if(inboxCache.storeId===storeId&&inboxCache.data&&now-inboxCache.at<1500)return inboxCache.data;
+  if(inboxFlight?.storeId===storeId)return inboxFlight.promise;
+  const promise=(async()=>{
+    try{
+      const data=await api(`/api/stores/${storeId}/manager-inbox-batch`);
+      inboxCache={storeId,at:Date.now(),data};
+      return data
+    }catch{
+      const data=await loadManagerInboxLegacy();
+      inboxCache={storeId,at:Date.now(),data};
+      return data
+    }finally{
+      if(inboxFlight?.storeId===storeId)inboxFlight=null
+    }
+  })();
+  inboxFlight={storeId,promise};return promise
+}
 
 const navCard=(page,title,detail,meta='')=>`<button class="manager-hub-card" data-manager-go="${page}"><div><strong>${esc(title)}</strong><p>${esc(detail)}</p>${meta?`<small>${esc(meta)}</small>`:''}</div><span>›</span></button>`;
 
@@ -21,9 +42,8 @@ function guidedCopy(phase,d){
 function phaseDots(phase){const order=['OPENING','DAY','CLOSING'],idx=phase==='CLOSED'?3:order.indexOf(phase);return`<div class="manager-guided-progress" aria-label="Progression de la journée">${order.map((_,i)=>`<span class="${i<idx?'done':i===idx?'current':''}"></span>`).join('')}</div>`}
 
 export async function renderManagerJourney(){
-  const [d,inbox]=await Promise.all([api(`/api/stores/${app.storeId}/dashboard`),loadManagerInbox()]);
-  syncManagerNav(inbox);
-  const phase=managerPhase(d),store=currentStore(),g=guidedCopy(phase,d);
+  const inbox=await loadManagerInbox();syncManagerNav(inbox);
+  const d=inbox.dashboard||{},phase=managerPhase(d),store=currentStore(),g=guidedCopy(phase,d);
   $('#managerJourneyContent').innerHTML=`
     <div class="manager-hub-head"><span class="manager-eyebrow">${esc(store?.name||'Magasin')}</span><h2>Votre journée</h2><p>Une seule étape à la fois. Vous validez, StoreOps passe automatiquement à la suite.</p></div>
     ${inbox.summary.p0?`<section class="manager-alert-strip"><div><strong>${inbox.summary.p0} action(s) immédiate(s)</strong><small>Traitez-les avant de poursuivre le jalon magasin.</small></div><button data-manager-go="managerControls">Voir</button></section>`:''}
