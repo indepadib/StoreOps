@@ -1,0 +1,33 @@
+name: V1.92 Bootstrap Fast Contract
+
+on:
+  push:
+    branches: [storeops-v1.92-performance-p2]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/runtime-bootstrap-api.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check frontend/js/api.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pages/manager-hubs.js
+      - name: V1.92 bootstrap contract
+        run: node backend/tests/v192-bootstrap-fast.mjs
+      - name: Manager fastlane regression
+        run: STOREOPS_DB=/tmp/storeops-v192-manager-fast.db node backend/tests/v185-manager-fastlane.mjs
+      - name: Manager home fast regression
+        run: STOREOPS_DB=/tmp/storeops-v192-manager-home.db node backend/tests/v185-manager-home-fast.mjs
+      - name: Performance P0 regression
+        run: node backend/tests/v184-performance-p0.mjs

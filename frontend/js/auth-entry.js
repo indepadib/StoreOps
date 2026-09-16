@@ -1,7 +1,7 @@
-import { loadEnhancements } from './enhancements-entry.js?v=1920';
+import { loadEnhancements } from './enhancements-entry.js?v=1921';
 
-const BUILD='1920';
-const BUILD_LABEL='1.92.0';
+const BUILD='1921';
+const BUILD_LABEL='1.92.1';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
@@ -30,7 +30,8 @@ async function waitForStoreOpsUi(ms=25000){
     const meta=document.querySelector('#headerMeta');
     const storeSelect=document.querySelector('#storeSelect');
     const text=(meta?.textContent||'').trim();
-    if(text&&!/^(Chargement|Démarrage)/.test(text)&&storeSelect?.options?.length>0)return true;
+    const developmentOnly=document.body?.classList?.contains('development-only');
+    if(text&&!/^(Chargement|Démarrage)/.test(text)&&(developmentOnly||storeSelect?.options?.length>0))return true;
     const bodyText=(document.body?.innerText||document.body?.textContent||'').trim();
     if(bodyText.includes('Impossible de charger StoreOps')){
       const compact=bodyText.replace(/\s+/g,' ').slice(0,900);
@@ -55,6 +56,18 @@ async function prepareBoot(){
   try{await withTimeout(window.STOREOPS_BOOT_PREP||Promise.resolve(),750,'Le nettoyage navigateur prend trop de temps. StoreOps poursuit le démarrage.')}catch(e){console.warn('Préparation démarrage StoreOps',e)}
 }
 
+async function preloadBootstrap(apiCall,authMode){
+  try{
+    phase('profil en un appel');
+    const {app}=await import(`./state.js?v=${BUILD}`);
+    app.authMode=authMode||'demo';
+    window.STOREOPS_BOOTSTRAP=await withTimeout(apiCall('/api/bootstrap'),8000,'Le bootstrap groupé StoreOps prend trop de temps.');
+  }catch(e){
+    window.STOREOPS_BOOTSTRAP=null;
+    console.warn('Bootstrap groupé indisponible, fallback classique activé',e);
+  }
+}
+
 async function start(){
   await prepareBoot();
 
@@ -64,21 +77,25 @@ async function start(){
   }
 
   phase('connexion backend');
-  const [{health},auth]=await Promise.all([import(`./api.js?v=${BUILD}`),import(`./auth.js?v=${BUILD}`)]);
+  const [apiModule,auth]=await Promise.all([import(`./api.js?v=${BUILD}`),import(`./auth.js?v=${BUILD}`)]);
+  const {health,api}=apiModule;
   const {ensureAccessToken,ensureLocalSession,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive}=auth;
   let h;
   try{h=await withTimeout(health(),8000,'Le backend StoreOps ne répond pas dans le délai prévu.')}catch(e){renderStartupFailure(e,{backend:true});return}
   window.STOREOPS_BOOT_HEALTH=h;
+  window.STOREOPS_BOOT_HEALTH_CONSUMED=false;
   if(h.authMode==='local'){
     phase('session locale');
     const session=await ensureLocalSession();
     if(!session){markStarted();renderLoginScreen({mode:'local'});return}
     hideLoginScreen();
+    await preloadBootstrap(api,'local');
     await loadApp();
     addLogoutControl();
     return;
   }
   if(h.authMode!=='entra'){
+    await preloadBootstrap(api,h.authMode||'demo');
     await loadApp();return;
   }
   try{
@@ -88,6 +105,7 @@ async function start(){
     phase('session StoreOps');
     hideLoginScreen();
     startAuthKeepAlive();
+    await preloadBootstrap(api,'entra');
     await loadApp();
     addLogoutControl();
   }catch(e){

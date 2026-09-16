@@ -30,7 +30,7 @@ jobs:
         run: |
           grep -q '/js/auth-entry.js' frontend/index.html
           ! grep -q '/js/admin-studio-access.js' frontend/index.html
-          grep -q "enhancements-entry.js?v=1920" frontend/js/auth-entry.js
+          node --input-type=module -e "import fs from 'node:fs'; const a=fs.readFileSync('frontend/js/auth-entry.js','utf8'); const build=a.match(/const BUILD='(\\d+)'/)?.[1]; const imported=a.match(/enhancements-entry\\.js\\?v=(\\d+)/)?.[1]; if(!build||Number(build)<1920||imported!==build) process.exit(1);"
           grep -q "admin-studio-access.js" frontend/js/enhancements-entry.js
           grep -q "admin-studio-stores.js" frontend/js/enhancements-entry.js
           grep -q "admin-studio-integrations.js" frontend/js/enhancements-entry.js
