@@ -1,0 +1,33 @@
+name: V1.94 Today UX & Pipeline Contract
+
+on:
+  push:
+    branches: [storeops-v1.94-today-ux-pipeline]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check backend/tests/v194-today-ux-pipeline.mjs
+      - name: V1.94 UX and release safety contract
+        run: node backend/tests/v194-today-ux-pipeline.mjs
+      - name: Today concierge regression
+        run: node backend/tests/v189-manager-today-concierge.mjs
+      - name: Performance enrichment regression
+        run: node backend/tests/v1902-performance-enrichment.mjs
+      - name: Bootstrap regression
+        run: node backend/tests/v192-bootstrap-fast.mjs
+      - name: Single-flight regression
+        run: node backend/tests/v193-singleflight.mjs
