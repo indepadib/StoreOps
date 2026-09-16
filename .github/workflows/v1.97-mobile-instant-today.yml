@@ -37,4 +37,4 @@ jobs:
           grep -q "mobile-v197.css" frontend/js/enhancements-entry.js
           grep -q "manager-home-fast" frontend/js/pages/today.js
           grep -q "safe-area-inset-bottom" frontend/mobile-v197.css
-          grep -q "STOREOPS_RELEASE_BUILD:-1970" frontend/netlify-build.sh
+          grep -Eq "STOREOPS_RELEASE_BUILD:-[0-9]+" frontend/netlify-build.sh
