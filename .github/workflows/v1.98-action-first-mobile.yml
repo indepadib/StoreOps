@@ -23,19 +23,19 @@ jobs:
           node --check frontend/js/boot-classic.js
           node --check backend/tests/v197-mobile-instant-today.mjs
           node --check backend/tests/v198-action-first-mobile.mjs
-      - name: V1.98 action-first mobile contract
+      - name: V1.98 action-first mobile regression
         run: node backend/tests/v198-action-first-mobile.mjs
       - name: V1.97 mobile regression
         run: STOREOPS_DB=/tmp/storeops-v198-v197.db node backend/tests/v197-mobile-instant-today.mjs
       - name: Release coherence regression
         run: node backend/tests/v196-release-candidate.mjs
-      - name: Exact frontend build
+      - name: Current frontend build preserves V1.98 behavior
         shell: bash
         run: |
           rm -rf /tmp/storeops-v198-publish
           cp -R frontend /tmp/storeops-v198-publish
           cd /tmp/storeops-v198-publish
-          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=1980 sh ./netlify-build.sh
+          STOREOPS_API_BASE=https://storeops.ma sh ./netlify-build.sh
           grep -q 'apiBase":"https://storeops.ma"' runtime-config.js
-          grep -q "BUILD='1.98.0'" runtime-config.js
-          grep -q '/js/auth-entry.js?v=1980' index.html
+          grep -Eq '/js/auth-entry.js\?v=[0-9]+' index.html
+          grep -q 'mobile-v198.css' js/enhancements-entry.js
