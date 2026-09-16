@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS integration_connectors(
 `);
 
 function safeJson(raw,fallback=[]){try{const x=JSON.parse(raw||'');return x??fallback}catch{return fallback}}
-function state(enabled,mapped=true){if(!enabled)return'SIMULATED';return mapped?'LIVE':'LIVE_PENDING'}
+function state(enabled,mapped=true){if(!enabled)return config.realOnly?'UNMAPPED':'SIMULATED';return mapped?'LIVE':'LIVE_PENDING'}
 function cap(stateValue,source=null,lastError=null){return{state:stateValue,source,lastError}}
 function emptyCapabilities(){return Object.fromEntries(RETAIL_CAPABILITIES.map(x=>[x,cap('UNMAPPED')]))}
 function capabilityLabel(code){return({
@@ -45,18 +45,17 @@ function d365Connector(){
  c['sales.margin.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.sales),!!clean(process.env.D365_SALES_COST_FIELD)),'D365');
  c['supply.purchase-order.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.receiving),!!config.dynamics.receiving?.headerEntity&&!!config.dynamics.receiving?.lineEntity),'D365');
  c['supply.transfer.read']=cap(hasSupplyWh?'LIVE_PENDING':'UNMAPPED','D365');
- // Writes are deliberately never declared LIVE from environment/read configuration.
  for(const x of ['inventory.adjustment.write','supply.receiving.write','supply.transfer.write','finance.cash.write','loss.write'])c[x]=cap('UNMAPPED','D365');
  return normalizeConnector({key:'d365-one-retail',name:'Microsoft Dynamics 365',family:'D365',capabilities:c})
 }
 function nativeConnector(){const c=emptyCapabilities();for(const x of ['workforce.employee.read','workforce.schedule.read','export.file.write'])c[x]=cap('LIVE','StoreOps');return normalizeConnector({key:'storeops-native',name:'StoreOps Native',family:'STOREOPS',capabilities:c})}
-function identityConnector(){const c=emptyCapabilities();c['identity.sso']=cap(config.authMode==='entra'?'LIVE':config.authMode==='demo'?'SIMULATED':'LIVE_PENDING',config.authMode==='entra'?'Microsoft Entra ID':config.authMode);return normalizeConnector({key:'identity-primary',name:config.authMode==='entra'?'Microsoft Entra ID':'Identité StoreOps',family:'IDENTITY',capabilities:c})}
+function identityConnector(){const c=emptyCapabilities();const stateValue=config.authMode==='entra'?'LIVE':config.authMode==='demo'?(config.realOnly?'UNMAPPED':'SIMULATED'):'LIVE_PENDING';c['identity.sso']=cap(stateValue,config.authMode==='entra'?'Microsoft Entra ID':config.authMode);return normalizeConnector({key:'identity-primary',name:config.authMode==='entra'?'Microsoft Entra ID':'Identité StoreOps',family:'IDENTITY',capabilities:c})}
 function customRowConnector(row){const planned=safeJson(row.planned_capabilities_json,[]),c=emptyCapabilities();for(const code of planned.filter(x=>RETAIL_CAPABILITIES.includes(x)))c[code]=cap(row.active?'LIVE_PENDING':'DISABLED',row.name);return normalizeConnector({key:row.connector_key,name:row.name,family:row.family,capabilities:c})}
 
 export function integrationSnapshot(){
  const custom=db.prepare(`SELECT * FROM integration_connectors ORDER BY active DESC,name`).all().map(customRowConnector),connectors=[nativeConnector(),identityConnector(),d365Connector(),...custom],readiness=connectorReadiness(connectors);
  const ready=Object.values(readiness.coverage).filter(x=>x.ready).length,pending=Object.values(readiness.coverage).filter(x=>!x.ready&&x.choices.length).length;
- return{connectors,coverage:readiness.coverage,summary:{capabilities:RETAIL_CAPABILITIES.length,ready,pending,unmapped:RETAIL_CAPABILITIES.length-ready-pending},catalog:capabilityCatalog()}
+ return{connectors,coverage:readiness.coverage,summary:{capabilities:RETAIL_CAPABILITIES.length,ready,pending,unmapped:RETAIL_CAPABILITIES.length-ready-pending},catalog:capabilityCatalog(),realOnly:!!config.realOnly}
 }
 function requireFamily(v){const f=clean(v||'CUSTOM').toUpperCase();if(!validFamily.has(f))throw Object.assign(new Error('Famille de connecteur invalide.'),{status:400,code:'CONNECTOR_FAMILY_INVALID'});return f}
 function normalizePlanned(list){return[...new Set((Array.isArray(list)?list:[]).map(clean).filter(x=>RETAIL_CAPABILITIES.includes(x)))]}
