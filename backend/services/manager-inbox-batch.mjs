@@ -10,6 +10,8 @@ const n=v=>Number(v||0);
 const money=v=>v==null?'':`${Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})} DH`;
 const priorityRank={P0:0,P1:1,P2:2,P3:3};
 const batchInflight=new Map();
+const batchCache=new Map();
+const BATCH_CACHE_MS=Math.max(1000,Math.min(10000,Number(globalThis.process?.env?.STOREOPS_MANAGER_INBOX_CACHE_MS)||3500));
 const action=({id,category,severity='HIGH',title,detail,page,blocking=false,meta='',priority='P2',source=''})=>({id,category,severity,title,detail,page,blocking:!!blocking,meta,priority,source});
 function commercialTitle(row){if(row.action_type==='PRICE_CHANGE')return `Changer le prix · ${row.product_name}`;if(row.action_type==='PROMO_START')return `Installer la promo · ${row.product_name}`;if(row.action_type==='PROMO_END')return `Retirer la promo · ${row.product_name}`;if(row.action_type==='NEW_ITEM')return `Valider le nouvel article · ${row.product_name}`;return `Valider l’article · ${row.product_name}`}
 function commercialDetail(row){if(row.action_type==='PRICE_CHANGE')return `${money(row.old_price)} → ${money(row.expected_price)} · vérifier prix rayon et étiquette`;if(row.action_type==='PROMO_START')return `${row.promo_label||'Promotion à installer'} · prix attendu ${money(row.expected_price)}`;if(row.action_type==='PROMO_END')return `${row.promo_label||'Promotion terminée'} · retour attendu ${money(row.expected_price)}`;return `EAN ${row.ean||'—'} · contrôle rayon à valider`}
@@ -19,9 +21,9 @@ function summarizeReceipts(rows,businessDate){let activeReceipts=0,pendingLines=
 function summarizeQuality(rows){const nonConform=rows.filter(x=>x.decision!=='ACCEPT').length,temperatureNok=rows.filter(x=>x.temperature_status==='NOK').length;return{controls:rows.length,nonConform,temperatureNok,rejected:rows.reduce((s,x)=>s+n(x.rejected_qty),0)}}
 function maintenanceSummary(alerts){const rows=alerts.filter(x=>String(x.category||'').toUpperCase()==='MAINTENANCE'||String(x.source_type||'').toUpperCase().includes('MAINT'));return{openCount:rows.length,critical:rows.filter(x=>x.criticality==='CRITICAL').length,blocking:rows.filter(x=>x.blocking_level&&x.blocking_level!=='NONE').length,overdue:rows.filter(x=>x.is_overdue).length}}
 
-async function computeManagerInboxBatch(storeId,businessDate){
- const fast=getManagerHomeFast(storeId,businessDate),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
- const [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate}),getBusinessPulse(storeId,businessDate)]);
+async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
+ const fast=getManagerHomeFast(storeId,businessDate,{force}),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
+ const [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate,force}),getBusinessPulse(storeId,businessDate,{force})]);
  const commercialRows=listCommercialControls(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows};
  const receiptsRaw=receiptRows(storeId),receipts=summarizeReceipts(receiptsRaw,businessDate);
  const inventoryData={summary:dashboard.inventory||{},items:listInventorySessions(storeId,'ALL')};
@@ -46,13 +48,23 @@ async function computeManagerInboxBatch(storeId,businessDate){
 
  const sorted=items.sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(a.title).localeCompare(String(b.title))),critical=sorted.filter(x=>x.severity==='CRITICAL').length,blocking=sorted.filter(x=>x.blocking).length,p0=sorted.filter(x=>x.priority==='P0').length,p1=sorted.filter(x=>x.priority==='P1').length,alertCritical=alerts.filter(x=>x.criticality==='CRITICAL').length;
  const externalCalls=(stockData.source?.startsWith('D365/')?1:0)+(businessPulse?.integration?.mode==='LIVE'?2:0);
- return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true}}
+ return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true,cache:'MISS'}}
 }
 
-export async function getManagerInboxBatch(storeId,businessDate=todayISO()){
- const key=`${storeId}:${businessDate}`;
- if(batchInflight.has(key))return batchInflight.get(key);
- const promise=computeManagerInboxBatch(storeId,businessDate);
+export async function getManagerInboxBatch(storeId,businessDate=todayISO(),{force=false}={}){
+ const key=`${storeId}:${businessDate}`,now=Date.now(),cached=batchCache.get(key);
+ if(!force&&cached&&now<cached.expiresAt)return{...cached.value,diagnostics:{...cached.value.diagnostics,cache:'HIT'}};
+ if(!force&&batchInflight.has(key))return batchInflight.get(key);
+ const promise=computeManagerInboxBatch(storeId,businessDate,{force});
  batchInflight.set(key,promise);
- try{return await promise}finally{if(batchInflight.get(key)===promise)batchInflight.delete(key)}
+ try{
+  const value=await promise;
+  batchCache.set(key,{value,expiresAt:Date.now()+BATCH_CACHE_MS});
+  return value
+ }finally{if(batchInflight.get(key)===promise)batchInflight.delete(key)}
+}
+
+export function invalidateManagerInboxBatch(storeId,businessDate=null){
+ if(businessDate)return batchCache.delete(`${storeId}:${businessDate}`);
+ for(const key of batchCache.keys())if(key.startsWith(`${storeId}:`))batchCache.delete(key)
 }
