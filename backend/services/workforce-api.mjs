@@ -12,6 +12,7 @@ import { handleDevelopmentApi } from './development-api.mjs';
 import { handleIntegrationRegistryApi } from './integration-registry-api.mjs';
 import { handleTenantProfileApi } from './tenant-profile-api.mjs';
 import { handleManagerFastApi } from './manager-fast-api.mjs';
+import { handleQualityCollaborationApi } from './quality-collaboration-api.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
@@ -23,6 +24,7 @@ function storeForShift(id){return db.prepare(`SELECT store_id FROM work_shifts W
 
 export async function handleWorkforceApi({req,url,user}){
  const managerFastResponse=await handleManagerFastApi({req,url,user});if(managerFastResponse)return managerFastResponse;
+ const qualityCollaborationResponse=await handleQualityCollaborationApi({req,url,user});if(qualityCollaborationResponse)return qualityCollaborationResponse;
  const developmentResponse=await handleDevelopmentApi({req,url,user});if(developmentResponse)return developmentResponse;
  const integrationResponse=await handleIntegrationRegistryApi({req,url,user});if(integrationResponse)return integrationResponse;
  const tenantResponse=await handleTenantProfileApi({req,url,user});if(tenantResponse)return tenantResponse;
