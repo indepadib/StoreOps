@@ -39,9 +39,16 @@ function profileFromUser(row){
 function userRow(id){return db.prepare(`SELECT * FROM users WHERE id=?`).get(id)}
 function employeeRow(id){return id?db.prepare(`SELECT * FROM employees WHERE id=?`).get(id):null}
 function storeRow(id){return id?db.prepare(`SELECT * FROM stores WHERE id=? AND active=1`).get(id):null}
+function identityView(row){
+ const provider=row.identity_provider||'ENTRA',primaryEmail=email(row.email),microsoftEmail=email(row.dynamics_email),subject=clean(row.identity_subject),oid=clean(row.entra_oid);
+ const loginIdentifiers=[primaryEmail,microsoftEmail].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i);
+ const configured=provider==='ENTRA'?!!(oid||subject||loginIdentifiers.length):!!subject;
+ const bound=provider==='ENTRA'?!!(oid||subject):!!subject;
+ return{provider,configured,bound,loginIdentifiers,oid:oid||null,subject:subject||null,status:!configured?'MISSING_IDENTITY':bound?'BOUND':'READY_TO_BIND'}
+}
 function accountView(row){
- if(!row)return null;const profile=profileFromUser(row),employee=employeeRow(row.linked_employee_id),store=storeRow(row.store_id);
- return {id:row.id,name:row.name,email:row.email||null,dynamicsEmail:row.dynamics_email||null,entraOid:row.entra_oid||null,identityProvider:row.identity_provider||'ENTRA',identitySubject:row.identity_subject||null,profileCode:profile.code,profileLabel:profile.label,scope:profile.scope,storeId:row.store_id||null,storeName:store?.name||null,linkedEmployeeId:row.linked_employee_id||null,linkedEmployeeName:employee?.display_name||null,linkedEmployeeStatus:employee?.status||null,active:!!row.active,note:row.access_note||null,updatedAt:row.updated_at||null}
+ if(!row)return null;const profile=profileFromUser(row),employee=employeeRow(row.linked_employee_id),store=storeRow(row.store_id),identity=identityView(row);
+ return {id:row.id,name:row.name,email:row.email||null,dynamicsEmail:row.dynamics_email||null,entraOid:row.entra_oid||null,identityProvider:identity.provider,identitySubject:row.identity_subject||null,identity,profileCode:profile.code,profileLabel:profile.label,scope:profile.scope,storeId:row.store_id||null,storeName:store?.name||null,linkedEmployeeId:row.linked_employee_id||null,linkedEmployeeName:employee?.display_name||null,linkedEmployeeStatus:employee?.status||null,active:!!row.active,note:row.access_note||null,updatedAt:row.updated_at||null}
 }
 function requireProfile(code){const p=PROFILE_DEFS[String(code||'').toUpperCase()];if(!p)throw Object.assign(new Error('Profil d’accès invalide.'),{status:400,code:'ACCESS_PROFILE_INVALID'});return p}
 function ensureActorCanManage(actor,targetProfile,current=null){
@@ -83,9 +90,10 @@ export function updateAccessAccount({actor,userId,name,emailAddress,profileCode,
  const person=clean(name),mail=email(emailAddress),provider=normalizeProvider(identityProvider),subject=clean(identitySubject)||null;if(!person)throw Object.assign(new Error('Nom du compte obligatoire.'),{status:400});if(provider==='ENTRA'&&!mail&&!subject)throw Object.assign(new Error('Email/UPN ou Object ID Entra obligatoire.'),{status:400});validateStoreAndEmployee({profile,storeId,linkedEmployeeId});
  if(mail&&db.prepare(`SELECT id FROM users WHERE (lower(email)=? OR lower(dynamics_email)=?) AND id<>?`).get(mail,mail,userId))throw Object.assign(new Error('Cet email est déjà utilisé par un autre compte.'),{status:409,code:'ACCESS_EMAIL_EXISTS'});
  if(linkedEmployeeId&&db.prepare(`SELECT id FROM users WHERE linked_employee_id=? AND id<>?`).get(linkedEmployeeId,userId))throw Object.assign(new Error('Ce collaborateur possède déjà un autre compte StoreOps.'),{status:409,code:'ACCESS_EMPLOYEE_ALREADY_LINKED'});
- const primaryStore=profile.scope==='STORE'?storeId:null,entraOid=provider==='ENTRA'&&subject?subject:(provider==='ENTRA'?current.entra_oid:null);
+ const primaryStore=profile.scope==='STORE'?storeId:null,mailChanged=email(current.email)!==mail,providerChanged=(current.identity_provider||'ENTRA')!==provider;
+ const entraOid=provider==='ENTRA'&&subject?subject:(provider==='ENTRA'&&!mailChanged&&!providerChanged?current.entra_oid:null);
  db.prepare(`UPDATE users SET name=?,email=?,entra_oid=?,role=?,store_id=?,permissions_profile=?,linked_employee_id=?,identity_provider=?,identity_subject=?,access_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(person,mail||null,entraOid,profile.role,primaryStore,profile.permissionsProfile,linkedEmployeeId||null,provider,subject,clean(note)||null,userId);
- const row=userRow(userId);auditAccess(actor,row,'USER_ACCESS_UPDATED',{fromProfile:currentProfile.code,toProfile:profile.code,storeId:primaryStore,linkedEmployeeId:linkedEmployeeId||null,provider});return accountView(row)
+ const row=userRow(userId);auditAccess(actor,row,'USER_ACCESS_UPDATED',{fromProfile:currentProfile.code,toProfile:profile.code,storeId:primaryStore,linkedEmployeeId:linkedEmployeeId||null,provider,identityReset:!!(mailChanged||providerChanged)});return accountView(row)
 }
 
 export function setAccessAccountActive({actor,userId,active}){
