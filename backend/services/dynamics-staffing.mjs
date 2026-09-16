@@ -14,11 +14,13 @@ function storeOpsPilotSnapshot(storeId,businessDate){
 
 function storeOpsSnapshot(storeId,businessDate){
  const planned=staffingSnapshotFromPublishedShifts(storeId,businessDate);
- return planned.lines.length?planned:storeOpsPilotSnapshot(storeId,businessDate)
+ if(planned.lines.length)return planned;
+ if(config.realOnly)throw Object.assign(new Error('Aucun planning publié pour ce magasin. Aucune équipe simulée n’est affichée.'),{status:503,code:'STAFFING_REAL_SOURCE_NOT_CONFIGURED',details:{storeId,businessDate}});
+ return storeOpsPilotSnapshot(storeId,businessDate)
 }
 
 export async function getStaffingSnapshot(storeId,businessDate){
  if(config.pilot.staffingSource==='storeops')return storeOpsSnapshot(storeId,businessDate);
- if(config.dynamics.mode!=='live')return storeOpsSnapshot(storeId,businessDate);
- throw Object.assign(new Error('Planning équipe D365/HR non configuré. Passe STOREOPS_STAFFING_SOURCE=storeops pour le pilote ou mappe la source RH avant activation.'),{status:503,code:'D365_STAFFING_MAPPING_REQUIRED',details:{storeId,businessDate}});
+ if(config.dynamics.mode!=='live'&&!config.realOnly)return storeOpsSnapshot(storeId,businessDate);
+ throw Object.assign(new Error('Planning réel non connecté. Publiez le planning dans StoreOps ou connectez la source RH/D365.'),{status:503,code:'STAFFING_REAL_SOURCE_NOT_CONFIGURED',details:{storeId,businessDate}});
 }
