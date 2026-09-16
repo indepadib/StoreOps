@@ -1,0 +1,36 @@
+name: V1.90 Production Real-Only Contract
+
+on:
+  push:
+    branches: [storeops-v1.90-production-real-only]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/config.mjs
+          node --check backend/services/integration-registry.mjs
+          node --check backend/services/dynamics-staffing.mjs
+          node --check backend/services/dynamics-cash-opening.mjs
+          node --check backend/services/dynamics-receiving.mjs
+      - name: Real-only production contract
+        run: node backend/tests/v190-real-only.mjs
+      - name: Manager UX regression
+        run: STOREOPS_DB=/tmp/storeops-v190-manager.db node backend/tests/v185-manager-fastlane.mjs
+      - name: Assortment regression
+        run: STOREOPS_DB=/tmp/storeops-v190-assort.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Static guardrails
+        run: |
+          grep -q "STOREOPS_REAL_ONLY" backend/config.mjs
+          grep -q "config.realOnly?'UNMAPPED':'SIMULATED'" backend/services/integration-registry.mjs
+          grep -q "STAFFING_REAL_SOURCE_NOT_CONFIGURED" backend/services/dynamics-staffing.mjs
+          grep -q "CASH_OPENING_REAL_MASTER_NOT_CONFIGURED" backend/services/dynamics-cash-opening.mjs
+          grep -q "config.realOnly?'UNAVAILABLE':'SIMULATED'" backend/services/dynamics-receiving.mjs

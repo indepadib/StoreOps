@@ -7,12 +7,17 @@ function parseStoreMap(v=''){
 }
 function source(v,fallback='storeops'){const s=String(v||fallback).trim().toLowerCase();return ['storeops','d365'].includes(s)?s:fallback}
 function readMode(v,fallback='simulated'){const s=String(v||fallback).trim().toLowerCase();return ['live','simulated'].includes(s)?s:fallback}
+function flag(v){return ['1','true','yes','on'].includes(String(v||'').trim().toLowerCase())}
+const REAL_ONLY=flag(process.env.STOREOPS_REAL_ONLY);
 
 export const config = {
   appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo',
+  // Production policy: a missing connector is unavailable, never replaced by
+  // operational-looking demo data. Showcase/demo remains available when this flag is off.
+  realOnly: REAL_ONLY,
   entra: {
     tenantId: process.env.ENTRA_TENANT_ID || '',
     apiClientId: process.env.ENTRA_API_CLIENT_ID || process.env.ENTRA_CLIENT_ID || '',
@@ -24,7 +29,9 @@ export const config = {
     cashOpeningSource: source(process.env.STOREOPS_CASH_OPENING_SOURCE,'storeops')
   },
   dynamics: {
-    mode: readMode(process.env.D365_MODE,'simulated'),
+    // Real-only prevents an accidental global simulated mode from re-enabling
+    // legacy demo fallbacks. Individual domains still need their validated LIVE flag.
+    mode: REAL_ONLY?'live':readMode(process.env.D365_MODE,'simulated'),
     baseUrl: cleanUrl(process.env.D365_BASE_URL),
     tenantId: process.env.D365_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
     clientId: process.env.D365_CLIENT_ID || '',
@@ -125,7 +132,7 @@ export function productionMisconfig(){
     if(config.dynamics.read.stock==='live'&&!config.dynamics.stock.entity)issues.push('D365_STOCK_ENTITY manquant pour Stock LIVE');
     if(config.dynamics.read.receiving==='live'&&(!config.dynamics.receiving.headerEntity||!config.dynamics.receiving.lineEntity))issues.push('Entités Purchase Order manquantes pour Réception/PO LIVE');
     if(config.dynamics.read.sales==='live'&&!process.env.D365_SALES_ENTITY)issues.push('D365_SALES_ENTITY manquant pour Ventes LIVE');
-    if(config.dynamics.read.assortment==='live'&&!process.env.D365_ASSORTMENT_ENTITY)issues.push('D365_ASSORTMENT_ENTITY manquant pour Assortiment LIVE');
+    if(config.dynamics.read.assortment==='live'&&!process.env.D365_ASSORTMENT_ENTITY&&!process.env.D365_STORE_ASSORTMENT_ENTITY)issues.push('Entité assortiment magasin/canal manquante pour Assortiment LIVE');
   }
   return issues;
 }
