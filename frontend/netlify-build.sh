@@ -2,6 +2,7 @@
 set -eu
 if [ -n "${STOREOPS_API_BASE:-}" ]; then MODE="api"; else MODE="showcase"; fi
 export STOREOPS_RUNTIME_MODE="$MODE"
+export STOREOPS_RELEASE_BUILD="${STOREOPS_RELEASE_BUILD:-1960}"
 node <<'NODE' > runtime-config.js
 const clientId=process.env.STOREOPS_ENTRA_CLIENT_ID||process.env.STOREOPS_ENTRA_SPA_CLIENT_ID||'';
 const tenantId=process.env.STOREOPS_ENTRA_TENANT_ID||'';
@@ -11,14 +12,15 @@ process.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\n');
 NODE
 cat ./js/boot-classic.js >> runtime-config.js
 
-# Safari/iPhone pilot: only one ES-module entry point is left in index.html.
-# auth-entry.js loads the optional enhancement modules sequentially before app.js,
-# avoiding several large module graphs starting concurrently during first paint.
+# Keep only the small early-runtime graph required before the deferred application
+# modules: tenant branding, boot rescue and auth-entry. Normalize their cache key
+# at build time so a production release cannot mix previous JS generations.
 node <<'NODE'
 const fs=require('fs');
 const file='index.html';
+const build=String(process.env.STOREOPS_RELEASE_BUILD||'1960');
 let html=fs.readFileSync(file,'utf8');
-const keep='/js/auth-entry.js';
-html=html.replace(/<script type="module" src="\/js\/[^"]+\.js"><\/script>/g,tag=>tag.includes(keep)?tag:'');
+const allowed=new Set(['/js/tenant-branding.js','/js/boot-rescue.js','/js/auth-entry.js']);
+html=html.replace(/<script type="module" src="(\/js\/[^"?]+\.js)(?:\?v=[^"]+)?"><\/script>/g,(tag,src)=>allowed.has(src)?`<script type="module" src="${src}?v=${build}"></script>`:'');
 fs.writeFileSync(file,html);
 NODE

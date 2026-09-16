@@ -1,0 +1,58 @@
+name: V1.96 Release Candidate Contract
+
+on:
+  push:
+    branches: [storeops-v1.96-release-candidate]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pages/manager-home.js
+          node --check backend/tests/v196-release-candidate.mjs
+      - name: Typecheck public bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V1.96 source contract
+        run: node backend/tests/v196-release-candidate.mjs
+      - name: Exact Netlify frontend build
+        shell: bash
+        run: |
+          rm -rf /tmp/storeops-v196-publish
+          cp -R frontend /tmp/storeops-v196-publish
+          cd /tmp/storeops-v196-publish
+          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=1960 sh ./netlify-build.sh
+          grep -q 'apiBase":"https://storeops.ma"' runtime-config.js
+          grep -q "BUILD='1.96.0'" runtime-config.js
+          grep -q '/js/tenant-branding.js?v=1960' index.html
+          grep -q '/js/boot-rescue.js?v=1960' index.html
+          grep -q '/js/auth-entry.js?v=1960' index.html
+          test "$(grep -o '<script type="module"' index.html | wc -l)" -eq 3
+          ! grep -q 'v=1940' index.html
+      - name: V1.95 performance consolidation regression
+        run: node backend/tests/v195-performance-consolidation.mjs
+      - name: V1.94 guided Today regression
+        run: node backend/tests/v194-today-ux-pipeline.mjs
+      - name: V1.92 bootstrap regression
+        run: node backend/tests/v192-bootstrap-fast.mjs
+      - name: V1.84 public performance regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Development regression
+        run: STOREOPS_DB=/tmp/storeops-v196-development.db node backend/tests/v183-development-realdata.mjs
+      - name: Assortment regression
+        run: STOREOPS_DB=/tmp/storeops-v196-merch.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Public backend regression
+        run: node backend/tests/netlify-public-backend.mjs
