@@ -26,9 +26,9 @@ function remainingFor(row,c){
 function temperatureRequired(category=''){return /frais|surgel/i.test(clean(category))?1:0}
 
 export function receivingIntegrationConfig(){
- const c=receiving();
+ const c=receiving(),live=isD365ReadLive('receiving');
  return{
-  mode:isD365ReadLive('receiving')?'LIVE':'SIMULATED',
+  mode:live?'LIVE':config.realOnly?'UNAVAILABLE':'SIMULATED',
   entity:{header:c.headerEntity||null,line:c.lineEntity||null},
   storeWarehouses:{...(config.dynamics.stock?.storeWarehouses||{})},
   fields:{
@@ -92,7 +92,7 @@ async function purchaseOrderHeaders(poNumbers){
 
 export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO()}={}){
  const c=receiving(),warehouseId=clean(config.dynamics.stock?.storeWarehouses?.[storeId]);
- if(!isD365ReadLive('receiving'))return{mode:'SIMULATED',source:'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false}};
+ if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false,code:config.realOnly?'D365_RECEIVING_NOT_CONNECTED':null}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
  const linePayload=await purchaseOrderLinesForWarehouse(warehouseId),lines=linePayload.value||[];
  const poNumbers=unique(lines.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),headerPayload=await purchaseOrderHeaders(poNumbers),headers=headerPayload.value||[];
