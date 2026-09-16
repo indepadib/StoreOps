@@ -1,0 +1,38 @@
+name: V1.85 Manager Performance P1 Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-manager-performance-p1]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-home-fast.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/services/manager-fast-api.mjs
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pwa.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+      - name: V1.85 manager performance contract
+        run: node backend/tests/v185-manager-performance-p1.mjs
+      - name: V1.84 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Manager fast API regression
+        run: node backend/tests/manager-fast-api.mjs
+      - name: Static progressive-loading guards
+        run: |
+          grep -q "pulseDeferred:true" backend/services/manager-inbox-batch.mjs
+          ! grep -q "business-pulse.mjs" backend/services/manager-inbox-batch.mjs
+          grep -q "storeops-legacy-clean-" frontend/js/boot-classic.js
+          ! grep -q "getRegistrations" frontend/js/pwa.js
