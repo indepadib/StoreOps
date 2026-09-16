@@ -1,6 +1,7 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
 import { workforceConfig,listEmployees,createEmployee,endEmployeeContract,listShifts,createShift,setShiftStatus,listObjectives,createObjective } from './workforce.mjs';
+import { handleRuntimeBootstrapApi } from './runtime-bootstrap-api.mjs';
 import { handleProcessStudioApi } from './process-studio-api.mjs';
 import { handleReplenishmentPolicyApi } from './replenishment-policy-api.mjs';
 import { handleReplenishmentRequestApi } from './replenishment-request-api.mjs';
@@ -22,6 +23,7 @@ function storeForEmployee(id){return db.prepare(`SELECT store_id FROM employees 
 function storeForShift(id){return db.prepare(`SELECT store_id FROM work_shifts WHERE id=?`).get(id)?.store_id||null}
 
 export async function handleWorkforceApi({req,url,user}){
+ const bootstrapResponse=await handleRuntimeBootstrapApi({req,url,user});if(bootstrapResponse)return bootstrapResponse;
  const managerFastResponse=await handleManagerFastApi({req,url,user});if(managerFastResponse)return managerFastResponse;
  const developmentResponse=await handleDevelopmentApi({req,url,user});if(developmentResponse)return developmentResponse;
  const integrationResponse=await handleIntegrationRegistryApi({req,url,user});if(integrationResponse)return integrationResponse;
