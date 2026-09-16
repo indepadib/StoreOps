@@ -11,8 +11,8 @@
 .today-priority-card.urgent{border-color:color-mix(in srgb,var(--danger) 25%,var(--line))}
 .today-priority-card.primary.urgent{background:linear-gradient(145deg,var(--card),color-mix(in srgb,var(--danger) 5%,var(--card)))}
 .today-priority-rank{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:var(--card);border:1px solid var(--line);font-size:12px;font-weight:950;color:var(--muted)}
-.today-priority-card.primary .today-priority-rank{background:var(--brand);border-color:var(--brand);color:#fff}
-.today-priority-card.urgent .today-priority-rank{background:var(--danger);border-color:var(--danger);color:#fff}
+.today-priority-card.primary .today-priority-rank{background:var(--brand);border-color:var(--brand);color:white}
+.today-priority-card.urgent .today-priority-rank{background:var(--danger);border-color:var(--danger);color:white}
 .today-priority-copy{min-width:0;display:grid;gap:3px}
 .today-priority-copy small{font-size:9px;line-height:1.2;text-transform:uppercase;letter-spacing:.065em;color:var(--muted);font-weight:900}
 .today-priority-copy strong{font-size:14px;line-height:1.25;color:var(--ink)}
