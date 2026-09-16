@@ -1,0 +1,25 @@
+name: V1.86 Development Guided Journey Contract
+
+on:
+  push:
+    branches: [storeops-v1.86-development-guided-journey]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: node --check frontend/js/development.js
+      - name: Guided journey contract
+        run: node backend/tests/v186-development-guided-journey.mjs
+      - name: Development engine regression
+        run: STOREOPS_DB=/tmp/storeops-v186-development.db node backend/tests/v180-development.mjs
+      - name: Development real-data regression
+        run: STOREOPS_DB=/tmp/storeops-v186-realdata.db node backend/tests/v183-development-realdata.mjs
