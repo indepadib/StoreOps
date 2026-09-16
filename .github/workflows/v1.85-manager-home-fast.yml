@@ -30,7 +30,8 @@ jobs:
           grep -q "/manager-home-fast" frontend/js/pages/manager-home.js
           grep -q "externalCalls:0" backend/services/manager-home-fast.mjs
           grep -q "readOnly:true" backend/services/manager-home-fast.mjs
-          grep -q "Business Pulse · chargement en arrière-plan" frontend/js/pages/manager-home.js
+          grep -q "Je prépare votre prochaine action" frontend/js/pages/manager-home.js
+          grep -q "À faire maintenant" frontend/js/pages/manager-home.js
           grep -q "var BUILD='1.85.0'" frontend/js/boot-classic.js
           grep -q "storeops-runtime-cleaned-build" frontend/js/boot-classic.js
           ! grep -q "getRegistrations" frontend/js/pwa.js

@@ -32,13 +32,27 @@
   [headers.values]
     Cache-Control = "no-store, max-age=0"
 
-# V1.84: modules are no longer re-downloaded on every navigation/reload.
-# Five minutes keeps deploy propagation safe while stale-while-revalidate
-# makes repeat visits effectively instant on store/mobile connections.
+# Most modules stay cached for speed. Critical navigation/bootstrap files are
+# revalidated so a freshly deployed operational flow is visible immediately.
 [[headers]]
   for = "/js/*"
   [headers.values]
     Cache-Control = "public, max-age=300, stale-while-revalidate=86400"
+
+[[headers]]
+  for = "/js/auth-entry.js"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/js/app.js"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/js/pages/manager-home.js"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
 
 [[headers]]
   for = "/*.css"
