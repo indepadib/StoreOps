@@ -1,0 +1,40 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+const read=p=>readFileSync(path.join(root,p),'utf8');
+const today=read('frontend/js/pages/today.js');
+const mobile=read('frontend/mobile-v198.css');
+const enhancements=read('frontend/js/enhancements-entry.js');
+const auth=read('frontend/js/auth-entry.js');
+const boot=read('frontend/js/boot-classic.js');
+const build=read('frontend/netlify-build.sh');
+
+assert.match(today,/today-primary-grid/,'Today must expose the primary decision zone');
+assert.match(today,/today-health-card/,'Store Health must remain first-class');
+assert.match(today,/today-priority-card/,'Today must expose an action-first priority card');
+assert.match(today,/today-metrics-grid/,'Today must isolate detailed operational metrics');
+assert.match(today,/rows\.slice\(0,3\)/,'Today must show at most three priorities before progressive disclosure');
+assert.match(today,/today-priority-more/,'extra priorities must remain reachable');
+const healthPos=today.indexOf('today-health-card');
+const priorityPos=today.indexOf('today-priority-card');
+const metricsPos=today.indexOf('today-metrics-grid');
+assert(healthPos>=0&&priorityPos>healthPos&&metricsPos>priorityPos,'mobile decision order must be Health → priorities → metrics');
+
+assert.match(mobile,/today-metrics-grid\{grid-template-columns:repeat\(2/,'mobile metrics must use a dense two-column grid');
+assert.match(mobile,/today-metric-card\{padding:11px 10px/,'mobile operational cards must be compact');
+assert.match(mobile,/topbar\{gap:7px;padding:8px 12px/,'Director mobile header must be denser than V1.97');
+assert.match(mobile,/#nav\.ux191-network-nav\{gap:2px;padding:5px 6px/,'Director mobile bottom navigation must be compact');
+assert.match(mobile,/min-height:44px/,'mobile nav targets must retain a usable touch height');
+assert.match(mobile,/today-health-penalties[\s\S]*-webkit-line-clamp:2/,'health penalties must not dominate the first screen');
+
+assert.match(enhancements,/const BUILD='1980'/,'enhancements graph must use V1.98 cache key');
+assert.match(enhancements,/mobile-v198\.css\?v=\$\{BUILD\}/,'V1.98 mobile stylesheet must be in the director graph');
+assert.match(auth,/const BUILD='1980'/,'auth graph must use V1.98 cache key');
+assert.match(auth,/BUILD_LABEL='1\.98\.0'/,'auth release label must be V1.98.0');
+assert.match(boot,/BUILD='1\.98\.0'/,'classic boot release label must be V1.98.0');
+assert.match(build,/STOREOPS_RELEASE_BUILD:-1980/,'Netlify build must publish V1.98 assets coherently');
+
+console.log('V1.98 action-first mobile contract: OK');

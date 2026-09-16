@@ -1,0 +1,41 @@
+name: V1.98 Action-First Mobile Contract
+
+on:
+  push:
+    branches: [storeops-v1.98-action-first-mobile]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/pages/today.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/boot-classic.js
+          node --check backend/tests/v197-mobile-instant-today.mjs
+          node --check backend/tests/v198-action-first-mobile.mjs
+      - name: V1.98 action-first mobile contract
+        run: node backend/tests/v198-action-first-mobile.mjs
+      - name: V1.97 mobile regression
+        run: STOREOPS_DB=/tmp/storeops-v198-v197.db node backend/tests/v197-mobile-instant-today.mjs
+      - name: Release coherence regression
+        run: node backend/tests/v196-release-candidate.mjs
+      - name: Exact frontend build
+        shell: bash
+        run: |
+          rm -rf /tmp/storeops-v198-publish
+          cp -R frontend /tmp/storeops-v198-publish
+          cd /tmp/storeops-v198-publish
+          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=1980 sh ./netlify-build.sh
+          grep -q 'apiBase":"https://storeops.ma"' runtime-config.js
+          grep -q "BUILD='1.98.0'" runtime-config.js
+          grep -q '/js/auth-entry.js?v=1980' index.html

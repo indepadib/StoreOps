@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='1970';
+const BUILD='1980';
 
 const modules=[
   './pwa.js',
@@ -34,7 +34,7 @@ const operationGroups=[
  {icon:'▣',title:'Caisses',subtitle:'Préparation et clôture financière',actions:[['cashOpening','Préparation caisses'],['cash','Caisses & clôture']]}
 ];
 function addCss(href,key){if(document.querySelector(`link[data-storeops-${key}]`))return;const link=document.createElement('link');link.rel='stylesheet';link.href=href;link.dataset[`storeops${key[0].toUpperCase()}${key.slice(1)}`]='1';document.head.appendChild(link)}
-function injectExperienceCss(){addCss(`/experience-v191.css?v=${BUILD}`,'experience');addCss(`/mobile-v197.css?v=${BUILD}`,'mobile')}
+function injectExperienceCss(){addCss(`/experience-v191.css?v=${BUILD}`,'experience');addCss(`/mobile-v197.css?v=${BUILD}`,'mobile');addCss(`/mobile-v198.css?v=${BUILD}`,'mobileActionFirst')}
 function clearOperationsActive(){document.getElementById('storeopsOperationsNav')?.classList.remove('active')}
 function goPage(page){clearOperationsActive();const btn=document.querySelector(`#nav button[data-page="${page}"]`);if(btn)return btn.click()}
 function ensureOperationsPage(){let page=document.getElementById('operationsHubPage');if(page)return page;page=document.createElement('section');page.className='page';page.id='operationsHubPage';page.innerHTML='<div id="operationsHubContent"></div>';document.querySelector('main')?.appendChild(page);return page}
