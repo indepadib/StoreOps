@@ -1,7 +1,7 @@
 import { loadEnhancements } from './enhancements-entry.js';
 
-const BUILD='1840';
-const BUILD_LABEL='1.84.0';
+const BUILD='1850';
+const BUILD_LABEL='1.85.0';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
@@ -13,14 +13,15 @@ function phase(label){
   const meta=document.querySelector('#headerMeta');
   if(meta&&/^(Chargement|Démarrage)/.test((meta.textContent||'').trim()))meta.textContent=`Démarrage · ${label} · v${BUILD_LABEL}`;
 }
-
+function accessNotProvisioned(e){const t=String(e?.message||e||'').toLowerCase();return e?.code==='USER_NOT_PROVISIONED'||t.includes('authentifié mais non autorisé')||t.includes('non autorisé ou désactivé dans storeops')}
 function renderStartupFailure(e,{backend=false}={}){
   markStarted();
-  const meta=document.querySelector('#headerMeta');if(meta)meta.textContent=backend?'Backend indisponible':'Erreur démarrage';
+  const unprovisioned=accessNotProvisioned(e),meta=document.querySelector('#headerMeta');if(meta)meta.textContent=unprovisioned?'Accès StoreOps à configurer':backend?'Backend indisponible':'Erreur démarrage';
   const main=document.querySelector('main');
-  const title=backend?'StoreOps n’arrive pas à joindre son backend':'StoreOps n’a pas pu démarrer';
-  const copy=backend?'Le téléphone et le site fonctionnent. C’est l’API StoreOps configurée pour ce déploiement qui ne répond pas.':'Le site est chargé mais une étape d’initialisation a échoué. L’erreur exacte est affichée ci-dessous.';
-  if(main)main.innerHTML=`<section style="max-width:560px;margin:34px auto;padding:22px;font-family:system-ui"><div style="font-size:13px;font-weight:800;opacity:.65;margin-bottom:8px">StoreOps v${BUILD_LABEL}</div><h1 style="font-size:28px;margin:0 0 10px">${title}</h1><p style="line-height:1.5">${copy}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f3f5;border-radius:12px;padding:12px;font-size:12px">${String(e?.message||e||'Erreur inconnue').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre><button id="storeopsApiRetry" style="width:100%;min-height:52px;border:0;border-radius:14px;font-weight:800;font-size:17px">Réessayer</button></section>`;
+  const title=unprovisioned?'Compte Microsoft reconnu, accès StoreOps non configuré':backend?'StoreOps n’arrive pas à joindre son backend':'StoreOps n’a pas pu démarrer';
+  const copy=unprovisioned?'La connexion Microsoft a réussi. Un Administrateur StoreOps doit simplement lier votre email / UPN Microsoft à votre compte dans Admin Studio → Utilisateurs & accès.':backend?'Le téléphone et le site fonctionnent. C’est l’API StoreOps configurée pour ce déploiement qui ne répond pas.':'Le site est chargé mais une étape d’initialisation a échoué. L’erreur exacte est affichée ci-dessous.';
+  const detail=unprovisioned?'Aucune donnée ni mot de passe Microsoft n’est en erreur. Votre identité n’est simplement pas encore provisionnée dans StoreOps.':String(e?.message||e||'Erreur inconnue');
+  if(main)main.innerHTML=`<section style="max-width:560px;margin:34px auto;padding:22px;font-family:system-ui"><div style="font-size:13px;font-weight:800;opacity:.65;margin-bottom:8px">StoreOps v${BUILD_LABEL}</div><h1 style="font-size:28px;margin:0 0 10px">${title}</h1><p style="line-height:1.5">${copy}</p><pre style="white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f3f5;border-radius:12px;padding:12px;font-size:12px">${detail.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre><button id="storeopsApiRetry" style="width:100%;min-height:52px;border:0;border-radius:14px;font-weight:800;font-size:17px">${unprovisioned?'Réessayer après activation':'Réessayer'}</button></section>`;
   document.querySelector('#storeopsApiRetry')?.addEventListener('click',()=>location.reload());
 }
 
@@ -34,7 +35,9 @@ async function waitForStoreOpsUi(ms=25000){
     const bodyText=(document.body?.innerText||document.body?.textContent||'').trim();
     if(bodyText.includes('Impossible de charger StoreOps')){
       const compact=bodyText.replace(/\s+/g,' ').slice(0,900);
-      throw new Error(compact||'Le bootstrap applicatif a échoué avant le chargement du magasin.');
+      const e=new Error(compact||'Le bootstrap applicatif a échoué avant le chargement du magasin.');
+      if(/authentifié mais non autorisé|non autorisé ou désactivé/i.test(compact))e.code='USER_NOT_PROVISIONED';
+      throw e;
     }
     await sleep(150);
   }
@@ -57,12 +60,10 @@ async function prepareBoot(){
 
 async function start(){
   await prepareBoot();
-
   if(runtimeShowcase()){
     try{await loadApp()}catch(e){console.error(e);renderStartupFailure(e)}
     return;
   }
-
   phase('connexion backend');
   const [{health},auth]=await Promise.all([import(`./api.js?v=${BUILD}`),import(`./auth.js?v=${BUILD}`)]);
   const {ensureAccessToken,ensureLocalSession,renderLoginScreen,hideLoginScreen,addLogoutControl,startAuthKeepAlive}=auth;
@@ -73,40 +74,16 @@ async function start(){
     phase('session locale');
     const session=await ensureLocalSession();
     if(!session){markStarted();renderLoginScreen({mode:'local'});return}
-    hideLoginScreen();
-    await loadApp();
-    addLogoutControl();
-    return;
+    hideLoginScreen();await loadApp();addLogoutControl();return;
   }
-  if(h.authMode!=='entra'){
-    await loadApp();return;
-  }
+  if(h.authMode!=='entra'){await loadApp();return}
   try{
     phase('retour Microsoft');
     const token=await ensureAccessToken();
     if(!token){markStarted();renderLoginScreen({mode:'entra'});return}
     phase('session StoreOps');
-    hideLoginScreen();
-    startAuthKeepAlive();
-    await loadApp();
-    addLogoutControl();
-  }catch(e){
-    console.error(e);
-    renderStartupFailure(e);
-  }
+    hideLoginScreen();startAuthKeepAlive();await loadApp();addLogoutControl();
+  }catch(e){console.error(e);renderStartupFailure(e)}
 }
-
-function loadEnhancementsDeferred(){
-  const run=()=>loadEnhancements().catch(e=>console.warn('StoreOps enhancements différés',e));
-  if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1800});
-  else setTimeout(run,120);
-}
-
-try{
-  phase('démarrage rapide');
-  await start();
-  loadEnhancementsDeferred();
-}catch(e){
-  console.error(e);
-  renderStartupFailure(e);
-}
+function loadEnhancementsDeferred(){const run=()=>loadEnhancements().catch(e=>console.warn('StoreOps enhancements différés',e));if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1800});else setTimeout(run,120)}
+try{phase('démarrage rapide');await start();loadEnhancementsDeferred()}catch(e){console.error(e);renderStartupFailure(e)}
