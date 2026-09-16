@@ -2,6 +2,9 @@
   base = "."
   command = "cd frontend && ./netlify-build.sh"
   publish = "frontend"
+  # Protect paid Netlify build credits. Git-linked continuous deployment is
+  # ignored by default; the verified manual GitHub release workflow opts in.
+  ignore = "node ./netlify/ignore-build.mjs"
 
 [build.environment]
   NODE_VERSION = "22"
