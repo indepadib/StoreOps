@@ -30,8 +30,8 @@ assert.deepEqual(buttons.map(x=>x.page),['today','managerScan','managerTeam','ma
 assert.deepEqual(buttons.map(x=>x.label),['Aujourd’hui','Scanner','Équipe','Plus']);
 
 // Index only boots the runtime, branding, rescue and auth graph. Enhancements/Admin stay lazy.
-const moduleSources=[...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(x=>x[1]);
-assert.deepEqual(moduleSources,['/js/tenant-branding.js?v=1940','/js/boot-rescue.js?v=1940','/js/auth-entry.js?v=1940']);
+const moduleSources=[...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(x=>x[1].split('?')[0]);
+assert.deepEqual(moduleSources,['/js/tenant-branding.js','/js/boot-rescue.js','/js/auth-entry.js']);
 for(const eager of ['manager-polish.js','manager-alerts.js','admin-studio-access.js','admin-studio-stores.js','admin-studio-integrations.js'])assert(!html.includes(`src="/js/${eager}`),`${eager} must not be eagerly loaded by index.html`);
 assert.match(auth,/loadEnhancementsDeferred\(\)/,'enhancements must remain outside the critical boot path');
 assert.match(enhancements,/Promise\.allSettled/,'deferred enhancements should load concurrently');
@@ -49,7 +49,7 @@ assert.doesNotMatch(css,/#[0-9a-f]{3,8}\b/i,'Today redesign must reuse StoreOps 
 
 const authBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
 const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1];
-assert.equal(authBuild,'1940');
-assert.equal(enhancementBuild,'1940');
+assert(authBuild&&enhancementBuild,'runtime build ids must be present');
+assert.equal(authBuild,enhancementBuild,'auth and deferred enhancement runtime must share one cache generation');
 
-console.log('V1.94 manual release + one-action Today UX contract OK');
+console.log('Guided Today UX + manual release contract OK');
