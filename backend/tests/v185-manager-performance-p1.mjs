@@ -34,6 +34,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const read=p=>readFileSync(path.join(root,p),'utf8');
 const batch=read('backend/services/manager-inbox-batch.mjs');
 const fastApi=read('backend/services/manager-fast-api.mjs');
+const managerHome=read('frontend/js/pages/manager-home.js');
 const boot=read('frontend/js/boot-classic.js');
 const pwa=read('frontend/js/pwa.js');
 const auth=read('frontend/js/auth-entry.js');
@@ -43,6 +44,10 @@ assert.doesNotMatch(batch,/from '\.\/business-pulse\.mjs'/,'business pulse impor
 assert.match(batch,/pulseDeferred:true/);
 assert.match(batch,/BATCH_CACHE_MS/);
 assert.match(fastApi,/searchParams\.get\('force'\)==='1'/,'manager fast endpoints must support explicit forced refresh');
+assert.match(managerHome,/manager-inbox-batch/,'Today must call the single operational batch endpoint');
+assert.match(managerHome,/const pulsePromise=api\(`\/api\/stores\/\$\{storeId\}\/business-pulse`/,'Business Pulse must start independently');
+assert.match(managerHome,/renderHome\(inbox,null,\{pulseLoading:true\}\)/,'operations must render before Business Pulse resolves');
+assert.match(managerHome,/renderSkeleton\(\)/,'Today must paint an immediate loading shell');
 assert.match(boot,/storeops-legacy-clean-/,'legacy browser cleanup must be version-scoped');
 assert.match(boot,/localStorage\.getItem\(CLEAN_KEY\)/,'legacy cleanup must not repeat every load');
 assert.doesNotMatch(pwa,/getRegistrations\(/,'PWA module must not repeat service worker unregister work');
