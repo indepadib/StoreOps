@@ -8,11 +8,12 @@ const modules=[
   './manager-receiving-focus.js',
   './manager-replenishment-v2.js',
   './admin-assortment-auto.js',
-  './admin-d365-mapping.js'
+  './admin-d365-mapping.js',
+  './ux-v191.js'
 ];
 
 export async function loadEnhancements(){
-  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1902`)));
+  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1910`)));
   const failed=results.filter(x=>x.status==='rejected');
   if(failed.length)console.warn(`${failed.length} module(s) StoreOps différé(s) non chargés`,failed.map(x=>x.reason));
 }
