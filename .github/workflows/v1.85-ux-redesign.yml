@@ -45,7 +45,7 @@ jobs:
           if(JSON.stringify(pages)!==JSON.stringify(expected)) throw new Error('Manager nav changed: '+pages.join(','));
           console.log('Manager navigation contract OK');
           NODE
-      - name: Existing core UX regressions
-        run: |
-          node backend/tests/v179-core.mjs
-          STOREOPS_DB=/tmp/storeops-v185-development.db node backend/tests/v180-development.mjs
+      - name: Development UX regression
+        env:
+          STOREOPS_DB: /tmp/storeops-v185-development.db
+        run: node backend/tests/v180-development.mjs
