@@ -1,0 +1,49 @@
+name: V1.92 Admin Runtime Contract
+
+on:
+  push:
+    branches: [storeops-v1.92-admin-runtime-cleanup]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pwa.js
+          node --check frontend/js/pages/admin-studio.js
+          node --check frontend/js/pages/development.js
+      - name: Build exactly as Netlify
+        run: |
+          cd frontend
+          STOREOPS_API_BASE=https://storeops.ma sh ./netlify-build.sh
+      - name: Netlify publish graph contract
+        run: |
+          grep -q '/js/auth-entry.js' frontend/index.html
+          ! grep -q '/js/admin-studio-access.js' frontend/index.html
+          grep -q "enhancements-entry.js?v=1920" frontend/js/auth-entry.js
+          grep -q "admin-studio-access.js" frontend/js/enhancements-entry.js
+          grep -q "admin-studio-stores.js" frontend/js/enhancements-entry.js
+          grep -q "admin-studio-integrations.js" frontend/js/enhancements-entry.js
+          grep -q "admin-studio-replenishment.js" frontend/js/enhancements-entry.js
+          grep -q "admin-studio-tenant.js" frontend/js/enhancements-entry.js
+          grep -q "admin-assortment-auto.js" frontend/js/enhancements-entry.js
+          ! grep -q "./development.js" frontend/js/pwa.js
+      - name: Admin instant-shell contract
+        run: |
+          grep -q "export async function renderAdminStudio(){if(!isDirector())return;view='home';render()}" frontend/js/pages/admin-studio.js
+          grep -q "ensureProcessData" frontend/js/pages/admin-studio.js
+          grep -q "Qu’est-ce que vous voulez mettre en place" frontend/js/pages/admin-studio.js
+          grep -q "data-studio-action=\"tenant\"" frontend/js/pages/admin-studio.js
+      - name: Existing Process Studio regression
+        run: STOREOPS_DB=/tmp/storeops-v192-process.db node backend/tests/v180-admin-studio.mjs
+      - name: Existing Development regression
+        run: STOREOPS_DB=/tmp/storeops-v192-development.db node backend/tests/v180-development.mjs
