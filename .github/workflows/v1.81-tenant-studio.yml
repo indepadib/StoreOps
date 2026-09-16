@@ -9,6 +9,7 @@ on:
       - 'backend/tests/v181-tenant-profile.mjs'
       - 'frontend/js/tenant-branding.js'
       - 'frontend/js/admin-studio-tenant.js'
+      - 'frontend/js/enhancements-entry.js'
       - 'frontend/admin-studio-tenant.css'
       - 'frontend/index.html'
       - 'frontend/sw.js'
@@ -32,17 +33,24 @@ jobs:
           node --check backend/tests/v181-tenant-profile.mjs
           node --check frontend/js/tenant-branding.js
           node --check frontend/js/admin-studio-tenant.js
+          node --check frontend/js/enhancements-entry.js
           node --check frontend/sw.js
       - name: Tenant profile contract
         env:
           STOREOPS_DB: /tmp/storeops-v181-tenant.db
         run: node backend/tests/v181-tenant-profile.mjs
       - name: Runtime wiring
+        shell: bash
         run: |
+          set -euo pipefail
           grep -q "handleTenantProfileApi" backend/services/workforce-api.mjs
           grep -q '/admin-studio-tenant.css' frontend/index.html
           grep -q '/js/tenant-branding.js' frontend/index.html
-          grep -q '/js/admin-studio-tenant.js' frontend/index.html
+          grep -q "'./admin-studio-tenant.js'" frontend/js/enhancements-entry.js
+          if grep -q 'src="/js/admin-studio-tenant.js' frontend/index.html; then
+            echo "::error::Tenant Studio must be lazy-loaded, not eagerly booted from index.html"
+            exit 1
+          fi
           grep -q "storeops-shell-v1.81.0" frontend/sw.js
           grep -q "'/admin-studio-tenant.css'" frontend/sw.js
           grep -q "'/js/tenant-branding.js'" frontend/sw.js
