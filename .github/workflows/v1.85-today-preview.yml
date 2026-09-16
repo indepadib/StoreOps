@@ -1,0 +1,35 @@
+name: V1.85 Today Preview Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-today-preview]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: node --check frontend/js/pages/manager-home.js
+      - name: Today preview contract
+        run: node backend/tests/v185-today-preview.mjs
+      - name: Manager home fast regression
+        run: node backend/tests/v185-manager-home-fast.mjs
+      - name: Manager inbox batch regression
+        run: node backend/tests/v186-manager-inbox-batch.mjs
+      - name: Today concierge regression
+        run: node backend/tests/v189-manager-today-concierge.mjs
+      - name: Today UX pipeline regression
+        run: node backend/tests/v194-today-ux-pipeline.mjs
+      - name: Mobile Today regression
+        run: node backend/tests/v197-mobile-instant-today.mjs
+      - name: Action-first mobile regression
+        run: node backend/tests/v198-action-first-mobile.mjs
+      - name: Performance regression
+        run: node backend/tests/v184-performance-p0.mjs
