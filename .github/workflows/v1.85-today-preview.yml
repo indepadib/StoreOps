@@ -1,0 +1,24 @@
+name: V1.85 Today Preview Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-today-preview]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: node --check frontend/js/pages/manager-home.js
+      - name: Today preview contract
+        run: node backend/tests/v185-today-preview.mjs
+      - name: Manager fast-home regression
+        run: node backend/tests/v179-manager-experience.mjs
+      - name: Performance regression
+        run: node backend/tests/v184-performance-p0.mjs
