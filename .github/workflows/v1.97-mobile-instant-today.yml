@@ -1,0 +1,40 @@
+name: V1.97 Mobile & Instant Today Contract
+
+on:
+  push:
+    branches: [storeops-v1.97-mobile-instant-today]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-home-fast.mjs
+          node --check frontend/js/pages/today.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/boot-classic.js
+          node --check backend/tests/v196-release-candidate.mjs
+          node --check backend/tests/v197-mobile-instant-today.mjs
+      - name: V1.97 mobile and instant Today
+        run: node backend/tests/v197-mobile-instant-today.mjs
+      - name: Existing fast home regression
+        run: STOREOPS_DB=/tmp/storeops-v197-fast-home.db node backend/tests/v185-manager-home-fast.mjs
+      - name: Bootstrap regression
+        run: STOREOPS_DB=/tmp/storeops-v197-bootstrap.db node backend/tests/v192-bootstrap-fast.mjs
+      - name: Release coherence regression
+        run: node backend/tests/v196-release-candidate.mjs
+      - name: Static mobile guards
+        run: |
+          grep -q "mobile-v197.css" frontend/js/enhancements-entry.js
+          grep -q "manager-home-fast" frontend/js/pages/today.js
+          grep -q "safe-area-inset-bottom" frontend/mobile-v197.css
+          grep -q "STOREOPS_RELEASE_BUILD:-1970" frontend/netlify-build.sh
