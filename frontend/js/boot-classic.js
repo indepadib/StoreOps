@@ -1,5 +1,6 @@
 (function(){
-  var BUILD='1.67.0';
+  var BUILD='1.85.0';
+  var CLEAN_KEY='storeops_runtime_cleaned_1850';
   var errors=[];
   window.STOREOPS_BUILD=BUILD;
   window.STOREOPS_BOOT_ERRORS=errors;
@@ -14,6 +15,7 @@
 
   async function cleanLegacyRuntime(){
     try{
+      if(localStorage.getItem(CLEAN_KEY)==='1')return;
       if('serviceWorker' in navigator){
         var regs=await navigator.serviceWorker.getRegistrations();
         await Promise.all(regs.map(function(r){return r.unregister().catch(function(){return false;});}));
@@ -22,6 +24,7 @@
         var keys=await caches.keys();
         await Promise.all(keys.filter(function(k){return k.indexOf('storeops-shell-')===0;}).map(function(k){return caches.delete(k);}));
       }
+      localStorage.setItem(CLEAN_KEY,'1');
     }catch(e){remember(e);}
   }
   window.STOREOPS_BOOT_PREP=cleanLegacyRuntime();
