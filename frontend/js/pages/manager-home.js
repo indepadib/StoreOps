@@ -90,7 +90,17 @@ export async function renderManagerHome(){
   try{inbox=await loadManagerInbox();syncManagerNav(inbox);detailsLoading=false;renderState({fast:null,inbox,pulse:null,pulseLoading:true,detailsLoading:false})}catch{return}
  }
  const redraw=()=>{if(app.storeId===storeId)renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
- const pulsePromise=api(`/api/stores/${storeId}/business-pulse`).then(x=>{pulse=x}).catch(()=>{pulse=null}).finally(()=>{pulseLoading=false;redraw()});
- const inboxPromise=(inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox())).then(x=>{inbox=x;syncManagerNav(inbox)}).catch(()=>{}).finally(()=>{detailsLoading=false;redraw()});
- await Promise.allSettled([pulsePromise,inboxPromise]);
+ try{
+  const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
+  if(app.storeId!==storeId)return;
+  inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
+  if(enriched?.businessPulse){pulse=enriched.businessPulse;pulseLoading=false;redraw();return}
+  redraw();
+  try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
+  pulseLoading=false;redraw();
+ }catch{
+  detailsLoading=false;
+  try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
+  pulseLoading=false;redraw();
+ }
 }

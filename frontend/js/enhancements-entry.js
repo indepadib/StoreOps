@@ -12,7 +12,7 @@ const modules=[
 ];
 
 export async function loadEnhancements(){
-  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1880`)));
+  const results=await Promise.allSettled(modules.map(path=>import(`${path}?v=1902`)));
   const failed=results.filter(x=>x.status==='rejected');
   if(failed.length)console.warn(`${failed.length} module(s) StoreOps différé(s) non chargés`,failed.map(x=>x.reason));
 }
