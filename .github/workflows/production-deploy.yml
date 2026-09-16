@@ -1,36 +1,41 @@
 name: StoreOps Production Deploy
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: 'I confirm this main commit is release-ready and may consume Netlify production credits'
+        required: true
+        type: boolean
+        default: false
 
 concurrency:
   group: storeops-production-deploy
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
   deploy:
+    if: ${{ inputs.confirm_production == true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     environment: production
     env:
       NETLIFY_SITE_ID: c0169294-465a-47ce-8ad7-4a290f790cf6
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     steps:
-      - name: Checkout StoreOps
+      - name: Checkout StoreOps main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 1
 
       - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
 
       - name: Verify deployment credential
         shell: bash
@@ -40,18 +45,28 @@ jobs:
             exit 1
           fi
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
+      - name: Install dependencies without requiring a lockfile
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Preflight compile and release contracts
+        shell: bash
+        run: |
+          npx tsc -p tsconfig.netlify.json
+          node backend/tests/netlify-public-backend.mjs
+          node backend/tests/v184-performance-p0.mjs
+          STOREOPS_DB=/tmp/storeops-prod-v182.db node backend/tests/v182-assortment-and-supply.mjs
+          STOREOPS_DB=/tmp/storeops-prod-v183.db node backend/tests/v183-development-realdata.mjs
 
       - name: Deploy main to storeops.ma
         shell: bash
         run: |
+          echo "Deploying verified main commit $(git rev-parse HEAD)"
           npx --yes netlify-cli@latest deploy \
             --build \
             --prod \
             --site "$NETLIFY_SITE_ID" \
             --auth "$NETLIFY_AUTH_TOKEN" \
-            --message "StoreOps main ${GITHUB_SHA}"
+            --message "StoreOps verified main $(git rev-parse HEAD)"
 
       - name: Verify production health
         shell: bash

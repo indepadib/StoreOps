@@ -18,6 +18,7 @@ const receiving=readFileSync(new URL('../../frontend/js/manager-receiving-focus.
 const dlcFocus=readFileSync(new URL('../../frontend/js/manager-dlc-focus.js',import.meta.url),'utf8');
 const hubs=readFileSync(new URL('../../frontend/js/pages/manager-hubs.js',import.meta.url),'utf8');
 const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
+const enhancements=readFileSync(new URL('../../frontend/js/enhancements-entry.js',import.meta.url),'utf8');
 const auth=readFileSync(new URL('../../frontend/js/auth.js',import.meta.url),'utf8');
 assert.match(process,/Question \$\{activeFieldIndex\+1\} sur \$\{total\}/,'manager controls must be rendered as one-question flow');
 assert.match(process,/activeFieldIndex<activeTask\.fields\.length-1/,'manager wizard must progress one field at a time');
@@ -67,6 +68,8 @@ assert.match(dlcFocus,/manager-dlc-focus\.css/,'DLC focus layer must load its st
 assert.match(dlcFocusCss,/\.manager-mode #dlcContent \.manager-dlc-hidden\{display:none!important\}/,'DLC focus must hide back-office sections for manager');
 assert.match(dlcFocusCss,/\.manager-dlc-home-actions/,'DLC focus must render the two-choice home');
 assert.match(dlcFocusCss,/\.manager-mode #dlcPage \.dlc-action-box>summary\{display:none\}/,'DLC treatment must open directly without technical accordion friction');
-for(const asset of ['/guided-day.css','/js/manager-polish.js','/manager-alerts.css','/js/manager-alerts.js','/manager-incident-flow.css','/js/manager-incident-flow.js','/manager-handover.css','/js/manager-handover.js','/manager-control-focus.css','/js/manager-control-focus.js','/manager-receiving-focus.css','/js/manager-receiving-focus.js'])assert.ok(index.includes(asset),`manager asset missing ${asset}`);
+for(const asset of ['/guided-day.css','/manager-alerts.css','/manager-incident-flow.css','/manager-handover.css','/manager-control-focus.css','/manager-receiving-focus.css'])assert.ok(index.includes(asset),`manager stylesheet missing ${asset}`);
+for(const module of ['./manager-polish.js','./manager-alerts.js','./manager-incident-flow.js','./manager-handover.js','./manager-control-focus.js','./manager-receiving-focus.js'])assert.ok(enhancements.includes(module),`deferred manager module missing ${module}`);
+for(const eager of ['/js/manager-polish.js','/js/manager-alerts.js','/js/manager-incident-flow.js','/js/manager-handover.js','/js/manager-control-focus.js','/js/manager-receiving-focus.js'])assert.ok(!index.includes(`src="${eager}`),`manager module must not be eagerly double-loaded ${eager}`);
 assert.match(auth,/Votre magasin\. Simplement\./,'pilot fallback login copy must remain minimal');
-console.log('StoreOps V1.51 simple manager DLC contract passed');
+console.log('StoreOps V1.51/V1.94 simple manager guided-flow contract passed');
