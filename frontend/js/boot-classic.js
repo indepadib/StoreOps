@@ -1,5 +1,5 @@
 (function(){
-  var BUILD='1.92.1';
+  var BUILD='1.96.0';
   var errors=[];
   var CLEAN_KEY='storeops-legacy-runtime-cleaned-v1';
   window.STOREOPS_BUILD=BUILD;
