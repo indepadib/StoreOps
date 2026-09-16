@@ -17,7 +17,8 @@ function phaseStrip(phase){
  const order=['OPENING','DAY','CLOSING'],labels={OPENING:'Ouverture',DAY:'Exploitation',CLOSING:'Fermeture'},idx=phase==='CLOSED'?3:Math.max(0,order.indexOf(phase));
  return `<div class="manager-phase-strip">${order.map((p,i)=>`<div class="manager-phase-step ${i<idx?'done':i===idx?'current':'next'}"><span>${i<idx?'✓':i+1}</span><strong>${labels[p]}</strong></div>`).join('')}</div>`;
 }
-function businessPulseCard(p){
+function businessPulseCard(p,{loading=false}={}){
+ if(loading)return `<section class="business-pulse"><div class="pulse-card"><div class="pulse-head"><div><span class="manager-eyebrow">Business Pulse · aujourd’hui</span><h2>…</h2><p>Chargement des ventes en arrière-plan</p></div></div><div class="pulse-main"><div class="pulse-metric primary"><span>Ventes</span><strong>…</strong><small>Actualisation</small></div><div class="pulse-metric"><span>Marge</span><strong>…</strong><small>Actualisation</small></div><div class="pulse-metric"><span>Tickets</span><strong>…</strong><small>Actualisation</small></div><div class="pulse-metric"><span>Ruptures</span><strong>…</strong><small>Actualisation</small></div></div></div></section>`;
  if(!p||p.status!=='READY'||!p.snapshot){return `<section class="business-pulse"><div class="pulse-unavailable"><strong>Business Pulse · ventes non connectées</strong><span>StoreOps garde les KPI vides plutôt que d’estimer le CA. Les opérations magasin restent disponibles.</span></div></section>`}
  const k=p.snapshot.kpis||{},change=k.changeVsComparison,changeClass=change==null?'':change>=0?'up':'down';
  return `<section class="business-pulse"><div class="pulse-card">
@@ -32,8 +33,18 @@ function businessPulseCard(p){
  </div></section>`;
 }
 
-export async function renderManagerHome(){
- const [inbox,pulse]=await Promise.all([loadManagerInbox(),api(`/api/stores/${app.storeId}/business-pulse`).catch(()=>null)]);syncManagerNav(inbox);
+function renderFast(dashboard=null){
+ const store=currentStore(),phase=dashboard?managerPhase(dashboard):'DAY',firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
+ const title=phase==='OPENING'?'Préparez le magasin.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui compte maintenant.';
+ $('#todayContent').innerHTML=`<div class="manager-home manager-home-simple">
+  <div class="manager-inbox-head"><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>${esc(title)}</h2><p>${dashboard?'Je rassemble les exceptions et les prochaines actions.':'Connexion au magasin…'}</p></div>
+  ${businessPulseCard(null,{loading:true})}
+  <section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>Analyse des priorités en cours…</span></div>${status('Chargement','neutral')}</div><div class="manager-action-list"><div class="manager-all-good"><strong>${dashboard?'Le parcours est prêt.':'Chargement du parcours…'}</strong><span>Les contrôles détaillés arrivent sans bloquer l’écran.</span></div></div></section>
+  <section class="manager-journey-compact"><div class="row"><div><span class="manager-eyebrow">Parcours magasin</span><strong>${esc(managerPhaseLabel(phase))} · ${esc(hours||'horaires magasin')}</strong></div></div><div style="margin-top:10px">${phaseStrip(phase)}</div></section>
+ </div>`;
+}
+
+function renderComplete(inbox,pulse){
  const d=inbox.dashboard,store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
  const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}}),top=inbox.items.slice(0,3),remaining=Math.max(0,inbox.items.length-top.length);
  const title=phase==='OPENING'?'Préparez le magasin.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui compte maintenant.';
@@ -45,4 +56,24 @@ export async function renderManagerHome(){
   <section class="manager-journey-compact"><div class="row"><div><span class="manager-eyebrow">Parcours magasin</span><strong>${managerPhaseLabel(phase)} · ${hours||'horaires magasin'}</strong></div><button class="btn ghost" data-manager-go="managerJourney">Ouvrir</button></div><div style="margin-top:10px">${phaseStrip(phase)}</div></section>
   <section class="manager-completion-strip" style="margin-top:14px"><div class="row"><div><span class="manager-eyebrow">Traçabilité du jour</span><strong>${compliance.done}/${compliance.total} obligation(s) réalisée(s)</strong></div><strong class="manager-completion-percent">${compliance.percent}%</strong></div>${progress(compliance.percent)}</section>
  </div>`;
+}
+
+export async function renderManagerHome(){
+ const storeId=app.storeId;
+ renderFast();
+ const inboxPromise=loadManagerInbox();
+ const pulsePromise=api(`/api/stores/${storeId}/business-pulse`).catch(()=>null);
+ try{
+  const dashboard=await api(`/api/stores/${storeId}/dashboard`);
+  if(app.storeId===storeId)renderFast(dashboard);
+ }catch{}
+ try{
+  const [inbox,pulse]=await Promise.all([inboxPromise,pulsePromise]);
+  if(app.storeId!==storeId)return;
+  syncManagerNav(inbox);
+  renderComplete(inbox,pulse);
+ }catch(e){
+  if(app.storeId!==storeId)return;
+  const root=$('#todayContent');if(root)root.innerHTML=`<div class="manager-home manager-home-simple"><div class="manager-inbox-head"><span class="manager-eyebrow">StoreOps</span><h2>Le magasin est chargé.</h2><p>Les contrôles détaillés mettent plus de temps que prévu.</p></div><div class="banner ban-warn"><strong>Actualisation partielle</strong><span>${esc(e?.message||'Réessayez dans quelques instants.')}</span></div><button class="btn brand" onclick="location.reload()">Actualiser</button></div>`;
+ }
 }
