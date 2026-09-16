@@ -1,0 +1,67 @@
+name: StoreOps Production Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: storeops-production-deploy
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      NETLIFY_SITE_ID: c0169294-465a-47ce-8ad7-4a290f790cf6
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+    steps:
+      - name: Checkout StoreOps
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Verify deployment credential
+        shell: bash
+        run: |
+          if [ -z "${NETLIFY_AUTH_TOKEN:-}" ]; then
+            echo "::error::GitHub secret NETLIFY_AUTH_TOKEN is missing. Add it once under repository Actions secrets."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Deploy main to storeops.ma
+        shell: bash
+        run: |
+          npx --yes netlify-cli@latest deploy \
+            --build \
+            --prod \
+            --site "$NETLIFY_SITE_ID" \
+            --auth "$NETLIFY_AUTH_TOKEN" \
+            --message "StoreOps main ${GITHUB_SHA}"
+
+      - name: Verify production health
+        shell: bash
+        run: |
+          for i in {1..20}; do
+            if curl --fail --silent --show-error https://storeops.ma/api/health > /tmp/storeops-health.json; then
+              cat /tmp/storeops-health.json
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::storeops.ma /api/health did not become healthy after deploy"
+          exit 1
