@@ -1,0 +1,33 @@
+name: V1.95 Performance Consolidation Contract
+
+on:
+  push:
+    branches: [storeops-v1.95-performance-consolidation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-home-fast.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/services/manager-fast-api.mjs
+          node --check backend/tests/v195-performance-consolidation.mjs
+      - name: V1.95 performance consolidation
+        run: node backend/tests/v195-performance-consolidation.mjs
+      - name: V1.94 guided Today regression
+        run: node backend/tests/v194-today-ux-pipeline.mjs
+      - name: V1.90.2 bundled enrichment regression
+        run: node backend/tests/v1902-performance-enrichment.mjs
+      - name: V1.93 single-flight regression
+        run: node backend/tests/v193-singleflight.mjs
+      - name: V1.84 public performance regression
+        run: node backend/tests/v184-performance-p0.mjs
