@@ -9,14 +9,16 @@ const home=read('frontend/js/pages/manager-home.js');
 const css=read('frontend/manager-today.css');
 const html=read('frontend/index.html');
 
-assert.match(home,/À faire maintenant/,'Today must lead with one immediate action');
-assert.match(home,/Commencer/,'primary CTA must be explicit');
-assert.match(home,/slice\(1,3\)/,'Today must show at most two next actions');
-assert.match(home,/Votre journée/,'day progress must remain visible');
-assert.match(home,/En un coup d’œil/,'business metrics must be secondary');
+assert.match(home,/MAINTENANT/,'Today must lead with one immediate action');
+assert.match(home,/function ctaLabel/,'primary CTA must use plain-language contextual labels');
+assert.match(home,/slice\(1,3\)/,'Today must prepare at most two next actions');
+assert.match(home,/<details class="today-queue/,'next actions must use progressive disclosure');
+assert.match(home,/PARCOURS/,'day progress must remain visible');
+assert.match(home,/EN UN COUP D’ŒIL/,'business metrics must stay secondary');
 assert(home.indexOf('primaryAction')<home.indexOf('pulseCompact'),'action experience must be defined before KPI experience');
 assert.doesNotMatch(home,/priorityLabel\(/,'technical P0/P1 labels must not surface in Today');
 assert.match(css,/\.today-primary-cta/,'primary CTA styling missing');
+assert.match(css,/\.today-dayrail/,'opening / day / closing orientation rail missing');
 assert.match(css,/body\.manager-mode #todayPage>\.page-title\{display:none\}/,'legacy dashboard title must be hidden for managers');
 assert.match(html,/manager-today\.css/,'Today concierge stylesheet must be loaded');
 
@@ -26,4 +28,4 @@ const buttons=[...nav.matchAll(/<button[^>]*data-page="([^"]+)"[^>]*>([^<]+)/g)]
 assert.deepEqual(buttons.map(x=>x.page),['today','managerScan','managerTeam','managerMore']);
 assert.deepEqual(buttons.map(x=>x.label),['Aujourd’hui','Scanner','Équipe','Plus']);
 
-console.log('V1.89 guided manager Today contract: OK');
+console.log('V1.89/V1.94 guided manager Today regression: OK');
