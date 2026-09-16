@@ -1,0 +1,49 @@
+name: V1.85 Premium UX Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-ux-redesign]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ux-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/ux-v185.js
+          node --check frontend/js/enhancements-entry.js
+      - name: Premium UX invariants
+        shell: bash
+        run: |
+          grep -q 'ux-v185.css?v=1850' frontend/index.html
+          grep -q 'data-storeops-experience="1"' frontend/index.html
+          grep -q "'./ux-v185.js'" frontend/js/enhancements-entry.js
+          grep -q 'ux-command-backdrop' frontend/ux-v185.css
+          grep -q 'manager-nav button\[data-page="today"\]' frontend/ux-v185.css
+          grep -q 'manager-nav button\[data-page="managerScan"\]' frontend/ux-v185.css
+          grep -q 'manager-nav button\[data-page="managerTeam"\]' frontend/ux-v185.css
+          grep -q 'manager-nav button\[data-page="managerMore"\]' frontend/ux-v185.css
+          grep -q "new Set(\['today','network','development','adminStudio'\])" frontend/js/ux-v185.js
+          grep -q 'metaKey||e.ctrlKey' frontend/js/ux-v185.js
+      - name: Manager nav stays exactly four buttons
+        run: node - <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('frontend/index.html','utf8');
+          const m=html.match(/<nav class="manager-nav" id="managerNav"[\s\S]*?<\/nav>/);
+          if(!m)throw new Error('managerNav missing');
+          const pages=[...m[0].matchAll(/data-page="([^"]+)"/g)].map(x=>x[1]);
+          const expected=['today','managerScan','managerTeam','managerMore'];
+          if(JSON.stringify(pages)!==JSON.stringify(expected))throw new Error(`Manager nav changed: ${pages.join(',')}`);
+          console.log('Manager navigation contract OK');
+          NODE
+      - name: Existing core UX regressions
+        run: |
+          node backend/tests/v179-core.mjs
+          STOREOPS_DB=/tmp/storeops-v185-development.db node backend/tests/v180-development.mjs
