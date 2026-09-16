@@ -25,6 +25,8 @@ jobs:
     env:
       NETLIFY_SITE_ID: c0169294-465a-47ce-8ad7-4a290f790cf6
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      # Opt in to the netlify.toml ignore guard only for this verified release.
+      STOREOPS_ALLOW_NETLIFY_BUILD: '1'
     steps:
       - name: Checkout StoreOps main
         uses: actions/checkout@v4
