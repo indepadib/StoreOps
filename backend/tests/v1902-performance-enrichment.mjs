@@ -16,7 +16,8 @@ assert.match(batchSource,/pulseBundled:true/,'manager diagnostics must expose bu
 assert.match(homeSource,/enriched\?\.businessPulse/,'manager home must consume bundled Business Pulse first');
 assert.match(homeSource,/manager-home-fast/,'first paint must remain on the local fast endpoint');
 assert.match(homeSource,/manager-inbox-batch/,'second network request must remain the enrichment batch');
-assert.match(authSource,/const BUILD='1902'/,'frontend runtime must be cache-busted for V1.90.2');
+const build=Number(authSource.match(/const BUILD='(\d+)'/)?.[1]||0);
+assert(build>=1902,'frontend runtime must remain cache-busted beyond V1.90.2');
 
 const base=process.env.STOREOPS_TEST_BASE||'';
 if(base){
