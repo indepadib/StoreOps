@@ -27,21 +27,24 @@ assert.match(mobile,/body\.director-experience/,'mobile director shell must be s
 assert.match(mobile,/position:fixed!important/,'director mobile navigation must be fixed');
 assert.match(mobile,/bottom:0/,'director mobile navigation must stay at the bottom');
 assert.match(mobile,/safe-area-inset-bottom/,'iPhone safe area must be respected');
-assert.match(mobile,/#refreshBtn[\s\S]*46px/,'refresh control must be compact on mobile');
-assert.match(mobile,/#logoutBtn[\s\S]*46px/,'logout control must be compact on mobile');
+assert.match(mobile,/#refreshBtn[\s\S]*46px/,'V1.97 base refresh control must remain compact');
+assert.match(mobile,/#logoutBtn[\s\S]*46px/,'V1.97 base logout control must remain compact');
 assert.match(mobile,/attr\(data-mobile-label\)/,'mobile tabs must use explicit compact labels');
 assert.doesNotMatch(mobile,/overflow-x:auto/,'director mobile nav must not require horizontal scrolling');
 
 assert.match(enhancements,/document\.body\.classList\.add\('director-experience'\)/,'director experience class must be installed');
 assert.match(enhancements,/nav\.classList\.add\('ux191-network-nav'\)/,'director navigation contract must be installed');
-assert.match(enhancements,/mobile-v197\.css\?v=\$\{BUILD\}/,'mobile stylesheet must share release cache key');
+assert.match(enhancements,/mobile-v197\.css\?v=\$\{BUILD\}/,'V1.97 base mobile stylesheet must remain in the release graph');
 assert.match(enhancements,/setMobileLabel\(development,'Dév\.'/,'Development tab must fit narrow phones');
 assert.match(enhancements,/clearOperationsActive/,'Operations active state must be cleared when returning to canonical tabs');
 
-assert.match(auth,/const BUILD='1970'/,'auth graph must use V1.97 cache key');
-assert.match(auth,/BUILD_LABEL='1\.97\.0'/,'auth release label must be V1.97.0');
-assert.match(boot,/BUILD='1\.97\.0'/,'classic boot release label must be V1.97.0');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-1970/,'Netlify build must publish V1.97 assets coherently');
+const authBuild=Number(auth.match(/const BUILD='(\d+)'/)?.[1]||0);
+const authLabel=auth.match(/BUILD_LABEL='([^']+)'/)?.[1]||'';
+const bootLabel=boot.match(/BUILD='([^']+)'/)?.[1]||'';
+const netlifyBuild=Number(build.match(/STOREOPS_RELEASE_BUILD:-([0-9]+)/)?.[1]||0);
+assert(authBuild>=1970,'release cache key must not regress below V1.97');
+assert(authLabel&&bootLabel===authLabel,'classic boot and auth release labels must stay coherent');
+assert.equal(netlifyBuild,authBuild,'Netlify release cache key must match auth graph cache key');
 
 const {db}=await import('../db.mjs');
 const {getManagerHomeFast}=await import('../services/manager-home-fast.mjs');
@@ -58,4 +61,4 @@ assert.equal(typeof snap.maintenance.openCount,'number');
 assert.ok(snap.receipts,'fast snapshot must include receipts');
 assert.equal(typeof snap.receipts.dueToday,'number');
 
-console.log('V1.97 mobile + instant Today contract: OK');
+console.log('V1.97 mobile + instant Today regression: OK');
