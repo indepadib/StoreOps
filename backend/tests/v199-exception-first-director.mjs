@@ -25,12 +25,16 @@ assert.match(module,/else if\(!mobile\)/,'desktop must explicitly restore the fu
 assert.match(css,/director-metric-toggle\{display:none\}/,'toggle must stay hidden outside mobile');
 assert.match(css,/today-metrics-grid\.director-metrics-collapsed\{display:none!important\}/,'collapsed mobile grid must not consume vertical space');
 assert.match(css,/min-height:48px/,'metric disclosure must remain comfortably tappable');
-assert.match(enhancements,/mobile-v199\.css\?v=\$\{BUILD\}/,'V1.99 stylesheet must be loaded through the Director graph');
-assert.match(enhancements,/director-exception-first\.js/,'V1.99 module must load for Director only');
-assert.match(enhancements,/const BUILD='1990'/,'V1.99 enhancement cache key missing');
-assert.match(auth,/const BUILD='1990'/,'V1.99 auth cache key missing');
-assert.match(auth,/BUILD_LABEL='1\.99\.0'/,'V1.99 auth label missing');
-assert.match(boot,/BUILD='1\.99\.0'/,'V1.99 boot label missing');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-1990/,'V1.99 Netlify build key missing');
+assert.match(enhancements,/mobile-v199\.css\?v=\$\{BUILD\}/,'V1.99 stylesheet must stay in the Director graph');
+assert.match(enhancements,/director-exception-first\.js/,'V1.99 module must remain Director-only');
+const enhancementsBuild=Number(enhancements.match(/const BUILD='(\d+)'/)?.[1]||0);
+const authBuild=Number(auth.match(/const BUILD='(\d+)'/)?.[1]||0);
+const authLabel=auth.match(/BUILD_LABEL='([^']+)'/)?.[1]||'';
+const bootLabel=boot.match(/BUILD='([^']+)'/)?.[1]||'';
+const netlifyBuild=Number(build.match(/STOREOPS_RELEASE_BUILD:-([0-9]+)/)?.[1]||0);
+assert(enhancementsBuild>=1990,'enhancement release key must not regress below V1.99');
+assert.equal(authBuild,enhancementsBuild,'auth and enhancements cache keys must stay coherent');
+assert.equal(netlifyBuild,authBuild,'Netlify release cache key must match auth graph');
+assert(authLabel&&bootLabel===authLabel,'classic boot and auth release labels must stay coherent');
 
-console.log('V1.99 exception-first Director mobile contract: OK');
+console.log('V1.99 exception-first Director mobile regression: OK');
