@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api,primeApiResponses } from '../api.js';
 import { app,currentStore } from '../state.js';
 import { $,status,progress,esc } from '../ui.js';
 import { managerPhase,managerPhaseLabel } from '../manager-journey.js';
@@ -8,6 +8,7 @@ import { loadManagerInbox,actionKind,categoryLabel,priorityLabel,syncManagerNav 
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:0,maximumFractionDigits:2})+' DH';
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1});
 const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})}%`;
+let renderSequence=0;
 
 function actionCard(i){
  const kind=actionKind(i),pclass=i.priority==='P0'?'priority-p0':i.priority==='P1'?'priority-p1':'';
@@ -31,9 +32,26 @@ function businessPulseCard(p){
   <div class="pulse-actions"><span class="pulse-source">Actualisé ${new Date(p.refreshedAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span><button class="btn soft" data-manager-go="managerPerformance">Rayons & articles →</button></div>
  </div></section>`;
 }
+function renderImmediateShell(){
+ const root=$('#todayContent');if(!root)return;
+ const store=currentStore(),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0];
+ root.innerHTML=`<div class="manager-home manager-home-simple manager-home-boot"><div class="manager-inbox-head"><span class="manager-eyebrow">Bonjour ${esc(firstName)} · ${esc(store?.name||'Magasin')}</span><h2>Voici ce qui compte maintenant.</h2><p>Chargement des priorités…</p></div><section class="business-pulse"><div class="pulse-card"><div class="pulse-head"><div><span class="manager-eyebrow">Business Pulse</span><h2>—</h2><p>Actualisation en cours</p></div></div><div class="pulse-main">${['Ventes','Marge','Tickets','Ruptures'].map(label=>`<div class="pulse-metric"><span>${label}</span><strong>—</strong><small>Chargement…</small></div>`).join('')}</div></div></section><section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>À faire maintenant</h3><span>StoreOps prépare vos priorités.</span></div></div><div class="manager-action-list"><div class="manager-all-good"><strong>Synchronisation du magasin…</strong><span>Vous pouvez déjà utiliser Scanner et Plus pendant le chargement.</span></div></div></section></div>`;
+}
+async function primeManagerHomePack(storeId){
+ if(app.showcase)return null;
+ try{
+  const pack=await api(`/api/stores/${encodeURIComponent(storeId)}/manager-home-pack`);
+  if(pack?.responses)primeApiResponses(pack.responses,8000);
+  return pack
+ }catch(error){console.warn('Manager Home Pack indisponible, fallback API standard.',error);return null}
+}
 
 export async function renderManagerHome(){
- const [inbox,pulse]=await Promise.all([loadManagerInbox(),api(`/api/stores/${app.storeId}/business-pulse`).catch(()=>null)]);syncManagerNav(inbox);
+ const seq=++renderSequence;renderImmediateShell();
+ await primeManagerHomePack(app.storeId);
+ if(seq!==renderSequence)return;
+ const pulsePath=`/api/stores/${app.storeId}/business-pulse`;
+ const [inbox,pulse]=await Promise.all([loadManagerInbox(),api(pulsePath).catch(()=>null)]);if(seq!==renderSequence)return;syncManagerNav(inbox);
  const d=inbox.dashboard,store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
  const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}}),top=inbox.items.slice(0,3),remaining=Math.max(0,inbox.items.length-top.length);
  const title=phase==='OPENING'?'Préparez le magasin.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui compte maintenant.';
