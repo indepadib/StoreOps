@@ -1,0 +1,38 @@
+name: V1.85 Final Release Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-final-release]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pwa.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pages/manager-home.js
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: Final release contract
+        run: node backend/tests/v185-final-release.mjs
+      - name: Performance P0 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: V1.83 development regression
+        run: STOREOPS_DB=/tmp/storeops-v185-development.db node backend/tests/v183-development-realdata.mjs
+      - name: V1.82 assortment regression
+        run: STOREOPS_DB=/tmp/storeops-v185-merch.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Public backend regression
+        run: node backend/tests/netlify-public-backend.mjs
