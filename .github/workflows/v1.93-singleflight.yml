@@ -1,0 +1,32 @@
+name: V1.93 Server Single-Flight Contract
+
+on:
+  push:
+    branches: [storeops-v1.93-performance-p3]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/business-pulse.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/tests/v193-singleflight.mjs
+      - name: V1.93 single-flight contract
+        run: node backend/tests/v193-singleflight.mjs
+      - name: Manager inbox regression
+        run: STOREOPS_DB=/tmp/storeops-v193-inbox.db D365_MODE=simulated D365_STOCK_READ_MODE=simulated node backend/tests/v186-manager-inbox-batch.mjs
+      - name: Manager home regression
+        run: STOREOPS_DB=/tmp/storeops-v193-home.db node backend/tests/v185-manager-home-fast.mjs
+      - name: Bootstrap regression
+        run: node backend/tests/v192-bootstrap-fast.mjs
+      - name: Performance P0 regression
+        run: node backend/tests/v184-performance-p0.mjs
