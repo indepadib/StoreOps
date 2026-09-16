@@ -23,6 +23,6 @@ jobs:
       - name: V1.91 contract
         run: node backend/tests/v191-ux-recovery.mjs
       - name: Preserve manager performance contract
-        run: node backend/tests/v1902-manager-two-request.mjs
+        run: node backend/tests/v1902-performance-enrichment.mjs
       - name: Preserve Development backend contract
         run: STOREOPS_DB=/tmp/storeops-v191-development.db node backend/tests/v180-development.mjs
