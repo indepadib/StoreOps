@@ -1,0 +1,57 @@
+name: V1.85 Manager Home Pack Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-manager-home-pack]
+  pull_request:
+    branches: [main]
+
+jobs:
+  manager-home-pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/business-pulse-api.mjs
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/auth-entry.js
+      - name: Static V1.85 contract
+        run: node backend/tests/v185-manager-home-pack.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          D365_STOCK_READ_MODE: simulated
+          D365_SALES_READ_MODE: disabled
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v185.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v185-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v185-api.log 2>&1 &
+          echo $! > /tmp/storeops-v185-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/storeops-v185-health.json; then cat /tmp/storeops-v185-health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v185-api.log
+          exit 1
+      - name: Live pack regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/v185-manager-home-pack.mjs
+      - name: V1.84 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-v185-api.pid ]; then kill "$(cat /tmp/storeops-v185-api.pid)" || true; fi
