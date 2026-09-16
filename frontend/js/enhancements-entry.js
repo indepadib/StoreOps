@@ -1,9 +1,10 @@
 import {isDirector} from './state.js';
 
-const BUILD='1920';
+const BUILD='1950';
 
 const modules=[
   './tenant-branding.js',
+  './access-chrome.js',
   './pwa.js',
   './manager-polish.js',
   './manager-alerts.js',
@@ -35,12 +36,13 @@ const operationGroups=[
  {icon:'▣',title:'Caisses',subtitle:'Préparation et clôture financière',actions:[['cashOpening','Préparation caisses'],['cash','Caisses & clôture']]}
 ];
 function injectExperienceCss(){if(document.querySelector('link[data-storeops-experience]'))return;const link=document.createElement('link');link.rel='stylesheet';link.href=`/experience-v191.css?v=${BUILD}`;link.dataset.storeopsExperience='1';document.head.appendChild(link)}
-function goPage(page){const btn=document.querySelector(`#nav button[data-page="${page}"]`);if(btn)return btn.click()}
+function clearOperationsActive(){document.getElementById('storeopsOperationsNav')?.classList.remove('active')}
+function goPage(page){clearOperationsActive();const btn=document.querySelector(`#nav button[data-page="${page}"]`);if(btn)return btn.click()}
 function ensureOperationsPage(){let page=document.getElementById('operationsHubPage');if(page)return page;page=document.createElement('section');page.className='page';page.id='operationsHubPage';page.innerHTML='<div id="operationsHubContent"></div>';document.querySelector('main')?.appendChild(page);return page}
 function activateOperations(){const page=ensureOperationsPage();document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));page.classList.add('active');document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));document.getElementById('storeopsOperationsNav')?.classList.add('active');renderOperations()}
 function renderOperations(){const root=document.getElementById('operationsHubContent');if(!root)return;root.innerHTML=`<div class="ux191-shell"><div class="ux191-hero"><div><div class="ux191-eyebrow">OPÉRATIONS</div><h2>Que voulez-vous faire ?</h2><p>Choisissez un domaine puis StoreOps vous amène au parcours opérationnel existant.</p></div></div><div class="ux191-grid">${operationGroups.map((g,i)=>`<button class="ux191-choice" data-ops-group="${i}"><span class="icon">${g.icon}</span><strong>${g.title}</strong><small>${g.subtitle}</small><em>Ouvrir →</em></button>`).join('')}</div><div id="storeopsOpsCommands"></div></div>`;root.querySelectorAll('[data-ops-group]').forEach(b=>b.onclick=()=>renderOperationGroup(Number(b.dataset.opsGroup)))}
 function renderOperationGroup(i){const g=operationGroups[i],root=document.getElementById('operationsHubContent');if(!g||!root)return;root.innerHTML=`<div class="ux191-shell"><button class="ux191-back" id="opsBack">← Opérations</button><div class="ux191-hero"><div><div class="ux191-eyebrow">${g.title}</div><h2>${g.subtitle}</h2></div></div><div class="ux191-command-list">${g.actions.map(([page,label])=>`<button class="ux191-command" data-ops-page="${page}"><span><strong>${label}</strong></span><span class="arrow">›</span></button>`).join('')}</div></div>`;document.getElementById('opsBack').onclick=renderOperations;root.querySelectorAll('[data-ops-page]').forEach(b=>b.onclick=()=>goPage(b.dataset.opsPage))}
-function installDirectorExperience(){if(!isDirector())return;injectExperienceCss();const nav=document.getElementById('nav');if(!nav)return;const allowed=new Set(['today','network','development','adminStudio']);nav.querySelectorAll('button[data-page]').forEach(b=>b.hidden=!allowed.has(b.dataset.page));const today=nav.querySelector('[data-page="today"]');let ops=document.getElementById('storeopsOperationsNav');if(!ops){ops=document.createElement('button');ops.id='storeopsOperationsNav';ops.textContent='Opérations';ops.onclick=activateOperations;today?.after(ops)}const network=nav.querySelector('[data-page="network"]');if(network)network.textContent='Réseau';const admin=nav.querySelector('[data-page="adminStudio"]');if(admin)admin.textContent='Admin';const development=nav.querySelector('[data-page="development"]');if(development)development.textContent='Développement'}
+function installDirectorExperience(){if(!isDirector())return;injectExperienceCss();const nav=document.getElementById('nav');if(!nav)return;const allowed=new Set(['today','network','development','adminStudio']);nav.querySelectorAll('button[data-page]').forEach(b=>b.hidden=!allowed.has(b.dataset.page));const today=nav.querySelector('[data-page="today"]');let ops=document.getElementById('storeopsOperationsNav');if(!ops){ops=document.createElement('button');ops.id='storeopsOperationsNav';ops.textContent='Opérations';ops.onclick=activateOperations;today?.after(ops)}nav.addEventListener('click',e=>{if(e.target.closest('button[data-page]'))clearOperationsActive()},true);const network=nav.querySelector('[data-page="network"]');if(network)network.textContent='Réseau';const admin=nav.querySelector('[data-page="adminStudio"]');if(admin)admin.textContent='Admin';const development=nav.querySelector('[data-page="development"]');if(development)development.textContent='Développement'}
 
 export async function loadEnhancements(){
   bindAdminLazyRuntime();
