@@ -22,6 +22,7 @@ jobs:
           node --check frontend/js/api.js
           node --check frontend/js/auth-entry.js
           node --check frontend/js/boot-classic.js
+          node --check frontend/js/pages/manager-hubs.js
       - name: V1.92 bootstrap contract
         run: node backend/tests/v192-bootstrap-fast.mjs
       - name: Manager fastlane regression
