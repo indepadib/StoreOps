@@ -26,22 +26,25 @@ jobs:
           node --check backend/tests/v196-release-candidate.mjs
       - name: Typecheck public bridge
         run: npx tsc -p tsconfig.netlify.json
-      - name: V1.96 source contract
+      - name: Release source contract
         run: node backend/tests/v196-release-candidate.mjs
       - name: Exact Netlify frontend build
         shell: bash
         run: |
-          rm -rf /tmp/storeops-v196-publish
-          cp -R frontend /tmp/storeops-v196-publish
-          cd /tmp/storeops-v196-publish
-          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=1960 sh ./netlify-build.sh
+          BUILD_ID="$(sed -n "s/^const BUILD='\([0-9][0-9]*\)';$/\1/p" frontend/js/auth-entry.js | head -n1)"
+          BUILD_LABEL="$(sed -n "s/^const BUILD_LABEL='\([^']*\)';$/\1/p" frontend/js/auth-entry.js | head -n1)"
+          test -n "$BUILD_ID"
+          test -n "$BUILD_LABEL"
+          rm -rf /tmp/storeops-release-publish
+          cp -R frontend /tmp/storeops-release-publish
+          cd /tmp/storeops-release-publish
+          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD="$BUILD_ID" sh ./netlify-build.sh
           grep -q 'apiBase":"https://storeops.ma"' runtime-config.js
-          grep -q "BUILD='1.96.0'" runtime-config.js
-          grep -q '/js/tenant-branding.js?v=1960' index.html
-          grep -q '/js/boot-rescue.js?v=1960' index.html
-          grep -q '/js/auth-entry.js?v=1960' index.html
+          grep -q "BUILD='$BUILD_LABEL'" runtime-config.js
+          grep -q "/js/tenant-branding.js?v=$BUILD_ID" index.html
+          grep -q "/js/boot-rescue.js?v=$BUILD_ID" index.html
+          grep -q "/js/auth-entry.js?v=$BUILD_ID" index.html
           test "$(grep -o '<script type="module"' index.html | wc -l)" -eq 3
-          ! grep -q 'v=1940' index.html
       - name: V1.95 performance consolidation regression
         run: node backend/tests/v195-performance-consolidation.mjs
       - name: V1.94 guided Today regression
