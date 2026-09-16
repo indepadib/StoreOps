@@ -20,6 +20,7 @@ jobs:
           node --check backend/auth/session.mjs
           node --check frontend/js/app.js
           node --check frontend/js/auth-entry.js
+          node --check frontend/js/pages/today.js
           node --check frontend/js/pages/admin-studio.js
           node --check frontend/js/pages/operations-hub.js
           node --check frontend/js/pages/development.js
@@ -41,4 +42,5 @@ jobs:
           grep -q "Opérations magasin" frontend/js/pages/admin-studio.js
           grep -q "MISSING_IDENTITY" backend/services/access-management.mjs
           grep -q "Microsoft à lier" frontend/js/admin-studio-access.js
+          grep -q "Maximum trois actions prioritaires" frontend/js/pages/today.js
           grep -q "De l’opportunité au magasin ouvert" frontend/js/pages/development.js
