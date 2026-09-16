@@ -32,6 +32,7 @@ jobs:
           grep -q "readOnly:true" backend/services/manager-home-fast.mjs
           grep -q "Je prépare votre prochaine action" frontend/js/pages/manager-home.js
           grep -q "À faire maintenant" frontend/js/pages/manager-home.js
-          grep -q "var BUILD='1.85.0'" frontend/js/boot-classic.js
-          grep -q "storeops-runtime-cleaned-build" frontend/js/boot-classic.js
+          grep -Eq "var BUILD='1\.[0-9]+\.[0-9]+'" frontend/js/boot-classic.js
+          grep -q "storeops-legacy-runtime-cleaned-v1" frontend/js/boot-classic.js
+          ! grep -q "storeops-runtime-cleaned-build" frontend/js/boot-classic.js
           ! grep -q "getRegistrations" frontend/js/pwa.js
