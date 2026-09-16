@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='1990';
+const BUILD='2000';
 
 const modules=[
   './pwa.js',
@@ -62,6 +62,7 @@ function installDirectorExperience(){
 
 export async function loadEnhancements(){
   bindAdminLazyRuntime();
+  addCss(`/development-v200.css?v=${BUILD}`,'developmentMobile');
   installDirectorExperience();
   const paths=[...modules];
   if(isDirector())paths.push('./director-exception-first.js');
