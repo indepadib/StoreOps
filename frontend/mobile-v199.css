@@ -1,0 +1,15 @@
+/* V1.99 — Director mobile progressive disclosure: decisions first, detailed KPIs on demand. */
+.director-metric-toggle{display:none}
+@media(max-width:820px){
+  body.director-experience .today-section-head{margin-bottom:5px}
+  body.director-experience .director-metric-toggle{width:100%;min-height:48px;border:1px solid var(--line);background:#fff;border-radius:15px;padding:10px 12px;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;color:var(--ink);box-shadow:0 7px 20px rgba(39,25,31,.035)}
+  body.director-experience .director-metric-toggle span{min-width:0;display:grid;gap:2px}
+  body.director-experience .director-metric-toggle strong{font-size:12px;line-height:1.25}
+  body.director-experience .director-metric-toggle small{font-size:9.5px;color:var(--muted);line-height:1.25}
+  body.director-experience .director-metric-toggle b{width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-size:16px}
+  body.director-experience .today-metrics-grid.director-metrics-collapsed{display:none!important}
+  body.director-experience .today-metrics-grid:not(.director-metrics-collapsed){animation:directorMetricsReveal .16s ease-out}
+  body.director-experience .today-journey-card{margin-top:8px}
+}
+@keyframes directorMetricsReveal{from{opacity:.2;transform:translateY(-4px)}to{opacity:1;transform:none}}
+@media(prefers-reduced-motion:reduce){body.director-experience .today-metrics-grid:not(.director-metrics-collapsed){animation:none}}
