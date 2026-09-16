@@ -21,6 +21,7 @@ jobs:
           node --check frontend/js/pwa.js
           node --check frontend/js/pages/admin-studio.js
           node --check frontend/js/pages/development.js
+          node --check frontend/js/ux-v191.js
       - name: Build exactly as Netlify
         run: |
           cd frontend
@@ -44,6 +45,12 @@ jobs:
           grep -q "Qu’est-ce que vous voulez mettre en place" frontend/js/pages/admin-studio.js
           grep -q "data-studio-action=\"tenant\"" frontend/js/pages/admin-studio.js
       - name: Existing Process Studio regression
-        run: STOREOPS_DB=/tmp/storeops-v192-process.db node backend/tests/v180-admin-studio.mjs
+        run: STOREOPS_DB=/tmp/storeops-v192-process.db node backend/tests/process-studio.mjs
+      - name: Access regression
+        run: STOREOPS_DB=/tmp/storeops-v192-access.db node backend/tests/v180-access-management.mjs
+      - name: Integrations regression
+        run: STOREOPS_DB=/tmp/storeops-v192-integrations.db node backend/tests/v180-integrations.mjs
+      - name: Tenant regression
+        run: STOREOPS_DB=/tmp/storeops-v192-tenant.db node backend/tests/v181-tenant-profile.mjs
       - name: Existing Development regression
         run: STOREOPS_DB=/tmp/storeops-v192-development.db node backend/tests/v180-development.mjs
