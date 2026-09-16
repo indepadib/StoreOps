@@ -1,0 +1,31 @@
+name: V1.85 Access & Fast Home Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-access-fast-home]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/access-management.mjs
+          node --check backend/auth/session.mjs
+          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/auth-entry.js
+      - name: Access governance and Entra relinking
+        run: STOREOPS_DB=/tmp/storeops-v185-access.db node backend/tests/v180-access-management.mjs
+      - name: Auth session regression
+        run: STOREOPS_DB=/tmp/storeops-v185-auth.db node backend/tests/entra-auth.mjs
+      - name: Static guards
+        run: |
+          grep -q "MISSING_IDENTITY" backend/services/access-management.mjs
+          grep -q "READY_TO_BIND" frontend/js/admin-studio-access.js
+          grep -q "Compte Microsoft reconnu, accès StoreOps non configuré" frontend/js/auth-entry.js
