@@ -33,14 +33,16 @@ jobs:
           grep -q "new Set(\['today','network','development','adminStudio'\])" frontend/js/ux-v185.js
           grep -q 'metaKey||e.ctrlKey' frontend/js/ux-v185.js
       - name: Manager nav stays exactly four buttons
-        run: node - <<'NODE'
+        shell: bash
+        run: |
+          node <<'NODE'
           const fs=require('fs');
           const html=fs.readFileSync('frontend/index.html','utf8');
           const m=html.match(/<nav class="manager-nav" id="managerNav"[\s\S]*?<\/nav>/);
-          if(!m)throw new Error('managerNav missing');
+          if(!m) throw new Error('managerNav missing');
           const pages=[...m[0].matchAll(/data-page="([^"]+)"/g)].map(x=>x[1]);
           const expected=['today','managerScan','managerTeam','managerMore'];
-          if(JSON.stringify(pages)!==JSON.stringify(expected))throw new Error(`Manager nav changed: ${pages.join(',')}`);
+          if(JSON.stringify(pages)!==JSON.stringify(expected)) throw new Error('Manager nav changed: '+pages.join(','));
           console.log('Manager navigation contract OK');
           NODE
       - name: Existing core UX regressions
