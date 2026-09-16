@@ -1,0 +1,27 @@
+name: V1.89 Manager Today Concierge Contract
+
+on:
+  push:
+    branches: [storeops-v1.89-today-concierge]
+  pull_request:
+    branches: [main]
+
+jobs:
+  today-concierge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/pages/manager-home.js
+          node --check backend/tests/v189-manager-today-concierge.mjs
+      - name: V1.89 UX contract
+        run: node backend/tests/v189-manager-today-concierge.mjs
+      - name: V1.85 fastlane regression
+        env:
+          STOREOPS_DB: /tmp/storeops-v189-manager.db
+        run: node backend/tests/v185-manager-fastlane.mjs
