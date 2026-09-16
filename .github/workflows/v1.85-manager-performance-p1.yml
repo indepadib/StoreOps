@@ -28,8 +28,8 @@ jobs:
         run: node backend/tests/v185-manager-performance-p1.mjs
       - name: V1.84 regression
         run: node backend/tests/v184-performance-p0.mjs
-      - name: Manager fast API regression
-        run: node backend/tests/manager-fast-api.mjs
+      - name: Canonical API routing regression
+        run: node backend/tests/canonical-api-routing.mjs
       - name: Static progressive-loading guards
         run: |
           grep -q "pulseDeferred:true" backend/services/manager-inbox-batch.mjs
