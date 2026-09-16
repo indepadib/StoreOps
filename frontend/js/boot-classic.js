@@ -1,7 +1,7 @@
 (function(){
-  var BUILD='1.85.0';
+  var BUILD='1.92.1';
   var errors=[];
-  var CLEAN_KEY='storeops-runtime-cleaned-build';
+  var CLEAN_KEY='storeops-legacy-runtime-cleaned-v1';
   window.STOREOPS_BUILD=BUILD;
   window.STOREOPS_BOOT_ERRORS=errors;
 
@@ -9,8 +9,8 @@
     try{return String(v&&v.message?v.message:v||'Erreur inconnue')}catch(_){return'Erreur inconnue'}
   }
   function remember(v){var text=msg(v);if(text&&errors.indexOf(text)<0)errors.push(text);}
-  function alreadyClean(){try{return localStorage.getItem(CLEAN_KEY)===BUILD}catch(_){return false}}
-  function markClean(){try{localStorage.setItem(CLEAN_KEY,BUILD)}catch(_){}}
+  function alreadyClean(){try{return localStorage.getItem(CLEAN_KEY)==='1'}catch(_){return false}}
+  function markClean(){try{localStorage.setItem(CLEAN_KEY,'1')}catch(_){}}
 
   window.addEventListener('error',function(e){remember(e.error||e.message);});
   window.addEventListener('unhandledrejection',function(e){remember(e.reason);});
@@ -39,7 +39,8 @@
     var meta=document.querySelector('#headerMeta');
     var store=document.querySelector('#storeSelect');
     var text=(meta&&meta.textContent||'').trim();
-    return !!(store&&store.options&&store.options.length>0&&text&&!/^(Chargement|Démarrage|Erreur démarrage)/.test(text));
+    var developmentOnly=document.body&&document.body.classList&&document.body.classList.contains('development-only');
+    return !!(text&&!/^(Chargement|Démarrage|Erreur démarrage)/.test(text)&&(developmentOnly||(store&&store.options&&store.options.length>0)));
   }
   function authGateReady(){
     var gate=document.querySelector('#storeopsAuthGate');
