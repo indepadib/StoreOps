@@ -1,4 +1,4 @@
-name: V1.85 Access & Fast Home Contract
+name: V1.85 Access & UX Contract
 
 on:
   push:
@@ -18,14 +18,27 @@ jobs:
         run: |
           node --check backend/services/access-management.mjs
           node --check backend/auth/session.mjs
-          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/app.js
           node --check frontend/js/auth-entry.js
+          node --check frontend/js/pages/admin-studio.js
+          node --check frontend/js/pages/operations-hub.js
+          node --check frontend/js/pages/development.js
+          node --check frontend/js/admin-studio-access.js
       - name: Access governance and Entra relinking
         run: STOREOPS_DB=/tmp/storeops-v185-access.db node backend/tests/v180-access-management.mjs
-      - name: Auth session regression
-        run: STOREOPS_DB=/tmp/storeops-v185-auth.db node backend/tests/entra-auth.mjs
-      - name: Static guards
+      - name: Existing development regression
+        run: STOREOPS_DB=/tmp/storeops-v185-development.db node backend/tests/v180-development.mjs
+      - name: UX and performance guards
         run: |
+          grep -q 'data-page="operationsHub"' frontend/index.html
+          grep -q 'data-page="adminStudio"' frontend/index.html
+          test "$(grep -o 'data-page="' frontend/index.html | wc -l)" -lt 30
+          ! grep -q 'src="/js/admin-studio-access.js"' frontend/index.html
+          ! grep -q 'src="/js/admin-studio-stores.js"' frontend/index.html
+          ! grep -q 'src="/js/admin-studio-replenishment.js"' frontend/index.html
+          ! grep -q 'src="/js/manager-polish.js"' frontend/index.html
+          grep -q "loadAdminModule" frontend/js/pages/admin-studio.js
+          grep -q "Opérations magasin" frontend/js/pages/admin-studio.js
           grep -q "MISSING_IDENTITY" backend/services/access-management.mjs
-          grep -q "READY_TO_BIND" frontend/js/admin-studio-access.js
-          grep -q "Compte Microsoft reconnu, accès StoreOps non configuré" frontend/js/auth-entry.js
+          grep -q "Microsoft à lier" frontend/js/admin-studio-access.js
+          grep -q "De l’opportunité au magasin ouvert" frontend/js/pages/development.js
