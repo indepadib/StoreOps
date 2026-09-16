@@ -30,11 +30,15 @@ assert.match(mobile,/#nav\.ux191-network-nav\{gap:2px;padding:5px 6px/,'Director
 assert.match(mobile,/min-height:44px/,'mobile nav targets must retain a usable touch height');
 assert.match(mobile,/today-health-penalties[\s\S]*-webkit-line-clamp:2/,'health penalties must not dominate the first screen');
 
-assert.match(enhancements,/const BUILD='1980'/,'enhancements graph must use V1.98 cache key');
-assert.match(enhancements,/mobile-v198\.css\?v=\$\{BUILD\}/,'V1.98 mobile stylesheet must be in the director graph');
-assert.match(auth,/const BUILD='1980'/,'auth graph must use V1.98 cache key');
-assert.match(auth,/BUILD_LABEL='1\.98\.0'/,'auth release label must be V1.98.0');
-assert.match(boot,/BUILD='1\.98\.0'/,'classic boot release label must be V1.98.0');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-1980/,'Netlify build must publish V1.98 assets coherently');
+assert.match(enhancements,/mobile-v198\.css\?v=\$\{BUILD\}/,'V1.98 mobile stylesheet must stay in the director graph');
+const enhancementsBuild=Number(enhancements.match(/const BUILD='(\d+)'/)?.[1]||0);
+const authBuild=Number(auth.match(/const BUILD='(\d+)'/)?.[1]||0);
+const authLabel=auth.match(/BUILD_LABEL='([^']+)'/)?.[1]||'';
+const bootLabel=boot.match(/BUILD='([^']+)'/)?.[1]||'';
+const netlifyBuild=Number(build.match(/STOREOPS_RELEASE_BUILD:-([0-9]+)/)?.[1]||0);
+assert(enhancementsBuild>=1980,'enhancement release key must not regress below V1.98');
+assert.equal(authBuild,enhancementsBuild,'auth and enhancements cache keys must stay coherent');
+assert.equal(netlifyBuild,authBuild,'Netlify release cache key must match auth graph');
+assert(authLabel&&bootLabel===authLabel,'classic boot and auth release labels must stay coherent');
 
-console.log('V1.98 action-first mobile contract: OK');
+console.log('V1.98 action-first mobile regression: OK');
