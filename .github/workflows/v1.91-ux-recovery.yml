@@ -1,0 +1,28 @@
+name: V1.91 Visible UX Recovery
+
+on:
+  push:
+    branches: [storeops-v1.91-ux-recovery]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/ux-v191.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/auth-entry.js
+      - name: V1.91 contract
+        run: node backend/tests/v191-ux-recovery.mjs
+      - name: Preserve manager performance contract
+        run: node backend/tests/v1902-performance-enrichment.mjs
+      - name: Preserve Development backend contract
+        run: STOREOPS_DB=/tmp/storeops-v191-development.db node backend/tests/v180-development.mjs
