@@ -1,0 +1,43 @@
+name: V1.87 Stabilization P0 Contract
+
+on:
+  push:
+    branches: [storeops-v1.87-stabilization-p0]
+  pull_request:
+    branches: [main]
+
+jobs:
+  stabilization-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/opening-operations-api.mjs
+          node --check backend/services/receiving-read-api.mjs
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/services/process-studio-api.mjs
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/manager-team.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/journey-resume.js
+          node --check frontend/js/enhancements-entry.js
+      - name: Stabilization contract
+        run: node backend/tests/v187-stabilization-p0.mjs
+      - name: Existing access contract
+        run: STOREOPS_DB=/tmp/storeops-v187-access.db node backend/tests/v180-access-management.mjs
+      - name: Existing workforce contract
+        run: STOREOPS_DB=/tmp/storeops-v187-workforce.db node backend/tests/v179-assortment-saas.mjs
+      - name: Existing receiving contract
+        run: STOREOPS_DB=/tmp/storeops-v187-receiving.db node backend/tests/receiving-read.mjs
+      - name: Existing performance contract
+        run: node backend/tests/v184-performance-p0.mjs
