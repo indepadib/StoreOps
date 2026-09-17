@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='1990';
+const BUILD='2030';
 
 const modules=[
   './pwa.js',
@@ -67,7 +67,7 @@ export async function loadEnhancements(){
   bindAdminLazyRuntime();
   installDirectorExperience();
   const paths=[...modules];
-  if(isDirector())paths.push('./director-exception-first.js');
+  if(isDirector())paths.push('./director-exception-first.js','./performance-observatory.js');
   const results=await Promise.allSettled(paths.map(path=>import(`${path}?v=${BUILD}`)));
   const failed=results.filter(x=>x.status==='rejected');
   if(failed.length)console.warn(`${failed.length} module(s) StoreOps différé(s) non chargés`,failed.map(x=>x.reason));
