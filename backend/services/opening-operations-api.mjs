@@ -1,5 +1,5 @@
 import { canAccessStore,canManageStore } from './permissions.mjs';
-import { todayISO } from '../db.mjs';
+import { db,todayISO } from '../db.mjs';
 import { staffingConfig,staffingSummary,syncStaffingDay,setAttendance,updateStaffingPolicy } from './staffing.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
 import { coldChainConfig,coldChainSummary,ensureColdChainDay,checkColdChainLine,recheckColdChainLine,updateColdProfile } from './cold-chain.mjs';
@@ -12,17 +12,17 @@ function requireStore(user,storeId){if(!canAccessStore(user,storeId))throw Objec
 function requireManage(user,storeId){if(!canManageStore(user,storeId))throw Object.assign(new Error('Gestion réservée au Responsable magasin ou à la Direction.'),{status:403})}
 function requireDirector(user){if(user?.role!=='ops_director')throw Object.assign(new Error('Configuration réseau réservée à la Direction.'),{status:403})}
 function errView(error,source){return{ok:false,source,code:error?.code||'SOURCE_UNAVAILABLE',error:error?.message||String(error),details:error?.details||null}}
+function staffingStore(lineId){return db.prepare(`SELECT d.store_id FROM staffing_lines l JOIN staffing_days d ON d.id=l.staffing_day_id WHERE l.id=?`).get(lineId)?.store_id||null}
+function coldStore(lineId){return db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(lineId)?.store_id||null}
+function cashStore(lineId){return db.prepare(`SELECT o.store_id FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE l.id=?`).get(lineId)?.store_id||null}
 
-async function staffingView(storeId,businessDate,{force=false}={}){
- let sync={ok:true,source:'STOREOPS_SHIFTS'};
+async function staffingView(storeId,businessDate){
  try{
   const snapshot=await getStaffingSnapshot(storeId,businessDate);
   const day=syncStaffingDay({storeId,businessDate,snapshot});
-  sync={ok:true,source:snapshot.source||'STOREOPS_SHIFTS',sourceKey:snapshot.sourceKey||null,lines:snapshot.lines?.length||0};
-  return{day,summary:staffingSummary(storeId,businessDate),sync}
+  return{day,summary:staffingSummary(storeId,businessDate),sync:{ok:true,source:snapshot.source||'STOREOPS_SHIFTS',sourceKey:snapshot.sourceKey||null,lines:snapshot.lines?.length||0}}
  }catch(error){
-  sync=errView(error,'WORKFORCE');
-  return{day:null,summary:staffingSummary(storeId,businessDate),sync,emptyReason:error?.message||'Planning indisponible.'}
+  return{day:null,summary:staffingSummary(storeId,businessDate),sync:errView(error,'WORKFORCE'),emptyReason:error?.message||'Planning indisponible.'}
  }
 }
 async function cashOpeningView(storeId,businessDate,{required=false}={}){
@@ -42,15 +42,15 @@ export async function handleOpeningOperationsApi({req,url,user}){
  p=route(path,'/api/stores/:storeId/staffing');
  if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();return{status:200,data:await staffingView(p.storeId,businessDate)}}
  p=route(path,'/api/staffing/lines/:lineId/attendance');
- if(p&&req.method==='POST'){const b=await body(req);const result=setAttendance({lineId:p.lineId,user,status:b.status,replacementName:b.replacementName||'',note:b.note||''});requireManage(user,result.day.store_id);return{status:200,data:result}}
+ if(p&&req.method==='POST'){const storeId=staffingStore(p.lineId);if(!storeId)return{status:404,data:{error:'Collaborateur planning introuvable.'}};requireManage(user,storeId);const b=await body(req);return{status:200,data:setAttendance({lineId:p.lineId,user,status:b.status,replacementName:b.replacementName||'',note:b.note||''})}}
 
  if(path==='/api/cold-chain/config'&&req.method==='GET')return{status:200,data:coldChainConfig()};
  p=route(path,'/api/stores/:storeId/cold-chain');
  if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),day=ensureColdChainDay(p.storeId,businessDate);return{status:200,data:{day,summary:coldChainSummary(p.storeId,businessDate),sync:{ok:true,source:'STOREOPS_TERRAIN'}}}}
  p=route(path,'/api/cold-chain/lines/:lineId/check');
- if(p&&req.method==='POST'){const b=await body(req),result=checkColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,note:b.note||''});requireManage(user,result.day.store_id);return{status:200,data:result}}
+ if(p&&req.method==='POST'){const storeId=coldStore(p.lineId);if(!storeId)return{status:404,data:{error:'Zone froid introuvable.'}};requireManage(user,storeId);const b=await body(req);return{status:200,data:checkColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,note:b.note||''})}}
  p=route(path,'/api/cold-chain/lines/:lineId/recheck');
- if(p&&req.method==='POST'){const b=await body(req),result=recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''});requireManage(user,result.day.store_id);return{status:200,data:result}}
+ if(p&&req.method==='POST'){const storeId=coldStore(p.lineId);if(!storeId)return{status:404,data:{error:'Zone froid introuvable.'}};requireManage(user,storeId);const b=await body(req);return{status:200,data:recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''})}}
  p=route(path,'/api/cold-chain/profiles/:code');
  if(p&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateColdProfile({code:p.code,user,tempMin:b.tempMin,tempMax:b.tempMax})}}
 
@@ -60,7 +60,7 @@ export async function handleOpeningOperationsApi({req,url,user}){
  p=route(path,'/api/stores/:storeId/cash-opening/sync');
  if(p&&req.method==='POST'){requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();return{status:200,data:await cashOpeningView(p.storeId,businessDate,{required:true})}}
  p=route(path,'/api/cash-opening/lines/:lineId/check');
- if(p&&req.method==='POST'){const b=await body(req),result=checkCashOpeningLine({lineId:p.lineId,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''});requireManage(user,result.opening.store_id);return{status:200,data:result}}
+ if(p&&req.method==='POST'){const storeId=cashStore(p.lineId);if(!storeId)return{status:404,data:{error:'Caisse d’ouverture introuvable.'}};requireManage(user,storeId);const b=await body(req);return{status:200,data:checkCashOpeningLine({lineId:p.lineId,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''})}}
  if(path==='/api/cash-opening/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateCashOpeningPolicy({user,floatTolerance:b.floatTolerance})}}
  return null
 }
