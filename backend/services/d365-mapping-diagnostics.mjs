@@ -28,6 +28,15 @@ const PRICE_ROLES={
  priceGroup:['pricegroup','pricegroupid','accountrelation'],
  currency:['currency','currencycode']
 };
+const ASSORTMENT_CHANNEL_ROLES={
+ channel:['retailchannelid','retailchannel','channelid','channel','retailstoreid','storeid','store','operatingunitnumber','operatingunit'],
+ assortment:['assortmentid','assortmentkey','assortment','retailassortmentid'],
+ assortmentName:['assortmentname','name','description'],
+ included:['included','isincluded','include','isactive','active','enabled'],
+ validFrom:['validfrom','fromdate','startdate','effectivefrom'],
+ validTo:['validto','todate','enddate','effectiveto'],
+ product:['productnumber','itemnumber','itemid','product','sku']
+};
 
 function infer(rows,roles){
  const keys=unique((rows||[]).flatMap(r=>Object.keys(r||{})));
@@ -43,6 +52,17 @@ async function safeProbe(entity,{filter=''}={}){
  try{const r=await probeDataEntity(entity,{top:3,filter});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
  catch(e){return{ok:false,entity,latencyMs:null,rowCount:0,rows:[],error:e.message,code:e.code||'D365_PROBE_FAILED'}}
 }
+function bestResult(rows=[]){return [...rows].sort((a,b)=>Number(b.ok)-Number(a.ok)||Number(!!b.rows?.length)-Number(!!a.rows?.length)||b.rowCount-a.rowCount)[0]||null}
+function candidatesFromEnv(){
+ return unique([
+  clean(process.env.D365_ASSORTMENT_ENTITY),
+  clean(process.env.D365_STORE_ASSORTMENT_ENTITY),
+  'RetailAssortmentLookupChannelGroup',
+  'RetailAssortmentChannelLine',
+  'RetailChannelAssortedProductView',
+  'RetailAssortmentLookup'
+ ])
+}
 
 export function d365MappingDiagnosticReadiness(storeId='val-fleuri'){
  const store=storeOperationalSettings(storeId),sales=salesIntegrationConfig(storeId);
@@ -50,18 +70,22 @@ export function d365MappingDiagnosticReadiness(storeId='val-fleuri'){
   mode:config.dynamics.mode,
   storeId,
   retailChannelId:store?.d365?.retailChannelId||null,
+  storeNumber:store?.d365?.storeNumber||store?.storeWarehouseId||null,
+  operatingUnitNumber:store?.d365?.operatingUnitNumber||null,
   sales:{entity:sales.entity,configuredFields:sales.fields,retailId:sales.retailId,retailIdSource:sales.retailIdSource,ready:sales.ready,missing:sales.missing||[]},
+  assortmentStore:{configuredEntity:clean(process.env.D365_ASSORTMENT_ENTITY)||null,configuredChannelField:clean(process.env.D365_ASSORTMENT_STORE_FIELD)||null,automatic:false,source:'DIAGNOSTIC_ONLY'},
   candidates:{
    sales:unique([clean(process.env.D365_SALES_ENTITY)||'RetailTransactionSalesTransBIEntities','RetailTransactionSalesTransBIEntities','RetailTransactionSalesLines']),
    price:unique([clean(process.env.D365_BASE_PRICE_ENTITY),clean(process.env.D365_SALES_PRICE_ENTITY),'SalesPriceAgreements','SalesTradeAgreementLines']),
-   priceHistory:['RetailTransactionSalesTransBIEntities']
+   priceHistory:['RetailTransactionSalesTransBIEntities'],
+   assortmentChannel:candidatesFromEnv()
   }
  }
 }
 
 export async function diagnoseD365Mappings(storeId='val-fleuri'){
  const ready=d365MappingDiagnosticReadiness(storeId);
- if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,domains:{sales:[],price:[]},message:'D365_MODE n’est pas LIVE : aucun probe externe effectué.'};
+ if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,domains:{sales:[],price:[],assortmentChannel:[]},message:'D365_MODE n’est pas LIVE : aucun probe externe effectué.'};
  const channel=clean(ready.retailChannelId),salesResults=[];
  for(const entity of ready.candidates.sales){
   const configuredStoreField=clean(process.env.D365_SALES_STORE_FIELD||'store');
@@ -71,14 +95,28 @@ export async function diagnoseD365Mappings(storeId='val-fleuri'){
  }
  const priceResults=[];
  for(const entity of ready.candidates.price){const probe=await safeProbe(entity);priceResults.push({...probe,inference:infer(probe.rows,PRICE_ROLES)})}
- const bestSales=[...salesResults].sort((a,b)=>Number(b.ok)-Number(a.ok)||b.rowCount-a.rowCount)[0]||null;
- const recommended=bestSales?.ok?Object.fromEntries(Object.entries(bestSales.inference.fields).map(([role,x])=>[role,x.candidate])):{};
- const costDetected=!!recommended.cost;
+ const assortmentResults=[];
+ for(const entity of ready.candidates.assortmentChannel){
+  const configuredChannelField=clean(process.env.D365_ASSORTMENT_STORE_FIELD||process.env.D365_ASSORTMENT_CHANNEL_FIELD||'');
+  let probe=await safeProbe(entity,{filter:channel&&configuredChannelField?`${configuredChannelField} eq '${channel.replaceAll("'","''")}'`:''});
+  if(!probe.ok||!probe.rows.length)probe=await safeProbe(entity);
+  const inference=infer(probe.rows,ASSORTMENT_CHANNEL_ROLES),channelField=inference.fields.channel?.candidate,assortmentField=inference.fields.assortment?.candidate;
+  assortmentResults.push({...probe,inference,storeLinkCandidate:!!channelField&&!!assortmentField,probeOnly:true})
+ }
+ const bestSales=bestResult(salesResults),recommended=bestSales?.ok?Object.fromEntries(Object.entries(bestSales.inference.fields).map(([role,x])=>[role,x.candidate])):{},costDetected=!!recommended.cost;
+ const bestAssortment=bestResult(assortmentResults.filter(x=>x.storeLinkCandidate)),assortmentFields=bestAssortment?.ok?Object.fromEntries(Object.entries(bestAssortment.inference.fields).map(([role,x])=>[role,x.candidate])):{};
  return{
-  status:salesResults.some(x=>x.ok)||priceResults.some(x=>x.ok)?'READY':'NO_ENTITY_RESPONDED',
+  status:salesResults.some(x=>x.ok)||priceResults.some(x=>x.ok)||assortmentResults.some(x=>x.ok)?'READY':'NO_ENTITY_RESPONDED',
   checkedAt:new Date().toISOString(),...ready,
-  domains:{sales:salesResults,price:priceResults},
-  recommendation:{salesEntity:bestSales?.ok?bestSales.entity:null,fields:recommended,costDetected,marginReady:costDetected&&!!recommended.net},
-  safeguards:{writes:false,configurationChanged:false,unknownCostBecomesZero:false}
+  domains:{sales:salesResults,price:priceResults,assortmentChannel:assortmentResults},
+  recommendation:{
+   salesEntity:bestSales?.ok?bestSales.entity:null,
+   fields:recommended,costDetected,marginReady:costDetected&&!!recommended.net,
+   assortmentChannelEntity:bestAssortment?.ok?bestAssortment.entity:null,
+   assortmentChannelFields:assortmentFields,
+   storeAssortmentAutomationReady:!!(bestAssortment?.ok&&assortmentFields.channel&&assortmentFields.assortment),
+   assortmentProbeOnly:true
+  },
+  safeguards:{writes:false,configurationChanged:false,unknownCostBecomesZero:false,assortmentAssignmentChanged:false}
  }
 }
