@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { getProductByEan,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
+import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
 
 // Pilot fallback only. Other stores must be explicitly mapped in configuration.
 export const STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
@@ -78,10 +79,23 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
 
+function safeError(error){return{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}
+
 export async function getStoreProductByEan(storeId,ean){
-  const product=await getProductByEan(ean);if(!product)return null;
-  const stock=await getStoreStockByProductNumber(storeId,product.productNumber);
-  if(!stockLive())return {...product,warehouseId:stock.warehouseId,stockSource:stock.source,batches:[],stockComplete:false};
-  if(stock.mappingRequired)return {...product,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
-  return {...product,stock:stock.onHandQuantity,availableStock:stock.availableOnHandQuantity,reservedStock:stock.reservedOnHandQuantity,orderedStock:stock.orderedQuantity,availableOrderedStock:stock.availableOrderedQuantity,reservedOrderedStock:stock.reservedOrderedQuantity,onOrderStock:stock.onOrderQuantity,totalAvailableStock:stock.totalAvailableQuantity,warehouseId:stock.warehouseId,stockRowCount:stock.rowCount,stockPages:stock.pages,stockSource:stock.source,batches:stock.batches||[],stockComplete:stock.complete===true}
+  let product=null,identityError=null,identityFallback=false;
+  try{
+    product=await getProductByEan(ean);
+    if(product)rememberProductIdentity(product,{liveSource:product.source||'D365'});
+  }catch(error){
+    identityError=safeError(error);noteProductIdentityFailure(ean,error);product=cachedProductByEan(ean);identityFallback=!!product;if(!product)throw error
+  }
+  if(!product){product=cachedProductByEan(ean);identityFallback=!!product;if(!product)return null}
+
+  let stock=null,stockError=null;
+  try{stock=await getStoreStockByProductNumber(storeId,product.productNumber)}catch(error){stockError=safeError(error)}
+
+  if(stockError){return {...product,source:identityFallback?(product.source||'STOREOPS_CACHE'):(product.source||'D365'),identityFallback,identityError,warehouseId:mappedWarehouseForStore(storeId),stock:null,availableStock:null,reservedStock:null,orderedStock:null,availableOrderedStock:null,reservedOrderedStock:null,onOrderStock:null,totalAvailableStock:null,stockRowCount:null,stockPages:null,stockSource:'D365_UNAVAILABLE',stockUnavailable:true,stockError,batches:[],stockComplete:false}}
+  if(!stockLive())return {...product,identityFallback,identityError,warehouseId:stock?.warehouseId||mappedWarehouseForStore(storeId),stockSource:stock?.source||'SIMULATED_D365',batches:[],stockComplete:false};
+  if(stock?.mappingRequired)return {...product,identityFallback,identityError,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
+  return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
 }
