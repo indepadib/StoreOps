@@ -1,0 +1,32 @@
+name: V1.88 Fast Runtime Contract
+
+on:
+  push:
+    branches: [storeops-v1.88-fast-runtime-wiring]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/business-pulse-api.mjs
+          node --check backend/services/runtime-bootstrap-api.mjs
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/manager-home.js
+      - name: Grouped runtime routing
+        run: node backend/tests/v188-runtime-bootstrap-routing.mjs
+      - name: Existing fast bootstrap regression
+        run: STOREOPS_DB=/tmp/storeops-v188-bootstrap-regression.db AUTH_MODE=demo node backend/tests/v192-bootstrap-fast.mjs
+      - name: Existing manager home fast regression
+        run: STOREOPS_DB=/tmp/storeops-v188-home-regression.db AUTH_MODE=demo D365_MODE=simulated node backend/tests/v185-manager-home-fast.mjs
+      - name: Existing manager inbox batch regression
+        run: STOREOPS_DB=/tmp/storeops-v188-inbox-regression.db AUTH_MODE=demo D365_MODE=simulated node backend/tests/v186-manager-inbox-batch.mjs
