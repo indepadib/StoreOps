@@ -1,6 +1,6 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
-import { workforceConfig,listEmployees,createEmployee,endEmployeeContract,listShifts,createShift,setShiftStatus,listObjectives,createObjective } from './workforce.mjs';
+import { workforceConfig,listEmployees,createEmployee,updateEmployee,endEmployeeContract,listShifts,createShift,setShiftStatus,listObjectives,createObjective } from './workforce.mjs';
 import { handleRuntimeBootstrapApi } from './runtime-bootstrap-api.mjs';
 import { handleProcessStudioApi } from './process-studio-api.mjs';
 import { handleReplenishmentPolicyApi } from './replenishment-policy-api.mjs';
@@ -13,9 +13,10 @@ import { handleDevelopmentApi } from './development-api.mjs';
 import { handleIntegrationRegistryApi } from './integration-registry-api.mjs';
 import { handleTenantProfileApi } from './tenant-profile-api.mjs';
 import { handleManagerFastApi } from './manager-fast-api.mjs';
+import { handleOpeningOperationsApi } from './opening-operations-api.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
-async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
+async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('Requête JSON invalide.'),{status:400,code:'REQUEST_JSON_INVALID'})}}
 const forbidden=(message='Accès interdit')=>({status:403,data:{error:message}});
 function ownStore(user,storeId){return canAccessStore(user,storeId)}
 function manageStore(user,storeId){return canManageStore(user,storeId)}
@@ -25,6 +26,7 @@ function storeForShift(id){return db.prepare(`SELECT store_id FROM work_shifts W
 export async function handleWorkforceApi({req,url,user}){
  const bootstrapResponse=await handleRuntimeBootstrapApi({req,url,user});if(bootstrapResponse)return bootstrapResponse;
  const managerFastResponse=await handleManagerFastApi({req,url,user});if(managerFastResponse)return managerFastResponse;
+ const openingResponse=await handleOpeningOperationsApi({req,url,user});if(openingResponse)return openingResponse;
  const developmentResponse=await handleDevelopmentApi({req,url,user});if(developmentResponse)return developmentResponse;
  const integrationResponse=await handleIntegrationRegistryApi({req,url,user});if(integrationResponse)return integrationResponse;
  const tenantResponse=await handleTenantProfileApi({req,url,user});if(tenantResponse)return tenantResponse;
@@ -47,6 +49,11 @@ export async function handleWorkforceApi({req,url,user}){
  if(p&&req.method==='POST'){
   if(!manageStore(user,p.storeId))return forbidden('Gestion équipe réservée au Responsable magasin ou à la Direction.');
   const b=await body(req);return{status:201,data:createEmployee({storeId:p.storeId,user,employeeCode:b.employeeCode,firstName:b.firstName,lastName:b.lastName,roleCode:b.roleCode,contractType:b.contractType,contractStart:b.contractStart,contractEnd:b.contractEnd,email:b.email,phone:b.phone})}
+ }
+ p=route(path,'/api/employees/:employeeId');
+ if(p&&(req.method==='PUT'||req.method==='PATCH')){
+  const storeId=storeForEmployee(p.employeeId);if(!storeId)return{status:404,data:{error:'Employé introuvable.'}};if(!manageStore(user,storeId))return forbidden();
+  const b=await body(req);return{status:200,data:updateEmployee({employeeId:p.employeeId,user,firstName:b.firstName,lastName:b.lastName,roleCode:b.roleCode,contractType:b.contractType,contractEnd:b.contractEnd,email:b.email,phone:b.phone,status:b.status})}
  }
  p=route(path,'/api/employees/:employeeId/end');
  if(p&&req.method==='POST'){
