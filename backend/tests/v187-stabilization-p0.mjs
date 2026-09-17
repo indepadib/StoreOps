@@ -14,6 +14,7 @@ process.env.D365_PROMOTION_READ_MODE='simulated';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const source=p=>readFileSync(path.join(root,p),'utf8');
 const {db}=await import('../db.mjs');
+await import('../services/pilot-profile.mjs');
 const workforce=await import('../services/workforce.mjs');
 const {getStaffingSnapshot}=await import('../services/dynamics-staffing.mjs');
 const staffing=await import('../services/staffing.mjs');
@@ -26,7 +27,6 @@ assert(admin,'platform admin seed required');
 const storeId='val-fleuri';
 const day='2026-09-17';
 
-// Workforce -> published planning -> staffing source.
 db.prepare(`DELETE FROM work_shifts WHERE store_id=? AND shift_date=?`).run(storeId,day);
 const code=`TST-${Date.now()}`;
 let employee=workforce.createEmployee({storeId,user:admin,employeeCode:code,firstName:'Sara',lastName:'Responsable',roleCode:'MANAGER',contractType:'CDI',contractStart:'2026-09-01',email:'sara.manager@example.test'});
@@ -43,16 +43,13 @@ assert(staffSnapshot.lines.some(x=>x.employeeId===employee.id&&x.role==='MANAGER
 const staffDay=staffing.syncStaffingDay({storeId,businessDate:day,snapshot:staffSnapshot});
 assert(staffDay.lines.some(x=>x.employee_id===employee.id));
 
-// Real-only commercial must never accept the historical demo payload.
 assert.throws(()=>syncCommercialControls({storeId,businessDate:day,changes:[{sourceKey:'PROMO-NUT750-X',source:'SIMULATED_D365',actionType:'PROMO_START',ean:'3017620422003',productName:'Nutella démo'}]}),e=>e.code==='COMMERCIAL_REAL_SOURCE_REQUIRED');
 
-// Real-only receipts must not surface old StoreOps/demo rows as D365 purchase orders.
 receiving.ensureReceivingStorage();
 const legacyId=`legacy-${Date.now()}`;
 db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source) VALUES(?,?,?,?,?,'EXPECTED','STOREOPS')`).run(legacyId,storeId,`LEGACY-${Date.now()}`,'Démo fournisseur',day);
 assert.equal(receiving.listReceiptsForStore(storeId,{realOnly:true}).some(x=>x.id===legacyId),false);
 
-// Template library is materialized as inactive/editable templates, never assigned automatically.
 const getReq={method:'GET'};
 const tplResponse=await handleProcessStudioApi({req:getReq,url:new URL('http://local/api/admin/process-templates?all=1'),user:admin});
 assert.equal(tplResponse.status,200);
@@ -62,7 +59,6 @@ assert(starter,'starter receiving template must exist');
 assert.equal(starter.active,false,'starter templates must stay inactive until an admin publishes them');
 assert.equal(db.prepare(`SELECT COUNT(*) n FROM process_assignments WHERE template_id=?`).get(starter.id).n,0,'starter templates must not auto-assign stores');
 
-// Static contracts for the actual regressions reported by the user.
 const apiClient=source('frontend/js/api.js');
 assert.match(apiClient,/isPlainJsonBody/,'central API client must serialize object JSON bodies');
 assert.match(apiClient,/JSON\.stringify\(next\.body\)/,'object body serialization missing');
