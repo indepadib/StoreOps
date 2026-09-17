@@ -1,9 +1,11 @@
 import {isDirector} from './state.js';
 
-const BUILD='1990';
+const BUILD='2000';
 
 const modules=[
   './pwa.js',
+  './navigation-polish.js',
+  './scanner-resilience.js',
   './manager-polish.js',
   './manager-alerts.js',
   './manager-incident-flow.js',
