@@ -1,15 +1,24 @@
-import { loadEnhancements } from './enhancements-entry.js?v=1990';
+import { loadEnhancements } from './enhancements-entry.js?v=2030';
 
-const BUILD='1990';
-const BUILD_LABEL='1.99.0';
+const BUILD='2030';
+const BUILD_LABEL='2.03.0';
 
+function ensurePerf(){
+ const existing=window.STOREOPS_PERF||{};
+ const nav=performance.getEntriesByType?.('navigation')?.[0];
+ window.STOREOPS_PERF={startedAt:existing.startedAt??performance.now(),startedEpoch:existing.startedEpoch??Date.now(),phases:Array.isArray(existing.phases)?existing.phases:[],api:Array.isArray(existing.api)?existing.api:[],navigation:existing.navigation||{type:nav?.type||null,domInteractiveMs:nav?Math.round(nav.domInteractive):null,domContentLoadedMs:nav?Math.round(nav.domContentLoadedEventEnd):null,loadMs:nav?Math.round(nav.loadEventEnd):null,transferSize:nav?.transferSize??null},readyAt:existing.readyAt??null,build:BUILD_LABEL};
+ return window.STOREOPS_PERF
+}
+ensurePerf();
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
-function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
+function markStarted(){const perf=ensurePerf();if(perf.readyAt==null)perf.readyAt=Math.round(performance.now()*10)/10;document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
 function sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
 function withTimeout(promise,ms,message){return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>{const e=new Error(message);e.code='API_BOOT_TIMEOUT';reject(e)},ms))])}
 function phase(label){
   window.STOREOPS_BOOT_PHASE=label;
   window.STOREOPS_BOOT_HEARTBEAT=Date.now();
+  const perf=ensurePerf(),at=Math.round(performance.now()*10)/10,last=perf.phases.at(-1);if(!last||last.label!==label)perf.phases.push({label,at});
+  if(perf.phases.length>30)perf.phases.splice(0,perf.phases.length-30);
   const meta=document.querySelector('#headerMeta');
   if(meta&&/^(Chargement|Démarrage)/.test((meta.textContent||'').trim()))meta.textContent=`Démarrage · ${label} · v${BUILD_LABEL}`;
 }
