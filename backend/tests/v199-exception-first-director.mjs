@@ -27,10 +27,17 @@ assert.match(css,/today-metrics-grid\.director-metrics-collapsed\{display:none!i
 assert.match(css,/min-height:48px/,'metric disclosure must remain comfortably tappable');
 assert.match(enhancements,/mobile-v199\.css\?v=\$\{BUILD\}/,'V1.99 stylesheet must be loaded through the Director graph');
 assert.match(enhancements,/director-exception-first\.js/,'V1.99 module must load for Director only');
-assert.match(enhancements,/const BUILD='1990'/,'V1.99 enhancement cache key missing');
-assert.match(auth,/const BUILD='1990'/,'V1.99 auth cache key missing');
-assert.match(auth,/BUILD_LABEL='1\.99\.0'/,'V1.99 auth label missing');
-assert.match(boot,/BUILD='1\.99\.0'/,'V1.99 boot label missing');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-1990/,'V1.99 Netlify build key missing');
 
-console.log('V1.99 exception-first Director mobile contract: OK');
+const authBuild=auth.match(/const BUILD='(\d+)'/)?.[1]||null;
+const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1]||null;
+const authLabel=auth.match(/BUILD_LABEL='([^']+)'/)?.[1]||null;
+const bootLabel=boot.match(/BUILD='([^']+)'/)?.[1]||null;
+const buildDefault=build.match(/STOREOPS_RELEASE_BUILD:-([0-9]+)/)?.[1]||null;
+assert(authBuild,'auth release cache key missing');
+assert(Number(authBuild)>=1990,'release must not roll back before V1.99');
+assert.equal(enhancementBuild,authBuild,'deferred modules must share the auth cache key');
+assert.equal(buildDefault,authBuild,'Netlify default release key must match the runtime cache key');
+assert(authLabel,'auth release label missing');
+assert.equal(bootLabel,authLabel,'classic boot and auth release labels must match');
+
+console.log(`V1.99 exception-first Director mobile contract: OK · release ${authBuild} · v${authLabel}`);
