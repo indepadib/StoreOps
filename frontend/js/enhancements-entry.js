@@ -4,6 +4,9 @@ const BUILD='1990';
 
 const modules=[
   './pwa.js',
+  './navigation-polish.js',
+  './scanner-resilience.js',
+  './manager-more-simplified.js',
   './manager-polish.js',
   './manager-alerts.js',
   './manager-incident-flow.js',

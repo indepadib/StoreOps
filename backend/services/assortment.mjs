@@ -145,10 +145,11 @@ export function productTaxonomy(productNumber,{hierarchyKey=null,source=null}={}
 }
 
 export function classifyAvailability({storeId,productNumber,availableQty,businessDate=null,index=null,maxAgeHours=null}={}){
- const qty=Number(availableQty),membership=assortmentMembership(storeId,productNumber,{businessDate,index,maxAgeHours});
- if(Number.isFinite(qty)&&qty<0)return{state:'STOCK_ANOMALY',membership,operational:true};
- if(membership.status==='UNKNOWN')return{state:'ASSORTMENT_UNKNOWN',membership,operational:false};
- if(membership.status==='NOT_ASSORTED')return{state:Number(qty)>0?'RESIDUAL_STOCK_OUTSIDE_ASSORTMENT':'NOT_ASSORTED',membership,operational:Number(qty)>0};
- if(Number(qty)===0)return{state:'OUT_OF_STOCK',membership,operational:true};
- return{state:'AVAILABLE',membership,operational:false};
+ const membership=assortmentMembership(storeId,productNumber,{businessDate,index,maxAgeHours}),hasQty=availableQty!==null&&availableQty!==undefined&&availableQty!=='',qty=hasQty?Number(availableQty):null;
+ if(qty!==null&&Number.isFinite(qty)&&qty<0)return{state:'STOCK_ANOMALY',membership,operational:true,stockKnown:true};
+ if(membership.status==='UNKNOWN')return{state:'ASSORTMENT_UNKNOWN',membership,operational:false,stockKnown:qty!==null&&Number.isFinite(qty)};
+ if(membership.status==='NOT_ASSORTED')return{state:qty!==null&&Number.isFinite(qty)&&qty>0?'RESIDUAL_STOCK_OUTSIDE_ASSORTMENT':'NOT_ASSORTED',membership,operational:qty!==null&&Number.isFinite(qty)&&qty>0,stockKnown:qty!==null&&Number.isFinite(qty)};
+ if(qty===null||!Number.isFinite(qty))return{state:'STOCK_UNKNOWN',membership,operational:false,stockKnown:false};
+ if(qty===0)return{state:'OUT_OF_STOCK',membership,operational:true,stockKnown:true};
+ return{state:'AVAILABLE',membership,operational:false,stockKnown:true};
 }

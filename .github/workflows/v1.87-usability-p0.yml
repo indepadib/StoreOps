@@ -1,0 +1,48 @@
+name: V1.87 Usability P0 Contract
+
+on:
+  push:
+    branches: [storeops-v1.87-usability-p0]
+  pull_request:
+    branches: [main]
+
+jobs:
+  usability-p0:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/product-cache.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/price-check.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check backend/services/assortment.mjs
+          node --check frontend/js/scanner-resilience.js
+          node --check frontend/js/navigation-polish.js
+          node --check frontend/js/manager-more-simplified.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pages/network.js
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V1.87 degraded scanner and UX contract
+        run: node backend/tests/v187-usability-p0.mjs
+      - name: Assortment and supply regression
+        run: STOREOPS_DB=/tmp/storeops-v187-merch.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Performance regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Production policy guards
+        run: |
+          grep -q "'STOREOPS_VERSION','STOREOPS_REAL_ONLY'" netlify/functions/api.mts
+          grep -q "state:'STOCK_UNKNOWN'" backend/services/assortment.mjs
+          grep -q "Connexion articles indisponible" frontend/js/scanner-resilience.js
+          grep -q "manager-more-simplified.js" frontend/js/enhancements-entry.js
+          grep -q "Un « — » signifie que la source n’a pas répondu" frontend/js/pages/network.js
+          ! grep -q "cashOpening:r.cashOpening||{blocking:1}" frontend/js/pages/network.js
+          ! grep -R "client_secret.*[A-Za-z0-9].*=" backend netlify frontend --exclude='*.map' || true
