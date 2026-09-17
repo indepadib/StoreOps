@@ -10,6 +10,13 @@ function showcaseRuntime(){
   if(!showcaseRuntimePromise)showcaseRuntimePromise=import('./api-showcase.js');
   return showcaseRuntimePromise
 }
+function perfStore(){return window.STOREOPS_PERF||null}
+function recordApi({path,method='GET',startedAt,response=null,error=null,source='network'}){
+  const perf=perfStore();if(!perf)return;
+  const endedAt=performance.now(),entry={path:String(path||'').split('?')[0],method:String(method||'GET').toUpperCase(),durationMs:Math.round((endedAt-startedAt)*10)/10,status:response?.status||null,bridge:response?.headers?.get?.('x-storeops-bridge')||null,fastPath:response?.headers?.get?.('x-storeops-fast-path')||null,serverTiming:response?.headers?.get?.('server-timing')||null,source,error:error?String(error?.code||error?.message||error):null,at:Date.now()};
+  perf.api=Array.isArray(perf.api)?perf.api:[];perf.api.push(entry);if(perf.api.length>50)perf.api.splice(0,perf.api.length-50);
+  window.dispatchEvent(new CustomEvent('storeops:perf-api',{detail:entry}))
+}
 function applyAuth(headers){
   if(app.authMode==='demo')headers['x-demo-user']=localStorage.getItem('storeops_user')||'u-vf';
   else if(app.authMode==='local'){
@@ -54,19 +61,23 @@ async function parseJsonResponse(r,url){
 }
 export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
-  const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
-  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const cached=bootResponse(path,options);if(cached?.handled){const startedAt=performance.now();recordApi({path,method:options.method||'GET',startedAt,source:'bootstrap-cache'});if(cached.error)throw cached.error;return cached.data}
+  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path),startedAt=performance.now();let r;
+  try{r=await fetch(url,{...options,headers})}catch(error){recordApi({path,method:options.method||'GET',startedAt,error});const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  recordApi({path,method:options.method||'GET',startedAt,response:r});
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
   if(isShowcase())return (await showcaseRuntime()).health();
-  if(window.STOREOPS_BOOT_HEALTH&&!window.STOREOPS_BOOT_HEALTH_CONSUMED){window.STOREOPS_BOOT_HEALTH_CONSUMED=true;return window.STOREOPS_BOOT_HEALTH}
-  const url=apiUrl('/api/health');let r;
-  try{r=await fetch(url,{cache:'no-store'})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Configure STOREOPS_API_BASE dans Netlify puis redéploie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  if(window.STOREOPS_BOOT_HEALTH&&!window.STOREOPS_BOOT_HEALTH_CONSUMED){window.STOREOPS_BOOT_HEALTH_CONSUMED=true;const startedAt=performance.now();recordApi({path:'/api/health',startedAt,source:'boot-cache'});return window.STOREOPS_BOOT_HEALTH}
+  const url=apiUrl('/api/health'),startedAt=performance.now();let r;
+  try{r=await fetch(url,{cache:'no-store'})}catch(error){recordApi({path:'/api/health',startedAt,error});const e=new Error(`Impossible de joindre l'API StoreOps. Configure STOREOPS_API_BASE dans Netlify puis redéploie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  recordApi({path:'/api/health',startedAt,response:r});
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Healthcheck API en erreur (${r.status}).`);e.status=r.status;throw e}return data
 }
 export async function apiBlob(path){
   if(isShowcase())return (await showcaseRuntime()).apiBlob(path);
-  const headers=applyAuth({}),r=await fetch(apiUrl(path),{headers});if(!r.ok)throw new Error(`Erreur HTTP ${r.status}`);return r.blob()
+  const headers=applyAuth({}),startedAt=performance.now();let r;
+  try{r=await fetch(apiUrl(path),{headers})}catch(error){recordApi({path,startedAt,error});throw error}
+  recordApi({path,startedAt,response:r});if(!r.ok)throw new Error(`Erreur HTTP ${r.status}`);return r.blob()
 }
