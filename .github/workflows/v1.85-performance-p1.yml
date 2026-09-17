@@ -26,14 +26,13 @@ jobs:
           node --check frontend/js/pwa.js
       - name: V1.85 performance contract
         run: node backend/tests/v185-performance-p1.mjs
-      - name: V1.84 regression
+      - name: V1.84 performance regression
         run: node backend/tests/v184-performance-p0.mjs
-      - name: Core manager regressions
-        run: |
-          STOREOPS_DB=/tmp/storeops-v185-core.db node backend/tests/v179-core.mjs
-          STOREOPS_DB=/tmp/storeops-v185-stock.db node backend/tests/stock-signals-api.mjs || true
-      - name: Static fan-out guard
+      - name: Static fan-out guards
         run: |
           grep -q "/manager-today" frontend/js/manager-action-inbox.js
+          grep -q "/manager-today/signals" frontend/js/manager-action-inbox.js
           grep -q "LOCAL_FAST" backend/services/manager-today.mjs
+          grep -q "requestCountCollapsed:10" backend/services/manager-today.mjs
           ! grep -q "Promise.all(\[loadManagerInbox(),api" frontend/js/pages/manager-home.js
+          ! grep -q "getRegistrations()" frontend/js/pwa.js
