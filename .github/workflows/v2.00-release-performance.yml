@@ -1,0 +1,59 @@
+name: V2.00 Release Performance Contract
+
+on:
+  push:
+    branches: [storeops-v2.00-release-performance]
+  pull_request:
+    branches: [main]
+
+jobs:
+  release-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Source contract
+        run: node backend/tests/v200-release-performance.mjs
+
+      - name: Build deploy surface in isolation
+        shell: bash
+        run: |
+          rm -rf /tmp/storeops-v200-frontend
+          cp -R frontend /tmp/storeops-v200-frontend
+          cd /tmp/storeops-v200-frontend
+          chmod +x ./netlify-build.sh
+          STOREOPS_API_BASE=https://storeops.ma STOREOPS_RELEASE_BUILD=2000 ./netlify-build.sh
+
+      - name: Production asset budget
+        shell: bash
+        run: |
+          cd /tmp/storeops-v200-frontend
+          node <<'NODE'
+          const fs=require('fs');
+          const html=fs.readFileSync('index.html','utf8');
+          const css=[...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+)"/g)].map(x=>x[1]);
+          if(css.length!==1)throw new Error(`Expected one blocking stylesheet, got ${css.length}: ${css.join(', ')}`);
+          if(css[0]!=='/storeops.bundle.css?v=2000')throw new Error(`Unexpected CSS bundle URL ${css[0]}`);
+          const size=fs.statSync('storeops.bundle.css').size;
+          if(size>300000)throw new Error(`CSS bundle budget exceeded: ${size} bytes > 300000`);
+          const scripts=[...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(x=>x[1]);
+          if(scripts.length!==3)throw new Error(`Expected 3 early module scripts, got ${scripts.length}`);
+          if(scripts.some(x=>!x.endsWith('?v=2000')))throw new Error(`Mixed early JS generation: ${scripts.join(', ')}`);
+          const auth=fs.readFileSync('js/auth-entry.js','utf8');
+          const enh=fs.readFileSync('js/enhancements-entry.js','utf8');
+          if(!auth.includes("const BUILD='2000';"))throw new Error('auth-entry build key not normalized');
+          if(!auth.includes("BUILD_LABEL='2.00.0'"))throw new Error('auth-entry release label not normalized');
+          if(!enh.includes("const BUILD='2000';"))throw new Error('enhancement build key not normalized');
+          console.log(`V2.00 production surface OK · 1 CSS request · ${size} bytes · 3 early JS modules`);
+          NODE
+
+      - name: Performance regressions
+        run: |
+          node backend/tests/v184-performance-p0.mjs
+          node backend/tests/v195-performance-consolidation.mjs
+          node backend/tests/v196-release-candidate.mjs
+          node backend/tests/v199-exception-first-director.mjs
