@@ -45,7 +45,7 @@ function action({id,category,severity='HIGH',title,detail,page,blocking=false,me
   return {id,category,severity,title,detail,page,blocking:!!blocking,meta,count,type,promo,overdue,mismatch,priority:resolvedPriority,source};
 }
 
-export async function loadManagerInbox(){
+async function legacyManagerData(){
   const [dashboard,commercial,receiptRows,inventoryData,lossData,incidentData,staffData,coldData,cashOpenData,qualityRows,stockData]=await Promise.all([
     api(`/api/stores/${app.storeId}/dashboard`),
     safe(api(`/api/stores/${app.storeId}/commercial`),{summary:{},items:[]}),
@@ -59,7 +59,17 @@ export async function loadManagerInbox(){
     safe(api(`/api/stores/${app.storeId}/quality`),[]),
     loadStockSignals()
   ]);
+  return{dashboard,commercial,receiptRows,inventoryData,lossData,incidentData,staffData,coldData,cashOpenData,qualityRows,stockData,meta:{mode:'LEGACY_FALLBACK'}};
+}
 
+async function managerData(){
+  const bundled=await safe(api(`/api/stores/${app.storeId}/manager-today`),null);
+  if(bundled?.dashboard)return bundled;
+  return legacyManagerData();
+}
+
+function buildManagerInbox(data){
+  const dashboard=data.dashboard||{},commercial=data.commercial||{summary:{},items:[]},receiptRows=data.receiptRows||[],inventoryData=data.inventoryData||{summary:{},items:[]},lossData=data.lossData||{summary:{},items:[]},incidentData=data.incidentData||{items:[]},staffData=data.staffData||{summary:{}},coldData=data.coldData||{summary:{}},cashOpenData=data.cashOpenData||{summary:{}},qualityRows=data.qualityRows||[],stockData=data.stockData?.items?data.stockData:showcaseStockSignals();
   const stockSignals=stockData.items||[];
   const staff=staffData.summary||{},cold=coldData.summary||{},cashOpen=cashOpenData.summary||{},loss=lossData.summary||{};
   const receipts=summarizeReceipts(receiptRows),quality=summarizeQualityToday(qualityRows),alerts=(incidentData.items||[]).filter(x=>x.status==='OPEN');
@@ -116,7 +126,16 @@ export async function loadManagerInbox(){
   const critical=sorted.filter(x=>x.severity==='CRITICAL').length,blocking=sorted.filter(x=>x.blocking).length;
   const p0=sorted.filter(x=>x.priority==='P0').length,p1=sorted.filter(x=>x.priority==='P1').length;
   const alertCritical=alerts.filter(x=>x.criticality==='CRITICAL').length;
-  return {dashboard,commercial,receiptRows,inventoryData,lossData,incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical}};
+  return {dashboard,commercial,receiptRows,inventoryData,lossData,incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},managerTodayMeta:data.meta||null,_managerTodayData:data};
+}
+
+export async function loadManagerInbox(){return buildManagerInbox(await managerData())}
+
+export async function refreshManagerInboxSignals(inbox){
+  const signals=await safe(api(`/api/stores/${app.storeId}/manager-today/signals`),null);
+  if(!signals)return{inbox,pulse:null,meta:{mode:'SIGNALS_UNAVAILABLE'}};
+  const base=inbox?._managerTodayData||await managerData(),merged={...base,commercial:signals.commercial||base.commercial,stockData:signals.stockData||base.stockData,meta:{...(base.meta||{}),signals:signals.meta||null}};
+  return{inbox:buildManagerInbox(merged),pulse:signals.pulse||null,meta:signals.meta||null};
 }
 
 export function actionKind(item){return item.priority==='P0'||item.severity==='CRITICAL'?'danger':item.priority==='P1'||item.severity==='HIGH'?'warn':'neutral'}
@@ -139,7 +158,7 @@ export function syncManagerNav(inbox){
 export function ensureInboxStyles(){
   if(document.querySelector('#managerInboxStyles'))return;
   const s=document.createElement('style');s.id='managerInboxStyles';s.textContent=`
-  #managerNav button{position:relative}#managerNav button b{position:absolute;top:5px;right:7px;min-width:18px;height:18px;border-radius:999px;background:#231b1f;color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px}#managerNav button b.alert{background:#df2356}
+  #managerNav button{position:relative}#managerNav button b{position:absolute;top:5px;right:7px;min-width:18px;height:18px;border-radius:999px;background:#231b20;color:#fff;font-size:10px;display:grid;place-items:center;padding:0 4px}#managerNav button b.alert{background:#df2356}
   .manager-inbox-head{margin:8px 0 14px}.manager-inbox-head h2{font-size:34px;line-height:1.02;margin:5px 0 8px}.manager-inbox-head p{margin:0;color:var(--muted)}
   .manager-inbox-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}.manager-inbox-stat{border:1px solid var(--line);border-radius:16px;padding:12px;background:#fff}.manager-inbox-stat strong{display:block;font-size:23px}.manager-inbox-stat span{font-size:11px;color:var(--muted);font-weight:750}.manager-inbox-stat.danger{border-color:#f1a5ba;background:#fff7fa}
   .manager-action-list{display:grid;gap:10px}.manager-action-card{width:100%;text-align:left;border:1px solid var(--line);background:#fff;border-radius:18px;padding:14px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}.manager-action-card.critical{border-color:#ec8fab;background:#fff8fa}.manager-action-card .chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:7px}.manager-action-card .chip{font-size:10px;font-weight:850;letter-spacing:.03em;text-transform:uppercase;background:#f5f0f2;border-radius:999px;padding:5px 8px}.manager-action-card .chip.danger{background:#ffe2ea;color:#a40033}.manager-action-card .chip.warn{background:#fff0d7;color:#7a4700}.manager-action-card .chip.priority-p0{background:#241b20;color:#fff}.manager-action-card .chip.priority-p1{background:#ffe7bd;color:#754400}.manager-action-card strong{display:block;font-size:16px;line-height:1.2}.manager-action-card small{display:block;color:var(--muted);font-size:12px;line-height:1.35;margin-top:4px}.manager-action-card .arrow{font-size:25px;color:#df2356}.manager-inbox-section{margin-top:18px}.manager-inbox-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:9px}.manager-inbox-section-head h3{margin:0;font-size:20px}.manager-inbox-section-head span{color:var(--muted);font-size:12px}.manager-alert-strip{border-radius:18px;background:#2b2227;color:#fff;padding:14px;margin:16px 0;display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px}.manager-alert-strip strong{font-size:17px}.manager-alert-strip small{display:block;opacity:.72;margin-top:3px}.manager-alert-strip button{border:0;background:#fff;color:#241b20;border-radius:12px;padding:10px 12px;font-weight:800}.manager-journey-compact{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:18px;background:#fff}.manager-journey-compact .row{align-items:center}.manager-journey-compact strong{font-size:16px}.manager-group-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;font-weight:850;color:var(--muted);margin:18px 2px 8px}
