@@ -1,0 +1,40 @@
+name: V2.00 Production Assets Contract
+
+on:
+  push:
+    branches: [storeops-v2.00-perf-assets]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/api.js
+          node --check frontend/js/api-showcase.js
+          node --check frontend/js/app.js
+      - name: Production asset isolation
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Lazy runtime regression
+        run: node backend/tests/v190-lazy-runtime.mjs
+      - name: PWA shell regression
+        run: node backend/tests/pwa-shell.mjs
+      - name: Showcase cash regression
+        run: node backend/tests/showcase-cash.mjs
+      - name: Showcase cash opening regression
+        run: node backend/tests/showcase-cash-opening.mjs
+      - name: Showcase cold chain regression
+        run: node backend/tests/showcase-cold-chain.mjs
+      - name: Showcase DLC to loss regression
+        run: node backend/tests/showcase-dlc-loss.mjs
+      - name: Showcase receipts regression
+        run: node backend/tests/showcase-receipts.mjs
+      - name: Showcase staffing regression
+        run: node backend/tests/showcase-staffing.mjs
