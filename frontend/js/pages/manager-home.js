@@ -1,9 +1,8 @@
-import { api } from '../api.js';
 import { app,currentStore } from '../state.js';
 import { $,status,progress,esc } from '../ui.js';
 import { managerPhase,managerPhaseLabel } from '../manager-journey.js';
 import { managerDayCompliance } from '../manager-compliance.js';
-import { loadManagerInbox,actionKind,categoryLabel,priorityLabel,syncManagerNav } from '../manager-action-inbox.js';
+import { loadManagerInbox,refreshManagerInboxSignals,actionKind,categoryLabel,priorityLabel,syncManagerNav } from '../manager-action-inbox.js';
 
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:0,maximumFractionDigits:2})+' DH';
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1});
@@ -18,6 +17,7 @@ function phaseStrip(phase){
  return `<div class="manager-phase-strip">${order.map((p,i)=>`<div class="manager-phase-step ${i<idx?'done':i===idx?'current':'next'}"><span>${i<idx?'✓':i+1}</span><strong>${labels[p]}</strong></div>`).join('')}</div>`;
 }
 function businessPulseCard(p){
+ if(p===undefined)return `<section class="business-pulse"><div class="pulse-unavailable"><strong>Business Pulse · actualisation en cours</strong><span>Les priorités opérationnelles sont déjà disponibles. Les ventes et le stock s’actualisent sans bloquer l’écran.</span></div></section>`;
  if(!p||p.status!=='READY'||!p.snapshot){return `<section class="business-pulse"><div class="pulse-unavailable"><strong>Business Pulse · ventes non connectées</strong><span>StoreOps garde les KPI vides plutôt que d’estimer le CA. Les opérations magasin restent disponibles.</span></div></section>`}
  const k=p.snapshot.kpis||{},change=k.changeVsComparison,changeClass=change==null?'':change>=0?'up':'down';
  return `<section class="business-pulse"><div class="pulse-card">
@@ -32,8 +32,8 @@ function businessPulseCard(p){
  </div></section>`;
 }
 
-export async function renderManagerHome(){
- const [inbox,pulse]=await Promise.all([loadManagerInbox(),api(`/api/stores/${app.storeId}/business-pulse`).catch(()=>null)]);syncManagerNav(inbox);
+function paintManagerHome(inbox,pulse){
+ syncManagerNav(inbox);
  const d=inbox.dashboard,store=currentStore(),phase=managerPhase(d),firstName=String(app.user?.name||'Responsable').trim().split(/\s+/)[0],hours=store?.opening_time&&store?.closing_time?`${store.opening_time}–${store.closing_time}`:'';
  const compliance=managerDayCompliance({dashboard:d,staff:inbox.staff,cold:inbox.cold,cashOpen:inbox.cashOpen,receipts:inbox.receipts,quality:inbox.quality,maintenance:inbox.maintenance,loss:inbox.lossData.summary||{}}),top=inbox.items.slice(0,3),remaining=Math.max(0,inbox.items.length-top.length);
  const title=phase==='OPENING'?'Préparez le magasin.':phase==='CLOSING'?'Sécurisez la fin de journée.':phase==='CLOSED'?'Journée terminée.':'Voici ce qui compte maintenant.';
@@ -45,4 +45,14 @@ export async function renderManagerHome(){
   <section class="manager-journey-compact"><div class="row"><div><span class="manager-eyebrow">Parcours magasin</span><strong>${managerPhaseLabel(phase)} · ${hours||'horaires magasin'}</strong></div><button class="btn ghost" data-manager-go="managerJourney">Ouvrir</button></div><div style="margin-top:10px">${phaseStrip(phase)}</div></section>
   <section class="manager-completion-strip" style="margin-top:14px"><div class="row"><div><span class="manager-eyebrow">Traçabilité du jour</span><strong>${compliance.done}/${compliance.total} obligation(s) réalisée(s)</strong></div><strong class="manager-completion-percent">${compliance.percent}%</strong></div>${progress(compliance.percent)}</section>
  </div>`;
+}
+
+export async function renderManagerHome(){
+ const storeId=app.storeId,inbox=await loadManagerInbox();
+ if(app.storeId!==storeId)return;
+ paintManagerHome(inbox,undefined);
+ refreshManagerInboxSignals(inbox).then(({inbox:enriched,pulse})=>{
+  if(app.storeId!==storeId)return;
+  paintManagerHome(enriched||inbox,pulse||null);
+ }).catch(()=>{});
 }
