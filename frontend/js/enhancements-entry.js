@@ -4,6 +4,7 @@ const BUILD='1990';
 
 const modules=[
   './pwa.js',
+  './journey-resume.js',
   './manager-polish.js',
   './manager-alerts.js',
   './manager-incident-flow.js',
