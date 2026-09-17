@@ -118,7 +118,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.01.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.02.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -205,8 +205,10 @@ async function initializeCentralRuntime(database:any){
   }catch(error){localRevision=null;revisionCache={value:null,checkedAt:0};if(!committed)await client.query('ROLLBACK').catch(()=>{});throw error}finally{client.release()}
 }
 async function syncReadRuntime(database:any){
-  const targetRevision=await probeCentralRevision(database);
-  if(dbRuntimePromise&&localRevision===targetRevision)return loadDbRuntime();
+  if(dbRuntimePromise&&localRevision!==null){
+    const targetRevision=await probeCentralRevision(database);
+    if(localRevision===targetRevision)return loadDbRuntime()
+  }
   if(readSyncPromise)return readSyncPromise;
   readSyncPromise=(async()=>{
     const client=await database.pool.connect();let row:any=null;
