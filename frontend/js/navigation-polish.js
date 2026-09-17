@@ -1,0 +1,20 @@
+import { app } from './state.js';
+
+const managerRoots=new Set(['today','managerScan','managerTeam','managerMore']);
+const labels={today:'Aujourd’hui',managerScan:'Scanner',managerTeam:'Équipe',managerMore:'Plus',opening:'Ouverture',handover:'Passation',staffing:'Équipe',coldChain:'Chaîne du froid',cashOpening:'Préparation caisses',commercial:'Prix & promos',dlc:'DLC / DDM',receipts:'Réception',inventory:'Stock & inventaire',losses:'Démarque & pertes',quality:'Qualité',maintenance:'Maintenance',incidents:'Incidents',cash:'Caisses',closing:'Fermeture',managerJourney:'Parcours de journée',managerControls:'À valider',managerPerformance:'Performance'};
+const stack=[];let lastPage=null,suppress=false;
+
+function activePage(){const el=document.querySelector('.page.active');return el?.id?.replace(/Page$/,'')||null}
+function targetForManager(page){if(page==='staffing')return'managerTeam';if(managerRoots.has(page))return null;return'managerMore'}
+function pageButton(page){return document.querySelector(`#managerNav [data-page="${page}"],#nav [data-page="${page}"],#developmentNavBar [data-page="${page}"]`)}
+function go(page){const b=pageButton(page);if(b){suppress=true;b.click();setTimeout(()=>{suppress=false},0);return true}return false}
+function previousPage(current){for(let i=stack.length-1;i>=0;i--){const p=stack[i];if(p&&p!==current)return p}return app.user?.role==='store_manager'?targetForManager(current)||'today':'today'}
+function ensureBack(){let b=document.getElementById('storeopsContextBack');if(b)return b;const brand=document.querySelector('.topbar .brand');if(!brand)return null;b=document.createElement('button');b.id='storeopsContextBack';b.className='storeops-context-back';b.type='button';b.setAttribute('aria-label','Retour');b.innerHTML='<span>←</span><strong>Retour</strong>';brand.before(b);b.onclick=()=>{const current=activePage(),prev=previousPage(current);if(prev&&go(prev)){const i=stack.lastIndexOf(prev);if(i>=0)stack.splice(i+1)}};return b}
+function ensureHome(){let b=document.getElementById('storeopsContextHome');if(b)return b;const controls=document.querySelector('.top-controls');if(!controls)return null;b=document.createElement('button');b.id='storeopsContextHome';b.className='btn ghost storeops-context-home';b.textContent='Aujourd’hui';b.hidden=true;b.onclick=()=>go('today');controls.prepend(b);return b}
+function refresh(){const current=activePage();if(!current)return;if(lastPage&&current!==lastPage&&!suppress){stack.push(lastPage);if(stack.length>20)stack.shift()}lastPage=current;const manager=app.user?.role==='store_manager',back=ensureBack(),home=ensureHome();if(!back||!home)return;const root=manager&&managerRoots.has(current);back.hidden=!manager||root;home.hidden=!manager||root;if(manager&&!root){const prev=previousPage(current),fallback=targetForManager(current)||'today',target=prev||fallback;back.querySelector('strong').textContent=`Retour · ${labels[target]||'précédent'}`;home.hidden=current==='today'}}
+function installCss(){if(document.getElementById('navigationPolishStyles'))return;const s=document.createElement('style');s.id='navigationPolishStyles';s.textContent=`.storeops-context-back{border:0;background:transparent;display:flex;align-items:center;gap:7px;padding:8px 9px;border-radius:12px;color:var(--ink);cursor:pointer}.storeops-context-back:hover{background:#f6f1f3}.storeops-context-back span{font-size:20px;line-height:1}.storeops-context-back strong{font-size:11px;white-space:nowrap}.storeops-context-back[hidden],.storeops-context-home[hidden]{display:none!important}@media(max-width:720px){.topbar{gap:5px}.storeops-context-back{padding:7px}.storeops-context-back strong{display:none}.storeops-context-home{display:none!important}}`;document.head.appendChild(s)}
+
+installCss();
+new MutationObserver(refresh).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
+window.addEventListener('popstate',()=>{const current=activePage(),prev=previousPage(current);if(prev)go(prev)});
+refresh();
