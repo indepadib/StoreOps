@@ -48,16 +48,19 @@ function openPriceIncident(storeId,ean){
   ORDER BY i.created_at DESC LIMIT 1`).get(storeId,ean);
  return row||null
 }
+function integrationError(error,domain='pricing'){return{[domain]:{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}}
 
 export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO()}){
  const code=String(ean||'').trim();if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
- const product=await getStoreProductByEan(storeId,code);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});
+ const product=await getStoreProductByEan(storeId,code);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404,code:'ITEM_NOT_FOUND'});
  const priceGroup=priceGroupForStore(storeId),category=String(product.category||'Autre').trim()||'Autre';
- const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup,productName:product.name,productCategory:category});
+ let pricing=null,pricingFailure=null;
+ try{pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup,productName:product.name,productCategory:category})}catch(error){pricingFailure=error;pricing={basePrice:null,effectiveUnitPrice:null,promotions:{items:[]},conditionalPromotions:[],pricingNote:'Prix temps réel indisponible',sources:null,errors:integrationError(error).pricing}}
+ const mergedErrors={...(pricing?.errors||{})};if(product.identityError)mergedErrors.identity=product.identityError;if(product.stockError)mergedErrors.stock=product.stockError;if(pricingFailure&&!mergedErrors.pricing)mergedErrors.pricing={code:pricingFailure.code||'D365_UNAVAILABLE',message:pricingFailure.message};
  return{
   storeId,businessDate,ean:code,priceGroup,
-  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,stock:product.stock,availableStock:product.availableStock,reservedStock:product.reservedStock??null,onOrderStock:product.onOrderStock??null,totalAvailableStock:product.totalAvailableStock??null,warehouseId:product.warehouseId??null,stockRowCount:product.stockRowCount??null,stockSource:product.stockSource??null,stockMappingRequired:!!product.stockMappingRequired},
-  basePrice:pricing.basePrice,expectedUnitPrice:pricing.effectiveUnitPrice,promotions:pricing.promotions,conditionalPromotions:pricing.conditionalPromotions||[],promoLabel:promoText(pricing),pricingNote:pricing.pricingNote||null,pricingSources:pricing.sources||null,integrationErrors:pricing.errors||null,promotionError:pricing.errors?.promotion||null,promotionScan:pricing.promotions?.scan||null,openIncident:openPriceIncident(storeId,code)
+  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,source:product.source||null,identityFallback:!!product.identityFallback,identityStale:!!product.identityStale,cacheSyncedAt:product.cacheSyncedAt||null,stock:product.stock,availableStock:product.availableStock,reservedStock:product.reservedStock??null,onOrderStock:product.onOrderStock??null,totalAvailableStock:product.totalAvailableStock??null,warehouseId:product.warehouseId??null,stockRowCount:product.stockRowCount??null,stockSource:product.stockSource??null,stockMappingRequired:!!product.stockMappingRequired,stockUnavailable:!!product.stockUnavailable,stockError:product.stockError||null},
+  basePrice:pricing?.basePrice??null,expectedUnitPrice:pricing?.effectiveUnitPrice??null,promotions:pricing?.promotions||{items:[]},conditionalPromotions:pricing?.conditionalPromotions||[],promoLabel:promoText(pricing),pricingNote:pricing?.pricingNote||null,pricingSources:pricing?.sources||null,integrationErrors:Object.keys(mergedErrors).length?mergedErrors:null,promotionError:mergedErrors?.promotion||null,promotionScan:pricing?.promotions?.scan||null,openIncident:openPriceIncident(storeId,code),partial:!!(product.identityFallback||product.stockUnavailable||pricingFailure)
  }
 }
 
