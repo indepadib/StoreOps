@@ -1,0 +1,39 @@
+name: V1.85 Performance P1 Contract
+
+on:
+  push:
+    branches: [storeops-v1.85-performance-p1]
+  pull_request:
+    branches: [main]
+
+jobs:
+  performance-p1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-today.mjs
+          node --check backend/services/business-pulse-api.mjs
+          node --check frontend/js/manager-action-inbox.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/api.js
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pwa.js
+      - name: V1.85 performance contract
+        run: node backend/tests/v185-performance-p1.mjs
+      - name: V1.84 regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: Core manager regressions
+        run: |
+          STOREOPS_DB=/tmp/storeops-v185-core.db node backend/tests/v179-core.mjs
+          STOREOPS_DB=/tmp/storeops-v185-stock.db node backend/tests/stock-signals-api.mjs || true
+      - name: Static fan-out guard
+        run: |
+          grep -q "/manager-today" frontend/js/manager-action-inbox.js
+          grep -q "LOCAL_FAST" backend/services/manager-today.mjs
+          ! grep -q "Promise.all(\[loadManagerInbox(),api" frontend/js/pages/manager-home.js
