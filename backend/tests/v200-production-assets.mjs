@@ -8,6 +8,7 @@ const read=p=>readFileSync(path.join(root,p),'utf8');
 const api=read('frontend/js/api.js');
 const showcase=read('frontend/js/api-showcase.js');
 const app=read('frontend/js/app.js');
+const html=read('frontend/index.html');
 
 assert.doesNotMatch(api,/^import\s+.*['"]\.\/mock-/m,'live API runtime must not statically import showcase mocks');
 assert.match(api,/import\('\.\/api-showcase\.js'\)/,'showcase graph must load dynamically');
@@ -19,4 +20,15 @@ assert.match(showcase,/from '\.\/mock-price-check\.js'/,'showcase price checker 
 assert.doesNotMatch(app,/^import\s+.*['"]\.\/mock-/m,'app bootstrap must not statically pull showcase reset modules');
 assert.match(app,/lazy\('\.\/mock-api\.js'\)/,'showcase reset remains lazy');
 
-console.log('V2.00 production asset isolation contract OK');
+const styles=[...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+\.css)"([^>]*)>/g)].map(m=>({href:m[1],attrs:m[2]}));
+const blocking=styles.filter(x=>!x.attrs.includes('media="print"'));
+const deferred=styles.filter(x=>x.attrs.includes('media="print"'));
+assert(blocking.length<=7,`first paint CSS budget exceeded: ${blocking.length} blocking stylesheets`);
+for(const href of ['/styles.css','/manager.css','/manager-today.css','/auth.css'])assert(blocking.some(x=>x.href===href),`${href} must remain critical`);
+assert(deferred.some(x=>x.href==='/admin-studio.css'),'Admin Studio CSS should not block first paint');
+assert(deferred.some(x=>x.href==='/development.css'),'Development CSS should not block first paint');
+assert(deferred.some(x=>x.href==='/manager-scan.css'),'Scanner CSS should not block Today first paint');
+assert(deferred.every(x=>x.attrs.includes("onload=\"this.media='all'\"")),'deferred CSS must switch to all media after load');
+assert.match(html,/auth-entry\.js\?v=2000/,'entry asset must be cache-busted for V2.00');
+
+console.log(`V2.00 production asset isolation contract OK · ${blocking.length} critical CSS · ${deferred.length} deferred CSS`);
