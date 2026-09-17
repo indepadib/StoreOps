@@ -28,6 +28,7 @@ jobs:
           node --check frontend/js/navigation-polish.js
           node --check frontend/js/manager-more-simplified.js
           node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pages/network.js
       - name: Typecheck Netlify bridge
         run: npx tsc -p tsconfig.netlify.json
       - name: V1.87 degraded scanner and UX contract
@@ -42,4 +43,6 @@ jobs:
           grep -q "state:'STOCK_UNKNOWN'" backend/services/assortment.mjs
           grep -q "Connexion articles indisponible" frontend/js/scanner-resilience.js
           grep -q "manager-more-simplified.js" frontend/js/enhancements-entry.js
+          grep -q "Un « — » signifie que la source n’a pas répondu" frontend/js/pages/network.js
+          ! grep -q "cashOpening:r.cashOpening||{blocking:1}" frontend/js/pages/network.js
           ! grep -R "client_secret.*[A-Za-z0-9].*=" backend netlify frontend --exclude='*.map' || true
