@@ -1,0 +1,32 @@
+name: V1.90 Lazy Runtime Contract
+
+on:
+  push:
+    branches: [storeops-v1.90-lazy-runtime]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/manager-home.js
+          node --check backend/services/business-pulse-api.mjs
+          node --check backend/services/manager-home-fast.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+      - name: Lazy runtime contract
+        run: node backend/tests/v190-lazy-runtime.mjs
+      - name: Grouped bootstrap regression
+        run: STOREOPS_DB=/tmp/storeops-v190-bootstrap.db AUTH_MODE=demo D365_MODE=simulated node backend/tests/v188-runtime-bootstrap-routing.mjs
+      - name: Manager home fast regression
+        run: STOREOPS_DB=/tmp/storeops-v190-home.db AUTH_MODE=demo D365_MODE=simulated node backend/tests/v185-manager-home-fast.mjs
+      - name: Manager inbox batch regression
+        run: STOREOPS_DB=/tmp/storeops-v190-inbox.db AUTH_MODE=demo D365_MODE=simulated node backend/tests/v186-manager-inbox-batch.mjs
