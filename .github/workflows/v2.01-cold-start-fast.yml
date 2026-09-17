@@ -1,0 +1,33 @@
+name: V2.01 Cold Start Fast Contract
+
+on:
+  push:
+    branches: [storeops-v2.01-cold-start-fast]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/auth/session-readonly.mjs
+          node --check backend/tests/v201-cold-start-fast.mjs
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.01 cold start contract
+        run: node backend/tests/v201-cold-start-fast.mjs
+      - name: V1.84 persistence regression
+        run: node backend/tests/v184-performance-p0.mjs
+      - name: V2.00 production asset regression
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Public backend regression
+        run: node backend/tests/netlify-public-backend.mjs
