@@ -17,7 +17,6 @@ cat ./js/boot-classic.js >> runtime-config.js
 # maintainability; only the generated deploy surface is consolidated.
 node <<'NODE'
 const fs=require('fs');
-const path=require('path');
 const file='index.html';
 const build=String(process.env.STOREOPS_RELEASE_BUILD||'2000');
 let html=fs.readFileSync(file,'utf8');
@@ -44,14 +43,27 @@ console.log(`StoreOps CSS bundle: ${unique.length} files -> 1 request, ${bytes} 
 NODE
 
 # Keep only the small early-runtime graph required before the deferred application
-# modules: tenant branding, boot rescue and auth-entry. Normalize their cache key
-# at build time so a production release cannot mix previous JS generations.
+# modules: tenant branding, boot rescue and auth-entry. Normalize all critical cache
+# keys from one release build value so production cannot mix JS generations.
 node <<'NODE'
 const fs=require('fs');
-const file='index.html';
 const build=String(process.env.STOREOPS_RELEASE_BUILD||'2000');
-let html=fs.readFileSync(file,'utf8');
+const label=build==='2000'?'2.00.0':build;
+const indexFile='index.html';
+let html=fs.readFileSync(indexFile,'utf8');
 const allowed=new Set(['/js/tenant-branding.js','/js/boot-rescue.js','/js/auth-entry.js']);
 html=html.replace(/<script type="module" src="(\/js\/[^"?]+\.js)(?:\?v=[^"]+)?"><\/script>/g,(tag,src)=>allowed.has(src)?`<script type="module" src="${src}?v=${build}"></script>`:'');
-fs.writeFileSync(file,html);
+fs.writeFileSync(indexFile,html);
+
+const authFile='js/auth-entry.js';
+let auth=fs.readFileSync(authFile,'utf8');
+auth=auth.replace(/enhancements-entry\.js\?v=\d+/g,`enhancements-entry.js?v=${build}`)
+         .replace(/const BUILD='\d+';/,`const BUILD='${build}';`)
+         .replace(/const BUILD_LABEL='[^']+';/,`const BUILD_LABEL='${label}';`);
+fs.writeFileSync(authFile,auth);
+
+const enhancementsFile='js/enhancements-entry.js';
+let enhancements=fs.readFileSync(enhancementsFile,'utf8');
+enhancements=enhancements.replace(/const BUILD='\d+';/,`const BUILD='${build}';`);
+fs.writeFileSync(enhancementsFile,enhancements);
 NODE
