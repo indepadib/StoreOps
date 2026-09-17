@@ -8,6 +8,13 @@ function parseStoreMap(v=''){
 function source(v,fallback='storeops'){const s=String(v||fallback).trim().toLowerCase();return ['storeops','d365'].includes(s)?s:fallback}
 function readMode(v,fallback='simulated'){const s=String(v||fallback).trim().toLowerCase();return ['live','simulated'].includes(s)?s:fallback}
 function flag(v){return ['1','true','yes','on'].includes(String(v||'').trim().toLowerCase())}
+function runtimeEnv(name){
+  try{
+    const value=globalThis.Netlify?.env?.get?.(name);
+    if(value!==undefined&&value!==null)return String(value);
+  }catch{}
+  return process.env[name]||'';
+}
 const REAL_ONLY=flag(process.env.STOREOPS_REAL_ONLY);
 
 export const config = {
@@ -35,7 +42,7 @@ export const config = {
     baseUrl: cleanUrl(process.env.D365_BASE_URL),
     tenantId: process.env.D365_TENANT_ID || process.env.ENTRA_TENANT_ID || '',
     clientId: process.env.D365_CLIENT_ID || '',
-    clientSecret: process.env.D365_CLIENT_SECRET || '',
+    get clientSecret(){ return runtimeEnv('D365_CLIENT_SECRET'); },
     oauthVersion: process.env.D365_OAUTH_VERSION || 'v2',
     read: {
       product: readMode(process.env.D365_PRODUCT_READ_MODE,'simulated'),
