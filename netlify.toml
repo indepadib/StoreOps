@@ -59,6 +59,13 @@
   [headers.values]
     Cache-Control = "public, max-age=300, stale-while-revalidate=86400"
 
+# Generated at build time and always referenced with ?v=<release>. Browser cache
+# keys therefore change on every production release and the immutable policy is safe.
+[[headers]]
+  for = "/storeops.bundle.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
 [[headers]]
   for = "/sw.js"
   [headers.values]
