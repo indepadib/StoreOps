@@ -118,7 +118,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.03.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.04.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -159,7 +159,8 @@ async function handleLightRoute(request:Request,runtime:DbRuntime){
     }
     if(resource==='manager-inbox-batch'){
       const {getManagerInboxBatch}=await import('../../backend/services/manager-inbox-batch.mjs');
-      return Response.json(await getManagerInboxBatch(storeId,businessDate,{force}),{headers:{'X-StoreOps-Fast-Path':'manager-inbox'}})
+      const includeExternal=url.searchParams.get('mode')!=='local';
+      return Response.json(await getManagerInboxBatch(storeId,businessDate,{force,includeExternal}),{headers:{'X-StoreOps-Fast-Path':includeExternal?'manager-inbox':'manager-inbox-local'}})
     }
     const {getBusinessPulse}=await import('../../backend/services/business-pulse.mjs');
     return Response.json(await getBusinessPulse(storeId,businessDate,{force}),{headers:{'X-StoreOps-Fast-Path':'business-pulse'}})
