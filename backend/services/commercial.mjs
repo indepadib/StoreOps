@@ -75,11 +75,11 @@ function hydrate(row){
  const incident=db.prepare(`SELECT id,status,criticality,requires_evidence FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? ORDER BY created_at DESC LIMIT 1`).get(row.id)||null;
  return{...row,controlled_by_name:userName(row.controlled_by),issues,incident};
 }
-function dateOnly(v){const s=String(v||'');return /^\\d{4}-\\d{2}-\\d{2}/.test(s)?s.slice(0,10):null}
+function dateOnly(v){const s=String(v||'');return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function dayDistance(from,to){const a=dateOnly(from),b=dateOnly(to);if(!a||!b)return null;return Math.round((new Date(`${b}T12:00:00Z`)-new Date(`${a}T12:00:00Z`))/86400000)}
 function stableKeyFor(c){
  if(c?.stableKey)return String(c.stableKey);
- return String(c?.sourceKey||'').replace(/-\\d{4}-\\d{2}-\\d{2}(?:-[a-z0-9]+)?$/i,'')
+ return String(c?.sourceKey||'').replace(/-\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+)?$/i,'')
 }
 function fingerprintFor(c){
  if(c?.fingerprint)return String(c.fingerprint);
