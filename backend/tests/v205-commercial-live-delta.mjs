@@ -33,6 +33,17 @@ assert.equal(rows.length,1,'a newly seen promotion effective today must surface 
 assert.equal(rows[0].action_type,'PROMO_START');
 
 db.prepare(`DELETE FROM commercial_controls`).run();
+const priorDay='2026-09-10',historicalPromo={...oldActive,sourceKey:`D365-PROMO-5001-000003-1-${priorDay}`,actionType:'PROMO_START',ean:'ITEM:SKUH',productNumber:'SKUH',productName:'Article historique',validFrom:'2026-09-10T00:00:00Z',expectedPrice:10,promoLabel:'Promo historique · Prix promo 10.00 DH'};
+syncCommercialControls({storeId,businessDate:priorDay,changes:[historicalPromo]});
+db.prepare(`DELETE FROM commercial_source_state WHERE store_id=? AND stable_key LIKE ?`).run(storeId,'D365-PROMO-5001-000003-1%');
+const historicalChanged={...historicalPromo,sourceKey:`D365-PROMO-5001-000003-1-${day}`,actionType:'VERIFY',validFrom:'2026-09-01T00:00:00Z',expectedPrice:8.5,promoLabel:'Promo historique · Prix promo 8.50 DH'};
+r=syncCommercialControls({storeId,businessDate:day,changes:[historicalChanged]});
+rows=listCommercialControls(storeId,day);
+assert.equal(rows.length,1,'a changed old-validity promo must be detected from StoreOps history even before source-state bootstrap');
+assert.match(rows[0].promo_label,/Promotion modifiée dans Dynamics/);
+assert.equal(rows[0].expected_price,8.5);
+
+db.prepare(`DELETE FROM commercial_controls`).run();
 const price={sourceKey:`D365-PRICE-AGREEMENT-123-${day}`,stableKey:'D365-PRICE-AGREEMENT:123',fingerprint:'123|SKU3|15.9',actionType:'PRICE_CHANGE',ean:'ITEM:SKU3',productNumber:'SKU3',productName:'SKU3',oldPrice:null,expectedPrice:15.9,promoLabel:'Nouveau prix 15.90 DH · accord tarifaire Franprix',signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,source:'D365_RETAIL_PRICING',effectiveFrom:day};
 r=syncCommercialControls({storeId,businessDate:day,changes:[price]});
 rows=listCommercialControls(storeId,day);
