@@ -21,7 +21,8 @@ assert.match(dynamics,/D365_REQUEST_TIMEOUT_MS/,'D365 requests need a bounded ti
 assert.match(dynamics,/D365_REQUEST_TIMEOUT/,'timeout must surface as a controlled JSON error');
 
 const refresh=server.match(/async function refreshCommercial[\s\S]*?async function refreshCash/)?.[0]||'';
-assert.match(refresh,/if\(!required\)return\{ok:true,deferred:true/,'commercial GET must stay off the live D365 critical path');
+assert.match(refresh,/liveHeavy=config\.dynamics\.mode==='live'/,'commercial refresh must distinguish heavy live D365 reads');
+assert.match(refresh,/if\(!required&&liveHeavy\)return\{ok:true,deferred:true/,'live commercial GET must stay off the D365 critical path');
 assert.match(server,/\/api\/stores\/:storeId\/commercial\/sync/,'explicit commercial sync route must remain available');
 
 assert.match(commercial,/Promise\.allSettled/,'commercial UI must degrade independently when one source fails');
