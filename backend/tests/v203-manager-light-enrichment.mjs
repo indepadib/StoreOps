@@ -27,13 +27,13 @@ assert(batchCall>=0&&legacyFanout>=0&&batchCall<legacyFanout,'manager inbox must
 assert.match(inbox,/batch\?\.status==='READY'/,'batch response must be validated before returning');
 assert.match(inbox,/fallback legacy/,'legacy fallback must remain available for resilience');
 
-const activeBuild=auth.match(/const BUILD='(\\d+)'/)?.[1]||'';
+const activeBuild=auth.match(/const BUILD='(\d+)'/)?.[1]||'';
 const activeLabel=auth.match(/const BUILD_LABEL='([^']+)'/)?.[1]||'';
-const enhancementBuild=enhancements.match(/const BUILD='(\\d+)'/)?.[1]||'';
+const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1]||'';
 assert(Number(activeBuild)>=2030,'release build must not regress below V2.03');
-assert(/^\\d+\\.\\d+\\.\\d+$/.test(activeLabel),'visible release label must remain semver');
-assert.match(index,new RegExp(`auth-entry\\\\.js\\\\?v=${activeBuild}`),'HTML must invalidate auth entry with the active release key');
-assert.match(index,new RegExp(`boot-rescue\\\\.js\\\\?v=${activeBuild}`),'HTML must invalidate boot rescue with the active release key');
+assert(/^\d+\.\d+\.\d+$/.test(activeLabel),'visible release label must remain semver');
+assert(index.includes(`/js/auth-entry.js?v=${activeBuild}`),'HTML must invalidate auth entry with the active release key');
+assert(index.includes(`/js/boot-rescue.js?v=${activeBuild}`),'HTML must invalidate boot rescue with the active release key');
 assert.equal(enhancementBuild,activeBuild,'deferred enhancements must share the active release key');
 
 console.log('V2.03 manager light-enrichment contract OK');
