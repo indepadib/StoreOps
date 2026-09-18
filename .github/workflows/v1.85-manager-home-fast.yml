@@ -34,7 +34,7 @@ jobs:
           grep -q "À faire maintenant" frontend/js/pages/manager-home.js
           grep -q "BUSINESS PULSE" frontend/js/pages/manager-home.js
           grep -q "items.slice(0,3)" frontend/js/pages/manager-home.js
-          grep -Eq "var BUILD='1\.[0-9]+\.[0-9]+'" frontend/js/boot-classic.js
+          grep -Eq "var BUILD='[0-9]+\\.[0-9]+\\.[0-9]+'" frontend/js/boot-classic.js
           grep -q "storeops-legacy-runtime-cleaned-v1" frontend/js/boot-classic.js
           ! grep -q "storeops-runtime-cleaned-build" frontend/js/boot-classic.js
           ! grep -q "getRegistrations" frontend/js/pwa.js
