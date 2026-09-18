@@ -3,7 +3,8 @@ import { app,currentStore,isDirector } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 
 const moduleCache=new Map();
-function lazy(path){if(!moduleCache.has(path))moduleCache.set(path,import(path));return moduleCache.get(path)}
+const APP_BUILD='2040';
+function lazy(path){if(!moduleCache.has(path))moduleCache.set(path,import(`${path}?v=${APP_BUILD}`));return moduleCache.get(path)}
 async function invoke(path,name,...args){const mod=await lazy(path),fn=mod?.[name];if(typeof fn!=='function')throw new Error(`Module StoreOps incomplet : ${path}#${name}`);return fn(...args)}
 const isManager=()=>app.user?.role==='store_manager';
 const managerControlPages=new Set(['staffing','coldChain','cashOpening','commercial','receipts','dlc','inventory','quality','maintenance','losses','cash']);
