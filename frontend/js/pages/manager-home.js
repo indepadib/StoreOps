@@ -5,6 +5,8 @@ import { managerPhase,managerPhaseLabel,chooseManagerNextAction } from '../manag
 import { managerDayCompliance } from '../manager-compliance.js';
 import { loadManagerInbox,categoryLabel,syncManagerNav } from '../manager-action-inbox.js';
 
+const commercialSyncAttempted=new Set();
+
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:0,maximumFractionDigits:0})+' DH';
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:0});
 const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})}%`;
@@ -38,6 +40,11 @@ function ctaLabel(item,phase){
 function phaseRail(phase){
  const current=phase==='CLOSED'?3:Math.max(0,phaseOrder.indexOf(phase));
  return `<div class="today-dayrail" aria-label="Parcours de la journée">${phaseOrder.map((p,i)=>`<div class="today-dayrail-step ${i<current?'done':i===current?'current':''}"><span>${i<current?'✓':i+1}</span><strong>${phaseShort[p]}</strong></div>`).join('')}</div>`;
+}
+function commercialFreshness(inbox){
+ const s=inbox?.commercialSync;if(!s||!s.needsSync)return'';
+ const failed=s.status==='FAILED';
+ return `<div class="today-data-check ${failed?'failed':''}"><span aria-hidden="true">${failed?'!':'↻'}</span><span>${failed?'Dernier contrôle prix/promos incomplet. Nouvelle tentative au prochain rafraîchissement.':'Contrôle prix & promotions en arrière-plan…'}</span></div>`
 }
 function pulseCompact(p,loading=false){
  if(loading)return `<section class="today-pulse today-pulse-hero" aria-busy="true"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Votre magasin aujourd’hui</h3></div><span class="today-pulse-live">Mise à jour…</span></div><div class="today-pulse-grid today-pulse-grid-4"><div><span>CA</span><strong>…</strong></div><div><span>Tickets</span><strong>…</strong></div><div><span>Panier</span><strong>…</strong></div><div><span>Ruptures</span><strong>…</strong></div></div></section>`;
@@ -82,7 +89,7 @@ function renderState({fast,inbox,pulse,pulseLoading=false,detailsLoading=false})
  if(inbox)actions=inbox.items||[];
  else{const first=chooseManagerNextAction({dashboard:d,staff:local.staff,cold:local.cold,cashOpen:local.cashOpen,receipts:local.receipts,quality:local.quality,maintenance:local.maintenance,loss:local.loss,incidents:[]});if(first)actions=[first]}
  const total=inbox?.summary?.total??actions.length;
- $('#todayContent').innerHTML=`<div class="today-concierge"><header class="today-greeting"><div><span>${esc(store?.name||'Magasin')} · ${esc(copy.eyebrow)}</span><h1>Bonjour ${esc(firstName)}</h1><p>${esc(copy.subtitle)}</p></div><div class="today-live-state"><i></i><span>${esc(managerPhaseLabel(phase))}</span></div></header>${phaseRail(phase)}${pulseCompact(pulse,pulseLoading)}${prioritiesSection(actions,detailsLoading,phase,total)}${alertStrip(inbox,detailsLoading)}${journeyStrip(phase,local.compliance,hours)}<div class="today-footer-link"><button data-manager-go="managerMore">Tous les outils <span>›</span></button></div></div>`;
+ $('#todayContent').innerHTML=`<div class="today-concierge"><header class="today-greeting"><div><span>${esc(store?.name||'Magasin')} · ${esc(copy.eyebrow)}</span><h1>Bonjour ${esc(firstName)}</h1><p>${esc(copy.subtitle)}</p></div><div class="today-live-state"><i></i><span>${esc(managerPhaseLabel(phase))}</span></div></header>${phaseRail(phase)}${commercialFreshness(inbox)}${pulseCompact(pulse,pulseLoading)}${prioritiesSection(actions,detailsLoading,phase,total)}${alertStrip(inbox,detailsLoading)}${journeyStrip(phase,local.compliance,hours)}<div class="today-footer-link"><button data-manager-go="managerMore">Tous les outils <span>›</span></button></div></div>`;
 }
 
 export async function renderManagerHome(){
@@ -98,6 +105,11 @@ export async function renderManagerHome(){
   const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
   if(app.storeId!==storeId)return;
   inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
+  const syncKey=`${storeId}:${new Date().toISOString().slice(0,10)}`;
+  if(enriched?.commercialSync?.needsSync&&!commercialSyncAttempted.has(syncKey)){
+   commercialSyncAttempted.add(syncKey);
+   setTimeout(async()=>{try{await api(`/api/stores/${storeId}/commercial/sync`,{method:'POST'});if(app.storeId!==storeId)return;inbox=await api(`/api/stores/${storeId}/manager-inbox-batch?force=1`);syncManagerNav(inbox);if(inbox?.businessPulse){pulse=inbox.businessPulse;pulseLoading=false}redraw()}catch(e){console.warn('Synchronisation commerciale de fond indisponible',e)}},120)
+  }
   if(enriched?.businessPulse){pulse=enriched.businessPulse;pulseLoading=false;redraw();return}
   redraw();
   try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
