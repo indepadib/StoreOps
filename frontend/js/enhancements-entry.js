@@ -13,7 +13,8 @@ const modules=[
   './manager-handover.js',
   './manager-control-focus.js',
   './manager-receiving-focus.js',
-  './manager-replenishment-v2.js'
+  './manager-replenishment-v2.js',
+  './manager-stock-guided.js'
 ];
 
 const adminEntries={
