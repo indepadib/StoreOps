@@ -18,7 +18,7 @@ function commercialTitle(row){
   return `Valider l’article · ${row.product_name}`;
 }
 function commercialDetail(row){
-  if(row.action_type==='PRICE_CHANGE')return `${money(row.old_price)} → ${money(row.expected_price)} · vérifier prix rayon et étiquette`;
+  if(row.action_type==='PRICE_CHANGE')return row.old_price==null?`Nouveau prix ${money(row.expected_price)} · vérifier prix rayon et étiquette`:`${money(row.old_price)} → ${money(row.expected_price)} · vérifier prix rayon et étiquette`;
   if(row.action_type==='PROMO_START')return `${row.promo_label||'Promotion à installer'} · prix attendu ${money(row.expected_price)}`;
   if(row.action_type==='PROMO_END')return `${row.promo_label||'Promotion terminée'} · retour attendu ${money(row.expected_price)}`;
   return `EAN ${row.ean||'—'} · contrôle rayon à valider`;
