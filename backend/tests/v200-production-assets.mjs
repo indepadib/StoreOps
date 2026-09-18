@@ -30,7 +30,7 @@ assert(deferred.some(x=>x.href==='/admin-studio.css'),'Admin Studio CSS should n
 assert(deferred.some(x=>x.href==='/development.css'),'Development CSS should not block first paint');
 assert(deferred.some(x=>x.href==='/manager-scan.css'),'Scanner CSS should not block Today first paint');
 assert(deferred.every(x=>x.attrs.includes("onload=\"this.media='all'\"")),'deferred CSS must switch to all media after load');
-const runtimeBuild=auth.match(/const BUILD='(\\d+)'/)?.[1];
+const runtimeBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
 assert(runtimeBuild,'runtime build cache key must be explicit');
 assert.match(html,new RegExp(`auth-entry\\.js\\?v=${runtimeBuild}`),'entry asset cache key must match the active runtime build');
 
