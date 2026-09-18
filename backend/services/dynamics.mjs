@@ -210,17 +210,36 @@ function promoExpectedPrice(base,header,line){if(Number(line?.OfferPrice||0))ret
 export function commercialOfferFilter(field,values=[]){const rows=[...new Set((values||[]).map(x=>String(x||'').trim()).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 function commercialChunks(values,size=12){const out=[];for(let i=0;i<values.length;i+=size)out.push(values.slice(i,i+size));return out}
 function commercialLimits(){return{pageSize:Math.max(50,Math.min(500,Number(process.env.D365_COMMERCIAL_PAGE_SIZE)||200)),maxGroups:Math.max(200,Math.min(5000,Number(process.env.D365_COMMERCIAL_MAX_GROUPS)||2000)),maxLines:Math.max(500,Math.min(15000,Number(process.env.D365_COMMERCIAL_MAX_LINES)||6000))}}
+async function recentSalesPriceChanges({storeId,day,priceGroup,companyFilter,extra,limits}){
+ const entity=config.dynamics.entities?.salesPrice||'SalesPriceAgreements',lookback=Math.max(1,Math.min(3,Number(process.env.D365_COMMERCIAL_PRICE_LOOKBACK_DAYS)||2)),rows=[];
+ try{
+  for(let offset=0;offset<lookback;offset++){
+   const effective=offset?previousBusinessDay(rows._lastDay||day):day;rows._lastDay=effective;
+   if(!effective)continue;
+   const filter=[companyFilter,`PriceCustomerGroupCode eq '${escapeOData(priceGroup)}'`,`PriceApplicableFromDate eq ${effective}`].filter(Boolean).join(' and ');
+   const payload=await odataGetAll(entity,{filter,select:'RecordId,ItemNumber,ProductNumber,Price,PriceCurrencyCode,PriceApplicableFromDate,PriceApplicableToDate,PriceCustomerGroupCode',extra,pageSize:limits.pageSize,maxRows:Math.min(5000,limits.maxLines)});
+   if(payload.truncated)throw Object.assign(new Error('Les changements de prix récents dépassent la limite de sécurité StoreOps.'),{status:503,code:'D365_COMMERCIAL_PRICE_CHANGES_TRUNCATED'});
+   for(const r of payload.value||[]){
+    const item=String(r.ItemNumber||r.ProductNumber||'').trim(),price=Number(r.Price);if(!item||!Number.isFinite(price)||price<0)continue;
+    const eff=dateOnly(r.PriceApplicableFromDate)||effective,late=eff<day;
+    rows.push({sourceKey:`D365-PRICE-${r.RecordId||item}-${eff}`,actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,oldPrice:null,expectedPrice:price,promoLabel:`Prix effectif ${eff}${late?' · contrôle reporté depuis hier':''}`,signageAction:'VERIFY',priority:late?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup,source:'D365_PRICE_AGREEMENT'})
+   }
+  }
+ }catch(error){console.warn('StoreOps commercial price-change discovery degraded',error?.code||error?.message||error)}
+ delete rows._lastDay;return rows
+}
 
 export async function getCommercialChanges(storeId,businessDate){
   if(!(isD365ReadLive('price')&&isD365ReadLive('promotion')))return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
 
   const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),company=config.dynamics.dataAreaId,companyFilter=company?`${config.dynamics.dataAreaField} eq '${escapeOData(company)}'`:'',extra=company?'cross-company=true':'',priceGroup=resolveStorePriceGroup(storeId),limits=commercialLimits();
+  const priceChanges=await recentSalesPriceChanges({storeId,day,priceGroup,companyFilter,extra,limits});
   const groupEntity=config.dynamics.entities?.retailDiscountPriceGroup||'RetailDiscountPriceGroups',headerEntity=config.dynamics.entities?.retailDiscount||'RetailDiscounts',lineEntity=config.dynamics.entities?.retailDiscountLine||'RetailDiscountLines';
   const groupFilter=[companyFilter,`PriceGroupId eq '${escapeOData(priceGroup)}'`].filter(Boolean).join(' and ');
   const groupsPayload=await odataGetAll(groupEntity,{filter:groupFilter,select:'OfferId,PriceGroupId',extra,pageSize:limits.pageSize,maxRows:limits.maxGroups});
   if(groupsPayload.truncated)throw Object.assign(new Error(`La liste d’offres du groupe prix ${priceGroup} dépasse la limite de sécurité StoreOps.`),{status:503,code:'D365_COMMERCIAL_GROUPS_TRUNCATED',details:{priceGroup,rowCount:groupsPayload.rowCount}});
   const offerIds=[...new Set((groupsPayload.value||[]).filter(g=>String(g.PriceGroupId||'').trim()===priceGroup).map(g=>String(g.OfferId||'').trim()).filter(Boolean))];
-  if(!offerIds.length)return[];
+  if(!offerIds.length)return priceChanges;
 
   const headers=[];
   for(const batch of commercialChunks(offerIds,20)){
@@ -229,7 +248,7 @@ export async function getCommercialChanges(storeId,businessDate){
     headers.push(...(Array.isArray(payload?.value)?payload.value:[]));
   }
   const eligibleHeaders=headers.filter(h=>activeOffer(h,day)||offerEndedYesterday(h,day)),eligibleIds=[...new Set(eligibleHeaders.map(h=>String(h.OfferId||'').trim()).filter(Boolean))];
-  if(!eligibleIds.length)return[];
+  if(!eligibleIds.length)return priceChanges;
   const headerById=new Map(eligibleHeaders.map(h=>[String(h.OfferId),h]));
 
   const linePayloads=await Promise.all(commercialChunks(eligibleIds,6).map(batch=>{
@@ -251,7 +270,7 @@ export async function getCommercialChanges(storeId,businessDate){
       changes.push({sourceKey:ended?`D365-PROMO-END-CAT-${offerId}-${category}-${day}`:`D365-PROMO-CAT-${offerId}-${category}-${day}`,actionType:ended?'PROMO_END':startsToday?'PROMO_START':'VERIFY',ean:`CATEGORY:${category}`,productNumber:null,productName:`Catégorie ${category}`,category,oldPrice:null,expectedPrice:null,promoLabel,signageAction:ended?'REMOVE':startsToday?'INSTALL':'VERIFY',priority:ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup,source:'D365_RETAIL_PRICING'});
     }
   }
-  return changes;
+  return [...priceChanges,...changes];
 }
 
 export async function getCashClosingSnapshot(storeId,businessDate){if(config.dynamics.mode!=='live')return{sourceKey:`CASH-CLOSING-${storeId}-${businessDate}`,storeId,businessDate,source:'SIMULATED_D365',lines:[{tillCode:'C01',shiftId:`${storeId.toUpperCase()}-C01-${businessDate}`,cashierName:'Caissier 1',expectedSales:4200,expectedCash:1600,expectedCard:2400,expectedOther:200},{tillCode:'C02',shiftId:`${storeId.toUpperCase()}-C02-${businessDate}`,cashierName:'Caissier 2',expectedSales:3500,expectedCash:1400,expectedCard:2000,expectedOther:100},{tillCode:'C03',shiftId:`${storeId.toUpperCase()}-C03-${businessDate}`,cashierName:'Caissier 3',expectedSales:2800,expectedCash:900,expectedCard:1800,expectedOther:100}]};throw Object.assign(new Error('Flux clôture caisses Dynamics live non configuré : mapper shifts, statements, modes de paiement et remises TPE avant activation.'),{status:503,code:'D365_CASH_CLOSING_MAPPING_REQUIRED',details:{storeId,businessDate}})}
