@@ -230,6 +230,38 @@ function promoPresentation(header,line){
   return{label:name||type||'Promotion',warning:null};
 }
 function promoExpectedPrice(base,header,line){if(Number(line?.OfferPrice||0))return Number(line.OfferPrice);const b=base==null||base===''?null:Number(base);if(!Number.isFinite(b))return null;if(header?.PeriodicDiscountType==='MixAndMatch')return b;if(line?.OfferDiscountMethod==='PercentOff'){const p=Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0);return Number((b*(1-p/100)).toFixed(2))}if(Number(line?.OfferDiscountAmount||0))return Number(Math.max(0,b-Number(line.OfferDiscountAmount)).toFixed(2));return b}
+function promoNeedsUnitPrice(header,line){return header?.PeriodicDiscountType!=='MixAndMatch'&&(line?.OfferDiscountMethod==='PercentOff'||Number(line?.OfferDiscountAmount||0)>0||Number(line?.OfferPrice||0)>0)}
+function commercialPriceDateActive(row,day){const from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate);return(openBoundary(from)||from<=day)&&(openBoundary(to)||to>=day)}
+async function resolveCommercialNormalPrices(items,{day,priceGroups=[],companyFilter='',extra='',limits={}}={}){
+  const ids=[...new Set((items||[]).map(x=>String(x||'').trim()).filter(Boolean))],prices=new Map(),diagnostics=[];
+  if(!ids.length)return{prices,diagnostics};
+  const baseEntity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',agreementEntity=config.dynamics.entities?.salesPrice||'SalesPriceAgreements';
+  try{
+    let rowsRead=0;
+    for(const batch of commercialChunks(ids,20)){
+      const filter=[companyFilter,commercialOfferFilter('ItemNumber',batch)].filter(Boolean).join(' and ');
+      const payload=await odataGetAll(baseEntity,{filter,select:'ItemNumber,ProductNumber,SalesPrice,SalesPriceQuantity,SalesUnitSymbol,SalesPriceDate',extra,pageSize:Math.min(limits.pageSize||200,500),maxRows:Math.max(500,Math.min(5000,ids.length*5))});
+      rowsRead+=payload.rowCount||0;
+      for(const row of payload.value||[]){const item=String(row.ItemNumber||row.ProductNumber||'').trim(),price=Number(row.SalesPrice);if(item&&Number.isFinite(price)&&price>=0&&!prices.has(item))prices.set(item,{price,source:'BASE_PRICE',unit:row.SalesUnitSymbol||null,date:row.SalesPriceDate||null})}
+    }
+    diagnostics.push({source:'BASE_PRICE',status:'READY',entity:baseEntity,rowCount:rowsRead,resolved:prices.size})
+  }catch(error){diagnostics.push({source:'BASE_PRICE',status:'ERROR',entity:baseEntity,code:error?.code||'D365_COMMERCIAL_BASE_PRICE_RESOLUTION_FAILED',message:error?.message||String(error)})}
+  try{
+    const groupRank=new Map((priceGroups||[]).map((g,i)=>[String(g),i]));let rowsRead=0;const candidates=new Map();
+    for(const batch of commercialChunks(ids,20)){
+      const itemFilter=commercialOfferFilter('ItemNumber',batch),groupFilter=priceGroups?.length?commercialOfferFilter('PriceCustomerGroupCode',priceGroups):'',filter=[companyFilter,itemFilter,groupFilter].filter(Boolean).join(' and ');
+      const payload=await odataGetAll(agreementEntity,{filter,select:'RecordId,ItemNumber,ProductNumber,Price,PriceCustomerGroupCode,SalesPriceQuantity,QuantityUnitySymbol,PriceApplicableFromDate,PriceApplicableToDate,FromQuantity,ToQuantity',extra,pageSize:Math.min(limits.pageSize||200,500),maxRows:Math.max(1000,Math.min(10000,ids.length*20))});
+      rowsRead+=payload.rowCount||0;
+      for(const row of payload.value||[]){
+        const item=String(row.ItemNumber||row.ProductNumber||'').trim(),price=Number(row.Price),group=String(row.PriceCustomerGroupCode||'').trim(),fromQty=Number(row.FromQuantity||0),toQty=Number(row.ToQuantity||0);if(!item||!Number.isFinite(price)||price<0||!commercialPriceDateActive(row,day)||fromQty>1||(toQty>0&&toQty<1))continue;
+        const rank=groupRank.has(group)?groupRank.get(group):999,current=candidates.get(item);if(!current||rank<current.rank)candidates.set(item,{price,source:'SALES_PRICE_AGREEMENT',group,rank,recordId:row.RecordId||null,date:row.PriceApplicableFromDate||null})
+      }
+    }
+    for(const [item,value] of candidates)prices.set(item,value);
+    diagnostics.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity:agreementEntity,rowCount:rowsRead,resolved:candidates.size})
+  }catch(error){diagnostics.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',entity:agreementEntity,code:error?.code||'D365_COMMERCIAL_AGREEMENT_RESOLUTION_FAILED',message:error?.message||String(error)})}
+  return{prices,diagnostics}
+}
 
 export function commercialOfferFilter(field,values=[]){const rows=[...new Set((values||[]).map(x=>String(x||'').trim()).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 function commercialChunks(values,size=12){const out=[];for(let i=0;i<values.length;i+=size)out.push(values.slice(i,i+size));return out}
@@ -272,20 +304,22 @@ export async function getCommercialChanges(storeId,businessDate){
   }));
   if(linePayloads.some(x=>x.truncated))throw Object.assign(new Error('Les lignes promotionnelles actives dépassent la limite de sécurité StoreOps.'),{status:503,code:'D365_COMMERCIAL_LINES_TRUNCATED',details:{offerCount:eligibleIds.length,maxLines:limits.maxLines}});
 
+  const promoItems=[...new Set(linePayloads.flatMap(payload=>(payload.value||[]).filter(line=>line.LineType!=='Exclude'&&String(line.ItemId||'').trim()).map(line=>String(line.ItemId).trim())))];
+  const normalPriceResolution=await resolveCommercialNormalPrices(promoItems,{day,priceGroups,companyFilter,extra,limits});
   const changes=[],categorySeen=new Set();
   for(const payload of linePayloads)for(const line of (payload.value||[])){
     const offerId=String(line.OfferId||''),header=headerById.get(offerId);if(!header||line.LineType==='Exclude')continue;
-    const item=String(line.ItemId||'').trim(),category=String(line.CategoryName||'').trim()||null,presentation=promoPresentation(header,line),ended=offerEndedYesterday(header,day),startsToday=!ended&&dateOnly(header.ValidFrom)===day,promoPrice=promoExpectedPrice(null,header,line);
+    const item=String(line.ItemId||'').trim(),category=String(line.CategoryName||'').trim()||null,presentation=promoPresentation(header,line),ended=offerEndedYesterday(header,day),startsToday=!ended&&dateOnly(header.ValidFrom)===day,normalPriceInfo=item?normalPriceResolution.prices.get(item)||null:null,normalPrice=normalPriceInfo?.price??null,promoPrice=promoExpectedPrice(normalPrice,header,line),priceControlRequired=!!item&&promoNeedsUnitPrice(header,line);
     if(item){
-      const promoLabel=ended?['Fin de promotion',header.Name||null,presentation.label,'Retirer la signalétique promotionnelle'].filter(Boolean).join(' · '):[header.Name||null,presentation.label,presentation.warning].filter(Boolean).join(' · ');
-      changes.push({sourceKey:ended?`D365-PROMO-END-${offerId}-${line.LineNum}-${day}`:`D365-PROMO-${offerId}-${line.LineNum}-${day}`,actionType:ended?'PROMO_END':startsToday?'PROMO_START':'VERIFY',ean:`ITEM:${item}`,productNumber:item,productName:line.Name||item,category,oldPrice:ended&&Number.isFinite(promoPrice)?promoPrice:null,expectedPrice:ended?null:(Number.isFinite(promoPrice)?promoPrice:null),promoLabel,signageAction:ended?'REMOVE':startsToday?'INSTALL':'VERIFY',priority:ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup:[...(offerGroups.get(offerId)||[])][0]||priceGroups[0]||null,priceGroups:[...(offerGroups.get(offerId)||[])],retailChannelId:priceGroupContext.retailChannelId,validFrom:header.ValidFrom||null,validTo:header.ValidTo||null,source:'D365_RETAIL_PRICING'});
+      const unresolved=priceControlRequired&&(!Number.isFinite(Number(promoPrice))||ended&&!Number.isFinite(Number(normalPrice))),promoLabel=ended?['Fin de promotion',header.Name||null,presentation.label,'Retirer la signalétique promotionnelle',unresolved?'⚠️ Prix de retour non résolu dans Dynamics':null].filter(Boolean).join(' · '):[header.Name||null,presentation.label,presentation.warning,unresolved?'⚠️ Prix attendu non résolu dans Dynamics':null].filter(Boolean).join(' · ');
+      changes.push({sourceKey:ended?`D365-PROMO-END-${offerId}-${line.LineNum}-${day}`:`D365-PROMO-${offerId}-${line.LineNum}-${day}`,actionType:ended?'PROMO_END':startsToday?'PROMO_START':'VERIFY',ean:`ITEM:${item}`,productNumber:item,productName:line.Name||item,category,oldPrice:ended&&Number.isFinite(Number(promoPrice))?promoPrice:Number.isFinite(Number(normalPrice))?normalPrice:null,expectedPrice:ended?(Number.isFinite(Number(normalPrice))?normalPrice:null):(Number.isFinite(Number(promoPrice))?promoPrice:null),promoLabel,signageAction:ended?'REMOVE':startsToday?'INSTALL':'VERIFY',priority:unresolved?'CRITICAL':ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup:[...(offerGroups.get(offerId)||[])][0]||priceGroups[0]||null,priceGroups:[...(offerGroups.get(offerId)||[])],retailChannelId:priceGroupContext.retailChannelId,validFrom:header.ValidFrom||null,validTo:header.ValidTo||null,priceControlRequired,priceResolutionSource:normalPriceInfo?.source||null,priceResolutionNote:unresolved?'Prix normal nécessaire pour calculer ou restaurer le prix promo.':null,source:'D365_RETAIL_PRICING'});
     }else if(category){
       const key=`${offerId}|${category}`;if(categorySeen.has(key))continue;categorySeen.add(key);
       const promoLabel=ended?['Fin de promotion',header.Name||null,presentation.label,'Retirer la signalétique promotionnelle de la catégorie'].filter(Boolean).join(' · '):[header.Name||null,presentation.label,presentation.warning,'Contrôle catégorie : vérifier la signalétique et la mécanique en rayon'].filter(Boolean).join(' · ');
       changes.push({sourceKey:ended?`D365-PROMO-END-CAT-${offerId}-${category}-${day}`:`D365-PROMO-CAT-${offerId}-${category}-${day}`,actionType:ended?'PROMO_END':startsToday?'PROMO_START':'VERIFY',ean:`CATEGORY:${category}`,productNumber:null,productName:`Catégorie ${category}`,category,oldPrice:null,expectedPrice:null,promoLabel,signageAction:ended?'REMOVE':startsToday?'INSTALL':'VERIFY',priority:ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup:[...(offerGroups.get(offerId)||[])][0]||priceGroups[0]||null,priceGroups:[...(offerGroups.get(offerId)||[])],retailChannelId:priceGroupContext.retailChannelId,validFrom:header.ValidFrom||null,validTo:header.ValidTo||null,source:'D365_RETAIL_PRICING'});
     }
   }
-  return [...pendingDiagnostics,...changes];
+  return [...pendingDiagnostics,...changes].map(row=>({...row,priceResolutionDiagnostics:row.source==='D365_RETAIL_PRICING'?normalPriceResolution?.diagnostics||[]:undefined}));
 }
 
 export async function getCashClosingSnapshot(storeId,businessDate){if(config.dynamics.mode!=='live')return{sourceKey:`CASH-CLOSING-${storeId}-${businessDate}`,storeId,businessDate,source:'SIMULATED_D365',lines:[{tillCode:'C01',shiftId:`${storeId.toUpperCase()}-C01-${businessDate}`,cashierName:'Caissier 1',expectedSales:4200,expectedCash:1600,expectedCard:2400,expectedOther:200},{tillCode:'C02',shiftId:`${storeId.toUpperCase()}-C02-${businessDate}`,cashierName:'Caissier 2',expectedSales:3500,expectedCash:1400,expectedCard:2000,expectedOther:100},{tillCode:'C03',shiftId:`${storeId.toUpperCase()}-C03-${businessDate}`,cashierName:'Caissier 3',expectedSales:2800,expectedCash:900,expectedCard:1800,expectedOther:100}]};throw Object.assign(new Error('Flux clôture caisses Dynamics live non configuré : mapper shifts, statements, modes de paiement et remises TPE avant activation.'),{status:503,code:'D365_CASH_CLOSING_MAPPING_REQUIRED',details:{storeId,businessDate}})}
