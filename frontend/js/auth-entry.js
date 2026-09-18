@@ -59,7 +59,7 @@ async function prepareBoot(){
 async function preloadBootstrap(apiCall,authMode){
   try{
     phase('profil en un appel');
-    const {app}=await import(`./state.js?v=${BUILD}`);
+    const {app}=await import('./state.js');
     app.authMode=authMode||'demo';
     window.STOREOPS_BOOTSTRAP=await withTimeout(apiCall('/api/bootstrap'),8000,'Le bootstrap groupé StoreOps prend trop de temps.');
   }catch(e){
