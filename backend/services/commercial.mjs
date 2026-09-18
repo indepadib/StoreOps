@@ -47,6 +47,10 @@ CREATE TABLE IF NOT EXISTS commercial_source_state(
 );
 CREATE INDEX IF NOT EXISTS ix_commercial_source_state_store ON commercial_source_state(store_id,last_seen_at);
 `);
+function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(x=>x.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
+ensureColumn('commercial_controls','price_control_required','INTEGER NOT NULL DEFAULT 0');
+ensureColumn('commercial_controls','price_resolution_source','TEXT NULL');
+ensureColumn('commercial_controls','price_resolution_note','TEXT NULL');
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -83,7 +87,7 @@ function stableKeyFor(c){
 }
 function fingerprintFor(c){
  if(c?.fingerprint)return String(c.fingerprint);
- return JSON.stringify([c?.productNumber,c?.ean,c?.expectedPrice,c?.oldPrice,c?.promoLabel,c?.signageAction])
+ return JSON.stringify([c?.productNumber,c?.ean,c?.expectedPrice,c?.oldPrice,c?.promoLabel,c?.signageAction,!!c?.priceControlRequired,c?.priceResolutionSource||null])
 }
 function shortHash(value){
  let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)
@@ -145,12 +149,12 @@ function aggregateOfferAnomalies(changes,businessDate){
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
- const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+ const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening,price_control_required,price_resolution_source,price_resolution_note) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
  for(const c of actionable){
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
-  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
+  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking,c.priceControlRequired?1:0,c.priceResolutionSource||null,c.priceResolutionNote||null);
   inserted+=Number(info.changes||0);
  }
  return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
@@ -170,6 +174,7 @@ export function submitCommercialControl({id,user,observedPrice=null,signageOk=nu
  const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Contrôle prix/promo introuvable.'),{status:404});
  const issues=[],tolerance=Number(commercialPolicy().price_tolerance||0.01);
  let observed=null;
+ if(row.price_control_required&&row.expected_price==null)issues.push('Prix attendu indisponible : le contrôle prix reste bloqué tant que Dynamics ne fournit pas le prix normal / promo exploitable.');
  if(row.expected_price!=null){
   observed=Number(observedPrice);
   if(!Number.isFinite(observed)||observed<0)issues.push('Prix rayon obligatoire.');
