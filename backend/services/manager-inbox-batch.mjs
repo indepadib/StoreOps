@@ -1,6 +1,6 @@
 import { db,todayISO } from '../db.mjs';
 import { getManagerHomeFast } from './manager-home-fast.mjs';
-import { listCommercialControls } from './commercial.mjs';
+import { listCommercialControls,commercialSyncState } from './commercial.mjs';
 import { listInventorySessions } from './inventory.mjs';
 import { listIncidents } from './incidents.mjs';
 import { getStockSignals } from './stock-signals.mjs';
@@ -24,7 +24,7 @@ function maintenanceSummary(alerts){const rows=alerts.filter(x=>String(x.categor
 async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  const fast=getManagerHomeFast(storeId,businessDate,{force}),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
  const [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate,force}),getBusinessPulse(storeId,businessDate,{force})]);
- const commercialRows=listCommercialControls(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows};
+ const commercialRows=listCommercialControls(storeId,businessDate),commercialSync=commercialSyncState(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows,syncState:commercialSync};
  const receiptsRaw=receiptRows(storeId),receipts=summarizeReceipts(receiptsRaw,businessDate);
  const inventoryData={summary:dashboard.inventory||{},items:listInventorySessions(storeId,'ALL')};
  const alerts=listIncidents(storeId,'OPEN'),incidentData={items:alerts};
@@ -48,7 +48,7 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
 
  const sorted=items.sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(a.title).localeCompare(String(b.title))),critical=sorted.filter(x=>x.severity==='CRITICAL').length,blocking=sorted.filter(x=>x.blocking).length,p0=sorted.filter(x=>x.priority==='P0').length,p1=sorted.filter(x=>x.priority==='P1').length,alertCritical=alerts.filter(x=>x.criticality==='CRITICAL').length;
  const externalCalls=(stockData.source?.startsWith('D365/')?1:0)+(businessPulse?.integration?.mode==='LIVE'?2:0);
- return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true,cache:'MISS'}}
+ return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,commercialSync,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true,cache:'MISS'}}
 }
 
 export async function getManagerInboxBatch(storeId,businessDate=todayISO(),{force=false}={}){
