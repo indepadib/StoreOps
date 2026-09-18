@@ -27,8 +27,8 @@ assert.match(css,/today-metrics-grid\.director-metrics-collapsed\{display:none!i
 assert.match(css,/min-height:48px/,'metric disclosure must remain comfortably tappable');
 assert.match(enhancements,/mobile-v199\.css\?v=\$\{BUILD\}/,'V1.99 stylesheet must be loaded through the Director graph');
 assert.match(enhancements,/director-exception-first\.js/,'V1.99 module must load for Director only');
-const enhancementBuild=enhancements.match(/const BUILD='(\\d+)'/)?.[1];
-const authBuild=auth.match(/const BUILD='(\\d+)'/)?.[1];
+const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1];
+const authBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
 const authLabel=auth.match(/BUILD_LABEL='([^']+)'/)?.[1];
 const bootLabel=boot.match(/BUILD='([^']+)'/)?.[1];
 const buildDefault=build.match(/STOREOPS_RELEASE_BUILD:-([0-9]+)/)?.[1];
