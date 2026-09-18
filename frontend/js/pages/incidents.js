@@ -70,6 +70,7 @@ export async function openIncident(id){
   $('#incidentModalBody').innerHTML=incidentDetail(activeIncident);
   $('#incidentModal').hidden=false;
   bindDetailForm();
+  hydrateEvidenceImages();
 }
 
 export function closeIncident(){activeIncident=null;$('#incidentModal').hidden=true}
@@ -85,7 +86,8 @@ function incidentDetail(i){
 }
 
 function actionRow(a){return `<div class="action-row ${a.status==='DONE'?'done':''}"><div><strong>${esc(a.title)}</strong><small>${esc(a.assigned_to_name||'Non affecté')}${a.due_at?' · échéance '+dt(a.due_at):''}${a.note?' · '+esc(a.note):''}</small>${a.status==='DONE'?`<small>Terminé par ${esc(a.completed_by_name||'—')} · ${dt(a.completed_at)}${a.completion_note?' · '+esc(a.completion_note):''}</small>`:''}</div>${a.status==='DONE'?status('Terminée','ok'):canManage()?`<button class="btn soft" data-complete-incident-action="${a.id}">Terminer</button>`:status('Ouverte','warn')}</div>`}
-function evidenceCard(e){return `<button class="evidence-card" data-view-evidence="${e.id}"><strong>${esc(e.file_name)}</strong><span>${esc(e.caption||'Preuve photo')}</span><small>${esc(e.created_by_name||'—')} · ${dt(e.created_at)}</small></button>`}
+function evidenceCard(e){return `<button class="evidence-card" data-view-evidence="${e.id}"><span class="evidence-thumb" data-evidence-thumb="${e.id}" aria-hidden="true"><span>Photo</span></span><span class="evidence-copy"><strong>${esc(e.file_name)}</strong><span>${esc(e.caption||'Preuve photo')}</span><small>${esc(e.created_by_name||'—')} · ${dt(e.created_at)}</small></span></button>`}
+async function hydrateEvidenceImages(){for(const el of document.querySelectorAll('[data-evidence-thumb]')){if(el.dataset.loaded==='1')continue;el.dataset.loaded='1';try{const blob=await apiBlob(`/api/media/${encodeURIComponent(el.dataset.evidenceThumb)}`),url=URL.createObjectURL(blob),img=document.createElement('img');img.src=url;img.alt='Preuve photo';img.onload=()=>setTimeout(()=>URL.revokeObjectURL(url),60000);el.innerHTML='';el.appendChild(img)}catch{el.innerHTML='<span>Photo indisponible</span>'}}}
 
 function bindDetailForm(){
   $('#addIncidentAction')?.addEventListener('click',async()=>{try{await api(`/api/incidents/${activeIncident.id}/actions`,{method:'POST',body:JSON.stringify({title:$('#incActionTitle').value.trim(),note:$('#incActionNote').value.trim(),assignedTo:$('#incActionAssignee').value||null,dueAt:$('#incActionDue').value||null})});toast('Action corrective ajoutée.');await openIncident(activeIncident.id);await renderIncidents()}catch(e){toast(e.message)}});
