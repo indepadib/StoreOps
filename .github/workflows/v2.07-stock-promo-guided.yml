@@ -1,0 +1,38 @@
+name: V2.07 Promo Price & Guided Stock Contract
+
+on:
+  push:
+    branches: [storeops-v2.07-stock-promo-guided]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/stock-guided.mjs
+          node --check backend/services/stock-guided-api.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/today.js
+          node --check frontend/js/manager-stock-guided.js
+      - name: V2.07 contract
+        run: node backend/tests/v207-stock-promo-guided.mjs
+      - name: Existing commercial regressions
+        run: |
+          STOREOPS_DB=/tmp/storeops-v207-v204.db node backend/tests/v204-commercial-resilience.mjs
+          STOREOPS_DB=/tmp/storeops-v207-v205.db node backend/tests/v205-commercial-live-delta.mjs
+          STOREOPS_DB=/tmp/storeops-v207-v206.db node backend/tests/v206-channel-price-groups.mjs
+      - name: Existing availability regression
+        run: STOREOPS_DB=/tmp/storeops-v207-v182.db node backend/tests/v182-assortment-and-supply.mjs
