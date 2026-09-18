@@ -3,8 +3,6 @@ import { getManagerHomeFast } from './manager-home-fast.mjs';
 import { listCommercialControls } from './commercial.mjs';
 import { listInventorySessions } from './inventory.mjs';
 import { listIncidents } from './incidents.mjs';
-import { getStockSignals } from './stock-signals.mjs';
-import { getBusinessPulse } from './business-pulse.mjs';
 
 const n=v=>Number(v||0);
 const money=v=>v==null?'':`${Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})} DH`;
@@ -21,9 +19,13 @@ function summarizeReceipts(rows,businessDate){let activeReceipts=0,pendingLines=
 function summarizeQuality(rows){const nonConform=rows.filter(x=>x.decision!=='ACCEPT').length,temperatureNok=rows.filter(x=>x.temperature_status==='NOK').length;return{controls:rows.length,nonConform,temperatureNok,rejected:rows.reduce((s,x)=>s+n(x.rejected_qty),0)}}
 function maintenanceSummary(alerts){const rows=alerts.filter(x=>String(x.category||'').toUpperCase()==='MAINTENANCE'||String(x.source_type||'').toUpperCase().includes('MAINT'));return{openCount:rows.length,critical:rows.filter(x=>x.criticality==='CRITICAL').length,blocking:rows.filter(x=>x.blocking_level&&x.blocking_level!=='NONE').length,overdue:rows.filter(x=>x.is_overdue).length}}
 
-async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
+async function computeManagerInboxBatch(storeId,businessDate,{force=false,includeExternal=true}={}){
  const fast=getManagerHomeFast(storeId,businessDate,{force}),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
- const [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate,force}),getBusinessPulse(storeId,businessDate,{force})]);
+ let stockData={source:'DEFERRED',items:[],summary:{outOfStock:0,negative:0,assortmentReady:false}},businessPulse=null;
+ if(includeExternal){
+  const [{getStockSignals},{getBusinessPulse}]=await Promise.all([import('./stock-signals.mjs'),import('./business-pulse.mjs')]);
+  [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate,force}),getBusinessPulse(storeId,businessDate,{force})])
+ }
  const commercialRows=listCommercialControls(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows};
  const receiptsRaw=receiptRows(storeId),receipts=summarizeReceipts(receiptsRaw,businessDate);
  const inventoryData={summary:dashboard.inventory||{},items:listInventorySessions(storeId,'ALL')};
@@ -47,15 +49,15 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  if((dashboard.day?.opening_status||'NOT_STARTED')!=='OPENED'&&!items.some(x=>x.category==='OPENING'||x.blocking))items.push(action({id:'opening-flow',category:'OPENING',severity:'NORMAL',title:'Continuer le parcours d’ouverture',detail:`${dashboard.opening?.done||0}/${dashboard.opening?.total||0} étapes validées`,page:'opening',priority:'P2'}));
 
  const sorted=items.sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(a.title).localeCompare(String(b.title))),critical=sorted.filter(x=>x.severity==='CRITICAL').length,blocking=sorted.filter(x=>x.blocking).length,p0=sorted.filter(x=>x.priority==='P0').length,p1=sorted.filter(x=>x.priority==='P1').length,alertCritical=alerts.filter(x=>x.criticality==='CRITICAL').length;
- const externalCalls=(stockData.source?.startsWith('D365/')?1:0)+(businessPulse?.integration?.mode==='LIVE'?2:0);
- return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true,cache:'MISS'}}
+ const externalCalls=includeExternal?((stockData.source?.startsWith('D365/')?1:0)+(businessPulse?.integration?.mode==='LIVE'?2:0)):0;
+ return{status:'READY',source:includeExternal?'STOREOPS_BATCH':'STOREOPS_LOCAL_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,externalDeferred:!includeExternal,commercialReadOnly:true,pulseBundled:!!businessPulse,singleFlight:true,cache:'MISS'}}
 }
 
-export async function getManagerInboxBatch(storeId,businessDate=todayISO(),{force=false}={}){
- const key=`${storeId}:${businessDate}`,now=Date.now(),cached=batchCache.get(key);
+export async function getManagerInboxBatch(storeId,businessDate=todayISO(),{force=false,includeExternal=true}={}){
+ const key=`${storeId}:${businessDate}:${includeExternal?'full':'local'}`,now=Date.now(),cached=batchCache.get(key);
  if(!force&&cached&&now<cached.expiresAt)return{...cached.value,diagnostics:{...cached.value.diagnostics,cache:'HIT'}};
  if(!force&&batchInflight.has(key))return batchInflight.get(key);
- const promise=computeManagerInboxBatch(storeId,businessDate,{force});
+ const promise=computeManagerInboxBatch(storeId,businessDate,{force,includeExternal});
  batchInflight.set(key,promise);
  try{
   const value=await promise;
@@ -65,6 +67,6 @@ export async function getManagerInboxBatch(storeId,businessDate=todayISO(),{forc
 }
 
 export function invalidateManagerInboxBatch(storeId,businessDate=null){
- if(businessDate)return batchCache.delete(`${storeId}:${businessDate}`);
+ if(businessDate){batchCache.delete(`${storeId}:${businessDate}:full`);batchCache.delete(`${storeId}:${businessDate}:local`);return}
  for(const key of batchCache.keys())if(key.startsWith(`${storeId}:`))batchCache.delete(key)
 }
