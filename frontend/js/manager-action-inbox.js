@@ -46,6 +46,10 @@ function action({id,category,severity='HIGH',title,detail,page,blocking=false,me
 }
 
 export async function loadManagerInbox(){
+  try{
+    const batch=await api(`/api/stores/${app.storeId}/manager-inbox-batch`);
+    if(batch?.status==='READY'&&Array.isArray(batch.items))return batch
+  }catch(e){console.warn('Manager inbox batch indisponible, fallback legacy',e)}
   const [dashboard,commercial,receiptRows,inventoryData,lossData,incidentData,staffData,coldData,cashOpenData,qualityRows,stockData]=await Promise.all([
     api(`/api/stores/${app.storeId}/dashboard`),
     safe(api(`/api/stores/${app.storeId}/commercial`),{summary:{},items:[]}),
