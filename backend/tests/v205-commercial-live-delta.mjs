@@ -83,7 +83,7 @@ assert.match(app,/invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'
 assert.match(app,/commercial\.js\?v=2070/);
 assert.match(auth,/const BUILD='2070'/);
 assert.match(enhancements,/const BUILD='2070'/,'deferred modules must share current release cache generation');
-assert.match(classic,/var BUILD='2.05.0'/,'classic boot release must match V2.05');
+assert.match(classic,/var BUILD='2.07.0'/,'classic boot release must match the current V2.07 release');
 assert.match(index,/auth-entry\.js\?v=2070/);
 
 console.log('StoreOps V2.05 commercial live delta contract passed');
