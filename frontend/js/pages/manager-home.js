@@ -4,6 +4,7 @@ import { $,esc } from '../ui.js';
 import { managerPhase,managerPhaseLabel,chooseManagerNextAction } from '../manager-journey.js';
 import { managerDayCompliance } from '../manager-compliance.js';
 import { loadManagerInbox,categoryLabel,syncManagerNav } from '../manager-action-inbox.js';
+import { scheduleCommercialLiveRefresh } from '../commercial-live-refresh.js';
 
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:0,maximumFractionDigits:0})+' DH';
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:0});
@@ -93,7 +94,14 @@ export async function renderManagerHome(){
  if(app.storeId!==storeId)return;
  if(fast)renderState({fast,inbox:null,pulse:null,pulseLoading:true,detailsLoading:true});
  else{try{inbox=await loadManagerInbox();syncManagerNav(inbox);detailsLoading=false;renderState({fast:null,inbox,pulse:null,pulseLoading:true,detailsLoading:false})}catch{return}}
- const redraw=()=>{if(app.storeId===storeId)renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
+ const redraw=()=>{if(app.storeId===storeId&&app.page==='today')renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
+ scheduleCommercialLiveRefresh(storeId,{delayMs:220,minIntervalMs:300000,onUpdated:async()=>{
+  if(app.storeId!==storeId||app.page!=='today')return;
+  try{
+   const refreshed=await api(`/api/stores/${storeId}/manager-inbox-batch`);
+   if(refreshed?.status==='READY'&&Array.isArray(refreshed.items)){inbox=refreshed;syncManagerNav(inbox);detailsLoading=false;if(refreshed.businessPulse){pulse=refreshed.businessPulse;pulseLoading=false}redraw()}
+  }catch(error){console.warn('Mise à jour Today après prix/promos',error)}
+ }});
  try{
   const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
   if(app.storeId!==storeId)return;

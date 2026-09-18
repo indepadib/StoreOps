@@ -1,0 +1,42 @@
+name: V2.05 Commercial Live Delta Contract
+
+on:
+  push:
+    branches: [storeops-v2.05-commercial-live-delta]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/commercial-live-refresh.js
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/today.js
+          node --check frontend/js/app.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.05 live delta contract
+        run: node backend/tests/v205-commercial-live-delta.mjs
+      - name: V2.04 resilience regression
+        run: node backend/tests/v204-commercial-resilience.mjs
+      - name: Commercial lifecycle regression
+        run: node backend/tests/commercial-lifecycle.mjs
+      - name: Commercial operational filtering regression
+        run: node backend/tests/commercial-operational-filter.mjs
+      - name: Manager commercial UX regression
+        run: node backend/tests/manager-commercial-focus.mjs
