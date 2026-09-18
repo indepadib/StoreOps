@@ -89,22 +89,43 @@ export async function renderManagerHome(){
  ensurePreviewStyles();
  const storeId=app.storeId;skeleton();
  let fast=null,inbox=null,pulse=null,pulseLoading=true,detailsLoading=true;
+ const localBatchPromise=api(`/api/stores/${storeId}/manager-inbox-batch?mode=local`).catch(()=>null);
+ const enrichedBatchPromise=api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>null);
  try{fast=await api(`/api/stores/${storeId}/manager-home-fast`)}catch{}
  if(app.storeId!==storeId)return;
  if(fast)renderState({fast,inbox:null,pulse:null,pulseLoading:true,detailsLoading:true});
- else{try{inbox=await loadManagerInbox();syncManagerNav(inbox);detailsLoading=false;renderState({fast:null,inbox,pulse:null,pulseLoading:true,detailsLoading:false})}catch{return}}
  const redraw=()=>{if(app.storeId===storeId)renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
- try{
-  const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
+
+ const localBatch=await localBatchPromise;
+ if(app.storeId!==storeId)return;
+ if(localBatch?.status==='READY'){
+  inbox=localBatch;syncManagerNav(inbox);detailsLoading=false;redraw()
+ }else if(!fast){
+  const earlyEnriched=await enrichedBatchPromise;
   if(app.storeId!==storeId)return;
-  inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
-  if(enriched?.businessPulse){pulse=enriched.businessPulse;pulseLoading=false;redraw();return}
-  redraw();
-  try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
-  pulseLoading=false;redraw();
+  if(earlyEnriched?.status==='READY'){
+   inbox=earlyEnriched;syncManagerNav(inbox);detailsLoading=false;
+   if(earlyEnriched.businessPulse){pulse=earlyEnriched.businessPulse;pulseLoading=false}
+   redraw()
+  }
+ }
+
+ try{
+  const enriched=await enrichedBatchPromise||(!inbox?await loadManagerInbox():null);
+  if(app.storeId!==storeId)return;
+  if(enriched?.status==='READY'){
+   inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
+   if(enriched.businessPulse){pulse=enriched.businessPulse;pulseLoading=false;redraw();return}
+   redraw()
+  }
+  if(!pulse){
+   try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
+   pulseLoading=false;redraw()
+  }
  }catch{
   detailsLoading=false;
-  try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}
-  pulseLoading=false;redraw();
+  if(!inbox){try{inbox=await loadManagerInbox();syncManagerNav(inbox)}catch{}}
+  if(!pulse){try{pulse=await api(`/api/stores/${storeId}/business-pulse`)}catch{pulse=null}}
+  pulseLoading=false;redraw()
  }
 }
