@@ -1,6 +1,7 @@
 import { db,uid,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
 import { isD365ReadLive,odataGet,odataGetAll } from './dynamics.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v??'').replaceAll("'","''");
@@ -25,12 +26,15 @@ function remainingFor(row,c){
 }
 function temperatureRequired(category=''){return /frais|surgel/i.test(clean(category))?1:0}
 
-export function receivingIntegrationConfig(){
- const c=receiving(),live=isD365ReadLive('receiving');
+export function receivingIntegrationConfig(storeId=null){
+ const c=receiving(),live=isD365ReadLive('receiving'),storeSettings=storeId?storeOperationalSettings(storeId):null;
  return{
   mode:live?'LIVE':config.realOnly?'UNAVAILABLE':'SIMULATED',
   entity:{header:c.headerEntity||null,line:c.lineEntity||null},
   storeWarehouses:{...(config.dynamics.stock?.storeWarehouses||{})},
+  storeId:storeId||null,
+  warehouseId:storeSettings?.storeWarehouseId||null,
+  warehouseSource:storeSettings?.source||null,
   fields:{
    purchaseOrder:c.purchaseOrderField,
    vendor:c.vendorField,
@@ -91,7 +95,7 @@ async function purchaseOrderHeaders(poNumbers){
 }
 
 export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO()}={}){
- const c=receiving(),warehouseId=clean(config.dynamics.stock?.storeWarehouses?.[storeId]);
+ const c=receiving(),storeSettings=storeOperationalSettings(storeId),warehouseId=clean(storeSettings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId]);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false,code:config.realOnly?'D365_RECEIVING_NOT_CONNECTED':null}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
  const linePayload=await purchaseOrderLinesForWarehouse(warehouseId),lines=linePayload.value||[];
