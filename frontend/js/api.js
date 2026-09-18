@@ -47,7 +47,7 @@ async function parseJsonResponse(r,url){
   const type=String(r.headers.get('content-type')||'').toLowerCase();
   if(!type.includes('application/json')){
     let preview='';try{preview=(await r.text()).slice(0,120).replace(/\s+/g,' ')}catch{}
-    const hint=preview.startsWith('<')||type.includes('text/html')?`StoreOps attend du JSON mais reçoit une page HTML. Vérifie STOREOPS_API_BASE côté Netlify : il doit pointer vers l'origine publique du backend, sans /api à la fin.`:`Réponse API inattendue (${type||'type inconnu'}).`;
+    const html=preview.startsWith('<')||type.includes('text/html'),hint=r.status>=500?`Backend StoreOps temporairement indisponible (${r.status}). La plateforme a renvoyé une réponse non JSON.`:html?`StoreOps attend du JSON mais reçoit une page HTML. Vérifie le routage API du déploiement.`:`Réponse API inattendue (${type||'type inconnu'}).`;
     const e=new Error(`${hint} URL appelée : ${url}`);e.status=r.status;e.code='API_NOT_JSON';throw e
   }
   try{return await r.json()}catch{const e=new Error(`Réponse JSON invalide depuis ${url}.`);e.status=r.status;e.code='API_INVALID_JSON';throw e}
