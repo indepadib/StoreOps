@@ -3,6 +3,7 @@ import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 
 let cfg=null,data=null,scanCtx=null,priceChecks=[];
+const autoSyncAttempted=new Set();
 const actionLabel=x=>cfg?.actionTypes?.find(a=>a.code===x)?.label||x;
 const signageLabel=x=>cfg?.signageActions?.find(a=>a.code===x)?.label||x;
 const priKind=x=>x==='CRITICAL'?'danger':x==='HIGH'?'warn':'neutral';
@@ -12,31 +13,41 @@ const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDi
 const dt=v=>v?new Date(String(v).replace(' ','T')+'Z').toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 
 export async function renderCommercial(){
- const [cfgData,commercialData,historyData]=await Promise.all([
+ const [cfgResult,commercialResult,historyResult]=await Promise.allSettled([
   api('/api/commercial/config'),
   api(`/api/stores/${app.storeId}/commercial`),
-  canManage()?api(`/api/stores/${app.storeId}/price-checks?limit=8`).catch(()=>({items:[]})):Promise.resolve({items:[]})
+  canManage()?api(`/api/stores/${app.storeId}/price-checks?limit=8`):Promise.resolve({items:[]})
  ]);
- cfg=cfgData;data=commercialData;priceChecks=historyData.items||[];
- const s=data.summary||{},rows=data.items||[];
+ const commercialError=commercialResult.status==='rejected'?commercialResult.reason:null;
+ cfg=cfgResult.status==='fulfilled'?cfgResult.value:(cfg||{actionTypes:[],signageActions:[],policy:{price_tolerance:0.01}});
+ data=commercialResult.status==='fulfilled'?commercialResult.value:{summary:{total:0,pending:0,mismatch:0,verified:0,blocking:0,readiness:100},items:[],sync:{ok:false,code:commercialError?.code||'COMMERCIAL_READ_FAILED',error:commercialError?.message||'Lecture Prix & promos indisponible.'}};
+ priceChecks=historyResult.status==='fulfilled'?(historyResult.value.items||[]):[];
+ const s=data.summary||{},rows=data.items||[],syncError=data.sync&&!data.sync.ok?data.sync:null;
  $('#commercialContent').innerHTML=`
-   ${data.sync&&!data.sync.ok?`<div class="banner ban-danger"><strong>Flux Dynamics prix/promos indisponible.</strong><div class="small">${esc(data.sync.error||'Mapping requis')}</div></div>`:''}
+   <div id="commercialSyncNotice">
+    ${commercialError?`<div class="banner ban-danger"><strong>Le snapshot Prix & promos n’a pas pu être chargé.</strong><div class="small">${esc(commercialError.message||'Backend temporairement indisponible.')}</div><button class="btn soft" id="retryCommercialBtn" style="margin-top:8px">Réessayer</button></div>`:syncError?`<div class="banner ban-danger"><strong>Synchronisation Dynamics prix/promos indisponible.</strong><div class="small">${esc(syncError.error||'Mapping ou service Dynamics indisponible')}</div></div>`:''}
+   </div>
    ${canManage()?priceCheckCard():''}
    ${canManage()?`<div id="priceCheckHistory">${priceCheckHistory(priceChecks)}</div>`:''}
    <div class="grid g4" style="margin-top:14px">
-    ${kpi('Actions du jour',s.total||0,'issues de Dynamics')}
+    ${kpi('Actions du jour',s.total||0,'snapshot StoreOps')}
     ${kpi('À vérifier',s.pending||0,'avant ouverture',s.pending?'warn':'')}
     ${kpi('Écarts',s.mismatch||0,'correction + preuve',s.mismatch?'danger':'')}
     ${kpi('Prêt commercial',`${s.readiness??100}%`,`${s.verified||0}/${s.total||0} vérifiées`,s.blocking?'warn':'')}
    </div>
    <div class="card commercial-readiness" style="margin-top:14px">
-     <div class="row"><div><strong>Exécution commerciale du jour</strong><div class="small muted">Prix rayon, signalétique et exécution physique sont contrôlés par rapport au snapshot Dynamics.</div></div>${status(s.blocking?`${s.blocking} bloquante(s)`:'Prêt ouverture',s.blocking?'danger':'ok')}</div>
+     <div class="row"><div><strong>Exécution commerciale du jour</strong><div class="small muted">Le snapshot s’affiche immédiatement. Dynamics est rafraîchi séparément pour éviter de bloquer l’écran.</div></div>${status(s.blocking?`${s.blocking} bloquante(s)`:'Prêt ouverture',s.blocking?'danger':'ok')}</div>
      ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
    </div>
-   <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucun changement prix/promo pour cette journée.</div>'}</div>
+   <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucune action prix/promo dans le snapshot du jour. Vous pouvez scanner un article ou rafraîchir Dynamics.</div>'}</div>
    ${isDirector()?policyCard():''}
  `;
  bindCommercial();
+ const autoKey=`${app.storeId}:${new Date().toISOString().slice(0,10)}`;
+ if(canManage()&&!commercialError&&!rows.length&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
+  autoSyncAttempted.add(autoKey);
+  setTimeout(()=>sync({silent:true}),80);
+ }
 }
 
 function priceCheckCard(){const showcase=!!app.showcase;return`<section class="card price-check-card" style="margin-bottom:14px"><div class="price-check-head"><div><strong>Contrôle prix rayon par scan</strong><div class="small muted">${showcase?'Mode démonstration : simulation du parcours scan → écart → incident → correction.':'Scanner l’EAN → StoreOps récupère le prix et la promo Dynamics → comparer au rayon.'}</div></div>${status(showcase?'MVP SHOWCASE':'LIVE D365',showcase?'neutral':'ok')}</div><div class="form-grid" style="margin-top:10px"><div class="field full"><label>EAN / code-barres</label><div class="price-check-lookup"><input id="priceCheckEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir le code-barres"><button class="btn brand" id="priceCheckLookup">Rechercher</button></div></div></div><div id="priceCheckResult" style="margin-top:10px"></div></section>`}
@@ -61,7 +72,7 @@ function controlCard(c){
 function controlForm(c){return`<details class="commercial-control" ${c.status!=='VERIFIED'?'open':''}><summary>${c.status==='MISMATCH'?'Corriger et recontrôler':c.status==='VERIFIED'?'Recontrôler':'Effectuer le contrôle'}</summary><div class="form-grid" style="margin-top:9px">${c.expected_price!=null?`<div class="field"><label>Prix constaté en rayon *</label><input data-commercial-price="${c.id}" type="number" min="0" step="0.01" value="${c.observed_price??''}" placeholder="${c.expected_price}"></div>`:''}<div class="field"><label>Signalétique conforme *</label><select data-commercial-signage="${c.id}"><option value="">— Choisir —</option><option value="true" ${Number(c.signage_ok)===1?'selected':''}>Oui</option><option value="false" ${Number(c.signage_ok)===0?'selected':''}>Non</option></select></div><div class="field"><label>Exécution rayon conforme *</label><select data-commercial-execution="${c.id}"><option value="">— Choisir —</option><option value="true" ${Number(c.execution_ok)===1?'selected':''}>Oui</option><option value="false" ${Number(c.execution_ok)===0?'selected':''}>Non</option></select></div><div class="field full"><label>Note</label><input data-commercial-note="${c.id}" value="${esc(c.note||'')}" placeholder="Correction, emplacement, remarque…"></div></div><button class="btn brand" data-commercial-submit="${c.id}" style="margin-top:9px">Valider le contrôle</button></details>`}
 function policyCard(){return`<div class="network-section-title"><div><strong>Politique de contrôle prix</strong><span>Tolérance réseau utilisée pour comparer le prix rayon au prix attendu.</span></div></div><div class="card"><div class="row"><div class="field" style="max-width:240px"><label>Tolérance prix (DH)</label><input id="commercialTolerance" type="number" min="0" max="1" step="0.01" value="${cfg.policy.price_tolerance}"></div><button class="btn soft" id="saveCommercialPolicy">Enregistrer</button></div></div>`}
 function bindCommercial(){
- $('#syncCommercialBtn')?.addEventListener('click',sync);$('#saveCommercialPolicy')?.addEventListener('click',savePolicy);$('#priceCheckLookup')?.addEventListener('click',lookupPrice);$('#priceCheckEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookupPrice()});
+ $('#syncCommercialBtn')?.addEventListener('click',()=>sync());$('#retryCommercialBtn')?.addEventListener('click',()=>renderCommercial());$('#saveCommercialPolicy')?.addEventListener('click',savePolicy);$('#priceCheckLookup')?.addEventListener('click',lookupPrice);$('#priceCheckEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookupPrice()});
  document.querySelectorAll('[data-commercial-submit]').forEach(b=>b.addEventListener('click',()=>submit(b.dataset.commercialSubmit)));
 }
 async function lookupPrice(){try{const ean=$('#priceCheckEan')?.value.trim();if(!ean)throw new Error('Scanne ou saisis un EAN.');scanCtx=await api(`/api/stores/${app.storeId}/price-check/context/${encodeURIComponent(ean)}`);$('#priceCheckResult').innerHTML=priceCheckResult(scanCtx);$('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck)}catch(e){toast(e.message)}}
@@ -94,6 +105,17 @@ async function submitPriceCheck(){
   const current=$('#priceCheckSubmit');if(current&&current===submitBtn){current.disabled=false;if(originalLabel)current.textContent=originalLabel}
  }
 }
-async function sync(){try{await api(`/api/stores/${app.storeId}/commercial/sync`,{method:'POST'});toast('Prix et promotions rafraîchis depuis Dynamics.');await renderCommercial()}catch(e){toast(e.message)}}
+async function sync({silent=false}={}){
+ const button=$('#syncCommercialBtn'),notice=$('#commercialSyncNotice'),old=button?.textContent;
+ try{
+  if(button){button.disabled=true;button.textContent='Synchronisation…'}
+  await api(`/api/stores/${app.storeId}/commercial/sync`,{method:'POST'});
+  if(!silent)toast('Prix et promotions rafraîchis depuis Dynamics.');
+  await renderCommercial();
+ }catch(e){
+  if(!silent)toast(e.message);
+  if(notice)notice.innerHTML=`<div class="banner ban-danger"><strong>Dynamics n’a pas pu rafraîchir Prix & promos.</strong><div class="small">${esc(e.message)}</div></div>`;
+ }finally{if(button&&button.isConnected){button.disabled=false;if(old)button.textContent=old}}
+}
 async function submit(id){try{const price=document.querySelector(`[data-commercial-price="${id}"]`),sg=document.querySelector(`[data-commercial-signage="${id}"]`),ex=document.querySelector(`[data-commercial-execution="${id}"]`),note=document.querySelector(`[data-commercial-note="${id}"]`);if(sg?.value===''||ex?.value==='')throw new Error('Renseigne la signalétique et l’exécution rayon.');await api(`/api/commercial/${id}/control`,{method:'POST',body:JSON.stringify({observedPrice:price?.value===''?null:Number(price?.value),signageOk:sg?.value==='true',executionOk:ex?.value==='true',note:note?.value.trim()||''})});toast('Contrôle prix/promo conforme.');await renderCommercial()}catch(e){toast(e.message);await renderCommercial()}}
 async function savePolicy(){try{await api('/api/commercial/policy',{method:'PUT',body:JSON.stringify({priceTolerance:Number($('#commercialTolerance').value)})});toast('Tolérance prix réseau mise à jour.');await renderCommercial()}catch(e){toast(e.message)}}
