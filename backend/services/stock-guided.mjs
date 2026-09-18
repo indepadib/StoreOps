@@ -55,6 +55,9 @@ export async function getStockGuidedFlow(storeId,type,{businessDate=todayISO(),f
  syncSignals(storeId,businessDate,kind,signals);
  return flowView(storeId,businessDate,kind,stockData)
 }
+export function readStockGuidedFlow(storeId,type,{businessDate=todayISO()}={}){
+ const kind=requireType(type);return flowView(storeId,businessDate,kind,{source:'STOREOPS_REVIEW_STATE',summary:{}})
+}
 function ensureInventorySession({storeId,businessDate,type,user}){
  const zone=zoneLabel(type),existing=db.prepare(`SELECT id FROM inventory_sessions WHERE store_id=? AND business_date=? AND inventory_type='TARGETED' AND zone=? AND status IN ('COUNTING','REVIEW') ORDER BY created_at DESC LIMIT 1`).get(storeId,businessDate,zone);
  if(existing)return existing.id;
