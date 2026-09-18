@@ -8,6 +8,7 @@ import { sessionFromRequest } from './auth/session.mjs';
 import { canAccessStore, canManageQuality, canManageStore } from './services/permissions.mjs';
 import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { getStoreProductByEan } from './services/dynamics-stock.mjs';
+import { getCommercialPriceChanges } from './services/dynamics-price.mjs';
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
@@ -43,7 +44,27 @@ function ensureManage(user,storeId){if(!canManageStore(user,storeId))throw Objec
 function ensureQuality(user,storeId){if(!canManageQuality(user,storeId))throw Object.assign(new Error('Qualité réservée au Responsable magasin ou Directeur d’exploitation'),{status:403})}
 function ensureDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie / PLS':category==='Surgelé'?'Surgelés':category==='F&L'?'Fruits & Légumes':null}
-async function refreshCommercial(storeId,businessDate,{required=false}={}){const liveHeavy=config.dynamics.mode==='live'&&config.dynamics.read?.price==='live'&&config.dynamics.read?.promotion==='live';if(!required&&liveHeavy)return{ok:true,deferred:true,code:'COMMERCIAL_SYNC_ON_DEMAND',message:'Snapshot StoreOps servi immédiatement ; synchronisation Dynamics à la demande.'};try{const changes=await getCommercialChanges(storeId,businessDate);return {ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes})}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'COMMERCIAL_SYNC_FAILED'}}}
+async function refreshCommercial(storeId,businessDate,{required=false}={}){
+ const liveHeavy=config.dynamics.mode==='live'&&(config.dynamics.read?.price==='live'||config.dynamics.read?.promotion==='live');
+ if(!required&&liveHeavy)return{ok:true,deferred:true,code:'COMMERCIAL_SYNC_ON_DEMAND',message:'Snapshot StoreOps servi immédiatement ; synchronisation Dynamics en arrière-plan.'};
+ const jobs=[
+  ['promotions',getCommercialChanges(storeId,businessDate)],
+  ['prices',getCommercialPriceChanges(storeId,businessDate)]
+ ],settled=await Promise.allSettled(jobs.map(([,promise])=>promise)),changes=[],sources=[];
+ settled.forEach((result,index)=>{
+  const name=jobs[index][0];
+  if(result.status==='fulfilled'){
+   const value=result.value;
+   const rows=Array.isArray(value)?value:Array.isArray(value?.changes)?value.changes:[];
+   changes.push(...rows);sources.push({name,status:'READY',count:rows.length,diagnostics:value?.diagnostics||null})
+  }else sources.push({name,status:'ERROR',code:result.reason?.code||'COMMERCIAL_SOURCE_FAILED',error:result.reason?.message||String(result.reason)})
+ });
+ if(!sources.some(x=>x.status==='READY')){
+  const error=Object.assign(new Error('Dynamics n’a retourné aucune source prix/promo exploitable.'),{status:502,code:'COMMERCIAL_SYNC_ALL_SOURCES_FAILED',details:{sources}});
+  if(required)throw error;return{ok:false,deferred:false,error:error.message,code:error.code,sources}
+ }
+ return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes}),sources}
+}
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
 
 async function api(req,res,url){
