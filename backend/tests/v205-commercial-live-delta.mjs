@@ -60,6 +60,8 @@ const refresh=readFileSync(new URL('../../frontend/js/commercial-live-refresh.js
 const app=readFileSync(new URL('../../frontend/js/app.js',import.meta.url),'utf8');
 const auth=readFileSync(new URL('../../frontend/js/auth-entry.js',import.meta.url),'utf8');
 const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
+const enhancements=readFileSync(new URL('../../frontend/js/enhancements-entry.js',import.meta.url),'utf8');
+const classic=readFileSync(new URL('../../frontend/js/boot-classic.js',import.meta.url),'utf8');
 
 assert.match(dynamicsPrice,/getCommercialPriceChanges/,'price delta reader missing');
 assert.match(dynamicsPrice,/PriceApplicableFromDate/,'trade agreement effective-date detection missing');
@@ -75,6 +77,8 @@ assert.match(refresh,/storeops:commercial-updated/,'background sync should publi
 assert.match(app,/manager-home\.js\?v=2050/);
 assert.match(app,/commercial\.js\?v=2050/);
 assert.match(auth,/const BUILD='2050'/);
+assert.match(enhancements,/const BUILD='2050'/,'deferred modules must share V2.05 cache generation');
+assert.match(classic,/var BUILD='2.05.0'/,'classic boot release must match V2.05');
 assert.match(index,/auth-entry\.js\?v=2050/);
 
 console.log('StoreOps V2.05 commercial live delta contract passed');
