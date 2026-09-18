@@ -1,0 +1,34 @@
+name: V2.03 Manager Light Enrichment Contract
+
+on:
+  push:
+    branches: [storeops-v2.03-fast-enrichment]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check frontend/js/manager-action-inbox.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.03 light enrichment contract
+        run: node backend/tests/v203-manager-light-enrichment.mjs
+      - name: V2.02 cold snapshot regression
+        run: node backend/tests/v202-single-query-cold-snapshot.mjs
+      - name: V2.01 cold-start regression
+        run: node backend/tests/v201-cold-start-fast.mjs
+      - name: V1.84 persistence regression
+        run: node backend/tests/v184-performance-p0.mjs

@@ -9,6 +9,7 @@ const api=read('frontend/js/api.js');
 const showcase=read('frontend/js/api-showcase.js');
 const app=read('frontend/js/app.js');
 const html=read('frontend/index.html');
+const auth=read('frontend/js/auth-entry.js');
 
 assert.doesNotMatch(api,/^import\s+.*['"]\.\/mock-/m,'live API runtime must not statically import showcase mocks');
 assert.match(api,/import\('\.\/api-showcase\.js'\)/,'showcase graph must load dynamically');
@@ -29,6 +30,8 @@ assert(deferred.some(x=>x.href==='/admin-studio.css'),'Admin Studio CSS should n
 assert(deferred.some(x=>x.href==='/development.css'),'Development CSS should not block first paint');
 assert(deferred.some(x=>x.href==='/manager-scan.css'),'Scanner CSS should not block Today first paint');
 assert(deferred.every(x=>x.attrs.includes("onload=\"this.media='all'\"")),'deferred CSS must switch to all media after load');
-assert.match(html,/auth-entry\.js\?v=2000/,'entry asset must be cache-busted for V2.00');
+const runtimeBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
+assert(runtimeBuild,'runtime build cache key must be explicit');
+assert.match(html,new RegExp(`auth-entry\\.js\\?v=${runtimeBuild}`),'entry asset cache key must match the active runtime build');
 
-console.log(`V2.00 production asset isolation contract OK · ${blocking.length} critical CSS · ${deferred.length} deferred CSS`);
+console.log(`Production asset isolation contract OK · build ${runtimeBuild} · ${blocking.length} critical CSS · ${deferred.length} deferred CSS`);
