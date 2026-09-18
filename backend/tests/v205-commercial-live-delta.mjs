@@ -50,6 +50,9 @@ rows=listCommercialControls(storeId,day);
 assert.equal(rows.length,1,'dated price changes must enter the commercial queue');
 assert.equal(rows[0].action_type,'PRICE_CHANGE');
 assert.equal(rows[0].expected_price,15.9);
+const kept=syncCommercialControls({storeId,businessDate:day,changes:[],preserveExisting:true});
+assert.equal(kept.preserveExisting,true);
+assert.equal(listCommercialControls(storeId,day).length,1,'partial source failures must not erase pending commercial actions');
 
 const dynamicsPrice=readFileSync(new URL('../services/dynamics-price.mjs',import.meta.url),'utf8');
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
@@ -68,12 +71,14 @@ assert.match(dynamicsPrice,/PriceApplicableFromDate/,'trade agreement effective-
 assert.match(dynamicsPrice,/SalesPriceDate/,'base price change detection missing');
 assert.match(server,/Promise\.allSettled\(jobs\.map/,'price and promotion sources must degrade independently');
 assert.match(server,/getCommercialPriceChanges/,'server must merge price changes into commercial sync');
+assert.match(server,/preserveExisting=sources\.some\(x=>x\.status==='ERROR'\)/,'partial source failures must preserve the current commercial snapshot');
 assert.match(commercialPage,/data\.sync\?\.deferred&&!autoSyncAttempted/,'commercial page should background-sync even with an existing snapshot');
 assert.doesNotMatch(commercialPage,/!rows\.length&&data\.sync\?\.deferred/,'non-empty snapshots must not suppress live refresh');
 assert.match(managerHome,/scheduleCommercialLiveRefresh/,'manager Today must refresh live commercial data after first paint');
 assert.match(today,/scheduleCommercialLiveRefresh/,'director Today must refresh live commercial data after first paint');
 assert.match(refresh,/minIntervalMs=300000/,'background sync must be throttled');
 assert.match(refresh,/storeops:commercial-updated/,'background sync should publish an update event');
+assert.match(refresh,/status=Number\(error\?\.status\)\|\|0;remember\(id\)/,'failed background refreshes must back off instead of retrying on every render');
 assert.match(app,/invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'manager Today must remain lazy');
 assert.match(app,/commercial\.js\?v=2050/);
 assert.match(auth,/const BUILD='2050'/);
