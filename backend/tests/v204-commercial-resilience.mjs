@@ -37,10 +37,10 @@ assert.match(tenant,/scheduleTenantBranding\(\)/,'tenant branding must be auth-a
 assert.match(tenant,/storeops:booted/,'protected tenant branding must wait for authenticated boot when needed');
 assert.match(index,/name="mobile-web-app-capable" content="yes"/,'standard mobile web app meta is required');
 
-const build=Number(authEntry.match(/const BUILD='(\\d+)'/)?.[1]||0);assert(build>=2040,'commercial resilience requires release marker >= 2040');
+const build=Number(authEntry.match(/const BUILD='(\d+)'/)?.[1]||0);assert(build>=2040,'commercial resilience requires release marker >= 2040');
 assert.match(app,/import\(path\)/,'canonical lazy loader must stay intact');
-const commercialBuild=Number(app.match(/\.\/pages\/commercial\.js\?v=(\\d+)/)?.[1]||0);assert(commercialBuild>=2040,'commercial module cache bust must follow active release');
-const entryBuild=Number(index.match(/auth-entry\.js\?v=(\\d+)/)?.[1]||0);assert(entryBuild>=2040,'entry asset cache bust must follow active release');
+const commercialBuild=Number(app.match(/\.\/pages\/commercial\.js\?v=(\d+)/)?.[1]||0);assert(commercialBuild>=2040,'commercial module cache bust must follow active release');
+const entryBuild=Number(index.match(/auth-entry\.js\?v=(\d+)/)?.[1]||0);assert(entryBuild>=2040,'entry asset cache bust must follow active release');
 assert.match(bridge,/D365_COMMERCIAL_MAX_LINES/,'commercial tuning variables must reach the Netlify backend');
 
 console.log('StoreOps V2.04 commercial resilience contract passed');
