@@ -37,7 +37,8 @@ assert.match(tenant,/storeops:booted/,'protected tenant branding must wait for a
 assert.match(index,/name="mobile-web-app-capable" content="yes"/,'standard mobile web app meta is required');
 
 assert.match(authEntry,/const BUILD='2040'/,'V2.04 auth entry marker missing');
-assert.match(app,/const APP_BUILD='2040'/,'V2.04 lazy module marker missing');
+assert.match(app,/import\(path\)/,'canonical lazy loader must stay intact');
+assert.match(app,/\.\/pages\/commercial\.js\?v=2040/,'V2.04 commercial module cache bust missing');
 assert.match(index,/auth-entry\.js\?v=2040/,'V2.04 entry asset cache bust missing');
 assert.match(bridge,/D365_COMMERCIAL_MAX_LINES/,'commercial tuning variables must reach the Netlify backend');
 
