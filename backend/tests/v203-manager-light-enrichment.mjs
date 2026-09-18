@@ -28,10 +28,12 @@ assert(batchCall>=0&&legacyFanout>=0&&batchCall<legacyFanout,'manager inbox must
 assert.match(inbox,/batch\?\.status==='READY'/,'batch response must be validated before returning');
 assert.match(inbox,/fallback legacy/,'legacy fallback must remain available for resilience');
 
-assert.match(index,/auth-entry\.js\?v=2030/,'HTML must invalidate the auth entry cache for V2.03');
-assert.match(index,/boot-rescue\.js\?v=2030/,'HTML must invalidate boot rescue cache for V2.03');
-assert.match(auth,/const BUILD='2030'/,'auth entry build marker must be V2.03');
-assert.match(auth,/const BUILD_LABEL='2\.03\.0'/,'visible V2.03 build label missing');
-assert.match(enhancements,/const BUILD='2030'/,'deferred enhancements must invalidate their module graph');
+const activeBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
+const activeLabel=auth.match(/const BUILD_LABEL='([^']+)'/)?.[1];
+const enhancementBuild=enhancements.match(/const BUILD='(\d+)'/)?.[1];
+assert(activeBuild&&activeLabel&&enhancementBuild,'active light-enrichment release identifiers must remain explicit');
+assert.equal(enhancementBuild,activeBuild,'deferred enhancement graph must share the active auth cache key');
+assert.match(index,new RegExp(`auth-entry\\.js\\?v=${activeBuild}`),'HTML auth entry cache key must match active runtime');
+assert.match(index,new RegExp(`boot-rescue\\.js\\?v=${activeBuild}`),'HTML boot rescue cache key must match active runtime');
 
-console.log('V2.03 manager light-enrichment contract OK');
+console.log(`Manager light-enrichment regression OK · build ${activeBuild} · v${activeLabel}`);
