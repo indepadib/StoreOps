@@ -19,6 +19,8 @@ jobs:
           node --check backend/services/dynamics.mjs
           node --check backend/services/dynamics-promotion.mjs
           node --check backend/services/price-check.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check frontend/js/pages/manager-scan.js
           node --check backend/tests/v206-channel-price-groups.mjs
       - name: Channel price group contract
         run: node backend/tests/v206-channel-price-groups.mjs
@@ -36,3 +38,4 @@ jobs:
           grep -q "RetailChannelId" backend/services/dynamics.mjs
           grep -q "priceGroups" backend/services/dynamics-promotion.mjs
           grep -q "D365_RETAIL_PRICING_DIAGNOSTIC" backend/services/dynamics.mjs
+          grep -q "Price groups vérifiés" frontend/js/pages/manager-scan.js
