@@ -43,7 +43,7 @@ function ensureManage(user,storeId){if(!canManageStore(user,storeId))throw Objec
 function ensureQuality(user,storeId){if(!canManageQuality(user,storeId))throw Object.assign(new Error('Qualité réservée au Responsable magasin ou Directeur d’exploitation'),{status:403})}
 function ensureDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie / PLS':category==='Surgelé'?'Surgelés':category==='F&L'?'Fruits & Légumes':null}
-async function refreshCommercial(storeId,businessDate,{required=false}={}){try{const changes=await getCommercialChanges(storeId,businessDate);return {ok:true,...syncCommercialControls({storeId,businessDate,changes})}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'COMMERCIAL_SYNC_FAILED'}}}
+async function refreshCommercial(storeId,businessDate,{required=false}={}){if(!required)return{ok:true,deferred:true,code:'COMMERCIAL_SYNC_ON_DEMAND',message:'Snapshot StoreOps servi immédiatement ; synchronisation Dynamics à la demande.'};try{const changes=await getCommercialChanges(storeId,businessDate);return {ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes})}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'COMMERCIAL_SYNC_FAILED'}}}
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
 
 async function api(req,res,url){
