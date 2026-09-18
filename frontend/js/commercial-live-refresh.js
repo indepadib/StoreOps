@@ -27,8 +27,8 @@ export async function refreshCommercialLive(storeId,{force=false,minIntervalMs=3
    const result=await api(`/api/stores/${encodeURIComponent(id)}/commercial/sync`,{method:'POST'});
    remember(id);emit(id,result);return{ok:true,skipped:false,result}
   }catch(error){
-   const status=Number(error?.status)||0;
-   if(status===401||status===403){remember(id);return{ok:false,skipped:true,reason:'NOT_ALLOWED',error}}
+   const status=Number(error?.status)||0;remember(id);
+   if(status===401||status===403)return{ok:false,skipped:true,reason:'NOT_ALLOWED',error};
    throw error
   }
  })();
