@@ -78,7 +78,7 @@ const directorToday=read('frontend/js/pages/today.js');
 assert.match(directorToday,/manager-inbox-batch/);
 assert.match(directorToday,/todayStockSignals/);
 const guided=read('frontend/js/manager-stock-guided.js');
-assert.match(guided,/p\\.position[\\s\\S]*p\\.total/);
+assert.match(guided,/p\.position[\s\S]*p\.total/);
 assert.match(guided,/INVENTORY_STARTED/);
 assert.match(guided,/CONFIRMED_OOS/);
 const stockService=read('backend/services/stock-guided.mjs');
