@@ -1,4 +1,5 @@
 import{api}from'../api.js';
+import{refreshCommercialLive,scheduleCommercialLiveRefresh}from'../commercial-live-refresh.js';
 import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 
@@ -44,9 +45,9 @@ export async function renderCommercial(){
  `;
  bindCommercial();
  const autoKey=`${app.storeId}:${new Date().toISOString().slice(0,10)}`;
- if(canManage()&&!commercialError&&!rows.length&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
+ if(canManage()&&!commercialError&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
   autoSyncAttempted.add(autoKey);
-  setTimeout(()=>sync({silent:true}),80);
+  scheduleCommercialLiveRefresh(app.storeId,{delayMs:80,minIntervalMs:60000,onUpdated:()=>renderCommercial()});
  }
 }
 
@@ -109,7 +110,7 @@ async function sync({silent=false}={}){
  const button=$('#syncCommercialBtn'),notice=$('#commercialSyncNotice'),old=button?.textContent;
  try{
   if(button){button.disabled=true;button.textContent='Synchronisation…'}
-  await api(`/api/stores/${app.storeId}/commercial/sync`,{method:'POST'});
+  await refreshCommercialLive(app.storeId,{force:true,minIntervalMs:0});
   if(!silent)toast('Prix et promotions rafraîchis depuis Dynamics.');
   await renderCommercial();
  }catch(e){
