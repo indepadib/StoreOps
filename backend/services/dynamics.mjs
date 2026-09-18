@@ -235,6 +235,7 @@ function commercialPriceDateActive(row,day){const from=dateOnly(row?.PriceApplic
 async function resolveCommercialNormalPrices(items,{day,priceGroups=[],companyFilter='',extra='',limits={}}={}){
   const ids=[...new Set((items||[]).map(x=>String(x||'').trim()).filter(Boolean))],prices=new Map(),diagnostics=[];
   if(!ids.length)return{prices,diagnostics};
+  if(!isD365ReadLive('price'))return{prices,diagnostics:[{source:'PRICE_DOMAIN',status:'DISABLED',message:'D365_PRICE_READ_MODE doit être LIVE pour calculer les remises en pourcentage / montant.'}]};
   const baseEntity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',agreementEntity=config.dynamics.entities?.salesPrice||'SalesPriceAgreements';
   try{
     let rowsRead=0;
@@ -242,7 +243,7 @@ async function resolveCommercialNormalPrices(items,{day,priceGroups=[],companyFi
       const filter=[companyFilter,commercialOfferFilter('ItemNumber',batch)].filter(Boolean).join(' and ');
       const payload=await odataGetAll(baseEntity,{filter,select:'ItemNumber,ProductNumber,SalesPrice,SalesPriceQuantity,SalesUnitSymbol,SalesPriceDate',extra,pageSize:Math.min(limits.pageSize||200,500),maxRows:Math.max(500,Math.min(5000,ids.length*5))});
       rowsRead+=payload.rowCount||0;
-      for(const row of payload.value||[]){const item=String(row.ItemNumber||row.ProductNumber||'').trim(),price=Number(row.SalesPrice);if(item&&Number.isFinite(price)&&price>=0&&!prices.has(item))prices.set(item,{price,source:'BASE_PRICE',unit:row.SalesUnitSymbol||null,date:row.SalesPriceDate||null})}
+      for(const row of payload.value||[]){const item=String(row.ItemNumber||row.ProductNumber||'').trim(),raw=Number(row.SalesPrice),priceUnit=Math.max(1,Number(row.SalesPriceQuantity||1)||1),price=raw/priceUnit;if(item&&Number.isFinite(price)&&price>=0&&!prices.has(item))prices.set(item,{price:Number(price.toFixed(4)),rawPrice:raw,priceUnit,source:'BASE_PRICE',unit:row.SalesUnitSymbol||null,date:row.SalesPriceDate||null})}
     }
     diagnostics.push({source:'BASE_PRICE',status:'READY',entity:baseEntity,rowCount:rowsRead,resolved:prices.size})
   }catch(error){diagnostics.push({source:'BASE_PRICE',status:'ERROR',entity:baseEntity,code:error?.code||'D365_COMMERCIAL_BASE_PRICE_RESOLUTION_FAILED',message:error?.message||String(error)})}
@@ -253,8 +254,8 @@ async function resolveCommercialNormalPrices(items,{day,priceGroups=[],companyFi
       const payload=await odataGetAll(agreementEntity,{filter,select:'RecordId,ItemNumber,ProductNumber,Price,PriceCustomerGroupCode,SalesPriceQuantity,QuantityUnitySymbol,PriceApplicableFromDate,PriceApplicableToDate,FromQuantity,ToQuantity',extra,pageSize:Math.min(limits.pageSize||200,500),maxRows:Math.max(1000,Math.min(10000,ids.length*20))});
       rowsRead+=payload.rowCount||0;
       for(const row of payload.value||[]){
-        const item=String(row.ItemNumber||row.ProductNumber||'').trim(),price=Number(row.Price),group=String(row.PriceCustomerGroupCode||'').trim(),fromQty=Number(row.FromQuantity||0),toQty=Number(row.ToQuantity||0);if(!item||!Number.isFinite(price)||price<0||!commercialPriceDateActive(row,day)||fromQty>1||(toQty>0&&toQty<1))continue;
-        const rank=groupRank.has(group)?groupRank.get(group):999,current=candidates.get(item);if(!current||rank<current.rank)candidates.set(item,{price,source:'SALES_PRICE_AGREEMENT',group,rank,recordId:row.RecordId||null,date:row.PriceApplicableFromDate||null})
+        const item=String(row.ItemNumber||row.ProductNumber||'').trim(),raw=Number(row.Price),priceUnit=Math.max(1,Number(row.SalesPriceQuantity||1)||1),price=raw/priceUnit,group=String(row.PriceCustomerGroupCode||'').trim(),fromQty=Number(row.FromQuantity||0),toQty=Number(row.ToQuantity||0);if(!item||!Number.isFinite(price)||price<0||!commercialPriceDateActive(row,day)||fromQty>1||(toQty>0&&toQty<1))continue;
+        const rank=groupRank.has(group)?groupRank.get(group):999,current=candidates.get(item);if(!current||rank<current.rank)candidates.set(item,{price:Number(price.toFixed(4)),rawPrice:raw,priceUnit,source:'SALES_PRICE_AGREEMENT',group,rank,recordId:row.RecordId||null,date:row.PriceApplicableFromDate||null})
       }
     }
     for(const [item,value] of candidates)prices.set(item,value);
