@@ -1,7 +1,7 @@
-import { loadEnhancements } from './enhancements-entry.js?v=2030';
+import { loadEnhancements } from './enhancements-entry.js?v=2040';
 
-const BUILD='2030';
-const BUILD_LABEL='2.03.0';
+const BUILD='2040';
+const BUILD_LABEL='2.04.0';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
@@ -59,7 +59,7 @@ async function prepareBoot(){
 async function preloadBootstrap(apiCall,authMode){
   try{
     phase('profil en un appel');
-    const {app}=await import(`./state.js?v=${BUILD}`);
+    const {app}=await import('./state.js');
     app.authMode=authMode||'demo';
     window.STOREOPS_BOOTSTRAP=await withTimeout(apiCall('/api/bootstrap'),8000,'Le bootstrap groupé StoreOps prend trop de temps.');
   }catch(e){
