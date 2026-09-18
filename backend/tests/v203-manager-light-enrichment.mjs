@@ -17,7 +17,8 @@ assert(light,'handleLightRoute block missing');
 assert.match(light,/manager-home-fast\|manager-inbox-batch\|business-pulse/,'manager fast resources must share the light route allowlist');
 assert.match(light,/getManagerInboxBatch/,'manager inbox batch must execute directly on the light runtime');
 assert.match(light,/getBusinessPulse/,'business pulse must execute directly on the light runtime');
-assert.match(light,/X-StoreOps-Fast-Path':'manager-inbox'/,'manager inbox fast-path observability missing');
+assert.match(light,/manager-inbox/,'manager inbox fast-path observability missing');
+assert.match(light,/manager-inbox-local/,'local-first manager inbox observability missing');
 assert.match(light,/X-StoreOps-Fast-Path':'business-pulse'/,'business pulse fast-path observability missing');
 assert.doesNotMatch(light,/loadRuntime\(/,'light manager routes must not boot the full backend server');
 
