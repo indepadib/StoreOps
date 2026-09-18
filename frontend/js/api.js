@@ -19,6 +19,19 @@ function applyAuth(headers){
   }
   return headers;
 }
+function isJsonBodyCandidate(body){
+  if(body===null||body===undefined||typeof body==='string')return false;
+  if(typeof FormData!=='undefined'&&body instanceof FormData)return false;
+  if(typeof Blob!=='undefined'&&body instanceof Blob)return false;
+  if(typeof URLSearchParams!=='undefined'&&body instanceof URLSearchParams)return false;
+  if(typeof ArrayBuffer!=='undefined'&&(body instanceof ArrayBuffer||ArrayBuffer.isView?.(body)))return false;
+  return typeof body==='object';
+}
+function normalizeOptions(options={}){
+  const out={...options};
+  if(isJsonBodyCandidate(out.body))out.body=JSON.stringify(out.body);
+  return out
+}
 function bootResponse(path,options={}){
   const method=String(options.method||'GET').toUpperCase();if(method!=='GET')return null;
   const boot=window.STOREOPS_BOOTSTRAP;if(!boot)return null;
@@ -53,10 +66,11 @@ async function parseJsonResponse(r,url){
   try{return await r.json()}catch{const e=new Error(`Réponse JSON invalide depuis ${url}.`);e.status=r.status;e.code='API_INVALID_JSON';throw e}
 }
 export async function api(path,options={}){
-  if(isShowcase())return (await showcaseRuntime()).api(path,options);
-  const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
-  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const normalized=normalizeOptions(options);
+  if(isShowcase())return (await showcaseRuntime()).api(path,normalized);
+  const cached=bootResponse(path,normalized);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
+  const headers=applyAuth({'content-type':'application/json',...(normalized.headers||{})}),url=apiUrl(path);let r;
+  try{r=await fetch(url,{...normalized,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
