@@ -1,0 +1,41 @@
+name: V2.06 Channel Price Groups Contract
+
+on:
+  push:
+    branches: [storeops-v2.06-channel-price-groups]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/dynamics-promotion.mjs
+          node --check backend/services/price-check.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check frontend/js/pages/manager-scan.js
+          node --check backend/tests/v206-channel-price-groups.mjs
+      - name: Channel price group contract
+        run: node backend/tests/v206-channel-price-groups.mjs
+      - name: Commercial regression
+        run: |
+          STOREOPS_DB=/tmp/storeops-v206-commercial.db node backend/tests/v205-commercial-live-delta.mjs
+          STOREOPS_DB=/tmp/storeops-v206-resilience.db node backend/tests/v204-commercial-resilience.mjs
+      - name: Price check regression
+        run: |
+          STOREOPS_DB=/tmp/storeops-v206-price.db node backend/tests/price-check-category.mjs
+          STOREOPS_DB=/tmp/storeops-v206-price-source.db node backend/tests/price-check-category-source.mjs
+      - name: Static guards
+        run: |
+          grep -q "RetailChannelPriceGroups" backend/services/dynamics.mjs
+          grep -q "RetailChannelId" backend/services/dynamics.mjs
+          grep -q "priceGroups" backend/services/dynamics-promotion.mjs
+          grep -q "D365_RETAIL_PRICING_DIAGNOSTIC" backend/services/dynamics.mjs
+          grep -q "Price groups vérifiés" frontend/js/pages/manager-scan.js

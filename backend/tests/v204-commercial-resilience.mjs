@@ -14,7 +14,8 @@ const bridge=read('netlify/functions/api.mts');
 
 const commercialBlock=dynamics.match(/export async function getCommercialChanges[\s\S]*?export async function getCashClosingSnapshot/)?.[0]||'';
 assert(commercialBlock,'commercial D365 block missing');
-assert.match(commercialBlock,/PriceGroupId eq/,'commercial sync must scope by store price group');
+assert.match(commercialBlock,/resolveStorePriceGroups\(storeId\)/,'commercial sync must resolve the store/channel price groups');
+assert.match(commercialBlock,/commercialOfferFilter\('PriceGroupId',priceGroups\)/,'commercial sync must scope offers to the resolved store price groups');
 assert.match(commercialBlock,/commercialOfferFilter\('OfferId'/,'commercial sync must query only eligible offers');
 assert.doesNotMatch(commercialBlock,/productsPayload|barcodesPayload/,'commercial page must not full-scan products or barcodes');
 assert.match(dynamics,/D365_REQUEST_TIMEOUT_MS/,'D365 requests need a bounded timeout');
