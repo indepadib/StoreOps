@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { odataGet } from './dynamics.mjs';
+import { odataGet, resolveStorePriceGroups } from './dynamics.mjs';
 import { odataGetAllBySkip } from './dynamics-query.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 
@@ -49,6 +49,7 @@ export function chooseEffectiveUnitPrice(basePrice,simpleEffectivePrices=[]){
   return candidates.length?Math.min(...candidates):null;
 }
 export function resolvePriceGroup(priceGroup=null){return String(priceGroup||config.dynamics.defaultPriceGroup||'Franprix').trim()||'Franprix'}
+function resolvePriceGroups(priceGroup=null,priceGroups=[]){return[...new Set([...(Array.isArray(priceGroups)?priceGroups:[]),priceGroup,config.dynamics.defaultPriceGroup||'Franprix'].map(clean).filter(Boolean))]}
 function promotionLive(){return config.dynamics.mode==='live'&&config.dynamics.read?.promotion==='live'}
 function entity(key,fallback){return config.dynamics.entities?.[key]||fallback}
 function safeError(error){
@@ -68,10 +69,10 @@ async function queryCandidateLinesByField(item,itemField,field,value,{pageSize=1
   return{payload,rows:verifiedItemRows(payload,item,itemField),filter};
 }
 
-async function queryPromotionLines(item,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
+async function queryPromotionLines(item,{businessDate=null,priceGroup=null,priceGroups=[],productName=null,productCategory=null}={}){
   const itemField=clean(process.env.D365_PROMOTION_ITEM_FIELD)||'ItemId';
   const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
-  const resolvedPriceGroup=resolvePriceGroup(priceGroup);
+  const resolvedPriceGroups=resolvePriceGroups(priceGroup,priceGroups),resolvedPriceGroup=resolvedPriceGroups[0]||resolvePriceGroup(priceGroup);
   const attempts=[];
 
   if(itemField!=='ItemId'){
@@ -100,13 +101,13 @@ async function queryPromotionLines(item,{businessDate=null,priceGroup=null,produ
 
   const groupEntity=entity('retailDiscountPriceGroup',RETAIL_DISCOUNT_PRICE_GROUP_ENTITY);
   const groupPayload=await odataGetAllBySkip(groupEntity,{
-    filter:withCompany(`PriceGroupId eq '${escapeOData(resolvedPriceGroup)}'`),
+    filter:withCompany(orFilter('PriceGroupId',resolvedPriceGroups)),
     extra:extraCompany(),pageSize:200,maxRows:2000
   });
   const groupRows=Array.isArray(groupPayload?.value)?groupPayload.value:[];
   const offerIds=[...new Set(groupRows.map(x=>clean(x.OfferId)).filter(Boolean))];
   if(!offerIds.length){
-    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:0});
+    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,offerCount:0});
     return{payload:{value:[],rowCount:0,pages:groupPayload?.pages||1,truncated:!!groupPayload?.truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
   }
 
@@ -117,7 +118,7 @@ async function queryPromotionLines(item,{businessDate=null,priceGroup=null,produ
   }
   const activeIds=[...new Set(headers.filter(h=>promotionStatus(h,day)==='ACTIVE').map(h=>clean(h.OfferId)).filter(Boolean))];
   if(!activeIds.length){
-    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:offerIds.length,activeOfferCount:0});
+    attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,offerCount:offerIds.length,activeOfferCount:0});
     return{payload:{value:[],rowCount:0,pages:groupPayload?.pages||1,truncated:!!groupPayload?.truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
   }
 
@@ -129,20 +130,21 @@ async function queryPromotionLines(item,{businessDate=null,priceGroup=null,produ
     rowsScanned+=Number(payload?.rowCount??payload?.value?.length??0);pages+=Number(payload?.pages||1);truncated=truncated||!!payload?.truncated;
     matches.push(...verifiedItemRows(payload,item,itemField));
   }
-  attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,offerCount:offerIds.length,activeOfferCount:activeIds.length,rowsScanned,pages,truncated});
+  attempts.push({strategy:'ACTIVE_OFFERS',priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,offerCount:offerIds.length,activeOfferCount:activeIds.length,rowsScanned,pages,truncated});
   return{payload:{value:matches,rowCount:matches.length,pages,truncated},itemField,strategy:'ACTIVE_OFFERS',attempts};
 }
 
-export async function getRetailPromotionsByItem(productNumber,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
+export async function getRetailPromotionsByItem(productNumber,{businessDate=null,priceGroup=null,priceGroups=[],storeId=null,productName=null,productCategory=null}={}){
   const item=clean(productNumber);
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PROMOTION_ITEM_REQUIRED'});
-  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),resolvedPriceGroup=resolvePriceGroup(priceGroup);
-  if(!promotionLive())return{mode:'SIMULATED',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false}};
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
+  const groupContext=storeId?await resolveStorePriceGroups(storeId):null,resolvedPriceGroups=resolvePriceGroups(priceGroup,[...(priceGroups||[]),...(groupContext?.groups||[])]),resolvedPriceGroup=resolvedPriceGroups[0]||resolvePriceGroup(priceGroup);
+  if(!promotionLive())return{mode:'SIMULATED',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,priceGroupContext:groupContext,promotions:[],rowCount:0,coverage:{directItem:true,category:false}};
 
-  const {payload:linePayload,itemField,strategy,attempts}=await queryPromotionLines(item,{businessDate:day,priceGroup:resolvedPriceGroup,productName,productCategory});
+  const {payload:linePayload,itemField,strategy,attempts}=await queryPromotionLines(item,{businessDate:day,priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,productName,productCategory});
   const lines=Array.isArray(linePayload?.value)?linePayload.value:[];
   const offerIds=[...new Set(lines.map(x=>x.OfferId).filter(Boolean))];
-  if(!offerIds.length)return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts}};
+  if(!offerIds.length)return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,priceGroupContext:groupContext,promotions:[],rowCount:0,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts}};
 
   const offerFilter=orFilter('OfferId',offerIds);
   const common={top:500,extra:extraCompany()};
@@ -168,22 +170,22 @@ export async function getRetailPromotionsByItem(productNumber,{businessDate=null
   const headerById=new Map(headers.map(x=>[x.OfferId,x]));
   const promotions=offerIds.map(offerId=>{
     const header=headerById.get(offerId)||null,offerLines=lines.filter(x=>x.OfferId===offerId),line=offerLines[0]||null;
-    const priceGroups=groups.filter(x=>x.OfferId===offerId).map(x=>x.PriceGroupId).filter(Boolean);
+    const offerPriceGroups=groups.filter(x=>x.OfferId===offerId).map(x=>x.PriceGroupId).filter(Boolean);
     const mixGroup=mixGroups.find(x=>x.MixAndMatchOfferId===offerId&&(!line?.MixAndMatchLineGroup||x.MixAndMatchLineGroup===line.MixAndMatchLineGroup))||null;
     const mechanic=mechanicFor(header,line,mixGroup),status=promotionStatus(header,day);
-    const priceGroupEligible=groupError?null:(!resolvedPriceGroup||priceGroups.length===0||priceGroups.includes(resolvedPriceGroup));
-    return{offerId,name:header?.Name||line?.Name||offerId,periodicDiscountType:header?.PeriodicDiscountType||null,status,enabled:header?.Status==='Enabled',processingStatus:header?.ProcessingStatus||null,validFrom:header?.ValidFrom||null,validTo:header?.ValidTo||null,currencyCode:header?.CurrencyCode||null,concurrencyMode:header?.ConcurrencyMode||null,pricingPriorityNumber:header?.PricingPriorityNumber??null,priceGroups,priceGroupEligible,itemLine:{lineNum:line?.LineNum??null,itemId:line?.ItemId||item,name:line?.Name||null,unit:line?.UnitOfMeasureSymbol||null,lineType:line?.LineType||null,mixAndMatchLineGroup:line?.MixAndMatchLineGroup||null},mechanic,activeForRequestedContext:status==='ACTIVE'&&priceGroupEligible===true,rawLineCount:offerLines.length};
+    const priceGroupEligible=groupError?null:(!resolvedPriceGroups.length||offerPriceGroups.length===0||offerPriceGroups.some(group=>resolvedPriceGroups.includes(group)));
+    return{offerId,name:header?.Name||line?.Name||offerId,periodicDiscountType:header?.PeriodicDiscountType||null,status,enabled:header?.Status==='Enabled',processingStatus:header?.ProcessingStatus||null,validFrom:header?.ValidFrom||null,validTo:header?.ValidTo||null,currencyCode:header?.CurrencyCode||null,concurrencyMode:header?.ConcurrencyMode||null,pricingPriorityNumber:header?.PricingPriorityNumber??null,priceGroups:offerPriceGroups,priceGroupEligible,itemLine:{lineNum:line?.LineNum??null,itemId:line?.ItemId||item,name:line?.Name||null,unit:line?.UnitOfMeasureSymbol||null,lineType:line?.LineType||null,mixAndMatchLineGroup:line?.MixAndMatchLineGroup||null},mechanic,activeForRequestedContext:status==='ACTIVE'&&priceGroupEligible===true,rawLineCount:offerLines.length};
   });
-  return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,promotions,rowCount:promotions.length,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts},warnings:{priceGroup:groupError,mixAndMatch:mixError}};
+  return{mode:'LIVE',productNumber:item,businessDate:day,priceGroup:resolvedPriceGroup,priceGroups:resolvedPriceGroups,priceGroupContext:groupContext,promotions,rowCount:promotions.length,coverage:{directItem:true,category:false},scan:{rowsScanned:linePayload?.rowCount??lines.length,pages:linePayload?.pages||1,truncated:!!linePayload?.truncated,filteredByItem:false,itemField,strategy,attempts},warnings:{priceGroup:groupError,mixAndMatch:mixError}};
 }
 
-export async function getProductPricing(productNumber,{businessDate=null,priceGroup=null,productName=null,productCategory=null}={}){
+export async function getProductPricing(productNumber,{businessDate=null,priceGroup=null,priceGroups=[],storeId=null,productName=null,productCategory=null}={}){
   const item=clean(productNumber);
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRODUCT_PRICE_ITEM_REQUIRED'});
   const resolvedPriceGroup=resolvePriceGroup(priceGroup);
   const [priceResult,promoResult]=await Promise.allSettled([
     getSalesPriceAgreementsByItem(item),
-    getRetailPromotionsByItem(item,{businessDate,priceGroup:resolvedPriceGroup,productName,productCategory})
+    getRetailPromotionsByItem(item,{businessDate,priceGroup:resolvedPriceGroup,priceGroups,storeId,productName,productCategory})
   ]);
 
   const priceError=priceResult.status==='rejected'?safeError(priceResult.reason):null;
@@ -203,7 +205,9 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
     errors:{price:priceError,promotion:promotionError},
     productNumber:item,
     businessDate:promoDiagnostics.businessDate||dateOnly(businessDate)||new Date().toISOString().slice(0,10),
-    priceGroup:resolvedPriceGroup,
+    priceGroup:promoDiagnostics.priceGroup||resolvedPriceGroup,
+    priceGroups:promoDiagnostics.priceGroups||resolvePriceGroups(resolvedPriceGroup,priceGroups),
+    priceGroupContext:promoDiagnostics.priceGroupContext||null,
     basePrice:baseRow?{price:basePrice,unit:baseRow.SalesUnitSymbol||null,priceQuantity:baseRow.SalesPriceQuantity??null,priceDate:baseRow.SalesPriceDate||null,source:baseRow.BaseSalesPriceSource||null}:null,
     tradeAgreements:{rowCount:priceDiagnostics.rowCount||0,rows:priceDiagnostics.rows||[]},
     promotions:{rowCount:promoDiagnostics.rowCount||0,activeCount:activePromotions.length,items:promoDiagnostics.promotions||[],coverage:promoDiagnostics.coverage||{directItem:true,category:false},scan:promoDiagnostics.scan||null,warnings:promoDiagnostics.warnings||null,error:promotionError},
