@@ -35,11 +35,39 @@ CREATE TABLE IF NOT EXISTS commercial_controls(
  UNIQUE(store_id,business_date,source_key)
 );
 CREATE INDEX IF NOT EXISTS ix_commercial_store_date ON commercial_controls(store_id,business_date,status,priority);
+CREATE TABLE IF NOT EXISTS commercial_sync_runs(
+ store_id TEXT NOT NULL REFERENCES stores(id),
+ business_date TEXT NOT NULL,
+ status TEXT NOT NULL DEFAULT 'PENDING' CHECK(status IN ('PENDING','RUNNING','SUCCESS','FAILED')),
+ last_started_at TEXT NULL,
+ last_success_at TEXT NULL,
+ last_error TEXT NULL,
+ raw_count INTEGER NOT NULL DEFAULT 0,
+ actionable_count INTEGER NOT NULL DEFAULT 0,
+ PRIMARY KEY(store_id,business_date)
+);
 `);
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
 export function commercialPolicy(){return db.prepare(`SELECT * FROM commercial_policies WHERE id='default'`).get()}
+export function commercialSyncState(storeId,businessDate=todayISO()){
+ const row=db.prepare(`SELECT * FROM commercial_sync_runs WHERE store_id=? AND business_date=?`).get(storeId,businessDate);
+ if(!row)return{storeId,businessDate,status:'MISSING',needsSync:true,lastStartedAt:null,lastSuccessAt:null,lastError:null,rawCount:0,actionableCount:0};
+ return{storeId,businessDate,status:row.status,needsSync:row.status!=='SUCCESS',lastStartedAt:row.last_started_at||null,lastSuccessAt:row.last_success_at||null,lastError:row.last_error||null,rawCount:Number(row.raw_count||0),actionableCount:Number(row.actionable_count||0)}
+}
+export function markCommercialSyncStarted(storeId,businessDate=todayISO()){
+ db.prepare(`INSERT INTO commercial_sync_runs(store_id,business_date,status,last_started_at,last_error) VALUES(?,?,'RUNNING',CURRENT_TIMESTAMP,NULL) ON CONFLICT(store_id,business_date) DO UPDATE SET status='RUNNING',last_started_at=CURRENT_TIMESTAMP,last_error=NULL`).run(storeId,businessDate);
+ return commercialSyncState(storeId,businessDate)
+}
+export function markCommercialSyncSuccess(storeId,businessDate=todayISO(),result={}){
+ db.prepare(`INSERT INTO commercial_sync_runs(store_id,business_date,status,last_started_at,last_success_at,last_error,raw_count,actionable_count) VALUES(?,?,'SUCCESS',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?,?) ON CONFLICT(store_id,business_date) DO UPDATE SET status='SUCCESS',last_success_at=CURRENT_TIMESTAMP,last_error=NULL,raw_count=excluded.raw_count,actionable_count=excluded.actionable_count`).run(storeId,businessDate,Number(result.rawCount||0),Number(result.actionableCount||0));
+ return commercialSyncState(storeId,businessDate)
+}
+export function markCommercialSyncFailure(storeId,businessDate=todayISO(),error=null){
+ db.prepare(`INSERT INTO commercial_sync_runs(store_id,business_date,status,last_started_at,last_error) VALUES(?,?,'FAILED',CURRENT_TIMESTAMP,?) ON CONFLICT(store_id,business_date) DO UPDATE SET status='FAILED',last_error=excluded.last_error`).run(storeId,businessDate,String(error?.message||error||'Synchronisation Dynamics impossible').slice(0,1000));
+ return commercialSyncState(storeId,businessDate)
+}
 export function commercialConfig(){
  return{
   actionTypes:[
@@ -104,6 +132,8 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
  for(const c of actionable){
+  const priorVerified=db.prepare(`SELECT 1 FROM commercial_controls WHERE store_id=? AND source_key=? AND status='VERIFIED' LIMIT 1`).get(storeId,String(c.sourceKey));
+  if(priorVerified)continue;
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
   const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
@@ -112,7 +142,7 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
  return{inserted,removed:Number(removed.changes||0),rawCount:raw.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
+ return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND (business_date=? OR (business_date<? AND business_date>=date(?,'-2 day') AND status!='VERIFIED')) ORDER BY CASE WHEN business_date<? THEN 0 ELSE 1 END,CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate,businessDate,businessDate,businessDate).map(hydrate);
 }
 export function commercialSummary(storeId,businessDate=todayISO()){
  const rows=listCommercialControls(storeId,businessDate),counts={PENDING:0,MISMATCH:0,VERIFIED:0};
@@ -120,7 +150,7 @@ export function commercialSummary(storeId,businessDate=todayISO()){
  return{total:rows.length,pending:counts.PENDING||0,mismatch:counts.MISMATCH||0,verified:counts.VERIFIED||0,blocking:rows.filter(x=>x.blocking_opening&&x.status!=='VERIFIED').length,readiness:rows.length?Math.round(((counts.VERIFIED||0)/rows.length)*100):100};
 }
 export function commercialBlockingCount(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=? AND blocking_opening=1 AND status!='VERIFIED'`).get(storeId,businessDate).n;
+ return db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date<=? AND business_date>=date(?,'-2 day') AND blocking_opening=1 AND status!='VERIFIED'`).get(storeId,businessDate,businessDate).n;
 }
 export function submitCommercialControl({id,user,observedPrice=null,signageOk=null,executionOk=null,note=''}) {
  const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Contrôle prix/promo introuvable.'),{status:404});
