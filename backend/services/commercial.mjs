@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS commercial_controls(
  UNIQUE(store_id,business_date,source_key)
 );
 CREATE INDEX IF NOT EXISTS ix_commercial_store_date ON commercial_controls(store_id,business_date,status,priority);
+CREATE TABLE IF NOT EXISTS commercial_source_state(
+ store_id TEXT NOT NULL REFERENCES stores(id),
+ stable_key TEXT NOT NULL,
+ fingerprint TEXT NOT NULL,
+ first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ last_changed_at TEXT NULL,
+ last_action_business_date TEXT NULL,
+ PRIMARY KEY(store_id,stable_key)
+);
+CREATE INDEX IF NOT EXISTS ix_commercial_source_state_store ON commercial_source_state(store_id,last_seen_at);
 `);
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
 
@@ -63,6 +74,38 @@ function hydrate(row){
  let issues=[];try{issues=row.last_issues_json?JSON.parse(row.last_issues_json):[]}catch{}
  const incident=db.prepare(`SELECT id,status,criticality,requires_evidence FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? ORDER BY created_at DESC LIMIT 1`).get(row.id)||null;
  return{...row,controlled_by_name:userName(row.controlled_by),issues,incident};
+}
+function dateOnly(v){const s=String(v||'');return /^\\d{4}-\\d{2}-\\d{2}/.test(s)?s.slice(0,10):null}
+function dayDistance(from,to){const a=dateOnly(from),b=dateOnly(to);if(!a||!b)return null;return Math.round((new Date(`${b}T12:00:00Z`)-new Date(`${a}T12:00:00Z`))/86400000)}
+function stableKeyFor(c){
+ if(c?.stableKey)return String(c.stableKey);
+ return String(c?.sourceKey||'').replace(/-\\d{4}-\\d{2}-\\d{2}(?:-[a-z0-9]+)?$/i,'')
+}
+function fingerprintFor(c){
+ if(c?.fingerprint)return String(c.fingerprint);
+ return JSON.stringify([c?.actionType,c?.productNumber,c?.ean,c?.expectedPrice,c?.oldPrice,c?.promoLabel,c?.signageAction,c?.effectiveFrom,c?.effectiveTo,c?.validFrom,c?.validTo])
+}
+function shortHash(value){
+ let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)
+}
+function materializeCommercialDeltas(storeId,businessDate,changes=[]){
+ const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`);
+ const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,first_seen_at,last_seen_at,last_changed_at,last_action_business_date) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date)`);
+ for(const original of Array.isArray(changes)?changes:[]){
+  let c={...original};const d365=c.source==='D365_RETAIL_PRICING',stableKey=stableKeyFor(c),fingerprint=fingerprintFor(c);
+  if(!d365||!stableKey){out.push(c);continue}
+  const previous=get.get(storeId,stableKey),changed=!!previous&&previous.fingerprint!==fingerprint;
+  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&distance!==null&&distance>=0&&distance<=7;
+  let actionDate=null;
+  if(c.actionType==='VERIFY'&&(changed||recentFirstSeen)){
+    c={...c,actionType:'PROMO_START',signageAction:'INSTALL',priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed?'Promotion modifiée dans Dynamics':'Promotion récente détectée',c.promoLabel].filter(Boolean).join(' · ')};
+    actionDate=businessDate
+  }else if(c.actionType!=='VERIFY')actionDate=businessDate;
+  if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
+  upsert.run(storeId,stableKey,fingerprint,actionDate);
+  out.push(c)
+ }
+ return out
 }
 function isActionableChange(c){
  if(!c?.sourceKey||!c?.ean||!c?.productName)return false;
@@ -99,7 +142,7 @@ function aggregateOfferAnomalies(changes,businessDate){
  return out;
 }
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[]}){
- const raw=Array.isArray(changes)?changes:[],filtered=raw.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
+ const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
@@ -109,7 +152,7 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
   const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
- return{inserted,removed:Number(removed.changes||0),rawCount:raw.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
+ return{inserted,removed:Number(removed.changes||0),rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
  return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
