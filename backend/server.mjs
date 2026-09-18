@@ -63,7 +63,7 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
   const error=Object.assign(new Error('Dynamics n’a retourné aucune source prix/promo exploitable.'),{status:502,code:'COMMERCIAL_SYNC_ALL_SOURCES_FAILED',details:{sources}});
   if(required)throw error;return{ok:false,deferred:false,error:error.message,code:error.code,sources}
  }
- return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes}),sources}
+ const preserveExisting=sources.some(x=>x.status==='ERROR');return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes,preserveExisting}),sources}
 }
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
 
