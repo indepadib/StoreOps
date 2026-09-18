@@ -49,7 +49,12 @@ function pulseCompact(p,loading=false){
 function priorityCard(item,index,phase){
  if(!item)return'';
  const critical=item.blocking||item.priority==='P0'||item.severity==='CRITICAL';
- return `<button class="today-priority-card ${index===0?'primary':''} ${critical?'urgent':''}" data-manager-go="${esc(item.page||'managerMore')}"><span class="today-priority-rank">${index+1}</span><span class="today-priority-copy"><small>${esc(categoryLabel(item.category||'OTHER'))} · ${esc(actionUrgency(item))}</small><strong>${esc(item.title||'Action à traiter')}</strong><span>${esc(item.detail||'Ouvrez cette action pour continuer.')}</span></span><span class="today-priority-cta">${esc(ctaLabel(item,phase))} ›</span></button>`;
+ return `<button class="today-priority-card ${index===0?'primary':''} ${critical?'urgent':''}" data-manager-go="${esc(item.page||'managerMore')}"${item.stockFlow?` data-stock-flow="${esc(item.stockFlow)}"`:''}><span class="today-priority-rank">${index+1}</span><span class="today-priority-copy"><small>${esc(categoryLabel(item.category||'OTHER'))} · ${esc(actionUrgency(item))}</small><strong>${esc(item.title||'Action à traiter')}</strong><span>${esc(item.detail||'Ouvrez cette action pour continuer.')}</span></span><span class="today-priority-cta">${esc(ctaLabel(item,phase))} ›</span></button>`;
+}
+function stockQuickActions(inbox,loading=false){
+ if(loading||!inbox?.stockData)return'';
+ const s=inbox.stockData.summary||{},negative=Number(s.negative||0),out=Number(s.outOfStock||0);if(!negative&&!out)return'';
+ return `<section class="today-stock-quick" aria-label="Contrôles stock">${negative?`<button data-stock-flow="NEGATIVE" data-manager-go="inventory"><span class="today-stock-icon">−</span><span><small>STOCK NÉGATIF</small><strong>${negative} article${negative>1?'s':''}</strong></span><em>Contrôler ›</em></button>`:''}${out?`<button data-stock-flow="OUT" data-manager-go="inventory"><span class="today-stock-icon">0</span><span><small>RUPTURES</small><strong>${out} article${out>1?'s':''}</strong></span><em>Parcourir ›</em></button>`:''}</section>`;
 }
 function prioritiesSection(items=[],loading=false,phase='DAY',total=0){
  if(loading)return `<section class="today-priorities"><div class="today-section-head"><div><span class="today-kicker">VOS PRIORITÉS</span><h3>Ce qui demande votre attention</h3></div></div><div class="today-priority-list"><div class="today-priority-skeleton"></div><div class="today-priority-skeleton"></div><div class="today-priority-skeleton"></div></div></section>`;
@@ -83,7 +88,7 @@ function renderState({fast,inbox,pulse,pulseLoading=false,detailsLoading=false})
  if(inbox)actions=inbox.items||[];
  else{const first=chooseManagerNextAction({dashboard:d,staff:local.staff,cold:local.cold,cashOpen:local.cashOpen,receipts:local.receipts,quality:local.quality,maintenance:local.maintenance,loss:local.loss,incidents:[]});if(first)actions=[first]}
  const total=inbox?.summary?.total??actions.length;
- $('#todayContent').innerHTML=`<div class="today-concierge"><header class="today-greeting"><div><span>${esc(store?.name||'Magasin')} · ${esc(copy.eyebrow)}</span><h1>Bonjour ${esc(firstName)}</h1><p>${esc(copy.subtitle)}</p></div><div class="today-live-state"><i></i><span>${esc(managerPhaseLabel(phase))}</span></div></header>${phaseRail(phase)}${pulseCompact(pulse,pulseLoading)}${prioritiesSection(actions,detailsLoading,phase,total)}${alertStrip(inbox,detailsLoading)}${journeyStrip(phase,local.compliance,hours)}<div class="today-footer-link"><button data-manager-go="managerMore">Tous les outils <span>›</span></button></div></div>`;
+ $('#todayContent').innerHTML=`<div class="today-concierge"><header class="today-greeting"><div><span>${esc(store?.name||'Magasin')} · ${esc(copy.eyebrow)}</span><h1>Bonjour ${esc(firstName)}</h1><p>${esc(copy.subtitle)}</p></div><div class="today-live-state"><i></i><span>${esc(managerPhaseLabel(phase))}</span></div></header>${phaseRail(phase)}${pulseCompact(pulse,pulseLoading)}${stockQuickActions(inbox,detailsLoading)}${prioritiesSection(actions,detailsLoading,phase,total)}${alertStrip(inbox,detailsLoading)}${journeyStrip(phase,local.compliance,hours)}<div class="today-footer-link"><button data-manager-go="managerMore">Tous les outils <span>›</span></button></div></div>`;
 }
 
 export async function renderManagerHome(){
