@@ -74,7 +74,7 @@ assert.match(managerHome,/scheduleCommercialLiveRefresh/,'manager Today must ref
 assert.match(today,/scheduleCommercialLiveRefresh/,'director Today must refresh live commercial data after first paint');
 assert.match(refresh,/minIntervalMs=300000/,'background sync must be throttled');
 assert.match(refresh,/storeops:commercial-updated/,'background sync should publish an update event');
-assert.match(app,/manager-home\.js\?v=2050/);
+assert.match(app,/invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'manager Today must remain lazy');
 assert.match(app,/commercial\.js\?v=2050/);
 assert.match(auth,/const BUILD='2050'/);
 assert.match(enhancements,/const BUILD='2050'/,'deferred modules must share V2.05 cache generation');
