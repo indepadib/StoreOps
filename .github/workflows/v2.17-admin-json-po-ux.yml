@@ -30,16 +30,6 @@ jobs:
       - name: Access regression
         run: STOREOPS_DB=/tmp/storeops-v217-access.db node backend/tests/v180-access-management.mjs
       - name: Receiving regression
-        env:
-          STOREOPS_DB: /tmp/storeops-v217-receiving.db
-          AUTH_MODE: demo
-          D365_MODE: simulated
         run: |
-          node backend/server.mjs >/tmp/storeops-v217.log 2>&1 &
-          PID=$!
-          trap 'kill $PID || true' EXIT
-          for i in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:8787/api/health >/dev/null; then break; fi
-            sleep 1
-          done
-          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/receiving-api.mjs
+          node backend/tests/dynamics-receiving.mjs
+          node backend/tests/showcase-receipts.mjs
