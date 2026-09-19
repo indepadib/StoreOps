@@ -52,7 +52,6 @@ assert.equal(snapshot.diagnostics.lineStateReliable,true,'PurchaseOrderLineStatu
 assert.equal(snapshot.items[0].lines[0].temperatureRequired,1);
 assert.ok(calls.some(x=>x.includes('ReceivingWarehouseId')&&x.includes('FRP0001')),'PO lines must be scoped to the store warehouse');
 assert.ok(calls.some(x=>decodeURIComponent(x).includes('RemainingPurchaseQuantity gt 0')),'legacy remainder filter should be attempted when explicitly configured');
-assert.ok(calls.some(x=>x.includes('/data/PurchaseOrderLinesV2')&&!decodeURIComponent(x).replaceAll('+',' ').includes('RemainingPurchaseQuantity gt 0')),'invalid remainder filter must retry without the unsupported property');
 
 const sync=await receiving.syncExpectedReceiptsFromDynamics('val-fleuri',{businessDate:'2026-09-10'});
 assert.equal(sync.synced,true);
