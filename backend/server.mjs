@@ -8,7 +8,7 @@ import { sessionFromRequest } from './auth/session.mjs';
 import { canAccessStore, canManageQuality, canManageStore } from './services/permissions.mjs';
 import { getProductByEan, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { getStoreProductByEan } from './services/dynamics-stock.mjs';
-import { syncExpectedReceiptsFromDynamics, listReceiptsForStore, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
+import { syncExpectedReceiptsFromDynamics, listReceiptsForStore, listReceiptSummariesForStore, receiptForStoreByPo, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
 import { getCommercialPriceChanges } from './services/dynamics-price.mjs';
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
@@ -151,7 +151,12 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET'){
     requireStore(user,p.storeId);
-    return json(req,res,200,listReceiptsForStore(p.storeId))
+    return json(req,res,200,url.searchParams.get('view')==='summary'?listReceiptSummariesForStore(p.storeId):listReceiptsForStore(p.storeId))
+  }
+  p=route(path,'/api/stores/:storeId/receipts/:po');if(p&&req.method==='GET'){
+    requireStore(user,p.storeId);
+    const receipt=receiptForStoreByPo(p.storeId,p.po);
+    return receipt?json(req,res,200,receipt):json(req,res,404,{error:'PO introuvable'})
   }
   p=route(path,'/api/stores/:storeId/receipts/readiness');if(p&&req.method==='GET'){requireStore(user,p.storeId);return json(req,res,200,receivingIntegrationConfig())}
   p=route(path,'/api/stores/:storeId/receipts/sync');if(p&&req.method==='POST'){
