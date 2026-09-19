@@ -1,0 +1,40 @@
+name: V2.09 D365 Validation Center
+
+on:
+  push:
+    branches: [storeops-v2.09-validation-center]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/admin-validation-center.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/auth-entry.js
+      - name: Validation Center contract
+        run: node backend/tests/v209-validation-center.mjs
+      - name: Price history regression
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Sales mapping regression
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Store assortment regression
+        run: node backend/tests/v187-store-assortment-channel.mjs
+      - name: Assortment safety regression
+        run: STOREOPS_DB=/tmp/storeops-v209-assortment.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Production assets regression
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Static guards
+        run: |
+          grep -q "Validation Center D365" frontend/js/admin-validation-center.js
+          grep -q "Aucun bouton ici n’active LIVE" frontend/js/admin-validation-center.js
+          grep -q "admin-validation-center.js" frontend/js/enhancements-entry.js
+          grep -q "const BUILD='2090'" frontend/js/auth-entry.js
