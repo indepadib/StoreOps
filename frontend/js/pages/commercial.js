@@ -1,5 +1,5 @@
 import{api}from'../api.js';
-import{refreshCommercialLive,scheduleCommercialLiveRefresh}from'../commercial-live-refresh.js';
+import{refreshCommercialLive,scheduleCommercialLiveRefresh,refreshCommercialNetworkLive}from'../commercial-live-refresh.js';
 import{businessDayToday}from'../business-day.js';
 import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
@@ -39,7 +39,7 @@ export async function renderCommercial(){
    </div>
    <div class="card commercial-readiness" style="margin-top:14px">
      <div class="row"><div><strong>Exécution commerciale du ${esc(data.businessDate||businessDayToday())}</strong><div class="small muted">Les contrôles non réalisés des jours précédents restent visibles jusqu’à validation. Dynamics est rafraîchi séparément.</div></div>${status(s.blocking?`${s.blocking} bloquante(s)`:'Prêt ouverture',s.blocking?'danger':'ok')}</div>
-     ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
+     ${canManage()?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn soft" id="syncCommercialBtn">Rafraîchir ce magasin</button>${isDirector()?'<button class="btn brand" id="syncCommercialNetworkBtn">Rafraîchir tous les magasins</button>':''}</div>`:''}
    </div>
    <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucune action prix/promo dans le snapshot du jour. Vous pouvez scanner un article ou rafraîchir Dynamics.</div>'}</div>
    ${isDirector()?policyCard():''}
@@ -74,7 +74,7 @@ function controlCard(c){
 function controlForm(c){return`<details class="commercial-control" ${c.status!=='VERIFIED'?'open':''}><summary>${c.status==='MISMATCH'?'Corriger et recontrôler':c.status==='VERIFIED'?'Recontrôler':'Effectuer le contrôle'}</summary><div class="form-grid" style="margin-top:9px">${c.expected_price!=null?`<div class="field"><label>Prix constaté en rayon *</label><input data-commercial-price="${c.id}" type="number" min="0" step="0.01" value="${c.observed_price??''}" placeholder="${c.expected_price}"></div>`:''}<div class="field"><label>Signalétique conforme *</label><select data-commercial-signage="${c.id}"><option value="">— Choisir —</option><option value="true" ${Number(c.signage_ok)===1?'selected':''}>Oui</option><option value="false" ${Number(c.signage_ok)===0?'selected':''}>Non</option></select></div><div class="field"><label>Exécution rayon conforme *</label><select data-commercial-execution="${c.id}"><option value="">— Choisir —</option><option value="true" ${Number(c.execution_ok)===1?'selected':''}>Oui</option><option value="false" ${Number(c.execution_ok)===0?'selected':''}>Non</option></select></div><div class="field full"><label>Note</label><input data-commercial-note="${c.id}" value="${esc(c.note||'')}" placeholder="Correction, emplacement, remarque…"></div></div><button class="btn brand" data-commercial-submit="${c.id}" style="margin-top:9px">Valider le contrôle</button></details>`}
 function policyCard(){return`<div class="network-section-title"><div><strong>Politique de contrôle prix</strong><span>Tolérance réseau utilisée pour comparer le prix rayon au prix attendu.</span></div></div><div class="card"><div class="row"><div class="field" style="max-width:240px"><label>Tolérance prix (DH)</label><input id="commercialTolerance" type="number" min="0" max="1" step="0.01" value="${cfg.policy.price_tolerance}"></div><button class="btn soft" id="saveCommercialPolicy">Enregistrer</button></div></div>`}
 function bindCommercial(){
- $('#syncCommercialBtn')?.addEventListener('click',()=>sync());$('#retryCommercialBtn')?.addEventListener('click',()=>renderCommercial());$('#saveCommercialPolicy')?.addEventListener('click',savePolicy);$('#priceCheckLookup')?.addEventListener('click',lookupPrice);$('#priceCheckEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookupPrice()});
+ $('#syncCommercialBtn')?.addEventListener('click',()=>sync());$('#syncCommercialNetworkBtn')?.addEventListener('click',syncNetwork);$('#retryCommercialBtn')?.addEventListener('click',()=>renderCommercial());$('#saveCommercialPolicy')?.addEventListener('click',savePolicy);$('#priceCheckLookup')?.addEventListener('click',lookupPrice);$('#priceCheckEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookupPrice()});
  document.querySelectorAll('[data-commercial-submit]').forEach(b=>b.addEventListener('click',()=>submit(b.dataset.commercialSubmit)));
 }
 async function lookupPrice(){try{const ean=$('#priceCheckEan')?.value.trim();if(!ean)throw new Error('Scanne ou saisis un EAN.');scanCtx=await api(`/api/stores/${app.storeId}/price-check/context/${encodeURIComponent(ean)}`);$('#priceCheckResult').innerHTML=priceCheckResult(scanCtx);$('#priceCheckSubmit')?.addEventListener('click',submitPriceCheck)}catch(e){toast(e.message)}}
@@ -106,6 +106,17 @@ async function submitPriceCheck(){
  }finally{
   const current=$('#priceCheckSubmit');if(current&&current===submitBtn){current.disabled=false;if(originalLabel)current.textContent=originalLabel}
  }
+}
+async function syncNetwork(){
+ const button=$('#syncCommercialNetworkBtn'),old=button?.textContent;
+ try{
+  if(button){button.disabled=true;button.textContent='Synchronisation réseau…'}
+  const result=await refreshCommercialNetworkLive({force:true,minIntervalMs:0});
+  const payload=result?.result||{},errors=Number(payload.errors||0),ready=Number(payload.ready||0);
+  toast(errors?('Réseau rafraîchi : '+ready+' magasin(s) OK · '+errors+' erreur(s).'):('Prix & promos rafraîchis sur '+ready+' magasin(s).'));
+  await renderCommercial()
+ }catch(e){toast(e.message)}
+ finally{if(button&&button.isConnected){button.disabled=false;button.textContent=old||'Rafraîchir tous les magasins'}}
 }
 async function sync({silent=false}={}){
  const button=$('#syncCommercialBtn'),notice=$('#commercialSyncNotice'),old=button?.textContent;
