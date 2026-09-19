@@ -66,4 +66,4 @@ jobs:
           grep -q "LOSS_EXPORT_VALIDATION_REFERENCE_REQUIRED" backend/services/loss-export-mapping.mjs
           grep -q "STOREOPS_MAPPING" backend/services/loss-export.mjs
           grep -q "admin-loss-export-mapping.js" frontend/js/enhancements-entry.js
-          grep -q "const BUILD='2100'" frontend/js/auth-entry.js
+          grep -Eq "const BUILD='[0-9]{4}'" frontend/js/auth-entry.js

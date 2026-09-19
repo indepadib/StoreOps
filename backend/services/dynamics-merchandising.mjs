@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { syncCategoryHierarchy,syncProductCategoryAssignments,replaceStoreAssortmentSnapshots } from './assortment.mjs';
+import { effectiveD365TaxonomyMapping } from './d365-taxonomy-mapping.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v).replaceAll("'","''");
@@ -16,23 +17,26 @@ function boolish(v,defaultValue=true){if(v===null||v===undefined||v==='')return 
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 
 export function dynamicsMerchandisingConfig(){
+ const persisted=effectiveD365TaxonomyMapping(),pf=persisted?.fields||{};
  return {
   source:'D365',
   assortmentReadMode:readMode(process.env.D365_ASSORTMENT_READ_MODE),
-  taxonomyReadMode:readMode(process.env.D365_TAXONOMY_READ_MODE),
-  hierarchyKey:clean(process.env.D365_CATEGORY_HIERARCHY_KEY)||'PROCUREMENT',
+  taxonomyReadMode:persisted?'live':readMode(process.env.D365_TAXONOMY_READ_MODE),
+  hierarchyKey:persisted?.hierarchyKey||clean(process.env.D365_CATEGORY_HIERARCHY_KEY)||'PROCUREMENT',
   taxonomy:{
-   categoryEntity:clean(process.env.D365_CATEGORY_ENTITY)||'ProcurementProductCategories',
-   assignmentEntity:clean(process.env.D365_PRODUCT_CATEGORY_ASSIGNMENT_ENTITY)||'ProductCategoryAssignments',
-   categoryIdField:clean(process.env.D365_CATEGORY_ID_FIELD),
-   categoryNameField:clean(process.env.D365_CATEGORY_NAME_FIELD),
-   parentCategoryIdField:clean(process.env.D365_CATEGORY_PARENT_FIELD),
-   categoryLevelField:clean(process.env.D365_CATEGORY_LEVEL_FIELD),
-   categoryPathField:clean(process.env.D365_CATEGORY_PATH_FIELD),
-   hierarchyField:clean(process.env.D365_CATEGORY_HIERARCHY_FIELD),
-   assignmentProductField:clean(process.env.D365_PRODUCT_CATEGORY_PRODUCT_FIELD),
-   assignmentCategoryField:clean(process.env.D365_PRODUCT_CATEGORY_CATEGORY_FIELD),
-   assignmentHierarchyField:clean(process.env.D365_PRODUCT_CATEGORY_HIERARCHY_FIELD),
+   mappingSource:persisted?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',
+   mappingState:persisted?.state||null,
+   categoryEntity:persisted?.categoryEntity||clean(process.env.D365_CATEGORY_ENTITY)||'ProcurementProductCategories',
+   assignmentEntity:persisted?.assignmentEntity||clean(process.env.D365_PRODUCT_CATEGORY_ASSIGNMENT_ENTITY)||'ProductCategoryAssignments',
+   categoryIdField:pf.categoryId||clean(process.env.D365_CATEGORY_ID_FIELD),
+   categoryNameField:pf.categoryName||clean(process.env.D365_CATEGORY_NAME_FIELD),
+   parentCategoryIdField:pf.parentCategoryId||clean(process.env.D365_CATEGORY_PARENT_FIELD),
+   categoryLevelField:pf.categoryLevel||clean(process.env.D365_CATEGORY_LEVEL_FIELD),
+   categoryPathField:pf.categoryPath||clean(process.env.D365_CATEGORY_PATH_FIELD),
+   hierarchyField:pf.categoryHierarchy||clean(process.env.D365_CATEGORY_HIERARCHY_FIELD),
+   assignmentProductField:pf.assignmentProduct||clean(process.env.D365_PRODUCT_CATEGORY_PRODUCT_FIELD),
+   assignmentCategoryField:pf.assignmentCategory||clean(process.env.D365_PRODUCT_CATEGORY_CATEGORY_FIELD),
+   assignmentHierarchyField:pf.assignmentHierarchy||clean(process.env.D365_PRODUCT_CATEGORY_HIERARCHY_FIELD),
    pageSize:Math.max(50,Math.min(2000,Number(process.env.D365_MERCH_PAGE_SIZE)||500)),
    maxRows:Math.max(500,Math.min(200000,Number(process.env.D365_MERCH_MAX_ROWS)||50000))
   },
@@ -122,5 +126,5 @@ export async function syncStoreAssortmentFromDynamics(storeId){
 
 export function merchandisingReadiness(storeId=null){
  const c=dynamicsMerchandisingConfig(),channel=storeId?clean(c.assortment.storeChannels?.[storeId]):null;
- return{source:'D365',globalMode:config.dynamics.mode,capabilities:{taxonomy:{mode:c.taxonomyReadMode,mapped:validEntity(c.taxonomy.categoryEntity)&&validEntity(c.taxonomy.assignmentEntity),entities:{categories:c.taxonomy.categoryEntity,assignments:c.taxonomy.assignmentEntity}},assortment:{mode:c.assortmentReadMode,mapped:validEntity(c.assortment.entity)&&validField(c.assortment.storeField)&&validField(c.assortment.productField)&&validField(c.assortment.assortmentIdField)&&(!storeId||!!channel),entity:c.assortment.entity||null,storeId,channel:channel||null}}}
+ return{source:'D365',globalMode:config.dynamics.mode,capabilities:{taxonomy:{mode:c.taxonomyReadMode,mapped:validEntity(c.taxonomy.categoryEntity)&&validEntity(c.taxonomy.assignmentEntity),mappingSource:c.taxonomy.mappingSource,mappingState:c.taxonomy.mappingState,entities:{categories:c.taxonomy.categoryEntity,assignments:c.taxonomy.assignmentEntity}},assortment:{mode:c.assortmentReadMode,mapped:validEntity(c.assortment.entity)&&validField(c.assortment.storeField)&&validField(c.assortment.productField)&&validField(c.assortment.assortmentIdField)&&(!storeId||!!channel),entity:c.assortment.entity||null,storeId,channel:channel||null}}}
 }

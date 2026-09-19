@@ -1,0 +1,41 @@
+name: V2.11 D365 Taxonomy Mapping Studio
+
+on:
+  push:
+    branches: [storeops-v2.11-taxonomy-mapping]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-taxonomy-mapping.mjs
+          node --check backend/services/dynamics-merchandising.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check frontend/js/admin-taxonomy-mapping.js
+      - name: V2.11 taxonomy lifecycle contract
+        run: node backend/tests/v211-taxonomy-mapping.mjs
+      - name: Assortment safety regression
+        run: STOREOPS_DB=/tmp/storeops-v211-assortment.db node backend/tests/v182-assortment-and-supply.mjs
+      - name: Store assortment regression
+        run: node backend/tests/v187-store-assortment-channel.mjs
+      - name: Validation Center regression
+        run: node backend/tests/v209-validation-center.mjs
+      - name: Closing Pack regression
+        run: node backend/tests/v210-loss-export-mapping.mjs
+      - name: Production assets regression
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Static guards
+        run: |
+          grep -q "D365_TAXONOMY_MAPPING_NOT_VALIDATED" backend/services/d365-taxonomy-mapping.mjs
+          grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-merchandising.mjs
+          grep -q "admin-taxonomy-mapping.js" frontend/js/enhancements-entry.js
+          grep -q "const BUILD='2110'" frontend/js/auth-entry.js

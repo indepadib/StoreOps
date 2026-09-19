@@ -67,9 +67,12 @@ assert.match(ui,/\/api\/admin\/loss-export-mapping\/preview/,'UI must preview te
 assert.match(ui,/\/api\/admin\/loss-export-mapping\/activate/,'UI activation must use secured lifecycle');
 assert.match(ui,/Source StoreOps/,'UI must map ERP columns to StoreOps fields');
 assert.match(enhancements,/admin-loss-export-mapping\.js/,'Closing Pack Mapping Studio must lazy-load with integrations');
-assert.match(enhancements,/const BUILD='2100'/,'enhancement cache must be 2100');
-assert.match(auth,/const BUILD='2100'/,'auth cache build must be 2100');
-assert.match(auth,/const BUILD_LABEL='2\.10\.0'/,'release label must be 2.10.0');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-2100/,'Netlify release build must be 2100');
+const authBuild=auth.match(/const BUILD='([0-9]{4})'/)?.[1];
+const enhancementBuild=enhancements.match(/const BUILD='([0-9]{4})'/)?.[1];
+const releaseLabel=auth.match(/const BUILD_LABEL='([0-9]+\.[0-9]+\.[0-9]+)'/)?.[1];
+assert(authBuild,'auth build required');
+assert.equal(enhancementBuild,authBuild,'enhancement and auth builds must match');
+assert.match(build,new RegExp(`STOREOPS_RELEASE_BUILD:-${authBuild}`),'Netlify release build must match active frontend build');
+assert(releaseLabel,'release label required');
 
 console.log('V2.10 Closing Pack Mapping Studio contract: OK');
