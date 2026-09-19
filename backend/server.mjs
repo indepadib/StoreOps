@@ -151,7 +151,11 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET'){
     requireStore(user,p.storeId);
-    return json(req,res,200,url.searchParams.get('view')==='summary'?listReceiptSummariesForStore(p.storeId):listReceiptsForStore(p.storeId))
+    return json(req,res,200,listReceiptsForStore(p.storeId))
+  }
+  p=route(path,'/api/stores/:storeId/receipts/summary');if(p&&req.method==='GET'){
+    requireStore(user,p.storeId);
+    return json(req,res,200,listReceiptSummariesForStore(p.storeId))
   }
   p=route(path,'/api/stores/:storeId/receipts/:po');if(p&&req.method==='GET'){
     requireStore(user,p.storeId);
