@@ -13,14 +13,18 @@ async function stockSummary(storeId,businessDate){
 }
 
 async function computeBusinessPulse(storeId,businessDate){
- const comparisonDate=salesComparisonDate(businessDate,7),integration=salesIntegrationConfig(storeId);
- const [current,comparison,stock]=await Promise.all([readStoreSalesDay(storeId,businessDate),readStoreSalesDay(storeId,comparisonDate),stockSummary(storeId,businessDate)]);
+ const comparisonDate=salesComparisonDate(businessDate,7),integration=salesIntegrationConfig(storeId),integrationView={mode:integration.mode,entity:integration.entity,retailId:integration.retailId,retailIdSource:integration.retailIdSource,missing:integration.missing,mappingSource:integration.mappingSource||null,mappingState:integration.mappingState||null};
+ let current,comparison,stock;
+ try{[current,comparison,stock]=await Promise.all([readStoreSalesDay(storeId,businessDate),readStoreSalesDay(storeId,comparisonDate),stockSummary(storeId,businessDate)])}
+ catch(error){
+  const value={status:'DEGRADED',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock:await stockSummary(storeId,businessDate),refreshedAt:new Date().toISOString(),snapshot:null,quick:null,error:{code:error?.code||'D365_SALES_READ_FAILED',message:error?.message||String(error)}};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value
+ }
  if(current.status!=='READY'){
-  const value={status:'UNAVAILABLE',storeId,businessDate,comparisonDate,source:'D365',integration:{mode:integration.mode,entity:integration.entity,retailId:integration.retailId,missing:integration.missing},stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
+  const value={status:'UNAVAILABLE',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
  }
  const c=current.data||{},prior=comparison.status==='READY'?comparison.data:null;
  const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount??0,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
- const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:{mode:integration.mode,entity:integration.entity,retailId:integration.retailId,missing:integration.missing},stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,pages:c.pages||0,truncated:!!c.truncated,comparisonRows:prior?.rowCount||0,changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
+ const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,pages:c.pages||0,truncated:!!c.truncated,comparisonRows:prior?.rowCount||0,changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
  cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
 }
 
