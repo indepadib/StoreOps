@@ -3,6 +3,7 @@ import { config } from '../config.mjs';
 import { RETAIL_CAPABILITIES,normalizeConnector,connectorReadiness } from './connector-contract.mjs';
 import { allStoreOperationalSettings } from './store-settings.mjs';
 import { d365SalesMappingSettings } from './d365-sales-mapping.mjs';
+import { receivingIntegrationConfig } from './dynamics-receiving.mjs';
 
 const clean=v=>String(v??'').trim();
 const slug=v=>clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,45);
@@ -47,7 +48,10 @@ function d365Connector(){
  const marginMapped=salesDbLive?!!salesMapping?.fields?.cost:!!clean(process.env.D365_SALES_COST_FIELD);
  c['sales.transactions.read']=cap(salesDbLive?'LIVE':salesDbValidated?'LIVE_PENDING':state(salesEnvLive,txMapped),salesDbLive||salesDbValidated?'StoreOps sales mapping':'D365');
  c['sales.margin.read']=cap(salesDbLive?(marginMapped?'LIVE':'UNMAPPED'):salesDbValidated?(salesMapping?.fields?.cost?'LIVE_PENDING':'UNMAPPED'):state(salesEnvLive,marginMapped),salesDbLive||salesDbValidated?'StoreOps sales mapping':'D365');
- c['supply.purchase-order.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.receiving),!!config.dynamics.receiving?.headerEntity&&!!config.dynamics.receiving?.lineEntity),'D365');
+ const receivingReadiness=receivingIntegrationConfig(),receivingStates=Object.values(receivingReadiness.stores||{}),receivingEnabled=config.dynamics.mode==='live'&&readMode(read.receiving);
+ const poState=!receivingEnabled?(config.realOnly?'UNMAPPED':'SIMULATED'):receivingStates.some(x=>x.state==='DEGRADED')?'DEGRADED':receivingStates.length&&receivingStates.every(x=>x.state==='LIVE')?'LIVE':'LIVE_PENDING';
+ const poError=receivingStates.find(x=>x.state==='DEGRADED')?.lastErrorMessage||null;
+ c['supply.purchase-order.read']=cap(poState,'D365 receiving health',poError);
  c['supply.transfer.read']=cap(hasSupplyWh?'LIVE_PENDING':'UNMAPPED','D365');
  for(const x of ['inventory.adjustment.write','supply.receiving.write','supply.transfer.write','finance.cash.write','loss.write'])c[x]=cap('UNMAPPED','D365');
  return normalizeConnector({key:'d365-one-retail',name:'Microsoft Dynamics 365',family:'D365',capabilities:c})
