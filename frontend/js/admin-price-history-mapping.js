@@ -36,7 +36,7 @@ function seed(){
 function form(){
  const s=seed(),f=s.fields,input=(id,label,value,req=false)=>`<label><span>${esc(label)}${req?' *':''}</span><input id="${id}" value="${esc(value||'')}"></label>`;
  return `<div class="price-history-map-form">
-  <div class="row"><div><strong>Source historique tarifaire</strong><div class="small muted">Un article témoin est obligatoire pour prouver que les prix sont datés et rattachés au bon SKU.</div></div>${status(label(current?.mapping?.state),tone(current?.mapping?.state))}</div>
+  <div class="row"><div><strong>Source historique tarifaire</strong><div class="small muted">StoreOps peut détecter automatiquement les Trade Agreements. Un SKU témoin peut être saisi manuellement en secours.</div></div>${status(label(current?.mapping?.state),tone(current?.mapping?.state))}</div>
   <div class="price-history-map-grid">
    ${input('phEntity','Entité',s.entity,true)}
    ${input('phItem','Article / SKU',f.item,true)}
@@ -54,6 +54,7 @@ function form(){
    <label><span>Article témoin pour le smoke *</span><input id="phSampleSku" placeholder="Ex. HS-003584"></label>
   </div>
   <div class="price-history-map-actions">
+   ${current?.canManage&&current?.mapping?.state!=='LIVE'?'<button class="btn brand" id="phAutoConnect">Connecter automatiquement les Trade Agreements</button>':''}
    <button class="btn ghost" id="phDiagnose">Préremplir depuis diagnostic</button>
    ${current?.canManage?'<button class="btn ghost" id="phSave">Enregistrer brouillon</button><button class="btn soft" id="phSmoke">Tester l’historique</button>':''}
    ${current?.canManage&&current?.mapping?.state==='VALIDATED'?'<button class="btn brand" id="phActivate">Activer historique LIVE</button>':''}
@@ -86,9 +87,15 @@ async function smoke(){
  try{const mapping=await api('/api/admin/integrations/d365-price-history-mapping/smoke',{method:'POST',body:{productNumber:sku,mapping:payload()}});current={...(current||{}),mapping};render();toast(mapping.smoke?.status==='PASSED'?'Historique prix validé.':'Source historique à corriger.')}
  catch(e){if(box)box.innerHTML=`<div class="banner ban-danger"><strong>Smoke impossible</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
 }
+async function autoConnect(){
+ const box=document.getElementById('phResult'),sku=v('phSampleSku');if(box)box.innerHTML='<div class="small muted">Détection des Trade Agreements + smoke D365 en cours…</div>';
+ try{const result=await api('/api/admin/integrations/d365-price-history-mapping/auto-connect',{method:'POST',body:{productNumber:sku||null}});current={...(current||{}),mapping:result?.mapping||null};render();const target=document.getElementById('phResult');if(target)target.innerHTML=`<div class="banner ${result?.activated?'ban-ok':'ban-danger'}"><strong>${result?.activated?'Trade Agreements connectés LIVE':'Connexion automatique incomplète'}</strong><span>${result?.activated?`Source ${esc(result?.mapping?.entity||'D365')} validée avec l’article ${esc(result?.sampleProductNumber||'témoin')}. Les tarifs datés peuvent maintenant alimenter l’historique prix.`:esc(result?.mapping?.smoke?.note||'Le smoke n’a pas validé la source détectée.')}</span></div>`;toast(result?.activated?'Trade Agreements D365 connectés.':'Trade Agreements à valider.')}
+ catch(e){if(box)box.innerHTML=`<div class="banner ban-danger"><strong>Connexion automatique impossible</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
+}
 async function activate(){try{await api('/api/admin/integrations/d365-price-history-mapping/activate',{method:'POST',body:{}});await refresh('Historique tarifaire D365 activé.')}catch(e){toast(e.message)}}
 async function disable(){try{await api('/api/admin/integrations/d365-price-history-mapping/disable',{method:'POST',body:{}});await refresh('Historique tarifaire désactivé.')}catch(e){toast(e.message)}}
 function bind(){
+ document.getElementById('phAutoConnect')?.addEventListener('click',autoConnect);
  document.getElementById('phDiagnose')?.addEventListener('click',diagnose);
  document.getElementById('phSave')?.addEventListener('click',save);
  document.getElementById('phSmoke')?.addEventListener('click',smoke);

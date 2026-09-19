@@ -26,12 +26,62 @@ function remainingFor(row,c){
 }
 function temperatureRequired(category=''){return /frais|surgel/i.test(clean(category))?1:0}
 
-export function receivingIntegrationConfig(){
- const c=receiving(),live=isD365ReadLive('receiving');
+db.exec(`
+CREATE TABLE IF NOT EXISTS d365_receiving_sync_state(
+ store_id TEXT PRIMARY KEY,
+ warehouse_id TEXT NULL,
+ last_attempt_at TEXT NULL,
+ last_success_at TEXT NULL,
+ last_error_at TEXT NULL,
+ last_error_code TEXT NULL,
+ last_error_message TEXT NULL,
+ last_po_count INTEGER NULL,
+ last_authoritative INTEGER NOT NULL DEFAULT 0,
+ last_diagnostics_json TEXT NULL,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+`);
+
+function safeJson(raw,fallback=null){try{return raw?JSON.parse(raw):fallback}catch{return fallback}}
+function receivingHealthMaxAgeMinutes(){return Math.max(15,Math.min(10080,Number(process.env.STOREOPS_RECEIVING_HEALTH_MAX_AGE_MINUTES)||1440))}
+function isoMs(v){const n=v?Date.parse(String(v).replace(' ','T')+'Z'):NaN;return Number.isFinite(n)?n:null}
+function storeWarehouse(storeId){const settings=storeOperationalSettings(storeId);return clean(settings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId])||null}
+function receivingStateForStore(storeId){
+ const enabled=isD365ReadLive('receiving'),warehouseId=storeWarehouse(storeId),row=db.prepare(`SELECT * FROM d365_receiving_sync_state WHERE store_id=?`).get(storeId),base={storeId,warehouseId,enabled,lastAttemptAt:row?.last_attempt_at||null,lastSuccessAt:row?.last_success_at||null,lastErrorAt:row?.last_error_at||null,lastErrorCode:row?.last_error_code||null,lastErrorMessage:row?.last_error_message||null,lastPoCount:row?.last_po_count??null,lastAuthoritative:!!row?.last_authoritative,diagnostics:safeJson(row?.last_diagnostics_json,null),maxAgeMinutes:receivingHealthMaxAgeMinutes()};
+ if(!enabled)return{...base,state:config.realOnly?'UNMAPPED':'SIMULATED',reason:'READ_MODE_DISABLED'};
+ if(!warehouseId)return{...base,state:'LIVE_PENDING',reason:'WAREHOUSE_NOT_MAPPED'};
+ if(!row?.last_success_at){
+  if(row?.last_error_at)return{...base,state:'DEGRADED',reason:'SYNC_FAILED'};
+  return{...base,state:'LIVE_PENDING',reason:'NEVER_SYNCED'};
+ }
+ const successMs=isoMs(row.last_success_at),errorMs=isoMs(row.last_error_at);
+ if(errorMs&&(!successMs||errorMs>=successMs))return{...base,state:'DEGRADED',reason:'LATEST_SYNC_FAILED'};
+ const ageMinutes=successMs==null?Infinity:Math.max(0,(Date.now()-successMs)/60000);
+ if(!row.last_authoritative)return{...base,state:'DEGRADED',reason:'PARTIAL_SYNC',ageMinutes:Math.round(ageMinutes)};
+ if(ageMinutes>receivingHealthMaxAgeMinutes())return{...base,state:'DEGRADED',reason:'STALE_SYNC',ageMinutes:Math.round(ageMinutes)};
+ return{...base,state:'LIVE',reason:'SYNC_CONFIRMED',ageMinutes:Math.round(ageMinutes)}
+}
+function recordReceivingSuccess(storeId,snapshot,{authoritative=true}={}){
+ const warehouseId=clean(snapshot?.warehouseId)||storeWarehouse(storeId),poCount=Array.isArray(snapshot?.items)?snapshot.items.length:0,diagnostics=JSON.stringify(snapshot?.diagnostics||{});
+ db.prepare(`INSERT INTO d365_receiving_sync_state(store_id,warehouse_id,last_attempt_at,last_success_at,last_error_at,last_error_code,last_error_message,last_po_count,last_authoritative,last_diagnostics_json,updated_at)
+ VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,NULL,NULL,?,?,?,CURRENT_TIMESTAMP)
+ ON CONFLICT(store_id) DO UPDATE SET warehouse_id=excluded.warehouse_id,last_attempt_at=CURRENT_TIMESTAMP,last_success_at=CURRENT_TIMESTAMP,last_error_at=NULL,last_error_code=NULL,last_error_message=NULL,last_po_count=excluded.last_po_count,last_authoritative=excluded.last_authoritative,last_diagnostics_json=excluded.last_diagnostics_json,updated_at=CURRENT_TIMESTAMP`).run(storeId,warehouseId,poCount,authoritative?1:0,diagnostics)
+}
+function recordReceivingFailure(storeId,{warehouseId=null,code='D365_RECEIVING_SYNC_FAILED',message='Synchronisation D365 impossible.',diagnostics=null}={}){
+ db.prepare(`INSERT INTO d365_receiving_sync_state(store_id,warehouse_id,last_attempt_at,last_error_at,last_error_code,last_error_message,last_authoritative,last_diagnostics_json,updated_at)
+ VALUES(?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,?,?,0,?,CURRENT_TIMESTAMP)
+ ON CONFLICT(store_id) DO UPDATE SET warehouse_id=COALESCE(excluded.warehouse_id,d365_receiving_sync_state.warehouse_id),last_attempt_at=CURRENT_TIMESTAMP,last_error_at=CURRENT_TIMESTAMP,last_error_code=excluded.last_error_code,last_error_message=excluded.last_error_message,last_authoritative=0,last_diagnostics_json=excluded.last_diagnostics_json,updated_at=CURRENT_TIMESTAMP`).run(storeId,warehouseId||storeWarehouse(storeId),code,message,diagnostics?JSON.stringify(diagnostics):null)
+}
+
+export function receivingIntegrationConfig(storeId=null){
+ const c=receiving(),live=isD365ReadLive('receiving'),storeIds=storeId?[storeId]:db.prepare(`SELECT id FROM stores WHERE active=1 ORDER BY name`).all().map(x=>x.id),stores=Object.fromEntries(storeIds.map(id=>[id,receivingStateForStore(id)]));
  return{
   mode:live?'LIVE':config.realOnly?'UNAVAILABLE':'SIMULATED',
+  enabled:live,
+  state:storeId?stores[storeId]?.state||'LIVE_PENDING':null,
   entity:{header:c.headerEntity||null,line:c.lineEntity||null},
-  storeWarehouses:{...(config.dynamics.stock?.storeWarehouses||{})},
+  storeWarehouses:Object.fromEntries(storeIds.map(id=>[id,storeWarehouse(id)]).filter(([,v])=>v)),
+  stores,
   fields:{
    purchaseOrder:c.purchaseOrderField,
    vendor:c.vendorField,
@@ -123,8 +173,8 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
  ensureReceivingStorage();
  let snapshot;
  try{snapshot=await withSyncTimeout(listExpectedPurchaseOrders(storeId,{businessDate}))}
- catch(error){return{mode:'LIVE_ERROR',source:'D365',storeId,businessDate,items:[],synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,error:{code:error?.code||'D365_RECEIVING_SYNC_FAILED',message:error?.message||String(error)},diagnostics:{liveRequested:true,code:error?.code||'D365_RECEIVING_SYNC_FAILED'}}}
- if(snapshot.mode!=='LIVE')return{...snapshot,synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0};
+ catch(error){const code=error?.code||'D365_RECEIVING_SYNC_FAILED',message=error?.message||String(error);recordReceivingFailure(storeId,{code,message,diagnostics:{liveRequested:true,code}});return{mode:'LIVE_ERROR',source:'D365',storeId,businessDate,items:[],synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,error:{code,message},diagnostics:{liveRequested:true,code},readiness:receivingStateForStore(storeId)}}
+ if(snapshot.mode!=='LIVE'){recordReceivingFailure(storeId,{warehouseId:snapshot.warehouseId,code:snapshot.diagnostics?.code||'D365_RECEIVING_NOT_LIVE',message:snapshot.diagnostics?.code||'Lecture PO D365 non exploitable.',diagnostics:snapshot.diagnostics});return{...snapshot,synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,readiness:receivingStateForStore(storeId)}};
  const authoritative=snapshot.diagnostics?.authoritative!==false&&!snapshot.diagnostics?.truncated;
  let created=0,updated=0,lineCreated=0,lineUpdated=0;
  if(authoritative)db.prepare(`UPDATE receipts SET source_status='NOT_OPEN',source_updated_at=CURRENT_TIMESTAMP WHERE store_id=? AND source='D365' AND status<>'POSTED'`).run(storeId);
@@ -147,7 +197,8 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
    else{db.prepare(`INSERT INTO receipt_lines(id,receipt_id,ean,product_name,category,ordered_qty,temperature_required,product_number,source_line_number,remaining_qty,purchase_unit,source_active) VALUES(?,?,?,?,?,?,?,?,?,?,?,1)`).run(uid('rline'),receipt.id,identifier,line.productName,line.category,line.orderedQty,line.temperatureRequired,line.productNumber||null,line.sourceLineNumber||null,line.remainingQty,line.unit||null);lineCreated++}
   }
  }
- return{...snapshot,synced:true,partial:!authoritative,authoritative,created,updated,lineCreated,lineUpdated};
+ recordReceivingSuccess(storeId,snapshot,{authoritative});
+ return{...snapshot,synced:true,partial:!authoritative,authoritative,created,updated,lineCreated,lineUpdated,readiness:receivingStateForStore(storeId)};
 }
 
 export function listReceiptsForStore(storeId){
@@ -155,3 +206,5 @@ export function listReceiptsForStore(storeId){
  const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=? AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL)) ORDER BY eta,po_number`).all(storeId);
  return receipts.map(r=>({...r,lines:db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id)}));
 }
+
+export function receivingStoreReadiness(storeId){return receivingStateForStore(storeId)}

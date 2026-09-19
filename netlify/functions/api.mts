@@ -30,7 +30,7 @@ function bridgeBackendEnvironment(){
     'STOREOPS_VERSION','STOREOPS_REAL_ONLY','STOREOPS_VF_MANAGER_EMAIL','STOREOPS_VF_D365_EMAIL','STOREOPS_OPS_DIRECTOR_NAME','STOREOPS_OPS_DIRECTOR_EMAIL','STOREOPS_OPS_DIRECTOR_D365_EMAIL',
     'STOREOPS_ADMIN_NAME','STOREOPS_ADMIN_MICROSOFT_EMAIL','STOREOPS_ADMIN_D365_EMAIL',
     'STOREOPS_QUALITY_AUDIT_NAME','STOREOPS_QUALITY_AUDIT_EMAIL','STOREOPS_QUALITY_AUDIT_MICROSOFT_EMAIL',
-    'STOREOPS_STAFFING_SOURCE','STOREOPS_CASH_OPENING_SOURCE','STOREOPS_STOCK_SIGNALS_CACHE_SECONDS',
+    'STOREOPS_STAFFING_SOURCE','STOREOPS_CASH_OPENING_SOURCE','STOREOPS_STOCK_SIGNALS_CACHE_SECONDS','STOREOPS_RECEIVING_HEALTH_MAX_AGE_MINUTES',
     'D365_MODE','D365_PRODUCT_READ_MODE','D365_STOCK_READ_MODE','D365_PRICE_READ_MODE','D365_PROMOTION_READ_MODE','D365_RECEIVING_READ_MODE','D365_ASSORTMENT_READ_MODE','D365_TAXONOMY_READ_MODE',
     'D365_BASE_URL','D365_TENANT_ID','D365_CLIENT_ID','D365_CLIENT_SECRET','D365_OAUTH_VERSION','D365_DATA_AREA_ID','D365_DATA_AREA_FIELD',
     'D365_BARCODE_ENTITY','D365_PRODUCT_ENTITY','D365_BARCODE_FIELD','D365_BARCODE_PRODUCT_FIELD','D365_BARCODE_DESCRIPTION_FIELD','D365_BARCODE_UNIT_FIELD','D365_PRODUCT_NUMBER_FIELD','D365_PRODUCT_NAME_FIELD',
@@ -118,7 +118,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.14.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.15.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }

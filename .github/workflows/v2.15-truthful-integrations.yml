@@ -1,0 +1,43 @@
+name: V2.15 Truthful Integrations Contract
+
+on:
+  push:
+    branches: [storeops-v2.15-truthful-integrations]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/services/integration-registry.mjs
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/admin-price-history-mapping.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/app.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.15 truthful integrations contract
+        run: node backend/tests/v215-truthful-integrations.mjs
+      - name: V2.14 integration regression
+        run: node backend/tests/v214-integration-p0.mjs
+      - name: Receiving regression
+        run: node backend/tests/dynamics-receiving.mjs
+      - name: Sales lifecycle regression
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Price history lifecycle regression
+        run: node backend/tests/v208-price-history-mapping.mjs

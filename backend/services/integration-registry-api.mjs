@@ -1,6 +1,6 @@
 import { isNetworkDirector,isPlatformAdmin } from './access-management.mjs';
 import { integrationSnapshot,listCustomConnectors,createCustomConnector,updateCustomConnector } from './integration-registry.mjs';
-import { d365MappingDiagnosticReadiness,diagnoseD365Mappings,discoverD365SalesMapping } from './d365-mapping-diagnostics.mjs';
+import { d365MappingDiagnosticReadiness,diagnoseD365Mappings,discoverD365SalesMapping,discoverD365PriceHistoryMapping } from './d365-mapping-diagnostics.mjs';
 import { d365SalesMappingSettings,saveD365SalesMappingDraft,smokeD365SalesMapping,activateD365SalesMapping,disableD365SalesMapping } from './d365-sales-mapping.mjs';
 import { d365PriceHistoryMappingSettings,saveD365PriceHistoryMappingDraft,smokeD365PriceHistoryMapping,activateD365PriceHistoryMapping,disableD365PriceHistoryMapping } from './d365-price-history-mapping.mjs';
 import { d365TaxonomyMappingSettings,saveD365TaxonomyMappingDraft,smokeD365TaxonomyMapping,activateD365TaxonomyMapping,disableD365TaxonomyMapping } from './d365-taxonomy-mapping.mjs';
@@ -31,6 +31,16 @@ export async function handleIntegrationRegistryApi({req,url,user}){
  if(path==='/api/admin/integrations/d365-sales-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365SalesMapping({actor:user,storeId:b.storeId||'val-fleuri',input:b.mapping||null})}}
  if(path==='/api/admin/integrations/d365-sales-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365SalesMapping({actor:user})}}
  if(path==='/api/admin/integrations/d365-sales-mapping/disable'&&req.method==='POST'){writeAccess(user);return{status:200,data:disableD365SalesMapping({actor:user})}}
+ if(path==='/api/admin/integrations/d365-price-history-mapping/auto-connect'&&req.method==='POST'){
+  writeAccess(user);const b=await body(req),discovery=await discoverD365PriceHistoryMapping(),rec=discovery?.recommendation;
+  if(!rec?.entity)return{status:409,data:{error:'Aucune source Trade Agreements datée exploitable détectée automatiquement.',code:'D365_PRICE_HISTORY_AUTO_DISCOVERY_FAILED',discovery}};
+  const productNumber=String(b.productNumber||discovery.sampleProductNumber||'').trim();
+  if(!productNumber)return{status:409,data:{error:'Une source prix a été détectée mais aucun SKU témoin n’a pu être choisi automatiquement.',code:'D365_PRICE_HISTORY_SAMPLE_ITEM_REQUIRED',discovery}};
+  const validated=await smokeD365PriceHistoryMapping({actor:user,productNumber,input:{entity:rec.entity,fields:rec.fields||{}}});
+  if(validated?.smoke?.status!=='PASSED')return{status:200,data:{activated:false,mapping:validated,discovery,sampleProductNumber:productNumber}};
+  const live=activateD365PriceHistoryMapping({actor:user});
+  return{status:200,data:{activated:true,mapping:live,discovery,sampleProductNumber:productNumber}}
+ }
  if(path==='/api/admin/integrations/d365-price-history-mapping/draft'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:saveD365PriceHistoryMappingDraft({actor:user,input:b})}}
  if(path==='/api/admin/integrations/d365-price-history-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365PriceHistoryMapping({actor:user,productNumber:b.productNumber,input:b.mapping||null})}}
  if(path==='/api/admin/integrations/d365-price-history-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365PriceHistoryMapping({actor:user})}}
