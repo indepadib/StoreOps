@@ -1,11 +1,12 @@
 import {api} from './api.js';
+import {businessDayToday} from './business-day.js';
 
 const inflight=new Map();
 const memoryLast=new Map();
 const STORAGE_PREFIX='storeops:commercial-sync:';
 const clean=v=>String(v??'').trim();
 
-function storageKey(storeId){return `${STORAGE_PREFIX}${clean(storeId)}`}
+function storageKey(storeId){return `${STORAGE_PREFIX}${businessDayToday()}:${clean(storeId)}`}
 function lastRun(storeId){
  const key=storageKey(storeId);
  if(memoryLast.has(key))return memoryLast.get(key);
@@ -42,6 +43,35 @@ export function scheduleCommercialLiveRefresh(storeId,{delayMs=150,minIntervalMs
    if(result?.ok&&!result.skipped&&typeof onUpdated==='function'){try{await onUpdated(result.result)}catch(error){console.warn('Rafraîchissement UI commercial',error)}}
    resolve(result)
   }).catch(error=>{console.warn('Synchronisation commerciale arrière-plan',error);resolve({ok:false,skipped:false,error})});
+  if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:Math.max(500,delayMs+800)});
+  else setTimeout(run,Math.max(0,delayMs))
+ })
+}
+
+
+export async function refreshCommercialNetworkLive({force=false,minIntervalMs=300000}={}){
+ const id='__network__',key=storageKey(id),elapsed=Date.now()-lastRun(id);
+ if(!force&&elapsed>=0&&elapsed<Math.max(15000,Number(minIntervalMs)||300000))return{ok:true,skipped:true,reason:'RECENT_SYNC',ageMs:elapsed};
+ if(inflight.has(key))return inflight.get(key);
+ const promise=(async()=>{
+  try{
+   const result=await api('/api/commercial/network/sync',{method:'POST'});
+   remember(id);emit(id,result);return{ok:true,skipped:false,result}
+  }catch(error){
+   const status=Number(error?.status)||0;remember(id);
+   if(status===401||status===403)return{ok:false,skipped:true,reason:'NOT_ALLOWED',error};
+   throw error
+  }
+ })();
+ inflight.set(key,promise);try{return await promise}finally{inflight.delete(key)}
+}
+
+export function scheduleCommercialNetworkRefresh({delayMs=150,minIntervalMs=300000,onUpdated=null}={}){
+ return new Promise(resolve=>{
+  const run=()=>refreshCommercialNetworkLive({minIntervalMs}).then(async result=>{
+   if(result?.ok&&!result.skipped&&typeof onUpdated==='function'){try{await onUpdated(result.result)}catch(error){console.warn('Rafraîchissement réseau commercial',error)}}
+   resolve(result)
+  }).catch(error=>{console.warn('Synchronisation commerciale réseau',error);resolve({ok:false,skipped:false,error})});
   if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:Math.max(500,delayMs+800)});
   else setTimeout(run,Math.max(0,delayMs))
  })
