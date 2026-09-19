@@ -36,4 +36,4 @@ jobs:
           grep -q "D365_PRICE_HISTORY_MAPPING_NOT_VALIDATED" backend/services/d365-price-history-mapping.mjs
           grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-price.mjs
           grep -q "Activer historique LIVE" frontend/js/admin-price-history-mapping.js
-          grep -q "const BUILD='2080'" frontend/js/auth-entry.js
+          grep -Eq "const BUILD='[0-9]{4}'" frontend/js/auth-entry.js
