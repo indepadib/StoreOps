@@ -17,6 +17,8 @@ const STATEFUL_GET_PATTERNS=[
   /^\/api\/stores\/[^/]+\/tasks$/,
   /^\/api\/stores\/[^/]+\/dashboard$/,
   /^\/api\/stores\/[^/]+\/cash-closing$/,
+  /^\/api\/stores\/[^/]+\/process-runs$/,
+  /^\/api\/development\/projects(?:\/[^/]+)?$/,
   /^\/api\/network$/
 ];
 const REVISION_CACHE_MS=750;
