@@ -1,0 +1,42 @@
+name: V2.13 Operational Reality Contract
+
+on:
+  push:
+    branches: [storeops-v2.13-operational-reality]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/manager-home.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.13 operational reality contract
+        run: node backend/tests/v213-operational-reality.mjs
+      - name: Commercial live delta regression
+        run: node backend/tests/v205-commercial-live-delta.mjs
+      - name: D365 receiving regression
+        run: node backend/tests/dynamics-receiving.mjs
+      - name: Guided Today regression
+        run: node backend/tests/v194-today-ux-pipeline.mjs
+      - name: Approved Today preview regression
+        run: node backend/tests/v185-today-preview.mjs

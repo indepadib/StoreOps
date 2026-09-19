@@ -96,10 +96,11 @@ function materializeCommercialDeltas(storeId,businessDate,changes=[]){
   if(!d365||!stableKey){out.push(c);continue}
   const previous=get.get(storeId,stableKey),historical=!previous?history.get(storeId,`${stableKey}-%`):null,changed=!!previous&&previous.fingerprint!==fingerprint;
   const historicalFingerprint=historical?fingerprintFor({productNumber:historical.product_number,ean:historical.ean,expectedPrice:historical.expected_price,oldPrice:historical.old_price,promoLabel:historical.promo_label,signageAction:historical.signage_action}):null,changedFromHistory=!!historical&&historicalFingerprint!==fingerprint;
-  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7;
+  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen);
   let actionDate=null;
-  if(c.actionType==='VERIFY'&&(changed||changedFromHistory||recentFirstSeen)){
-    c={...c,actionType:'PROMO_START',signageAction:'INSTALL',priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed||changedFromHistory?'Promotion modifiée dans Dynamics':'Promotion récente détectée',c.promoLabel].filter(Boolean).join(' · ')};
+  if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen)){
+    const deltaActionType=c.deltaActionType||'PROMO_START',priceDelta=deltaActionType==='PRICE_CHANGE';
+    c={...c,actionType:deltaActionType,signageAction:c.deltaSignageAction|| (priceDelta?'VERIFY':'INSTALL'),priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed||changedFromHistory?(priceDelta?'Accord tarifaire modifié dans Dynamics':'Promotion modifiée dans Dynamics'):(priceDelta?'Nouvel accord tarifaire détecté':'Promotion récente détectée'),c.promoLabel].filter(Boolean).join(' · ')};
     actionDate=businessDate
   }else if(c.actionType!=='VERIFY')actionDate=businessDate;
   if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
