@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='2080';
+const BUILD='2090';
 
 const modules=[
   './pwa.js',
@@ -18,7 +18,7 @@ const modules=[
 
 const adminEntries={
   users:{section:'accessManagementSection',modules:['./admin-studio-access.js']},
-  integrations:{section:'integrationsStudioSection',modules:['./admin-studio-integrations.js','./admin-d365-mapping.js','./admin-price-history-mapping.js']},
+  integrations:{section:'integrationsStudioSection',modules:['./admin-studio-integrations.js','./admin-validation-center.js','./admin-d365-mapping.js','./admin-price-history-mapping.js']},
   tenant:{section:'tenantStudioSection',modules:['./admin-studio-tenant.js']},
   replenishmentRulesSection:{section:'replenishmentRulesSection',modules:['./admin-studio-replenishment.js']},
   storeSettingsSection:{section:'storeSettingsSection',modules:['./admin-studio-stores.js','./admin-assortment-auto.js']}
