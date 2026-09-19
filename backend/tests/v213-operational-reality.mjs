@@ -62,7 +62,9 @@ assert.match(pricing,/previousDays\(day,2\)/,'trade-agreement reader must catch 
 assert.match(pricing,/deltaActionType:'PRICE_CHANGE'/,'trade-agreement rows must materialize as price changes');
 
 assert.match(server,/syncExpectedReceiptsFromDynamics/,'PO sync service must be imported into the active router');
-assert.match(server,/await syncExpectedReceiptsFromDynamics\(p\.storeId,\{businessDate\}\)/,'GET receipts must synchronize Dynamics before listing POs');
+const receiptsGet=server.match(/p=route\(path,'\\/api\\/stores\\/:storeId\\/receipts'\)[\\s\\S]*?p=route\(path,'\\/api\\/stores\\/:storeId\\/receipts\\/readiness'/)?.[0]||'';
+assert(receiptsGet,'GET receipts route missing');
+assert.doesNotMatch(receiptsGet,/syncExpectedReceiptsFromDynamics/,'GET receipts must remain a fast persisted snapshot; live Dynamics sync is explicit');
 assert.match(server,/receipts\/readiness/,'receiving readiness route missing');
 assert.match(server,/receipts\/sync/,'explicit PO refresh route missing');
 assert.match(receipts,/Rafraîchir les PO Dynamics/,'PO page must expose a visible manual refresh');
@@ -71,13 +73,13 @@ assert.doesNotMatch(receipts,/Aucune réception prévue\./,'PO page must not sil
 
 assert.match(app,/if\(page==='today'\)return invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'all operational profiles must use the guided Today cockpit');
 assert.doesNotMatch(app,/isManager\(\)\?invoke\('\.\/pages\/manager-home\.js'/,'Today must no longer split Admin/Direction onto the legacy page');
-assert.match(managerHome,/receipts\/sync/,'Today must background-refresh PO priorities after first paint');
+assert.doesNotMatch(managerHome,/receipts\/sync/,'Today must never launch a heavy PO synchronization automatically');
 
-assert.match(auth,/const BUILD='2130'/);
-assert.match(auth,/const BUILD_LABEL='2\.13\.0'/);
-assert.match(index,/v2\.13\.0/);
-assert.match(classic,/BUILD='2\.13\.0'/);
-assert.match(build,/2130/);
-assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.13\.0'/);
+assert.match(auth,/const BUILD='2140'/);
+assert.match(auth,/const BUILD_LABEL='2\.14\.0'/);
+assert.match(index,/v2\.14\.0/);
+assert.match(classic,/BUILD='2\.14\.0'/);
+assert.match(build,/2140/);
+assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.14\.0'/);
 
-console.log('V2.13 operational reality contract passed');
+console.log('V2.13 operational reality regression + V2.14 receiving policy passed');
