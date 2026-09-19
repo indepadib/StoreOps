@@ -1,0 +1,40 @@
+name: V2.14 Integration P0 Contract
+
+on:
+  push:
+    branches: [storeops-v2.14-integration-p0]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/services/d365-sales-mapping.mjs
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/admin-d365-mapping.js
+          node --check frontend/js/app.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.14 integration P0 contract
+        run: node backend/tests/v214-integration-p0.mjs
+      - name: D365 receiving regression
+        run: node backend/tests/dynamics-receiving.mjs
+      - name: Sales mapping lifecycle regression
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: V2.13 operational reality regression
+        run: node backend/tests/v213-operational-reality.mjs
