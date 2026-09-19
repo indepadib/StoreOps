@@ -1,0 +1,41 @@
+name: V2.16 Operational Fixes Contract
+
+on:
+  push:
+    branches: [storeops-v2.16-operational-fixes]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/d365-sales-autoconnect.mjs
+          node --check backend/services/business-pulse-api.mjs
+          node --check backend/services/dynamics-receiving.mjs
+          node --check frontend/js/admin-studio-stores.js
+          node --check frontend/js/pages/manager-home.js
+      - name: Typecheck Netlify bridge
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.16 operational fixes
+        run: node backend/tests/v216-operational-fixes.mjs
+      - name: V2.15 truthfulness regression
+        run: node backend/tests/v215-truthful-integrations.mjs
+      - name: Sales mapping lifecycle regression
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Receiving regression
+        run: node backend/tests/dynamics-receiving.mjs
+      - name: Business Pulse aggregation regression
+        run: node backend/tests/business-pulse.mjs
+      - name: Public backend contract
+        run: node backend/tests/netlify-public-backend.mjs
