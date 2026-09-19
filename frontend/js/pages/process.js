@@ -178,10 +178,18 @@ function timelineHtml(a){
 }
 
 export async function openTask(taskId){
-  activeTask=await api(`/api/tasks/${taskId}/form`);activeFieldIndex=0;activeDraft=Object.fromEntries(activeTask.fields.map(f=>[f.code,f.value]));
-  $('#modalStep').textContent=`Étape ${activeTask.task.step_order} · ${activeTask.task.group_name==='opening'?'Ouverture':'Fermeture'}`;
-  $('#modalTitle').textContent=activeTask.task.title;$('#modalDescription').textContent=activeTask.task.description||'';
-  $('#taskModal').hidden=false;renderTaskForm();
+  try{
+    activeTask=await api(`/api/tasks/${taskId}/form`);activeFieldIndex=0;activeDraft=Object.fromEntries(activeTask.fields.map(f=>[f.code,f.value]));
+    $('#modalStep').textContent=`Étape ${activeTask.task.step_order} · ${activeTask.task.group_name==='opening'?'Ouverture':'Fermeture'}`;
+    $('#modalTitle').textContent=activeTask.task.title;$('#modalDescription').textContent=activeTask.task.description||'';
+    $('#taskModal').hidden=false;renderTaskForm();
+  }catch(error){
+    if(error?.status!==404)throw error;
+    activeTask=null;activeFieldIndex=0;activeDraft={};
+    toast('Le parcours a été actualisé. Je recharge l’étape en cours.');
+    const group=app.page==='closing'?'closing':'opening';
+    await renderProcess(group)
+  }
 }
 function renderTaskForm(){
   if(!activeTask)return;
