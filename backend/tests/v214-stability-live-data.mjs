@@ -18,6 +18,8 @@ const bridge=read('netlify/functions/api.mts');
 const incidentsSource=read('backend/services/incidents.mjs');
 const dlcSource=read('backend/services/dlc.mjs');
 const processPage=read('frontend/js/pages/process.js');
+const integrationApi=read('backend/services/integration-registry-api.mjs');
+const adminMapping=read('frontend/js/admin-d365-mapping.js');
 
 assert.doesNotMatch(managerHome,/receipts\/sync/,'Today must never auto-sync purchase orders');
 const receiptsGet=server.match(/p=route\(path,'\/api\/stores\/:storeId\/receipts'\)[\s\S]*?p=route\(path,'\/api\/stores\/:storeId\/receipts\/readiness'/)?.[0]||'';
@@ -32,6 +34,10 @@ assert.match(receiving,/storeOperationalSettings\(storeId\)/,'Receiving must use
 
 assert.match(salesMapping,/missingInPayload:smoke\.missingInPayload\|\|\[\]/,'Sales smoke audit must use the evaluated smoke payload');
 assert.doesNotMatch(salesMapping,/\{storeId,entity:mapping\.entity,rowCount:rows\.length,missingInPayload,marginCandidate/,'Sales smoke must not reference an undefined local');
+assert.match(salesMapping,/channelOk=!channel\|\|channelMatches>0/,'Sales activation smoke must validate the target retail channel');
+assert.match(integrationApi,/d365-sales-mapping\/autoconfigure/,'One-click sales autoconfiguration endpoint must be wired');
+assert.match(integrationApi,/D365_SALES_AUTOCONFIG_SMOKE_FAILED/,'Automatic sales activation must fail closed');
+assert.match(adminMapping,/Détecter & activer les ventes/,'Admin Studio must expose one-click sales activation');
 
 assert.match(pricing,/T00:00:00Z and .*T00:00:00Z/,'Trade-agreement scan must support DateTimeOffset day ranges');
 assert.match(pricing,/priceGroupAllowed/,'Trade-agreement filtering must be performed safely in StoreOps');
@@ -42,6 +48,7 @@ assert.match(bridge,/STATEFUL_GET_PATTERNS/,'Netlify bridge must distinguish GET
 assert.match(bridge,/\/tasks\$\//,'Task-day reads must be stateful/persisted');
 assert.match(bridge,/needsWriteSync\(request\)\?await serveWrite/,'Stateful GETs must use durable write-sync');
 assert.match(processPage,/Le parcours a été actualisé/,'Frontend must recover from a stale task id');
+for(const handler of ['handleAccessManagementApi','handleDevelopmentApi','handleIntegrationRegistryApi','handlePriceHistoryApi','handleProcessStudioApi','handleReplenishmentPolicyApi','handleReplenishmentRequestApi','handleStoreSettingsApi','handleTenantProfileApi'])assert.match(server,new RegExp(handler),`Server must dispatch ${handler}`);
 
 assert.match(incidentsSource,/content_blob/,'Incident evidence must be persisted in SQLite');
 assert.match(dlcSource,/content_blob/,'DLC evidence must be persisted in SQLite');
