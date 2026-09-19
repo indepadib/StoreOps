@@ -26,11 +26,14 @@ assert.doesNotMatch(center,/assortments\/sync-channel/,'Validation Center must n
 assert.doesNotMatch(center,/receiving|inventory-adjustment|loss.*write|cash.*write/i,'Validation Center must not introduce ERP writes');
 
 assert.match(enhancements,/admin-validation-center\.js/,'Validation Center must lazy-load with Admin Integrations');
-assert.match(enhancements,/const BUILD='2090'/,'Enhancement cache generation must be 2090');
-assert.match(auth,/const BUILD='2090'/,'Auth release build must be 2090');
-assert.match(auth,/const BUILD_LABEL='2\.09\.0'/,'Auth release label must be 2.09.0');
-assert.match(index,/auth-entry\.js\?v=2090/,'HTML entry cache key must be 2090');
-assert.match(build,/STOREOPS_RELEASE_BUILD:-2090/,'Netlify build must default to 2090');
-assert.match(bridge,/STOREOPS_VERSION'\)\|\|'2\.09\.0'/,'Stateless health fallback must be 2.09.0');
+const authBuild=auth.match(/const BUILD='([0-9]{4})'/)?.[1];
+const enhancementBuild=enhancements.match(/const BUILD='([0-9]{4})'/)?.[1];
+const releaseLabel=auth.match(/const BUILD_LABEL='([0-9]+\.[0-9]+\.[0-9]+)'/)?.[1];
+assert(authBuild,'Auth release build must exist');
+assert.equal(enhancementBuild,authBuild,'Enhancement and auth cache generations must match');
+assert.match(index,new RegExp(`auth-entry\\.js\\?v=${authBuild}`),'HTML entry cache key must match active build');
+assert.match(build,new RegExp(`STOREOPS_RELEASE_BUILD:-${authBuild}`),'Netlify build default must match active build');
+assert(releaseLabel,'Release label must exist');
+assert.match(bridge,new RegExp(`STOREOPS_VERSION'\\)\\|\\|'${releaseLabel.replaceAll('.','\\.')}'`),'Stateless health fallback must match active release label');
 
 console.log('V2.09 Validation Center contract: OK');

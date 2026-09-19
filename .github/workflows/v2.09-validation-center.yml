@@ -37,4 +37,4 @@ jobs:
           grep -q "Validation Center D365" frontend/js/admin-validation-center.js
           grep -q "Aucun bouton ici n’active LIVE" frontend/js/admin-validation-center.js
           grep -q "admin-validation-center.js" frontend/js/enhancements-entry.js
-          grep -q "const BUILD='2090'" frontend/js/auth-entry.js
+          grep -Eq "const BUILD='[0-9]{4}'" frontend/js/auth-entry.js

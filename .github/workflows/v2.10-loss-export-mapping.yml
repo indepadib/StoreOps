@@ -1,0 +1,69 @@
+name: V2.10 Closing Pack Mapping Studio
+
+on:
+  push:
+    branches: [storeops-v2.10-loss-export-mapping]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/loss-export-mapping.mjs
+          node --check backend/services/loss-export.mjs
+          node --check backend/services/loss-export-api.mjs
+          node --check frontend/js/admin-loss-export-mapping.js
+          node --check frontend/js/enhancements-entry.js
+      - name: V2.10 lifecycle contract
+        run: node backend/tests/v210-loss-export-mapping.mjs
+      - name: Closing Pack regression
+        run: STOREOPS_DB=/tmp/storeops-v210-closing.db node backend/tests/loss-closing-pack.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v210-loss-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v210-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v210-api.log 2>&1 &
+          echo $! > /tmp/storeops-v210-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/storeops-v210-health.json; then
+              cat /tmp/storeops-v210-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-v210-api.log
+          exit 1
+      - name: Loss API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/loss-api.mjs
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-v210-api.pid ]; then kill "$(cat /tmp/storeops-v210-api.pid)" || true; fi
+      - name: Validation Center regression
+        run: node backend/tests/v209-validation-center.mjs
+      - name: Price history regression
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Production assets regression
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Static guards
+        run: |
+          grep -q "LOSS_EXPORT_VALIDATION_REFERENCE_REQUIRED" backend/services/loss-export-mapping.mjs
+          grep -q "STOREOPS_MAPPING" backend/services/loss-export.mjs
+          grep -q "admin-loss-export-mapping.js" frontend/js/enhancements-entry.js
+          grep -q "const BUILD='2100'" frontend/js/auth-entry.js
