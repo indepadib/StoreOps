@@ -59,6 +59,17 @@ assert.equal(lines[0].product_number,'HS-001');
 assert.equal(lines[0].remaining_qty,8);
 assert.equal(lines[0].ean,'611100000001');
 
+const summaries=receiving.listReceiptSummariesForStore('val-fleuri');
+assert.equal(summaries.length,1);
+assert.equal(summaries[0].po_number,'PO-100');
+assert.equal(summaries[0].line_count,2);
+assert.equal(summaries[0].controlled_count,0);
+assert.equal(Object.prototype.hasOwnProperty.call(summaries[0],'lines'),false,'summary payload must not embed all receipt lines');
+assert.match(summaries[0].search_terms,/HS-001/);
+const detail=receiving.receiptForStoreByPo('val-fleuri','PO-100');
+assert.equal(detail.lines.length,2);
+assert.equal(receiving.receiptForStoreByPo('val-fleuri','PO-MISSING'),null);
+
 // A second sync updates source data without losing operational quality-control fields.
 db.prepare(`UPDATE receipt_lines SET delivered_qty=8,accepted_qty=8,rejected_qty=0 WHERE id=?`).run(lines[0].id);
 const sync2=await receiving.syncExpectedReceiptsFromDynamics('val-fleuri',{businessDate:'2026-09-10'});
