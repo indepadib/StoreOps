@@ -1,6 +1,6 @@
 import{api}from'../api.js';import{app,canManage}from'../state.js';import{$,status,esc,toast}from'../ui.js';
 
-let profiles=new Map(),receiptRows=[],receiptReadiness=null,receiptRowsError=null,selectedPo=null,poQuery='',poFilter='OPEN',poLimit=25;
+let profiles=new Map(),receiptRows=[],receiptDetails=new Map(),receiptReadiness=null,receiptRowsError=null,selectedPo=null,poQuery='',poFilter='OPEN',poLimit=25;
 
 function ensureReceiptStyles(){
  if(document.getElementById('receiptBrowserStyles'))return;
@@ -10,8 +10,9 @@ function ensureReceiptStyles(){
  @media(max-width:850px){.receipt-browser{grid-template-columns:1fr}.receipt-po-panel{position:static;max-height:360px}.receipt-detail-panel{padding:8px}}
  `;document.head.appendChild(style)
 }
-function controlledCount(r){return(r.lines||[]).filter(l=>l.quality_control_id).length}
-function poBucket(r){const total=(r.lines||[]).length,controlled=controlledCount(r);if(r.status==='POSTED')return'POSTED';if(total>0&&controlled===total)return'READY';return'PENDING'}
+function lineCount(r){return Array.isArray(r?.lines)?r.lines.length:Number(r?.line_count||0)}
+function controlledCount(r){return Array.isArray(r?.lines)?r.lines.filter(l=>l.quality_control_id).length:Number(r?.controlled_count||0)}
+function poBucket(r){const total=lineCount(r),controlled=controlledCount(r);if(r.status==='POSTED')return'POSTED';if(total>0&&controlled===total)return'READY';return'PENDING'}
 function filteredRows(){
  const q=poQuery.trim().toLowerCase();
  return receiptRows.filter(r=>{
@@ -19,7 +20,7 @@ function filteredRows(){
   if(poFilter==='OPEN'&&bucket==='POSTED')return false;
   if(poFilter!=='ALL'&&poFilter!=='OPEN'&&bucket!==poFilter)return false;
   if(!q)return true;
-  const hay=[r.po_number,r.vendor,r.eta,...(r.lines||[]).flatMap(l=>[l.product_name,l.product_number,l.ean])].filter(Boolean).join(' ').toLowerCase();
+  const hay=[r.po_number,r.vendor,r.eta,r.search_terms].filter(Boolean).join(' ').toLowerCase();
   return hay.includes(q)
  }).sort((a,b)=>{const order={PENDING:0,READY:1,POSTED:2};const d=(order[poBucket(a)]??9)-(order[poBucket(b)]??9);if(d)return d;return String(a.eta||'9999').localeCompare(String(b.eta||'9999'))})
 }
@@ -34,16 +35,30 @@ function sourceBanner(){
  if(readiness?.enabled)return`<div class="banner ban-info"><strong>Connexion PO Dynamics à valider</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · aucune lecture D365 réussie n’a encore confirmé ce flux. Lancez “Synchroniser D365”.</div></div>`;
  return`<div class="banner ban-danger"><strong>Lecture PO Dynamics non activée.</strong><div class="small" style="margin-top:4px">Le module Réception est prêt, mais le connecteur D365 Receiving n’est pas LIVE.</div></div>`
 }
-function poItem(r){const total=(r.lines||[]).length,controlled=controlledCount(r),bucket=poBucket(r),pct=total?Math.round(controlled*100/total):0;return`<button class="receipt-po-item ${r.po_number===selectedPo?'selected':''}" data-select-po="${esc(r.po_number)}"><div class="receipt-po-top"><strong>${esc(r.po_number||'PO')}</strong>${status(bucket==='POSTED'?'Réceptionnée':bucket==='READY'?'Prête':'À contrôler',bucket==='PENDING'?'warn':'ok')}</div><div class="receipt-po-vendor">${esc(r.vendor||'Fournisseur non renseigné')}</div><div class="receipt-po-meta"><span>${esc(r.eta||'Date non renseignée')}</span><span>${controlled}/${total} contrôlée(s)</span></div><div class="receipt-po-progress"><i style="width:${pct}%"></i></div></button>`}
+function poItem(r){const total=lineCount(r),controlled=controlledCount(r),bucket=poBucket(r),pct=total?Math.round(controlled*100/total):0;return`<button class="receipt-po-item ${r.po_number===selectedPo?'selected':''}" data-select-po="${esc(r.po_number)}"><div class="receipt-po-top"><strong>${esc(r.po_number||'PO')}</strong>${status(bucket==='POSTED'?'Réceptionnée':bucket==='READY'?'Prête':'À contrôler',bucket==='PENDING'?'warn':'ok')}</div><div class="receipt-po-vendor">${esc(r.vendor||'Fournisseur non renseigné')}</div><div class="receipt-po-meta"><span>${esc(r.eta||'Date non renseignée')}</span><span>${controlled}/${total} contrôlée(s)</span></div><div class="receipt-po-progress"><i style="width:${pct}%"></i></div></button>`}
 function poListHtml(){const rows=filteredRows(),visible=rows.slice(0,poLimit);return`<div class="receipt-po-count"><strong>${rows.length}</strong> PO dans cette vue · ${receiptRows.length} au total</div><div class="receipt-po-list">${visible.map(poItem).join('')||'<div class="receipt-empty-list">Aucune PO ne correspond à la recherche.</div>'}</div>${rows.length>visible.length?`<button class="btn ghost receipt-more" id="receiptMore">Afficher ${Math.min(25,rows.length-visible.length)} PO suivantes</button>`:''}`}
+function detailPlaceholder(message='Sélectionnez une PO'){return `<div class="receipt-detail-placeholder"><strong>${esc(message)}</strong><div class="small" style="margin-top:5px">Les lignes et les contrôles sont chargés uniquement pour cette commande.</div></div>`}
 function renderReceiptView(ro){
- const selected=receiptRows.find(r=>r.po_number===selectedPo)||null,openCount=receiptRows.filter(r=>r.status!=='POSTED').length,pendingCount=receiptRows.filter(r=>poBucket(r)==='PENDING').length,readyCount=receiptRows.filter(r=>poBucket(r)==='READY').length;
+ const selected=receiptDetails.get(selectedPo)||null,openCount=receiptRows.filter(r=>r.status!=='POSTED').length,pendingCount=receiptRows.filter(r=>poBucket(r)==='PENDING').length,readyCount=receiptRows.filter(r=>poBucket(r)==='READY').length;
  $('#receiptsContent').dataset.openPoCount=String(openCount);
- $('#receiptsContent').innerHTML=`${ro?'<div class="role-lock">Lecture seule : contrôle et validation réservés au Responsable magasin et au Directeur d’Exploitation.</div>':''}<div class="row" style="margin:14px 0 10px"><div><strong>Commandes attendues</strong><div class="small muted">${receiptRows.length} PO en cache · ${pendingCount} à contrôler · ${readyCount} prête(s). Une seule commande détaillée est chargée à la fois.</div></div>${canManage()?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner()}<div class="receipt-browser-toolbar"><input class="receipt-browser-search" id="receiptSearch" value="${esc(poQuery)}" placeholder="Rechercher PO, fournisseur, SKU ou EAN…"><div class="receipt-filter-row">${[['OPEN','Ouvertes'],['PENDING','À contrôler'],['READY','Prêtes'],['POSTED','Réceptionnées'],['ALL','Toutes']].map(([k,t])=>`<button class="receipt-filter ${poFilter===k?'active':''}" data-receipt-filter="${k}">${t}</button>`).join('')}</div></div><div class="receipt-browser"><aside class="receipt-po-panel"><div id="receiptPoListHost">${poListHtml()}</div></aside><section class="receipt-detail-panel" id="receiptDetailHost">${selected?receipt(selected,ro):'<div class="receipt-detail-placeholder"><strong>Sélectionnez une PO</strong><div class="small" style="margin-top:5px">Le détail et les contrôles apparaîtront ici.</div></div>'}</section></div>`;
- bindBrowser(ro);bindReceiptControls();$('#syncReceiptsBtn')?.addEventListener('click',syncReceipts)
+ $('#receiptsContent').innerHTML=`${ro?'<div class="role-lock">Lecture seule : contrôle et validation réservés au Responsable magasin et au Directeur d’Exploitation.</div>':''}<div class="row" style="margin:14px 0 10px"><div><strong>Commandes attendues</strong><div class="small muted">${receiptRows.length} PO en cache · ${pendingCount} à contrôler · ${readyCount} prête(s). La liste est légère ; les lignes sont téléchargées uniquement à l’ouverture d’une PO.</div></div>${canManage()?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner()}<div class="receipt-browser-toolbar"><input class="receipt-browser-search" id="receiptSearch" value="${esc(poQuery)}" placeholder="Rechercher PO, fournisseur, SKU ou EAN…"><div class="receipt-filter-row">${[['OPEN','Ouvertes'],['PENDING','À contrôler'],['READY','Prêtes'],['POSTED','Réceptionnées'],['ALL','Toutes']].map(([k,t])=>`<button class="receipt-filter ${poFilter===k?'active':''}" data-receipt-filter="${k}">${t}</button>`).join('')}</div></div><div class="receipt-browser"><aside class="receipt-po-panel"><div id="receiptPoListHost">${poListHtml()}</div></aside><section class="receipt-detail-panel" id="receiptDetailHost">${selected?receipt(selected,ro):detailPlaceholder(selectedPo?'Chargement de la PO…':'Sélectionnez une PO')}</section></div>`;
+ bindBrowser(ro);if(selected)bindReceiptControls();$('#syncReceiptsBtn')?.addEventListener('click',syncReceipts)
+}
+async function renderSelectedDetail(ro){
+ const host=document.getElementById('receiptDetailHost');if(!host)return;
+ const po=selectedPo;if(!po){host.innerHTML=detailPlaceholder();return}
+ let detail=receiptDetails.get(po);
+ if(!detail){
+  host.innerHTML=detailPlaceholder('Chargement de la PO…');
+  try{detail=await api(`/api/stores/${app.storeId}/receipts/${encodeURIComponent(po)}`);receiptDetails.set(po,detail)}
+  catch(e){if(po===selectedPo)host.innerHTML=`<div class="banner ban-danger"><strong>PO indisponible</strong><span>${esc(e.message)}</span></div>`;return}
+ }
+ if(po!==selectedPo)return;
+ await ensureProfilesFor(detail);
+ host.innerHTML=receipt(detail,ro);bindReceiptControls()
 }
 function bindPoList(ro){
- document.querySelectorAll('[data-select-po]').forEach(b=>b.addEventListener('click',async()=>{selectedPo=b.dataset.selectPo;const r=receiptRows.find(x=>x.po_number===selectedPo);await ensureProfilesFor(r);renderReceiptView(ro);document.getElementById('receiptDetailHost')?.scrollIntoView({behavior:'smooth',block:'start'})}));
+ document.querySelectorAll('[data-select-po]').forEach(b=>b.addEventListener('click',async()=>{selectedPo=b.dataset.selectPo;document.getElementById('receiptPoListHost').innerHTML=poListHtml();bindPoList(ro);await renderSelectedDetail(ro);document.getElementById('receiptDetailHost')?.scrollIntoView({behavior:'smooth',block:'start'})}));
  document.getElementById('receiptMore')?.addEventListener('click',()=>{poLimit+=25;document.getElementById('receiptPoListHost').innerHTML=poListHtml();bindPoList(ro)})
 }
 function bindBrowser(ro){
@@ -52,10 +67,10 @@ function bindBrowser(ro){
  document.querySelectorAll('[data-receipt-filter]').forEach(b=>b.addEventListener('click',()=>{poFilter=b.dataset.receiptFilter;poLimit=25;document.querySelectorAll('[data-receipt-filter]').forEach(x=>x.classList.toggle('active',x.dataset.receiptFilter===poFilter));document.getElementById('receiptPoListHost').innerHTML=poListHtml();bindPoList(ro)}))
 }
 export async function renderReceipts(){
- ensureReceiptStyles();
- const [rowsResult,readinessResult]=await Promise.allSettled([api(`/api/stores/${app.storeId}/receipts`),api(`/api/stores/${app.storeId}/receipts/readiness`)]);
+ ensureReceiptStyles();receiptDetails.clear();
+ const [rowsResult,readinessResult]=await Promise.allSettled([api(`/api/stores/${app.storeId}/receipts?view=summary`),api(`/api/stores/${app.storeId}/receipts/readiness`)]);
  receiptRows=rowsResult.status==='fulfilled'?(rowsResult.value||[]):[];receiptRowsError=rowsResult.status==='rejected'?(rowsResult.reason?.message||'Backend Réception indisponible.'):null;receiptReadiness=readinessResult.status==='fulfilled'?readinessResult.value:null;
- ensureSelection();await ensureProfilesFor(receiptRows.find(r=>r.po_number===selectedPo));renderReceiptView(!canManage())
+ ensureSelection();const ro=!canManage();renderReceiptView(ro);await renderSelectedDetail(ro)
 }
 function receipt(r,ro){const controlled=controlledCount(r),d365=r.source==='D365';return `<div class="card"><div class="row"><div><strong>${esc(r.po_number)} · ${esc(r.vendor)}</strong><div class="small muted">Prévue ${esc(r.eta)} · ${r.lines.length} ligne(s) · ${controlled}/${r.lines.length} contrôlée(s)${d365?' · D365':''}</div></div>${status(r.status==='POSTED'?'Réceptionnée':controlled===r.lines.length?'Prête à réceptionner':'À contrôler',r.status==='POSTED'?'ok':controlled===r.lines.length?'ok':'warn')}</div><div class="stack" style="margin-top:12px">${r.lines.map(l=>line(r,l,ro)).join('')}</div>${!ro&&r.status!=='POSTED'?(d365?`<div class="banner ban-info" style="margin-top:12px"><strong>Contrôles StoreOps disponibles</strong><div class="small" style="margin-top:4px">Le posting de réception dans Dynamics reste volontairement désactivé jusqu'à validation du mapping F&O.</div></div>`:`<button class="btn brand wide" data-post-receipt="${esc(r.po_number)}" style="margin-top:12px" ${controlled!==r.lines.length?'disabled':''}>${controlled===r.lines.length?'Confirmer la réception système':'Contrôler toutes les lignes avant réception'}</button>`):''}</div>`}
 function req(flag){return flag?' *':''}
