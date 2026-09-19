@@ -217,10 +217,30 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
  return{...snapshot,synced:true,partial:!authoritative,authoritative,created,updated,lineCreated,lineUpdated,readiness:receivingStateForStore(storeId)};
 }
 
-export function listReceiptsForStore(storeId){
+export function listReceiptSummariesForStore(storeId){
  ensureReceivingStorage();
- const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=? AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL)) ORDER BY eta,po_number`).all(storeId);
- return receipts.map(r=>({...r,lines:db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id)}));
+ return db.prepare(`
+  SELECT r.*,
+    COUNT(rl.id) AS line_count,
+    COALESCE(SUM(CASE WHEN rl.quality_control_id IS NOT NULL THEN 1 ELSE 0 END),0) AS controlled_count,
+    COALESCE(GROUP_CONCAT(CASE WHEN rl.id IS NOT NULL THEN trim(COALESCE(rl.product_number,'') || ' ' || COALESCE(rl.ean,'')) ELSE '' END,' '),'') AS search_terms
+  FROM receipts r
+  LEFT JOIN receipt_lines rl ON rl.receipt_id=r.id AND (rl.source_active=1 OR rl.quality_control_id IS NOT NULL)
+  WHERE r.store_id=? AND (r.source<>'D365' OR r.source_status IS NULL OR r.source_status<>'NOT_OPEN' OR r.status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines q WHERE q.receipt_id=r.id AND q.quality_control_id IS NOT NULL))
+  GROUP BY r.id
+  ORDER BY r.eta,r.po_number
+ `).all(storeId).map(r=>({...r,line_count:Number(r.line_count||0),controlled_count:Number(r.controlled_count||0)}))
+}
+
+export function receiptForStoreByPo(storeId,poNumber){
+ ensureReceivingStorage();
+ const r=db.prepare(`SELECT * FROM receipts WHERE store_id=? AND po_number=?`).get(storeId,clean(poNumber));
+ if(!r)return null;
+ return {...r,lines:db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id)}
+}
+
+export function listReceiptsForStore(storeId){
+ return listReceiptSummariesForStore(storeId).map(r=>({...r,lines:db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id)}))
 }
 
 export function receivingStoreReadiness(storeId){return receivingStateForStore(storeId)}

@@ -26,6 +26,7 @@ function assortmentState(x){
  return{state:'FAILED',detail:`${x.resolved?.length||0} reconnu(s) · ${x.unresolved?.length||0} non rapproché(s)`}
 }
 function mappingState(x){
+ if(x?.error)return{state:'ERROR',detail:x.error};
  const m=x?.mapping||null,s=m?.smoke||null;
  return{state:s?.status||m?.state||'UNKNOWN',detail:m?`${m.entity||'Entité'} · ${s?.checkedAt?'smoke '+new Date(s.checkedAt).toLocaleString('fr-FR'):'aucun smoke récent'}`:'Aucun mapping enregistré'}
 }
@@ -69,22 +70,28 @@ async function runAll(){
  if(busy)return;
  const sid=storeId(),ean=document.getElementById('glvEan')?.value.trim()||saved(key('ean')),sku=document.getElementById('glvSku')?.value.trim()||saved(key('sku'));
  saved(key('ean'),ean);saved(key('sku'),sku);busy=true;lastLog='';render();
- const steps=[];
- try{
-  if(canManage()&&snapshot?.sales?.mapping){
-   steps.push('Ventes');
-   snapshot.sales={mapping:await api('/api/admin/integrations/d365-sales-mapping/smoke',{method:'POST',body:{storeId:sid}}),canManage:true}
-  }
-  if(canManage()&&snapshot?.price?.mapping&&sku){
-   steps.push('Historique prix');
-   snapshot.price={mapping:await api('/api/admin/integrations/d365-price-history-mapping/smoke',{method:'POST',body:{productNumber:sku}}),canManage:true}
-  }
-  steps.push('Assortiment');
-  snapshot.assortment=await safe(api(`/api/admin/stores/${encodeURIComponent(sid)}/assortments/dynamics-preview`));
-  if(ean){steps.push('Stock');snapshot.stock=await safe(api(`/api/stores/${encodeURIComponent(sid)}/item-assistant/${encodeURIComponent(ean)}`))}
-  lastLog=`<div class="banner ban-ok"><strong>Validation terminée</strong><span>${esc(steps.join(' · '))}. Les activations restent manuelles dans les studios dédiés.</span></div>`
- }catch(e){lastLog=`<div class="banner ban-danger"><strong>Validation interrompue</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
- finally{busy=false;render()}
+ const results=[];
+ const run=async(name,fn,apply)=>{
+  try{
+   const value=await fn();apply?.(value);
+   if(value?.error)results.push({name,ok:false,error:value.error});
+   else results.push({name,ok:true});
+  }catch(e){results.push({name,ok:false,error:e?.message||String(e)})}
+ };
+ if(canManage()&&snapshot?.sales?.mapping){
+  await run('Ventes',()=>api('/api/admin/integrations/d365-sales-mapping/smoke',{method:'POST',body:{storeId:sid}}),value=>{snapshot.sales={mapping:value,canManage:true}})
+ }
+ if(canManage()&&snapshot?.price?.mapping&&sku){
+  await run('Historique prix',()=>api('/api/admin/integrations/d365-price-history-mapping/smoke',{method:'POST',body:{productNumber:sku}}),value=>{snapshot.price={mapping:value,canManage:true}})
+ }
+ await run('Assortiment',()=>safe(api(`/api/admin/stores/${encodeURIComponent(sid)}/assortments/dynamics-preview`)),value=>{snapshot.assortment=value});
+ if(ean)await run('Stock',()=>safe(api(`/api/stores/${encodeURIComponent(sid)}/item-assistant/${encodeURIComponent(ean)}`)),value=>{snapshot.stock=value});
+ const failed=results.filter(x=>!x.ok),done=results.map(x=>x.name).join(' · ')||'Aucun test exécuté';
+ lastLog=failed.length
+  ?`<div class="banner ban-warn"><strong>Validation terminée avec ${failed.length} point(s) à corriger</strong><span>${esc(done)}.</span><div class="small" style="margin-top:6px">${failed.map(x=>`${esc(x.name)} : ${esc(x.error)}`).join('<br>')}</div></div>`
+  :`<div class="banner ban-ok"><strong>Validation terminée</strong><span>${esc(done)}. Les activations restent manuelles dans les studios dédiés.</span></div>`;
+ busy=false;render();
+ if(failed.length)toast(`Validation terminée · ${failed.length} point(s) à corriger.`);
 }
 function bind(){
  document.getElementById('glvEan')?.addEventListener('change',e=>saved(key('ean'),e.target.value.trim()));

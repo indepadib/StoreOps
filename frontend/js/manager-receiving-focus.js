@@ -21,7 +21,12 @@ function focus(){
   cards.forEach(c=>c.classList.add('manager-receipt-hidden'));
   page.querySelectorAll('.receipt-line').forEach(l=>l.classList.remove('manager-receipt-current','manager-receipt-line-hidden'));
   if(!active){
-    head.innerHTML=`<div class="manager-focus-check">✓</div><span class="manager-eyebrow">Réception</span><h2>Tout est terminé</h2><p>Les réceptions affichées sont contrôlées et confirmées.</p><button class="btn brand manager-receiving-done">Retour à Aujourd’hui</button>`;
+    const openPoCount=Number(content.dataset.openPoCount||0);
+    if(openPoCount>1){
+      head.innerHTML=`<div class="manager-focus-check">✓</div><span class="manager-eyebrow">Réception</span><h2>Cette PO est contrôlée</h2><p>D’autres commandes restent ouvertes. Sélectionnez la prochaine PO dans la liste compacte.</p><button class="btn brand manager-receiving-next">Voir les PO restantes</button>`;
+      head.querySelector('.manager-receiving-next')?.addEventListener('click',()=>page.querySelector('.receipt-po-panel')?.scrollIntoView({behavior:'smooth',block:'start'}));return;
+    }
+    head.innerHTML=`<div class="manager-focus-check">✓</div><span class="manager-eyebrow">Réception</span><h2>Contrôle terminé</h2><p>La commande sélectionnée est entièrement contrôlée.</p><button class="btn brand manager-receiving-done">Retour à Aujourd’hui</button>`;
     head.querySelector('.manager-receiving-done')?.addEventListener('click',today);return;
   }
   active.card.classList.remove('manager-receipt-hidden');active.card.classList.add('manager-receipt-active');

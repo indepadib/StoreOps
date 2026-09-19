@@ -1,0 +1,37 @@
+name: V2.17 Admin JSON & PO UX Contract
+
+on:
+  push:
+    branches: [storeops-v2.17-admin-json-po-ux]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/api.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/admin-studio-stores.js
+          node --check frontend/js/admin-validation-center.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/manager-receiving-focus.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/app.js
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/server.mjs
+      - name: V2.17 contract
+        run: node backend/tests/v217-admin-json-po-ux.mjs
+      - name: Access regression
+        run: STOREOPS_DB=/tmp/storeops-v217-access.db node backend/tests/v180-access-management.mjs
+      - name: Receiving regression
+        run: |
+          node backend/tests/dynamics-receiving.mjs
+          node backend/tests/showcase-receipts.mjs
