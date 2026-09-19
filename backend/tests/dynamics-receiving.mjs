@@ -60,12 +60,12 @@ assert.equal(lines[0].remaining_qty,8);
 assert.equal(lines[0].ean,'611100000001');
 
 const summaries=receiving.listReceiptSummariesForStore('val-fleuri');
-assert.equal(summaries.length,1);
-assert.equal(summaries[0].po_number,'PO-100');
-assert.equal(summaries[0].line_count,2);
-assert.equal(summaries[0].controlled_count,0);
-assert.equal(Object.prototype.hasOwnProperty.call(summaries[0],'lines'),false,'summary payload must not embed all receipt lines');
-assert.match(summaries[0].search_terms,/HS-001/);
+const po100Summary=summaries.find(x=>x.po_number==='PO-100');
+assert(po100Summary,'PO-100 summary must be present even if the pilot DB contains other receipts');
+assert.equal(po100Summary.line_count,2);
+assert.equal(po100Summary.controlled_count,0);
+assert.equal(Object.prototype.hasOwnProperty.call(po100Summary,'lines'),false,'summary payload must not embed all receipt lines');
+assert.match(po100Summary.search_terms,/HS-001/);
 const detail=receiving.receiptForStoreByPo('val-fleuri','PO-100');
 assert.equal(detail.lines.length,2);
 assert.equal(receiving.receiptForStoreByPo('val-fleuri','PO-MISSING'),null);
