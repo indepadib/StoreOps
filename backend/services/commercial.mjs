@@ -144,7 +144,8 @@ function aggregateOfferAnomalies(changes,businessDate){
 }
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
- const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
+ // Operational safety: a Dynamics refresh is additive. It must never erase a control
+ // that a store has not completed yet, even when the source no longer returns it.
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
  let inserted=0;
  for(const c of actionable){
@@ -153,10 +154,15 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
   const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
- return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
+ return{inserted,removed:0,preserveExisting:true,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:listCommercialControls(storeId,businessDate).length};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
+ const rows=db.prepare(`SELECT * FROM commercial_controls
+   WHERE store_id=? AND (business_date=? OR (business_date<? AND status!='VERIFIED'))
+   ORDER BY CASE WHEN business_date=? THEN 0 ELSE 1 END,
+            CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,
+            business_date,created_at`).all(storeId,businessDate,businessDate,businessDate);
+ return rows.map(row=>hydrate({...row,carried_from_business_date:row.business_date===businessDate?null:row.business_date}));
 }
 export function commercialSummary(storeId,businessDate=todayISO()){
  const rows=listCommercialControls(storeId,businessDate),counts={PENDING:0,MISMATCH:0,VERIFIED:0};
@@ -164,7 +170,7 @@ export function commercialSummary(storeId,businessDate=todayISO()){
  return{total:rows.length,pending:counts.PENDING||0,mismatch:counts.MISMATCH||0,verified:counts.VERIFIED||0,blocking:rows.filter(x=>x.blocking_opening&&x.status!=='VERIFIED').length,readiness:rows.length?Math.round(((counts.VERIFIED||0)/rows.length)*100):100};
 }
 export function commercialBlockingCount(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=? AND blocking_opening=1 AND status!='VERIFIED'`).get(storeId,businessDate).n;
+ return listCommercialControls(storeId,businessDate).filter(x=>x.blocking_opening&&x.status!=='VERIFIED').length;
 }
 export function submitCommercialControl({id,user,observedPrice=null,signageOk=null,executionOk=null,note=''}) {
  const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Contrôle prix/promo introuvable.'),{status:404});
