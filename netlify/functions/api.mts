@@ -13,7 +13,19 @@ const LOCAL_PORT='48787';
 const STATE_ID='primary';
 const ADVISORY_LOCK_KEY=63876143;
 const READ_METHODS=new Set(['GET','HEAD','OPTIONS']);
+const STATEFUL_GET_PATTERNS=[
+  /^\/api\/stores\/[^/]+\/tasks$/,
+  /^\/api\/stores\/[^/]+\/dashboard$/,
+  /^\/api\/stores\/[^/]+\/cash-closing$/,
+  /^\/api\/network$/
+];
 const REVISION_CACHE_MS=750;
+function needsWriteSync(request:Request){
+  if(!READ_METHODS.has(request.method))return true;
+  if(request.method!=='GET')return false;
+  const path=new URL(request.url).pathname;
+  return STATEFUL_GET_PATTERNS.some(pattern=>pattern.test(path))
+}
 
 type DbRuntime={dbModule:typeof import('../../backend/db.mjs')};
 let dbRuntimePromise:Promise<DbRuntime>|null=null;
@@ -264,7 +276,7 @@ function errorResponse(error:unknown){
 export default async(request:Request)=>{
   const stateless=statelessHealth(request);if(stateless)return stateless;
   const database=getDatabase();
-  try{return READ_METHODS.has(request.method)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
+  try{return needsWriteSync(request)?await serveWrite(request,database):await serveRead(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
 
 export const config:Config={path:'/api/*'};
