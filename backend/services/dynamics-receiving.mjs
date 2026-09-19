@@ -1,6 +1,7 @@
 import { db,uid,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
 import { isD365ReadLive,odataGet,odataGetAll } from './dynamics.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v??'').replaceAll("'","''");
@@ -66,15 +67,18 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
  const c=receiving();
  if(!c.lineEntity)throw Object.assign(new Error('D365_PO_LINE_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_LINE_MAPPING_REQUIRED'});
  const select=selected(config.dynamics.dataAreaField,c.purchaseOrderField,c.lineNumberField,c.productField,c.descriptionField,c.barcodeField,c.categoryField,c.orderedQtyField,c.receivedQtyField,c.remainingQtyField,c.unitField,c.lineDateField,c.warehouseField);
- const payload=await queryAllWithSelectFallback(c.lineEntity,{
-  filter:withCompany(`${c.warehouseField} eq '${esc(warehouseId)}'`),
-  select,
-  extra:extraCompany(),
-  pageSize:c.pageSize,
-  maxRows:c.maxRows
- });
+ const warehouseFilter=`${c.warehouseField} eq '${esc(warehouseId)}'`,remainingField=clean(c.remainingQtyField);
+ let payload=null,remainingFilterApplied=false,remainingFilterError=null;
+ if(remainingField){
+  try{
+   payload=await queryAllWithSelectFallback(c.lineEntity,{filter:withCompany(`${warehouseFilter} and ${remainingField} gt 0`),select,extra:extraCompany(),pageSize:c.pageSize,maxRows:c.maxRows});
+   remainingFilterApplied=true
+  }catch(error){remainingFilterError={code:error?.code||'D365_RECEIVING_REMAINING_FILTER_FAILED',message:error?.message||String(error)}}
+ }
+ if(!payload)payload=await queryAllWithSelectFallback(c.lineEntity,{filter:withCompany(warehouseFilter),select,extra:extraCompany(),pageSize:c.pageSize,maxRows:c.maxRows});
+ if(payload.truncated)throw Object.assign(new Error('La liste des lignes de commande ouvertes dépasse la limite de sécurité StoreOps.'),{status:503,code:'D365_RECEIVING_LINES_TRUNCATED',details:{warehouseId,rowCount:payload.rowCount,maxRows:c.maxRows}});
  const rows=(payload.value||[]).filter(row=>remainingFor(row,c)>0);
- return{...payload,value:rows,rowCount:rows.length};
+ return{...payload,value:rows,rowCount:rows.length,remainingFilterApplied,remainingFilterError};
 }
 
 async function purchaseOrderHeaders(poNumbers){
@@ -91,7 +95,7 @@ async function purchaseOrderHeaders(poNumbers){
 }
 
 export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO()}={}){
- const c=receiving(),warehouseId=clean(config.dynamics.stock?.storeWarehouses?.[storeId]);
+ const c=receiving(),storeSettings=storeOperationalSettings(storeId),warehouseId=clean(storeSettings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId]);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false,code:config.realOnly?'D365_RECEIVING_NOT_CONNECTED':null}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
  const linePayload=await purchaseOrderLinesForWarehouse(warehouseId),lines=linePayload.value||[];
@@ -133,7 +137,7 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
    })
   };
  });
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,lineSelectFallback:!!linePayload.selectFallback,headerSelectFallback:!!headerPayload.selectFallback,truncated:!!linePayload.truncated||!!headerPayload.truncated}};
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,lineSelectFallback:!!linePayload.selectFallback,headerSelectFallback:!!headerPayload.selectFallback,remainingFilterApplied:!!linePayload.remainingFilterApplied,remainingFilterError:linePayload.remainingFilterError||null,truncated:!!linePayload.truncated||!!headerPayload.truncated}};
 }
 
 function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}

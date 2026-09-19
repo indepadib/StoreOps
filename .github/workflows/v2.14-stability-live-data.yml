@@ -1,0 +1,44 @@
+name: V2.14 Stability & Live Data Contract
+
+on:
+  push:
+    branches: [storeops-v2.14-stability-live-data]
+  pull_request:
+    branches: [main]
+
+jobs:
+  stability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/d365-sales-mapping.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check backend/services/incidents.mjs
+          node --check backend/services/dlc.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/process.js
+          node --check frontend/js/pages/incidents.js
+          node --check frontend/js/pages/dlc.js
+          node --check frontend/js/admin-d365-mapping.js
+      - name: Typecheck Netlify function
+        run: npx tsc -p tsconfig.netlify.json
+      - name: Incident regression contract
+        run: node backend/tests/v214-stability-live-data.mjs
+      - name: Existing pricing regressions
+        run: |
+          STOREOPS_DB=/tmp/storeops-v214-pricing1.db node backend/tests/pricing-config.mjs
+          STOREOPS_DB=/tmp/storeops-v214-pricing2.db node backend/tests/pricing-hardening.mjs
+          STOREOPS_DB=/tmp/storeops-v214-pricing3.db node backend/tests/promotion-query-filter.mjs
+      - name: Existing public backend regression
+        run: node backend/tests/netlify-public-backend.mjs

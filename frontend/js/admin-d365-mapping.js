@@ -61,7 +61,7 @@ function mappingForm(seed){
    <label><span>Signe coût</span><select id="salesMapCostSign"><option value="-1" ${Number(seed.costSign)===-1?'selected':''}>-1</option><option value="1" ${Number(seed.costSign)===1?'selected':''}>+1</option></select></label>
   </div>
   <div class="integration-sales-actions">
-   ${readiness?.canManage?'<button class="btn ghost" id="salesMapSave">Enregistrer brouillon</button><button class="btn soft" id="salesMapSmoke">Tester sur Val Fleuri</button>':''}
+   ${readiness?.canManage?'<button class="btn brand" id="salesMapAuto">Détecter & activer les ventes</button><button class="btn ghost" id="salesMapSave">Enregistrer brouillon</button><button class="btn soft" id="salesMapSmoke">Tester sur Val Fleuri</button>':''}
    ${readiness?.canManage&&readiness?.savedSalesMapping?.state==='VALIDATED'?'<button class="btn brand" id="salesMapActivate">Activer ventes LIVE</button>':''}
    ${readiness?.canManage&&readiness?.savedSalesMapping?.state==='LIVE'?'<button class="btn ghost" id="salesMapDisable">Désactiver</button>':''}
   </div>
@@ -109,8 +109,20 @@ async function smoke(){
  }catch(e){if(target)target.innerHTML=`<div class="banner ban-danger"><strong>Smoke impossible</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
 }
 async function activate(){try{const mapping=await api('/api/admin/integrations/d365-sales-mapping/activate',{method:'POST',body:{}});await refreshMappingUi(mapping,'Ventes D365 activées.')}catch(e){toast(e.message)}}
+async function autoconfigure(){
+ const target=document.getElementById('salesMapSmokeResult');if(target)target.innerHTML='<div class="small muted">Détection D365 + smoke Val Fleuri en cours…</div>';
+ try{
+  const result=await api('/api/admin/integrations/d365-sales-mapping/autoconfigure',{method:'POST',body:{storeId:selectedStore()}});
+  readiness={...(readiness||{}),savedSalesMapping:result.mapping};
+  if(last)renderResult(last);else await refreshMappingUi(result.mapping);
+  const s=result.smoke||{},box=document.getElementById('salesMapSmokeResult');
+  if(box)box.innerHTML=`<div class="banner ban-ok"><strong>Ventes D365 LIVE</strong><span>${Number(s.rowCount||0)} ligne(s) testées · ${Number(s.uniqueTickets||0)} ticket(s) · Retail Channel ${esc(s.retailChannelId||'—')} validé.</span></div>`;
+  toast('Ventes D365 détectées, testées et activées.')
+ }catch(e){if(target)target.innerHTML=`<div class="banner ban-danger"><strong>Activation automatique refusée</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
+}
 async function disable(){try{const mapping=await api('/api/admin/integrations/d365-sales-mapping/disable',{method:'POST',body:{}});await refreshMappingUi(mapping,'Mapping ventes désactivé.')}catch(e){toast(e.message)}}
 function bindLifecycle(){
+ document.getElementById('salesMapAuto')?.addEventListener('click',autoconfigure);
  document.getElementById('salesMapSave')?.addEventListener('click',saveDraft);
  document.getElementById('salesMapSmoke')?.addEventListener('click',smoke);
  document.getElementById('salesMapActivate')?.addEventListener('click',activate);

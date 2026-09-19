@@ -4,7 +4,6 @@ import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 
 let cfg=null,data=null,scanCtx=null,priceChecks=[];
-const autoSyncAttempted=new Set();
 const actionLabel=x=>cfg?.actionTypes?.find(a=>a.code===x)?.label||x;
 const signageLabel=x=>cfg?.signageActions?.find(a=>a.code===x)?.label||x;
 const priKind=x=>x==='CRITICAL'?'danger':x==='HIGH'?'warn':'neutral';
@@ -44,9 +43,7 @@ export async function renderCommercial(){
    ${isDirector()?policyCard():''}
  `;
  bindCommercial();
- const autoKey=`${app.storeId}:${new Date().toISOString().slice(0,10)}`;
- if(canManage()&&!commercialError&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
-  autoSyncAttempted.add(autoKey);
+ if(canManage()&&!commercialError&&data.sync?.deferred){
   scheduleCommercialLiveRefresh(app.storeId,{delayMs:80,minIntervalMs:60000,onUpdated:()=>renderCommercial()});
  }
 }

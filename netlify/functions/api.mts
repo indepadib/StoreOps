@@ -13,7 +13,21 @@ const LOCAL_PORT='48787';
 const STATE_ID='primary';
 const ADVISORY_LOCK_KEY=63876143;
 const READ_METHODS=new Set(['GET','HEAD','OPTIONS']);
+const STATEFUL_GET_PATTERNS=[
+  /^\/api\/stores\/[^/]+\/tasks$/,
+  /^\/api\/stores\/[^/]+\/dashboard$/,
+  /^\/api\/stores\/[^/]+\/cash-closing$/,
+  /^\/api\/stores\/[^/]+\/process-runs$/,
+  /^\/api\/development\/projects(?:\/[^/]+)?$/,
+  /^\/api\/network$/
+];
 const REVISION_CACHE_MS=750;
+function needsWriteSync(request:Request){
+  if(!READ_METHODS.has(request.method))return true;
+  if(request.method!=='GET')return false;
+  const path=new URL(request.url).pathname;
+  return STATEFUL_GET_PATTERNS.some(pattern=>pattern.test(path))
+}
 
 type DbRuntime={dbModule:typeof import('../../backend/db.mjs')};
 let dbRuntimePromise:Promise<DbRuntime>|null=null;
@@ -118,7 +132,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.13.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.14.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -264,7 +278,7 @@ function errorResponse(error:unknown){
 export default async(request:Request)=>{
   const stateless=statelessHealth(request);if(stateless)return stateless;
   const database=getDatabase();
-  try{return READ_METHODS.has(request.method)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
+  try{return needsWriteSync(request)?await serveWrite(request,database):await serveRead(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
 
 export const config:Config={path:'/api/*'};
