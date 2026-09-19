@@ -61,6 +61,7 @@ function mappingForm(seed){
    <label><span>Signe coût</span><select id="salesMapCostSign"><option value="-1" ${Number(seed.costSign)===-1?'selected':''}>-1</option><option value="1" ${Number(seed.costSign)===1?'selected':''}>+1</option></select></label>
   </div>
   <div class="integration-sales-actions">
+   ${readiness?.canManage&&readiness?.savedSalesMapping?.state!=='LIVE'?'<button class="btn brand" id="salesMapAutoConnect">Connecter automatiquement les ventes</button>':''}
    ${readiness?.canManage?'<button class="btn ghost" id="salesMapSave">Enregistrer brouillon</button><button class="btn soft" id="salesMapSmoke">Tester sur Val Fleuri</button>':''}
    ${readiness?.canManage&&readiness?.savedSalesMapping?.state==='VALIDATED'?'<button class="btn brand" id="salesMapActivate">Activer ventes LIVE</button>':''}
    ${readiness?.canManage&&readiness?.savedSalesMapping?.state==='LIVE'?'<button class="btn ghost" id="salesMapDisable">Désactiver</button>':''}
@@ -110,7 +111,18 @@ async function smoke(){
 }
 async function activate(){try{const mapping=await api('/api/admin/integrations/d365-sales-mapping/activate',{method:'POST',body:{}});await refreshMappingUi(mapping,'Ventes D365 activées.')}catch(e){toast(e.message)}}
 async function disable(){try{const mapping=await api('/api/admin/integrations/d365-sales-mapping/disable',{method:'POST',body:{}});await refreshMappingUi(mapping,'Mapping ventes désactivé.')}catch(e){toast(e.message)}}
+async function autoConnect(){
+ const target=document.getElementById('salesMapSmokeResult');if(target)target.innerHTML='<div class="small muted">Détection + smoke D365 en cours…</div>';
+ try{
+  const result=await api('/api/admin/integrations/d365-sales-mapping/auto-connect',{method:'POST',body:{storeId:selectedStore()}}),mapping=result?.mapping||null;
+  readiness={...(readiness||{}),savedSalesMapping:mapping};
+  if(last)renderResult(last);else await refreshMappingUi(mapping);
+  const box=document.getElementById('salesMapSmokeResult');if(box)box.innerHTML=`<div class="banner ${result?.activated?'ban-ok':'ban-danger'}"><strong>${result?.activated?'Ventes connectées LIVE':'Connexion automatique incomplète'}</strong><span>${result?.activated?'CA, tickets et panier peuvent maintenant alimenter Business Pulse. La marge reste masquée si aucun coût fiable n’a été détecté.':esc(mapping?.smoke?.note||'Le smoke n’a pas satisfait les garde-fous.')}</span></div>`;
+  toast(result?.activated?'Ventes D365 connectées.':'Le mapping ventes nécessite encore une validation.')
+ }catch(e){if(target)target.innerHTML=`<div class="banner ban-danger"><strong>Connexion automatique impossible</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
+}
 function bindLifecycle(){
+ document.getElementById('salesMapAutoConnect')?.addEventListener('click',autoConnect);
  document.getElementById('salesMapSave')?.addEventListener('click',saveDraft);
  document.getElementById('salesMapSmoke')?.addEventListener('click',smoke);
  document.getElementById('salesMapActivate')?.addEventListener('click',activate);
