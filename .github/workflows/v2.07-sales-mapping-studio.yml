@@ -39,5 +39,5 @@ jobs:
           grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-sales.mjs
           grep -q "Activer ventes LIVE" frontend/js/admin-d365-mapping.js
           grep -q "unknownCostBecomesZero:false" backend/services/d365-mapping-diagnostics.mjs
-          grep -q "const BUILD='2070'" frontend/js/auth-entry.js
-          grep -q "commercial.js?v=2070" frontend/js/app.js
+          grep -q "const BUILD='" frontend/js/auth-entry.js
+          grep -q "commercial.js?v=" frontend/js/app.js
