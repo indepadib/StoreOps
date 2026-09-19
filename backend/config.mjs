@@ -11,7 +11,7 @@ function flag(v){return ['1','true','yes','on'].includes(String(v||'').trim().to
 const REAL_ONLY=flag(process.env.STOREOPS_REAL_ONLY);
 
 export const config = {
-  appVersion: process.env.STOREOPS_VERSION || '2.16.0',
+  appVersion: process.env.STOREOPS_VERSION || '1.29.0',
   port: Number(process.env.PORT || 8787),
   nodeEnv: process.env.NODE_ENV || 'development',
   authMode: process.env.AUTH_MODE || 'demo',
