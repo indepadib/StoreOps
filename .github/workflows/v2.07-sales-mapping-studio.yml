@@ -1,0 +1,37 @@
+name: V2.07 Sales Mapping Studio
+
+on:
+  push:
+    branches: [storeops-v2.07-sales-mapping-studio]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-sales-mapping.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/integration-registry.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check frontend/js/admin-d365-mapping.js
+      - name: Sales mapping lifecycle contract
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Existing D365 mapping regression
+        run: STOREOPS_DB=/tmp/storeops-v207-diagnostics.db node backend/tests/v188-d365-mapping-diagnostics.mjs
+      - name: Business Pulse regression
+        run: STOREOPS_DB=/tmp/storeops-v207-pulse.db node backend/tests/business-pulse.mjs
+      - name: Static guards
+        run: |
+          grep -q "D365_SALES_MAPPING_NOT_VALIDATED" backend/services/d365-sales-mapping.mjs
+          grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-sales.mjs
+          grep -q "Activer ventes LIVE" frontend/js/admin-d365-mapping.js
+          grep -q "unknownCostBecomesZero:false" backend/services/d365-mapping-diagnostics.mjs
