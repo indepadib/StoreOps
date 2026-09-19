@@ -14,7 +14,14 @@ function sample(){return{
 }}
 async function load(){
  if(app.showcase){const s=sample();stores=s.stores;network=s.network;directory=s.directory;assortmentCatalog=s.assortmentCatalog;storeAssortments=s.storeAssortments;selectedStoreId=selectedStoreId||stores[0]?.id||null;return}
- const [s,w,a]=await Promise.all([api('/api/admin/stores/settings'),api('/api/admin/warehouses'),api('/api/admin/assortments/catalog')]);stores=s.items||[];network=s.network||{defaultSupplyWarehouseId:null,source:'UNMAPPED'};directory=w||{status:'UNAVAILABLE',items:[]};assortmentCatalog=a.items||[];selectedStoreId=stores.some(x=>x.id===selectedStoreId)?selectedStoreId:(app.storeId&&stores.some(x=>x.id===app.storeId)?app.storeId:stores[0]?.id||null);await loadStoreAssortments()
+ const [storesResult,warehouseResult,assortmentResult]=await Promise.allSettled([api('/api/admin/stores/settings'),api('/api/admin/warehouses'),api('/api/admin/assortments/catalog')]);
+ if(storesResult.status!=='fulfilled')throw storesResult.reason;
+ const s=storesResult.value||{},w=warehouseResult.status==='fulfilled'?warehouseResult.value:null,a=assortmentResult.status==='fulfilled'?assortmentResult.value:null;
+ stores=s.items||[];network=s.network||{defaultSupplyWarehouseId:null,source:'UNMAPPED'};
+ directory=w||{status:'DEGRADED',source:'STOREOPS',items:[],partial:true,error:warehouseResult.status==='rejected'?(warehouseResult.reason?.message||'Répertoire warehouse indisponible'):null};
+ assortmentCatalog=a?.items||[];
+ if(assortmentResult.status==='rejected')directory={...directory,assortmentWarning:assortmentResult.reason?.message||'Catalogue assortiment indisponible'};
+ selectedStoreId=stores.some(x=>x.id===selectedStoreId)?selectedStoreId:(app.storeId&&stores.some(x=>x.id===app.storeId)?app.storeId:stores[0]?.id||null);await loadStoreAssortments()
 }
 async function loadStoreAssortments(){if(!selectedStoreId){storeAssortments={items:[]};return}if(app.showcase)return;try{storeAssortments=await api(`/api/admin/stores/${encodeURIComponent(selectedStoreId)}/assortments`)}catch{storeAssortments={storeId:selectedStoreId,items:[]}}}
 const selected=()=>stores.find(x=>x.id===selectedStoreId)||null;
