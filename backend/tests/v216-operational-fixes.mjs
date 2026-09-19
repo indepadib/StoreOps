@@ -44,9 +44,8 @@ globalThis.fetch=async(input)=>{
 
 await import('../services/pilot-profile.mjs');
 const {db}=await import('../db.mjs');
-db.prepare(`DELETE FROM d365_sales_mapping_settings`).run();
-
 const {ensureD365SalesAutoConnected}=await import('../services/d365-sales-autoconnect.mjs');
+db.prepare(`DELETE FROM d365_sales_mapping_settings`).run();
 const {salesIntegrationConfig}=await import('../services/dynamics-sales.mjs');
 const sales=await ensureD365SalesAutoConnected('val-fleuri');
 assert.equal(sales.connected,true,'sales mapping should auto-connect only after a passing smoke');
