@@ -76,11 +76,11 @@ assert.match(app,/if\(page==='today'\)return invoke\('\.\/pages\/manager-home\.j
 assert.doesNotMatch(app,/isManager\(\)\?invoke\('\.\/pages\/manager-home\.js'/,'Today must no longer split Admin/Direction onto the legacy page');
 assert.doesNotMatch(managerHome,/receipts\/sync/,'Today must never trigger a blocking PO sync in the background');
 
-assert.match(auth,/const BUILD='21(?:3|4|5)0'/);
-assert.match(auth,/const BUILD_LABEL='2\.(?:13|14|15)\.0'/);
-assert.match(index,/v2\.(?:13|14|15)\.0/);
-assert.match(classic,/BUILD='2\.(?:13|14|15)\.0'/);
-assert.match(build,/21(?:3|4|5)0/);
-assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.(?:13|14|15)\.0'/);
+assert.match(auth,/const BUILD='21(?:3|4|5|6)0'/);
+assert.match(auth,/const BUILD_LABEL='2\.(?:13|14|15|16)\.0'/);
+assert.match(index,/v2\.(?:13|14|15|16)\.0/);
+assert.match(classic,/BUILD='2\.(?:13|14|15|16)\.0'/);
+assert.match(build,/21(?:3|4|5|6)0/);
+assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.(?:13|14|15|16)\.0'/);
 
 console.log('V2.13 operational reality contract passed');
