@@ -55,6 +55,8 @@ export function receivingIntegrationConfig(){
 
 function syncTop(){return Math.max(50,Math.min(2000,Number(process.env.D365_PO_SYNC_TOP)||750))}
 function headerEnrichmentLimit(){return Math.max(0,Math.min(50,Number(process.env.D365_PO_HEADER_ENRICH_LIMIT)||30))}
+function syncTimeoutMs(){return Math.max(2500,Math.min(9000,Number(process.env.D365_PO_SYNC_TIMEOUT_MS)||5200))}
+function withSyncTimeout(promise){const ms=syncTimeoutMs();return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error(`Synchronisation PO interrompue après ${ms} ms pour protéger StoreOps.`),{status:503,code:'D365_RECEIVING_SYNC_TIMEOUT',details:{timeoutMs:ms}})),ms))])}
 
 async function purchaseOrderLinesForWarehouse(warehouseId){
  const c=receiving();
@@ -120,7 +122,7 @@ export function ensureReceivingStorage(){
 export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=todayISO()}={}){
  ensureReceivingStorage();
  let snapshot;
- try{snapshot=await listExpectedPurchaseOrders(storeId,{businessDate})}
+ try{snapshot=await withSyncTimeout(listExpectedPurchaseOrders(storeId,{businessDate}))}
  catch(error){return{mode:'LIVE_ERROR',source:'D365',storeId,businessDate,items:[],synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,error:{code:error?.code||'D365_RECEIVING_SYNC_FAILED',message:error?.message||String(error)},diagnostics:{liveRequested:true,code:error?.code||'D365_RECEIVING_SYNC_FAILED'}}}
  if(snapshot.mode!=='LIVE')return{...snapshot,synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0};
  const authoritative=snapshot.diagnostics?.authoritative!==false&&!snapshot.diagnostics?.truncated;
