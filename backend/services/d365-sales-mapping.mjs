@@ -105,6 +105,23 @@ function numericStats(rows,field,sign=1){
 }
 function fieldPresence(rows,field){return{field,present:(rows||[]).filter(r=>valuePresent(r?.[field])).length}}
 
+export function evaluateD365SalesSmokeRows({rows=[],mapping,retailChannelId,latencyMs=null,filtered=false}={}){
+ const normalized=validateMappingInput(mapping||{});
+ const list=Array.isArray(rows)?rows:[];
+ const missingInPayload=REQUIRED_FIELDS.filter(role=>!list.some(r=>Object.prototype.hasOwnProperty.call(r,normalized.fields[role])));
+ const presence=Object.fromEntries(ALL_FIELDS.filter(role=>normalized.fields[role]).map(role=>[role,fieldPresence(list,normalized.fields[role])]));
+ const tickets=new Set(list.map(r=>clean(r?.[normalized.fields.transaction])).filter(Boolean));
+ const sales=numericStats(list,normalized.fields.net,normalized.salesSign),quantity=numericStats(list,normalized.fields.quantity,normalized.quantitySign),cost=numericStats(list,normalized.fields.cost,normalized.costSign);
+ const channel=clean(retailChannelId),channelMatches=channel?list.filter(r=>clean(r?.[normalized.fields.channel])===channel).length:0;
+ const passed=list.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0;
+ return{
+  status:passed?'PASSED':'FAILED',checkedAt:new Date().toISOString(),retailChannelId:channel||null,entity:normalized.entity,rowCount:list.length,latencyMs,
+  filtered:!!filtered&&channelMatches>0,channelMatches,uniqueTickets:tickets.size,requiredFieldsPresent:missingInPayload.length===0,missingInPayload,presence,
+  metrics:{sales,quantity,cost},marginCandidate:!!normalized.fields.cost&&cost.numeric>0,
+  note:passed?'Structure ventes exploitable. Comparaison métier CA/tickets encore recommandée avant généralisation.':'Le mapping ne satisfait pas les garde-fous techniques.'
+ }
+}
+
 export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=null}={}){
  if(config.dynamics.mode!=='live')throw Object.assign(new Error('D365_MODE doit être LIVE pour valider le mapping ventes.'),{status:409,code:'D365_SALES_SMOKE_REQUIRES_LIVE'});
  const base=input?validateMappingInput(input):d365SalesMappingSettings();
@@ -116,29 +133,9 @@ export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=nu
  let probe=await probeDataEntity(mapping.entity,{top:25,filter});
  if(!probe?.ok||!(probe.rows||[]).length)probe=await probeDataEntity(mapping.entity,{top:25});
  const rows=Array.isArray(probe?.rows)?probe.rows:[];
- const missingInPayload=REQUIRED_FIELDS.filter(role=>!rows.some(r=>Object.prototype.hasOwnProperty.call(r,mapping.fields[role])));
- const presence=Object.fromEntries(ALL_FIELDS.filter(role=>mapping.fields[role]).map(role=>[role,fieldPresence(rows,mapping.fields[role])]));
- const tickets=new Set(rows.map(r=>clean(r?.[mapping.fields.transaction])).filter(Boolean));
- const sales=numericStats(rows,mapping.fields.net,mapping.salesSign),quantity=numericStats(rows,mapping.fields.quantity,mapping.quantitySign),cost=numericStats(rows,mapping.fields.cost,mapping.costSign);
- const channelMatches=rows.filter(r=>clean(r?.[mapping.fields.channel])===retailChannelId).length;
- const passed=!!probe?.ok&&rows.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0;
- const smoke={
-  status:passed?'PASSED':'FAILED',
-  checkedAt:new Date().toISOString(),
-  storeId,
-  retailChannelId,
-  entity:mapping.entity,
-  rowCount:rows.length,
-  latencyMs:probe?.latencyMs||null,
-  filtered:channelMatches>0,
-  channelMatches,
-  uniqueTickets:tickets.size,
-  requiredFieldsPresent:missingInPayload.length===0,
-  missingInPayload,
-  metrics:{sales,quantity,cost},
-  marginCandidate:!!mapping.fields.cost&&cost.numeric>0,
-  note:passed?'Structure ventes exploitable. Comparaison métier CA/tickets encore recommandée avant généralisation.':'Le mapping ne satisfait pas les garde-fous techniques.'
- };
+ const smoke={...evaluateD365SalesSmokeRows({rows,mapping,retailChannelId,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok}),storeId};
+ const passed=!!probe?.ok&&smoke.status==='PASSED';
+ if(!passed)smoke.status='FAILED';
  if(input)saveD365SalesMappingDraft({actor,input:mapping});
  db.prepare(`UPDATE d365_sales_mapping_settings SET state=?,smoke_json=?,validated_at=?,validated_by=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id='default'`)
  .run(passed?'VALIDATED':'DRAFT',JSON.stringify(smoke),passed?smoke.checkedAt:null,passed?actor?.id||null:null,actor?.id||null);
