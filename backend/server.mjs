@@ -25,6 +25,17 @@ import { handleMerchandisingApi } from './services/merchandising-api.mjs';
 import { handleWorkforceApi } from './services/workforce-api.mjs';
 import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
+import { handleAccessManagementApi } from './services/access-management-api.mjs';
+import { handleDevelopmentApi } from './services/development-api.mjs';
+import { handleIntegrationRegistryApi } from './services/integration-registry-api.mjs';
+import { handleManagerFastApi } from './services/manager-fast-api.mjs';
+import { handlePriceHistoryApi } from './services/price-history-api.mjs';
+import { handleProcessStudioApi } from './services/process-studio-api.mjs';
+import { handleReplenishmentPolicyApi } from './services/replenishment-policy-api.mjs';
+import { handleReplenishmentRequestApi } from './services/replenishment-request-api.mjs';
+import { handleRuntimeBootstrapApi } from './services/runtime-bootstrap-api.mjs';
+import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
+import { handleTenantProfileApi } from './services/tenant-profile-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -82,6 +93,14 @@ async function api(req,res,url){
   const workforceResponse=await handleWorkforceApi({req,url,user});if(workforceResponse)return json(req,res,workforceResponse.status,workforceResponse.data);
   const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
+  for(const handler of [
+    handleRuntimeBootstrapApi,handleManagerFastApi,handleAccessManagementApi,handleDevelopmentApi,
+    handleIntegrationRegistryApi,handlePriceHistoryApi,handleProcessStudioApi,handleReplenishmentPolicyApi,
+    handleReplenishmentRequestApi,handleStoreSettingsApi,handleTenantProfileApi
+  ]){
+    const response=await handler({req,url,user});
+    if(response)return json(req,res,response.status,response.data)
+  }
 
   let p;
   if(path==='/api/stores'){const rows=user.role==='ops_director'?db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all():db.prepare(`SELECT * FROM stores WHERE id=? AND active=1`).all(user.store_id);return json(req,res,200,rows)}
