@@ -252,7 +252,16 @@ const profiles=[
 const qp=db.prepare(`INSERT OR IGNORE INTO quality_profiles(id,category,label,temperature_required,temp_min,temp_max,packaging_required,appearance_required,expiry_required,lot_required,photo_on_nonconform) VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
 for(const p of profiles) qp.run(...p);
 
-export function todayISO(){ return new Date().toISOString().slice(0,10); }
+export function todayISO(timeZone=process.env.STOREOPS_TIMEZONE||'Africa/Casablanca'){
+  const now=new Date();
+  try{
+    const parts=new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
+    const get=t=>parts.find(p=>p.type===t)?.value;
+    const y=get('year'),m=get('month'),d=get('day');
+    if(y&&m&&d)return `${y}-${m}-${d}`;
+  }catch{}
+  return now.toISOString().slice(0,10);
+}
 export function uid(prefix='id'){ return `${prefix}_${crypto.randomUUID()}`; }
 
 export function ensureStoreDay(storeId, businessDate=todayISO()){
