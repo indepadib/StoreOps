@@ -1,0 +1,38 @@
+name: V2.12 Visible Admin Contract
+
+on:
+  push:
+    branches: [storeops-v2.12-visible-admin]
+  pull_request:
+    branches: [main]
+
+jobs:
+  visible-admin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/state.js
+          node --check frontend/js/app.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pages/admin-studio.js
+      - name: Visibility contract
+        run: |
+          grep -q 'v2.12.0' frontend/index.html
+          grep -q 'profilePill' frontend/index.html
+          grep -q 'releasePill' frontend/index.html
+          grep -q 'isPlatformAdmin' frontend/js/state.js
+          grep -q 'Modules actifs' frontend/js/pages/admin-studio.js
+          grep -q 'Développement réseau' frontend/js/pages/admin-studio.js
+          grep -q "if(isPlatformAdmin()){app.developmentAccess=true" frontend/js/app.js
+      - name: No regression on director navigation
+        run: |
+          grep -q "'development'" frontend/js/enhancements-entry.js
+          grep -q "'adminStudio'" frontend/js/enhancements-entry.js

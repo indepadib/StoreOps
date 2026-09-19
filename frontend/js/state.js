@@ -4,4 +4,6 @@ export function isQualityAudit(){return app.user?.id==='u-quality-audit'||app.us
 export function canManage(){return !!app.user&&(['store_manager','ops_director'].includes(app.user.role)||(isQualityAudit()&&app.page==='quality'))}
 export function canManageQuality(){return !!app.user&&(['store_manager','ops_director'].includes(app.user.role)||isQualityAudit())}
 export function canGovernQuality(){return app.user?.role==='ops_director'||isQualityAudit()}
-export function isDirector(){return app.user?.role==='ops_director'}
+export function isPlatformAdmin(){return !!app.user&&(app.user?.permissions_profile==='platform_admin'||app.user?.id==='u-admin')}
+export function isDirector(){return app.user?.role==='ops_director'||isPlatformAdmin()}
+export function accessProfileLabel(){if(isPlatformAdmin())return'Administrateur StoreOps';if(isQualityAudit())return'Qualité & audit';if(app.user?.permissions_profile==='development')return'Développement réseau';if(app.user?.role==='ops_director')return'Direction d’exploitation';if(app.user?.role==='store_manager')return'Responsable magasin';return'Utilisateur magasin'}

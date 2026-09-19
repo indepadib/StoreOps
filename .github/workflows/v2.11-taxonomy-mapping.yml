@@ -38,4 +38,4 @@ jobs:
           grep -q "D365_TAXONOMY_MAPPING_NOT_VALIDATED" backend/services/d365-taxonomy-mapping.mjs
           grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-merchandising.mjs
           grep -q "admin-taxonomy-mapping.js" frontend/js/enhancements-entry.js
-          grep -q "const BUILD='2110'" frontend/js/auth-entry.js
+          node --input-type=module -e "import fs from 'node:fs'; const s=fs.readFileSync('frontend/js/auth-entry.js','utf8'); const b=Number(s.match(/const BUILD='(\\d+)'/)?.[1]||0); if(b<2110) process.exit(1);"

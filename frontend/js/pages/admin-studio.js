@@ -21,8 +21,10 @@ function newCode(name){return `CUSTOM_${slug(name)}_${Date.now().toString(36).sl
 function stepCode(title,i){const s=slug(title).toLowerCase().slice(0,28);return s||`step_${i+1}`}
 
 function renderHome(){
- $('#adminStudioContent').innerHTML=`<div class="studio-hero"><div><div class="label">STOREOPS ADMIN STUDIO</div><h2>Qu’est-ce que vous voulez mettre en place ?</h2><p>Choisissez une intention. StoreOps cache la complexité technique et ne charge que ce dont vous avez besoin.</p></div><div class="studio-hero-badge"><strong>${processDataLoaded?templates.filter(x=>x.active).length:'—'}</strong><span>process actifs</span></div></div>
+ $('#adminStudioContent').innerHTML=`<div class="studio-hero"><div><div class="label">STOREOPS ADMIN STUDIO · V2.12</div><h2>Qu’est-ce que vous voulez mettre en place ?</h2><p>Tout ce qui est réellement disponible est maintenant visible ici. Chaque carte ouvre un module actif, sans passer par des écrans techniques.</p></div><div class="studio-hero-badge"><strong>${processDataLoaded?templates.filter(x=>x.active).length:'—'}</strong><span>process actifs</span></div></div>
+ <div class="banner ban-info" style="margin:0 0 14px"><strong>Modules actifs</strong><span>Développement réseau · Utilisateurs & accès · Magasins / entrepôts / assortiment · Réappro · Intégrations D365 · Marque & vocabulaire.</span></div>
  <div class="studio-intent-grid">
+  <button class="studio-intent-card primary" data-studio-action="development"><span class="studio-intent-icon">⌂</span><strong>Développement réseau</strong><small>Sourcing locaux, GO / HOLD / NO GO, contrats, CAPEX, travaux et pré-ouverture.</small><em>Ouvrir →</em></button>
   <button class="studio-intent-card primary" data-studio-action="new-process"><span class="studio-intent-icon">✓</span><strong>Créer un process magasin</strong><small>Ouverture, fermeture, qualité, réception, sécurité, inventaire…</small><em>Créer →</em></button>
   <button class="studio-intent-card" data-studio-action="existing"><span class="studio-intent-icon">☷</span><strong>Mes process</strong><small>Voir, modifier, activer ou désactiver les parcours publiés.</small><em>Gérer →</em></button>
   <button class="studio-intent-card" data-studio-target="replenishmentRulesSection"><span class="studio-intent-icon">↗</span><strong>Règles de réappro</strong><small>Couverture, délai, sécurité, colisage et règles par périmètre.</small><em>Configurer →</em></button>
@@ -34,6 +36,7 @@ function renderHome(){
  bindHome()
 }
 function bindHome(){
+ document.querySelector('[data-studio-action="development"]')?.addEventListener('click',()=>document.querySelector('#nav button[data-page="development"]')?.click());
  document.querySelector('[data-studio-action="new-process"]')?.addEventListener('click',()=>startWizard());
  document.querySelector('[data-studio-action="existing"]')?.addEventListener('click',async()=>{view='loading';render();try{await ensureProcessData();view='library';render()}catch(e){view='home';render();toast(e.message)}})
 }
