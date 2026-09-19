@@ -22,12 +22,18 @@ const SALES_ROLES={
  category:['category','categoryname','family','famille']
 };
 const PRICE_ROLES={
- product:['itemid','itemnumber','productnumber','product'],
+ product:['itemid','itemnumber','productnumber','product','sku'],
  price:['amount','price','salesprice','offerprice','priceamount'],
- validFrom:['validfrom','fromdate','startdate','effectivefrom'],
- validTo:['validto','todate','enddate','effectiveto'],
- priceGroup:['pricegroup','pricegroupid','accountrelation'],
- currency:['currency','currencycode']
+ validFrom:['validfrom','fromdate','startdate','effectivefrom','priceapplicablefromdate'],
+ validTo:['validto','todate','enddate','effectiveto','priceapplicabletodate'],
+ priceGroup:['pricegroup','pricegroupid','pricecustomergroupcode','accountrelation'],
+ currency:['currency','currencycode','pricecurrencycode'],
+ customer:['customeraccountnumber','customeraccount','customer','accountrelation'],
+ warehouse:['pricewarehouseid','warehouseid','warehouse'],
+ site:['pricesiteid','siteid','site'],
+ quantity:['salespricequantity','pricequantity','quantity','qty'],
+ unit:['quantityunitysymbol','unitid','unit','unitofmeasure'],
+ recordId:['recordid','recid','record']
 };
 
 function infer(rows,roles){
@@ -73,6 +79,22 @@ export async function discoverD365SalesMapping(storeId='val-fleuri'){
   return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
  }
  return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
+}
+
+export function inferD365PriceHistoryMappingRows(rows=[]){
+ const inference=infer(rows,PRICE_ROLES),f=inference.fields,fields={item:f.product?.candidate||null,price:f.price?.candidate||null,validFrom:f.validFrom?.candidate||null,validTo:f.validTo?.candidate||null,currency:f.currency?.candidate||null,priceGroup:f.priceGroup?.candidate||null,customer:f.customer?.candidate||null,warehouse:f.warehouse?.candidate||null,site:f.site?.candidate||null,quantity:f.quantity?.candidate||null,unit:f.unit?.candidate||null,recordId:f.recordId?.candidate||null},missing=['item','price','validFrom'].filter(k=>!fields[k]),sampleRow=(rows||[]).find(r=>fields.item&&clean(r?.[fields.item]))||null;
+ return{inference,fields,missing,sampleProductNumber:sampleRow&&fields.item?clean(sampleRow[fields.item]):null}
+}
+
+export async function discoverD365PriceHistoryMapping(){
+ const ready=d365MappingDiagnosticReadiness('val-fleuri');
+ if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),recommendation:null,sampleProductNumber:null,message:'D365_MODE n’est pas LIVE.'};
+ for(const entity of ready.candidates.price){
+  const probe=await safeProbe(entity);if(!probe.ok||!probe.rows.length)continue;
+  const mapped=inferD365PriceHistoryMappingRows(probe.rows);if(mapped.missing.length)continue;
+  return{status:'READY',checkedAt:new Date().toISOString(),probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{entity,fields:mapped.fields},sampleProductNumber:mapped.sampleProductNumber,missing:[]};
+ }
+ return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),recommendation:null,sampleProductNumber:null,message:'Aucune source Trade Agreements datée exploitable n’a été détectée automatiquement.'}
 }
 
 export async function diagnoseD365Mappings(storeId='val-fleuri'){
