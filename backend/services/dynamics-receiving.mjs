@@ -20,9 +20,19 @@ function selected(...fields){return unique(fields).join(',')}
 function remainingFor(row,c){
   const explicit=finite(field(row,c.remainingQtyField,['RemainingPurchaseQuantity','RemainingInventoryQuantity']));
   if(explicit!==null)return explicit;
-  const ordered=finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0;
-  const received=finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']))??0;
-  return Math.max(0,ordered-received);
+  const ordered=finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']));
+  const received=finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']));
+  if(ordered!==null&&received!==null)return Math.max(0,ordered-received);
+  return null;
+}
+function lineStatus(row,c){return clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus'])).toLowerCase()}
+function lineIsOpen(row,c){
+ const remaining=remainingFor(row,c);if(remaining!==null)return remaining>0;
+ const status=lineStatus(row,c);if(!status)return true;
+ return !['received','invoiced','canceled','cancelled'].includes(status);
+}
+function lineStateReliable(rows,c){
+ return rows.length===0||rows.some(row=>remainingFor(row,c)!==null||!!lineStatus(row,c));
 }
 function temperatureRequired(category=''){return /frais|surgel/i.test(clean(category))?1:0}
 
@@ -96,6 +106,7 @@ export function receivingIntegrationConfig(storeId=null){
    orderedQty:c.orderedQtyField,
    receivedQty:c.receivedQtyField,
    remainingQty:c.remainingQtyField,
+   lineStatus:c.lineStatusField,
    unit:c.unitField,
    lineDate:c.lineDateField,
    warehouse:c.warehouseField
@@ -112,10 +123,18 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
  const c=receiving();
  if(!c.lineEntity)throw Object.assign(new Error('D365_PO_LINE_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_LINE_MAPPING_REQUIRED'});
  const top=syncTop(),warehouseFilter=`${c.warehouseField} eq '${esc(warehouseId)}'`,remainingFilter=c.remainingQtyField?`${c.remainingQtyField} gt 0`:'';
- const filter=withCompany([warehouseFilter,remainingFilter].filter(Boolean).join(' and '));
- const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()});
- const raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>remainingFor(row,c)>0);
- return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverRemainingFilter:!!remainingFilter};
+ let payload,serverRemainingFilter=false,remainingFilterFallback=false;
+ if(remainingFilter){
+  try{payload=await odataGet(c.lineEntity,{filter:withCompany([warehouseFilter,remainingFilter].join(' and ')),top,extra:extraCompany()});serverRemainingFilter=true}
+  catch(error){
+   const message=String(error?.message||error||'');
+   if(!/property|could not find|does not exist|invalid/i.test(message))throw error;
+   remainingFilterFallback=true;
+  }
+ }
+ if(!payload)payload=await odataGet(c.lineEntity,{filter:withCompany(warehouseFilter),top,extra:extraCompany()});
+ const raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>lineIsOpen(row,c)),stateReliable=lineStateReliable(raw,c);
+ return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverRemainingFilter,remainingFilterFallback,lineStateReliable:stateReliable,sampleKeys:raw[0]?Object.keys(raw[0]).slice(0,80):[]};
 }
 
 async function purchaseOrderHeaders(poNumbers){
@@ -148,12 +167,12 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
    poNumber,vendor:vendorAccount,vendorAccount,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:poLines.map(row=>{
     const productNumber=clean(field(row,c.productField,['ProductNumber','ItemNumber'])),ean=clean(field(row,c.barcodeField,['Barcode'])),category=clean(field(row,c.categoryField,['ProcurementProductCategoryName']))||'Autre';
-    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,receivedQty:finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']))??0,remainingQty:remainingFor(row,c),unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
+    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,receivedQty:finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity'])),remainingQty:remainingFor(row,c),lineStatus:clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus']))||null,unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
    })
   };
  });
- const truncated=!!linePayload.truncated||!!headerPayload.truncated;
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,truncated,authoritative:!truncated}};
+ const truncated=!!linePayload.truncated||!!headerPayload.truncated,authoritative=!truncated&&linePayload.lineStateReliable!==false;
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,remainingFilterFallback:!!linePayload.remainingFilterFallback,lineStateReliable:linePayload.lineStateReliable!==false,sampleLineFields:linePayload.sampleKeys||[],headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,truncated,authoritative}};
 }
 
 function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
