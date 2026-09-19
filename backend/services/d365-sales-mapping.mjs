@@ -139,7 +139,7 @@ export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=nu
  if(input)saveD365SalesMappingDraft({actor,input:mapping});
  db.prepare(`UPDATE d365_sales_mapping_settings SET state=?,smoke_json=?,validated_at=?,validated_by=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id='default'`)
  .run(passed?'VALIDATED':'DRAFT',JSON.stringify(smoke),passed?smoke.checkedAt:null,passed?actor?.id||null:null,actor?.id||null);
- auditMapping(actor,passed?'D365_SALES_MAPPING_VALIDATED':'D365_SALES_MAPPING_VALIDATION_FAILED',{storeId,entity:mapping.entity,rowCount:rows.length,missingInPayload,marginCandidate:smoke.marginCandidate});
+ auditMapping(actor,passed?'D365_SALES_MAPPING_VALIDATED':'D365_SALES_MAPPING_VALIDATION_FAILED',{storeId,entity:mapping.entity,rowCount:rows.length,missingInPayload:smoke.missingInPayload||[],marginCandidate:smoke.marginCandidate});
  return{...d365SalesMappingSettings(),smoke}
 }
 
