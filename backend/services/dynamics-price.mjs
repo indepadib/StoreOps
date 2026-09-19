@@ -1,5 +1,6 @@
 import { config } from '../config.mjs';
 import { odataGet,odataGetAll } from './dynamics.mjs';
+import { effectiveD365PriceHistoryMapping } from './d365-price-history-mapping.mjs';
 
 export const SALES_PRICE_ENTITY='SalesPriceAgreements';
 export const BASE_PRICE_ENTITY='ReleasedProductsV2';
@@ -51,13 +52,43 @@ export async function getBaseSalesPriceByItem(productNumber){
   };
 }
 
+function canonicalHistoryRow(row,fields){
+  return{
+    RecordId:fields.recordId?row?.[fields.recordId]:null,
+    dataAreaId:row?.[config.dynamics.dataAreaField]??row?.dataAreaId??null,
+    ItemNumber:row?.[fields.item]??null,
+    ProductNumber:row?.[fields.item]??null,
+    Price:row?.[fields.price]??null,
+    PriceCurrencyCode:fields.currency?row?.[fields.currency]:null,
+    SalesPriceQuantity:fields.quantity?row?.[fields.quantity]:null,
+    QuantityUnitySymbol:fields.unit?row?.[fields.unit]:null,
+    PriceApplicableFromDate:row?.[fields.validFrom]??null,
+    PriceApplicableToDate:fields.validTo?row?.[fields.validTo]:null,
+    PriceCustomerGroupCode:fields.priceGroup?row?.[fields.priceGroup]:null,
+    CustomerAccountNumber:fields.customer?row?.[fields.customer]:null,
+    PriceWarehouseId:fields.warehouse?row?.[fields.warehouse]:null,
+    PriceSiteId:fields.site?row?.[fields.site]:null
+  }
+}
+
 export async function getSalesPriceAgreementsByItem(productNumber){
-  const item=String(productNumber||'').trim(),entity=salesPriceEntity();
+  const item=String(productNumber||'').trim(),historyMapping=effectiveD365PriceHistoryMapping(),entity=historyMapping?.entity||salesPriceEntity();
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRICE_ITEM_REQUIRED'});
 
   const basePrice=await getBaseSalesPriceByItem(item);
   if(!priceLive()){
-    return {mode:'SIMULATED',entity,productNumber:item,rowCount:0,rows:[],basePrice};
+    return {mode:'SIMULATED',entity,productNumber:item,rowCount:0,rows:[],basePrice,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG'};
+  }
+
+  if(historyMapping){
+    const fields=historyMapping.fields,itemField=fields.item;
+    const filters=[`${itemField} eq '${escapeOData(item)}'`];
+    if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+    const select=[...new Set([itemField,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(',');
+    const payload=await odataGet(entity,{filter:filters.join(' and '),select,top:100,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+    const rawRows=Array.isArray(payload?.value)?payload.value:[];
+    const rows=rawRows.map(row=>canonicalHistoryRow(row,fields));
+    return{mode:'LIVE',entity,productNumber:item,dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||basePrice.dataAreaId||null,rowCount:rows.length,rows,basePrice,mappingSource:'STOREOPS_VALIDATED_MAPPING'}
   }
 
   const filters=[`ItemNumber eq '${escapeOData(item)}'`];
@@ -76,7 +107,8 @@ export async function getSalesPriceAgreementsByItem(productNumber){
     dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||basePrice.dataAreaId||null,
     rowCount:rows.length,
     rows,
-    basePrice
+    basePrice,
+    mappingSource:'ENV_CONFIG'
   };
 }
 

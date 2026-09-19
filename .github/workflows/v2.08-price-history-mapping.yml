@@ -1,0 +1,39 @@
+name: V2.08 Price History Mapping Studio
+
+on:
+  push:
+    branches: [storeops-v2.08-price-history-mapping]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-price-history-mapping.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check frontend/js/admin-price-history-mapping.js
+      - name: Price history mapping contract
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Sales mapping regression
+        run: node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Commercial price regression
+        run: node backend/tests/v205-commercial-live-delta.mjs
+      - name: Production asset coherence
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Channel price group regression
+        run: node backend/tests/v206-channel-price-groups.mjs
+      - name: Static guards
+        run: |
+          grep -q "D365_PRICE_HISTORY_MAPPING_NOT_VALIDATED" backend/services/d365-price-history-mapping.mjs
+          grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-price.mjs
+          grep -q "Activer historique LIVE" frontend/js/admin-price-history-mapping.js
+          grep -q "const BUILD='2080'" frontend/js/auth-entry.js
