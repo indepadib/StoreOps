@@ -3,7 +3,7 @@ import {app,isDirector} from './state.js';
 import {esc,status,toast} from './ui.js';
 
 const ID='goLiveValidationCenter';
-let snapshot=null,busy=false;
+let snapshot=null,busy=false,lastLog='';
 const safe=p=>Promise.resolve(p).catch(error=>({error:error?.message||String(error)}));
 const storeId=()=>app.storeId||'val-fleuri';
 const tone=s=>s==='PASSED'||s==='READY'||s==='LIVE'?'ok':s==='FAILED'||s==='ERROR'?'danger':s==='VALIDATED'?'info':'warn';
@@ -61,14 +61,14 @@ function render(){
   <button class="btn brand" id="glvRunAll" ${busy?'disabled':''}>${busy?'Validation en cours…':'Tout vérifier'}</button>
   <button class="btn ghost" id="glvRefresh">Actualiser l’état</button>
  </div>
- <div id="glvLog"></div>`;
+ <div id="glvLog">${lastLog}</div>`;
  bind()
 }
 function log(html){const el=document.getElementById('glvLog');if(el)el.innerHTML=html}
 async function runAll(){
- if(busy)return;busy=true;render();
+ if(busy)return;
  const sid=storeId(),ean=document.getElementById('glvEan')?.value.trim()||saved(key('ean')),sku=document.getElementById('glvSku')?.value.trim()||saved(key('sku'));
- saved(key('ean'),ean);saved(key('sku'),sku);
+ saved(key('ean'),ean);saved(key('sku'),sku);busy=true;lastLog='';render();
  const steps=[];
  try{
   if(canManage()&&snapshot?.sales?.mapping){
@@ -82,8 +82,8 @@ async function runAll(){
   steps.push('Assortiment');
   snapshot.assortment=await safe(api(`/api/admin/stores/${encodeURIComponent(sid)}/assortments/dynamics-preview`));
   if(ean){steps.push('Stock');snapshot.stock=await safe(api(`/api/stores/${encodeURIComponent(sid)}/item-assistant/${encodeURIComponent(ean)}`))}
-  log(`<div class="banner ban-ok"><strong>Validation terminée</strong><span>${esc(steps.join(' · '))}. Les activations restent manuelles dans les studios dédiés.</span></div>`)
- }catch(e){log(`<div class="banner ban-danger"><strong>Validation interrompue</strong><span>${esc(e.message)}</span></div>`);toast(e.message)}
+  lastLog=`<div class="banner ban-ok"><strong>Validation terminée</strong><span>${esc(steps.join(' · '))}. Les activations restent manuelles dans les studios dédiés.</span></div>`
+ }catch(e){lastLog=`<div class="banner ban-danger"><strong>Validation interrompue</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
  finally{busy=false;render()}
 }
 function bind(){
