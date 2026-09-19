@@ -102,8 +102,19 @@ async function api(req,res,url){
 
   if(path==='/api/commercial/config'&&req.method==='GET')return json(req,res,200,commercialConfig());
   if(path==='/api/commercial/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateCommercialPolicy({user,priceTolerance:b.priceTolerance}))}
-  p=route(path,'/api/stores/:storeId/commercial');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:false});if(req.method==='GET')return json(req,res,200,{summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate),sync})}
-  p=route(path,'/api/stores/:storeId/commercial/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:true});return json(req,res,200,{sync,summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate)})}
+  p=route(path,'/api/stores/:storeId/commercial');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:false});if(req.method==='GET')return json(req,res,200,{businessDate,summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate),sync})}
+  p=route(path,'/api/stores/:storeId/commercial/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCommercial(p.storeId,businessDate,{required:true});return json(req,res,200,{businessDate,sync,summary:commercialSummary(p.storeId,businessDate),items:listCommercialControls(p.storeId,businessDate)})}
+  if(path==='/api/commercial/network/sync'&&req.method==='POST'){
+    ensureDirector(user);
+    const businessDate=url.searchParams.get('date')||todayISO(),stores=db.prepare(`SELECT id,name FROM stores WHERE active=1 ORDER BY name`).all();
+    const settled=await Promise.allSettled(stores.map(store=>refreshCommercial(store.id,businessDate,{required:true})));
+    const results=stores.map((store,index)=>{
+      const result=settled[index];
+      if(result.status==='fulfilled')return{storeId:store.id,storeName:store.name,status:'READY',sync:result.value,summary:commercialSummary(store.id,businessDate)};
+      return{storeId:store.id,storeName:store.name,status:'ERROR',code:result.reason?.code||'COMMERCIAL_NETWORK_SYNC_FAILED',error:result.reason?.message||String(result.reason)}
+    });
+    return json(req,res,200,{businessDate,stores:results,ready:results.filter(x=>x.status==='READY').length,errors:results.filter(x=>x.status==='ERROR').length})
+  }
   p=route(path,'/api/commercial/:controlId/control');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(p.controlId);if(!row)return json(req,res,404,{error:'Contrôle prix/promo introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req),result=submitCommercialControl({id:p.controlId,user,observedPrice:b.observedPrice,signageOk:b.signageOk===true,executionOk:b.executionOk===true,note:b.note||''});if(result.issues.length){const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? AND status='OPEN'`).get(p.controlId);if(!existing){const inc=createIncident({storeId:row.store_id,user,title:`Écart prix/promo · ${row.product_name}`,description:result.issues.join(' · '),category:'PRICE_PROMO',criticality:row.priority==='CRITICAL'?'CRITICAL':'HIGH',blockingLevel:row.blocking_opening?'STORE_OPENING':'NONE',sourceType:'COMMERCIAL_CONTROL',sourceId:p.controlId,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Corriger le prix / la signalétique puis recontrôler',note:b.note||'',assignedTo:user.role==='store_manager'?user.id:null})}}return json(req,res,result.issues.length?409:200,result)}
 
   if(path==='/api/cash/config'&&req.method==='GET')return json(req,res,200,cashConfig());
