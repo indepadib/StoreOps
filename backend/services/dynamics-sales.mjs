@@ -2,6 +2,7 @@ import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
+import { effectiveD365SalesMapping } from './d365-sales-mapping.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -19,16 +20,16 @@ function parseMap(raw=''){
  return Object.fromEntries(s.split(',').map(x=>x.trim()).filter(Boolean).map(x=>{const i=x.indexOf('=');return i>0?[x.slice(0,i).trim(),x.slice(i+1).trim()]:null}).filter(Boolean));
 }
 function field(name,fallback=''){const v=clean(process.env[name]||fallback);return validField(v)?v:''}
-function salesLive(){return config.dynamics.mode==='live'&&(config.dynamics.read?.sales||clean(process.env.D365_SALES_READ_MODE).toLowerCase())==='live'}
+function salesLive(saved=null){return config.dynamics.mode==='live'&&(saved?.state==='LIVE'||(config.dynamics.read?.sales||clean(process.env.D365_SALES_READ_MODE).toLowerCase())==='live')}
 function nextDate(day,delta=1){const d=new Date(`${day}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+delta);return d.toISOString().slice(0,10)}
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
-function dateFilter(f,day){
- const mode=clean(process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase();
+function dateFilter(f,day,configuredMode=null){
+ const mode=clean(configuredMode||process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase();
  if(mode==='date')return `${f} eq ${day}`;
  return `${f} ge ${day}T00:00:00Z and ${f} lt ${nextDate(day)}T00:00:00Z`;
 }
-function dateRangeFilter(f,startDay,endDay){
- const mode=clean(process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase();
+function dateRangeFilter(f,startDay,endDay,configuredMode=null){
+ const mode=clean(configuredMode||process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase();
  if(mode==='date')return `${f} ge ${startDay} and ${f} le ${endDay}`;
  return `${f} ge ${startDay}T00:00:00Z and ${f} lt ${nextDate(endDay)}T00:00:00Z`;
 }
@@ -45,16 +46,26 @@ function hourOf(v){
 }
 
 export function salesIntegrationConfig(storeId=null){
- const entity=clean(process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities'),stores=parseMap(process.env.D365_STORE_RETAIL_IDS||''),storeSettings=storeId?storeOperationalSettings(storeId):null,retailId=storeId?(clean(stores[storeId])||clean(storeSettings?.d365?.retailChannelId)||null):null;
+ const persisted=effectiveD365SalesMapping(),saved=persisted?.state==='LIVE'?persisted:null;
+ const entity=clean(saved?.entity||process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities'),stores=parseMap(process.env.D365_STORE_RETAIL_IDS||''),storeSettings=storeId?storeOperationalSettings(storeId):null,retailId=storeId?(clean(stores[storeId])||clean(storeSettings?.d365?.retailChannelId)||null):null;
  const fields={
-  store:field('D365_SALES_STORE_FIELD','store'),date:field('D365_SALES_DATE_FIELD','businessDate'),transaction:field('D365_SALES_TRANSACTION_FIELD','transactionId'),
-  net:field('D365_SALES_NET_FIELD','netAmountInclTax'),quantity:field('D365_SALES_QTY_FIELD','qty'),product:field('D365_SALES_PRODUCT_FIELD','itemId'),
-  name:field('D365_SALES_PRODUCT_NAME_FIELD',''),cost:field('D365_SALES_COST_FIELD',''),time:field('D365_SALES_TIME_FIELD','time'),department:field('D365_SALES_DEPARTMENT_FIELD',''),category:field('D365_SALES_CATEGORY_FIELD','')
+  store:clean(saved?.fields?.channel)||field('D365_SALES_STORE_FIELD','store'),
+  date:clean(saved?.fields?.businessDate)||field('D365_SALES_DATE_FIELD','businessDate'),
+  transaction:clean(saved?.fields?.transaction)||field('D365_SALES_TRANSACTION_FIELD','transactionId'),
+  net:clean(saved?.fields?.net)||field('D365_SALES_NET_FIELD','netAmountInclTax'),
+  quantity:clean(saved?.fields?.quantity)||field('D365_SALES_QTY_FIELD','qty'),
+  product:clean(saved?.fields?.product)||field('D365_SALES_PRODUCT_FIELD','itemId'),
+  name:clean(saved?.fields?.productName)||field('D365_SALES_PRODUCT_NAME_FIELD',''),
+  cost:clean(saved?.fields?.cost)||field('D365_SALES_COST_FIELD',''),
+  time:clean(saved?.fields?.time)||field('D365_SALES_TIME_FIELD','time'),
+  department:clean(saved?.fields?.department)||field('D365_SALES_DEPARTMENT_FIELD',''),
+  category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD','')
  };
  const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
  const missing=required.filter(([,ok])=>!ok).map(([k])=>k);
  if(storeId&&!retailId)missing.push('storeMapping');
- return{mode:salesLive()?'LIVE':'DISABLED',entity,storeId,retailId,retailIdSource:clean(stores[storeId])?'ENV_CONFIG':storeSettings?.d365?.retailChannelId?'STORE_SETTINGS':null,stores,fields,missing,ready:salesLive()&&missing.length===0,pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:Number(process.env.D365_SALES_SIGN||-1)||-1,costSign:Number(process.env.D365_SALES_COST_SIGN||-1)||-1,quantitySign:Number(process.env.D365_SALES_QTY_SIGN||1)||1};
+ const live=salesLive(saved);
+ return{mode:live?'LIVE':'DISABLED',entity,storeId,retailId,retailIdSource:clean(stores[storeId])?'ENV_CONFIG':storeSettings?.d365?.retailChannelId?'STORE_SETTINGS':null,stores,fields,missing,ready:live&&missing.length===0,mappingSource:saved?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',mappingState:persisted?.state||null,dateFilterMode:saved?.dateFilterMode||clean(process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase(),pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:saved?.salesSign??(Number(process.env.D365_SALES_SIGN||-1)||-1),costSign:saved?.costSign??(Number(process.env.D365_SALES_COST_SIGN||-1)||-1),quantitySign:saved?.quantitySign??(Number(process.env.D365_SALES_QTY_SIGN||1)||1)};
 }
 
 function taxonomyLabels(productNumber){
@@ -83,7 +94,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
 
 export async function readStoreSalesDay(storeId,businessDate){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
- const filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateFilter(c.fields.date,businessDate)];
+ const filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateFilter(c.fields.date,businessDate,c.dateFilterMode)];
  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
  const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
@@ -94,7 +105,7 @@ export async function readStoreProductSalesVelocity(storeId,productNumber,{busin
  const c=salesIntegrationConfig(storeId),windowDays=Math.max(7,Math.min(90,Number(days)||28)),sku=clean(productNumber),end=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
  if(!c.ready||!sku||!c.fields.product||!c.fields.quantity)return{status:'UNAVAILABLE',source:'D365',storeId,productNumber:sku,businessDate:end,dailySales7:null,dailySales28:null,missing:[...new Set([...(c.missing||[]),!c.fields.product?'productField':null,!c.fields.quantity?'quantityField':null].filter(Boolean))]};
  const cacheSeconds=Math.max(30,Math.min(3600,Number(process.env.STOREOPS_SALES_VELOCITY_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${sku}|${end}|${windowDays}`;const cached=velocityCache.get(cacheKey);if(cached&&Date.now()<cached.expiresAt)return cached.value;
- const start=nextDate(end,-(windowDays-1)),start7=nextDate(end,-6),filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateRangeFilter(c.fields.date,start,end),`${c.fields.product} eq '${esc(sku)}'`];
+ const start=nextDate(end,-(windowDays-1)),start7=nextDate(end,-6),filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateRangeFilter(c.fields.date,start,end,c.dateFilterMode),`${c.fields.product} eq '${esc(sku)}'`];
  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
  const select=[c.fields.date,c.fields.quantity,c.fields.product,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});

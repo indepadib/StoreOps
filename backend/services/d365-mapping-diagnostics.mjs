@@ -2,6 +2,7 @@ import { config } from '../config.mjs';
 import { probeDataEntity } from './dynamics.mjs';
 import { salesIntegrationConfig } from './dynamics-sales.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
+import { d365SalesMappingSettings } from './d365-sales-mapping.mjs';
 
 const clean=v=>String(v??'').trim();
 const keyScore=(key,patterns=[])=>{const k=clean(key).toLowerCase();let score=0;for(const p of patterns){if(p instanceof RegExp){if(p.test(k))score+=3}else if(k===String(p).toLowerCase())score+=6;else if(k.includes(String(p).toLowerCase()))score+=2}return score};
@@ -45,12 +46,13 @@ async function safeProbe(entity,{filter=''}={}){
 }
 
 export function d365MappingDiagnosticReadiness(storeId='val-fleuri'){
- const store=storeOperationalSettings(storeId),sales=salesIntegrationConfig(storeId);
+ const store=storeOperationalSettings(storeId),sales=salesIntegrationConfig(storeId),savedSalesMapping=d365SalesMappingSettings();
  return{
   mode:config.dynamics.mode,
   storeId,
   retailChannelId:store?.d365?.retailChannelId||null,
-  sales:{entity:sales.entity,configuredFields:sales.fields,retailId:sales.retailId,retailIdSource:sales.retailIdSource,ready:sales.ready,missing:sales.missing||[]},
+  sales:{entity:sales.entity,configuredFields:sales.fields,retailId:sales.retailId,retailIdSource:sales.retailIdSource,ready:sales.ready,missing:sales.missing||[],mappingSource:sales.mappingSource||null,mappingState:sales.mappingState||savedSalesMapping?.state||null},
+  savedSalesMapping,
   candidates:{
    sales:unique([clean(process.env.D365_SALES_ENTITY)||'RetailTransactionSalesTransBIEntities','RetailTransactionSalesTransBIEntities','RetailTransactionSalesLines']),
    price:unique([clean(process.env.D365_BASE_PRICE_ENTITY),clean(process.env.D365_SALES_PRICE_ENTITY),'SalesPriceAgreements','SalesTradeAgreementLines']),
@@ -78,7 +80,7 @@ export async function diagnoseD365Mappings(storeId='val-fleuri'){
   status:salesResults.some(x=>x.ok)||priceResults.some(x=>x.ok)?'READY':'NO_ENTITY_RESPONDED',
   checkedAt:new Date().toISOString(),...ready,
   domains:{sales:salesResults,price:priceResults},
-  recommendation:{salesEntity:bestSales?.ok?bestSales.entity:null,fields:recommended,costDetected,marginReady:costDetected&&!!recommended.net},
+  recommendation:{salesEntity:bestSales?.ok?bestSales.entity:null,fields:recommended,costDetected,marginReady:costDetected&&!!recommended.net,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1},
   safeguards:{writes:false,configurationChanged:false,unknownCostBecomesZero:false}
  }
 }

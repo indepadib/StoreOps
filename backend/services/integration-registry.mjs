@@ -2,6 +2,7 @@ import { db,uid,audit } from '../db.mjs';
 import { config } from '../config.mjs';
 import { RETAIL_CAPABILITIES,normalizeConnector,connectorReadiness } from './connector-contract.mjs';
 import { allStoreOperationalSettings } from './store-settings.mjs';
+import { d365SalesMappingSettings } from './d365-sales-mapping.mjs';
 
 const clean=v=>String(v??'').trim();
 const slug=v=>clean(v).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,45);
@@ -33,7 +34,7 @@ function capabilityLabel(code){return({
 export const capabilityCatalog=()=>RETAIL_CAPABILITIES.map(code=>({code,label:capabilityLabel(code),domain:code.split('.')[0]}));
 
 function d365Connector(){
- const c=emptyCapabilities(),read=config.dynamics.read||{},stores=allStoreOperationalSettings(),hasStoreWh=stores.some(x=>x.storeWarehouseId),hasSupplyWh=stores.some(x=>x.supplyWarehouseId);
+ const c=emptyCapabilities(),read=config.dynamics.read||{},stores=allStoreOperationalSettings(),hasStoreWh=stores.some(x=>x.storeWarehouseId),hasSupplyWh=stores.some(x=>x.supplyWarehouseId),salesMapping=d365SalesMappingSettings();
  c['catalog.product.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.product),!!config.dynamics.barcodeEntity),'D365');
  c['inventory.stock.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.stock),!!config.dynamics.stock?.entity&&hasStoreWh),'D365');
  c['inventory.batch.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.stock),!!config.dynamics.stock?.batchField),'D365');
@@ -41,8 +42,11 @@ function d365Connector(){
  c['pricing.promotion.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.promotion),!!config.dynamics.entities?.retailDiscount),'D365');
  c['merchandising.assortment.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.assortment),!!clean(process.env.D365_ASSORTMENT_ENTITY)||!!clean(process.env.D365_STORE_ASSORTMENT_ENTITY)),'D365');
  c['merchandising.taxonomy.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.taxonomy),!!clean(process.env.D365_CATEGORY_ENTITY||'ProcurementProductCategories')),'D365');
- c['sales.transactions.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.sales),!!clean(process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities')),'D365');
- c['sales.margin.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.sales),!!clean(process.env.D365_SALES_COST_FIELD)),'D365');
+ const salesEnvLive=config.dynamics.mode==='live'&&readMode(read.sales),salesDbLive=config.dynamics.mode==='live'&&salesMapping?.state==='LIVE',salesDbValidated=salesMapping?.state==='VALIDATED';
+ const txMapped=salesDbLive?!!salesMapping?.entity&&['channel','businessDate','transaction','net'].every(k=>!!salesMapping?.fields?.[k]):!!clean(process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities');
+ const marginMapped=salesDbLive?!!salesMapping?.fields?.cost:!!clean(process.env.D365_SALES_COST_FIELD);
+ c['sales.transactions.read']=cap(salesDbLive?'LIVE':salesDbValidated?'LIVE_PENDING':state(salesEnvLive,txMapped),salesDbLive||salesDbValidated?'StoreOps sales mapping':'D365');
+ c['sales.margin.read']=cap(salesDbLive?(marginMapped?'LIVE':'UNMAPPED'):salesDbValidated?(salesMapping?.fields?.cost?'LIVE_PENDING':'UNMAPPED'):state(salesEnvLive,marginMapped),salesDbLive||salesDbValidated?'StoreOps sales mapping':'D365');
  c['supply.purchase-order.read']=cap(state(config.dynamics.mode==='live'&&readMode(read.receiving),!!config.dynamics.receiving?.headerEntity&&!!config.dynamics.receiving?.lineEntity),'D365');
  c['supply.transfer.read']=cap(hasSupplyWh?'LIVE_PENDING':'UNMAPPED','D365');
  for(const x of ['inventory.adjustment.write','supply.receiving.write','supply.transfer.write','finance.cash.write','loss.write'])c[x]=cap('UNMAPPED','D365');
