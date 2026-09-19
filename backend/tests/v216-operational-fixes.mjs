@@ -75,6 +75,6 @@ assert.match(server,/storeSettingsResponse=await handleStoreSettingsApi/);
 assert.match(storesUi,/Promise\.allSettled/,'Store Settings must survive optional directory/catalog failures');
 assert.match(storesUi,/storesResult\.status!=='fulfilled'/);
 assert.match(managerHome,/business-pulse\/auto-connect/,'Today must trigger guarded sales self-heal');
-assert.match(auth,/BUILD_LABEL='2\.16\.0'/);
+assert.match(auth,/BUILD_LABEL='\d+\.\d+\.\d+'/,'release label must remain explicit without freezing future releases');
 
 console.log('V2.16 operational fixes contract passed');
