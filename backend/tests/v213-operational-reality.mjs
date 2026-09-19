@@ -66,18 +66,21 @@ assert.match(server,/receipts'\);if\(p&&req\.method==='GET'\)\{\s*requireStore\(
 assert.match(server,/receipts\/readiness/,'receiving readiness route missing');
 assert.match(server,/receipts\/sync/,'explicit PO refresh route missing');
 assert.match(receipts,/Synchroniser D365/,'PO page must expose a visible explicit refresh');
-assert.match(receipts,/Connecteur PO Dynamics actif/,'PO page must make its live source explicit');
+assert.match(receipts,/PO Dynamics synchronisés/,'PO page must identify a proven successful D365 sync');
+assert.match(receipts,/Connexion PO Dynamics à valider/,'PO page must distinguish an unproven connection');
+assert.match(receipts,/PO Dynamics à vérifier/,'PO page must distinguish a degraded connection');
+assert.doesNotMatch(receipts,/Connecteur PO Dynamics actif/,'PO page must not claim LIVE from a configuration flag alone');
 assert.doesNotMatch(receipts,/Aucune réception prévue\./,'PO page must not silently hide connector failures');
 
 assert.match(app,/if\(page==='today'\)return invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'all operational profiles must use the guided Today cockpit');
 assert.doesNotMatch(app,/isManager\(\)\?invoke\('\.\/pages\/manager-home\.js'/,'Today must no longer split Admin/Direction onto the legacy page');
 assert.doesNotMatch(managerHome,/receipts\/sync/,'Today must never trigger a blocking PO sync in the background');
 
-assert.match(auth,/const BUILD='21(?:3|4)0'/);
-assert.match(auth,/const BUILD_LABEL='2\.(?:13|14)\.0'/);
-assert.match(index,/v2\.(?:13|14)\.0/);
-assert.match(classic,/BUILD='2\.(?:13|14)\.0'/);
-assert.match(build,/21(?:3|4)0/);
-assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.(?:13|14)\.0'/);
+assert.match(auth,/const BUILD='21(?:3|4|5)0'/);
+assert.match(auth,/const BUILD_LABEL='2\.(?:13|14|15)\.0'/);
+assert.match(index,/v2\.(?:13|14|15)\.0/);
+assert.match(classic,/BUILD='2\.(?:13|14|15)\.0'/);
+assert.match(build,/21(?:3|4|5)0/);
+assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.(?:13|14|15)\.0'/);
 
 console.log('V2.13 operational reality contract passed');
