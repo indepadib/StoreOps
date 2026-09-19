@@ -2,8 +2,8 @@ import { api,health,isShowcase } from './api.js';
 import { app,currentStore,isDirector,isPlatformAdmin,accessProfileLabel } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 
-const RELEASE_BUILD='2160';
-const RELEASE_MODULES=new Map([['./pages/commercial.js','./pages/commercial.js?v=2160'],['./pages/receipts.js','./pages/receipts.js?v=2160'],['./pages/manager-home.js','./pages/manager-home.js?v=2160']]);
+const RELEASE_BUILD='2170';
+const RELEASE_MODULES=new Map([['./pages/commercial.js','./pages/commercial.js?v=2170'],['./pages/receipts.js','./pages/receipts.js?v=2170'],['./pages/manager-home.js','./pages/manager-home.js?v=2170']]);
 const moduleCache=new Map();
 function lazy(path){path=RELEASE_MODULES.get(path)||path;if(!moduleCache.has(path))moduleCache.set(path,import(path));return moduleCache.get(path)}
 async function invoke(path,name,...args){const mod=await lazy(path),fn=mod?.[name];if(typeof fn!=='function')throw new Error(`Module StoreOps incomplet : ${path}#${name}`);return fn(...args)}
