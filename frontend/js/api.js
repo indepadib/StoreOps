@@ -10,6 +10,16 @@ function showcaseRuntime(){
   if(!showcaseRuntimePromise)showcaseRuntimePromise=import('./api-showcase.js');
   return showcaseRuntimePromise
 }
+function nativeBody(body){
+  if(body===null||body===undefined||typeof body!=='object')return true;
+  if(typeof FormData!=='undefined'&&body instanceof FormData)return true;
+  if(typeof Blob!=='undefined'&&body instanceof Blob)return true;
+  if(typeof URLSearchParams!=='undefined'&&body instanceof URLSearchParams)return true;
+  if(typeof ArrayBuffer!=='undefined'&&(body instanceof ArrayBuffer||ArrayBuffer.isView?.(body)))return true;
+  if(typeof ReadableStream!=='undefined'&&body instanceof ReadableStream)return true;
+  return false
+}
+function normalizeBody(body){return body!==null&&body!==undefined&&typeof body==='object'&&!nativeBody(body)?JSON.stringify(body):body}
 function applyAuth(headers){
   if(app.authMode==='demo')headers['x-demo-user']=localStorage.getItem('storeops_user')||'u-vf';
   else if(app.authMode==='local'){
@@ -55,8 +65,10 @@ async function parseJsonResponse(r,url){
 export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
-  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const normalizedBody=normalizeBody(options.body),baseHeaders={'content-type':'application/json',...(options.headers||{})};
+  if(typeof FormData!=='undefined'&&normalizedBody instanceof FormData)delete baseHeaders['content-type'];
+  const headers=applyAuth(baseHeaders),url=apiUrl(path);let r;
+  try{r=await fetch(url,{...options,body:normalizedBody,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
