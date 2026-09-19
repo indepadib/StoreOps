@@ -79,7 +79,7 @@ function dateOnly(v){const s=String(v||'');return /^\d{4}-\d{2}-\d{2}/.test(s)?s
 function dayDistance(from,to){const a=dateOnly(from),b=dateOnly(to);if(!a||!b)return null;return Math.round((new Date(`${b}T12:00:00Z`)-new Date(`${a}T12:00:00Z`))/86400000)}
 function stableKeyFor(c){
  if(c?.stableKey)return String(c.stableKey);
- return String(c?.sourceKey||'').replace(/-\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+)?$/i,'')
+ return String(c?.sourceKey||c?.source_key||'').replace(/-\d{4}-\d{2}-\d{2}(?:-[a-z0-9]+)?$/i,'')
 }
 function fingerprintFor(c){
  if(c?.fingerprint)return String(c.fingerprint);
@@ -160,9 +160,18 @@ export function listCommercialControls(storeId,businessDate=todayISO()){
  const rows=db.prepare(`SELECT * FROM commercial_controls
    WHERE store_id=? AND (business_date=? OR (business_date<? AND status!='VERIFIED'))
    ORDER BY CASE WHEN business_date=? THEN 0 ELSE 1 END,
-            CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END,
-            business_date,created_at`).all(storeId,businessDate,businessDate,businessDate);
- return rows.map(row=>hydrate({...row,carried_from_business_date:row.business_date===businessDate?null:row.business_date}));
+            business_date DESC,created_at DESC`).all(storeId,businessDate,businessDate,businessDate);
+ const seen=new Set(),visible=[];
+ for(const row of rows){
+  const stable=stableKeyFor(row)||row.source_key;
+  if(seen.has(stable))continue;
+  seen.add(stable);
+  visible.push(hydrate({...row,carried_from_business_date:row.business_date===businessDate?null:row.business_date}))
+ }
+ return visible.sort((a,b)=>{
+  const pa={CRITICAL:0,HIGH:1,NORMAL:2,LOW:3},dayA=a.business_date===businessDate?0:1,dayB=b.business_date===businessDate?0:1;
+  return dayA-dayB||(pa[a.priority]??9)-(pa[b.priority]??9)||String(b.business_date).localeCompare(String(a.business_date))
+ });
 }
 export function commercialSummary(storeId,businessDate=todayISO()){
  const rows=listCommercialControls(storeId,businessDate),counts={PENDING:0,MISMATCH:0,VERIFIED:0};
