@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { odataGet,odataGetAll } from './dynamics.mjs';
+import { odataGet,odataGetAll,resolveStorePriceGroups } from './dynamics.mjs';
 
 export const SALES_PRICE_ENTITY='SalesPriceAgreements';
 export const BASE_PRICE_ENTITY='ReleasedProductsV2';
@@ -100,33 +100,37 @@ async function dateScopedRows(entity,{dateField,day,filterParts=[],select='',pag
 export async function getCommercialPriceChanges(storeId,businessDate){
   const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
   if(!priceLive())return{changes:[],diagnostics:{mode:'SIMULATED',sources:[]}};
-  const priceGroup=String(config.dynamics.storePriceGroups?.[storeId]||config.dynamics.defaultPriceGroup||'Franprix').trim()||'Franprix';
+  const groupContext=await resolveStorePriceGroups(storeId),priceGroups=(groupContext.groups||[]).filter(Boolean);
+  if(!priceGroups.length)priceGroups.push(String(config.dynamics.defaultPriceGroup||'Franprix').trim()||'Franprix');
+  const primaryPriceGroup=priceGroups[0];
   const companyFilter=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
+  const groupFilter=priceGroups.length===1?`PriceCustomerGroupCode eq '${escapeOData(priceGroups[0])}'`:`(${priceGroups.map(g=>`PriceCustomerGroupCode eq '${escapeOData(g)}'`).join(' or ')})`;
   const sources=[],byItem=new Map();
 
   try{
     const entity=salesPriceEntity(),payload=await dateScopedRows(entity,{
       dateField:'PriceApplicableFromDate',day,
-      filterParts:[companyFilter,`PriceCustomerGroupCode eq '${escapeOData(priceGroup)}'`],
+      filterParts:[companyFilter,groupFilter],
       select:AGREEMENT_SELECT_FIELDS.join(','),pageSize:200,maxRows:4000
     });
     if(payload.truncated)throw Object.assign(new Error(`Les accords tarifaires du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_PRICE_AGREEMENTS_TRUNCATED'});
+    const allowedGroups=new Set(priceGroups);
     for(const r of payload.value||[]){
       const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode);
       const price=Number(r.Price);if(!item||rowDay!==day||!Number.isFinite(price)||price<0)continue;
-      if(rowGroup&&rowGroup!==priceGroup)continue;
+      if(rowGroup&&!allowedGroups.has(rowGroup))continue;
       const record=clean(r.RecordId)||item;
       byItem.set(item,{
         sourceKey:`D365-PRICE-AGREEMENT-${record}-${day}`,
         stableKey:`D365-PRICE-AGREEMENT:${record}`,
         fingerprint:stableFingerprint(['AGREEMENT',record,item,price,rowGroup,r.PriceCurrencyCode,r.PriceApplicableFromDate,r.PriceApplicableToDate,r.PriceWarehouseId,r.PriceSiteId]),
         actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
-        oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix ${price.toFixed(2)} DH · accord tarifaire ${rowGroup||priceGroup}`,
-        signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup,source:'D365_RETAIL_PRICING',
+        oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix ${price.toFixed(2)} DH · accord tarifaire ${rowGroup||primaryPriceGroup}`,
+        signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:rowGroup||primaryPriceGroup,priceGroups,source:'D365_RETAIL_PRICING',
         effectiveFrom:r.PriceApplicableFromDate||day,effectiveTo:r.PriceApplicableToDate||null,priceSource:'SALES_PRICE_AGREEMENT'
       })
     }
-    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,rowCount:payload.rowCount,changes:[...byItem.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT').length})
+    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,rowCount:payload.rowCount,priceGroups,retailChannelId:groupContext.retailChannelId||null,changes:[...byItem.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT').length})
   }catch(error){sources.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',code:error.code||'D365_PRICE_AGREEMENTS_DELTA_FAILED',message:error.message})}
 
   try{
@@ -144,7 +148,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         fingerprint:stableFingerprint(['BASE',item,price,r.SalesUnitSymbol,r.SalesPriceQuantity,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
         actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
         oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix de base ${price.toFixed(2)} DH`,
-        signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup,source:'D365_RETAIL_PRICING',
+        signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:primaryPriceGroup,priceGroups,source:'D365_RETAIL_PRICING',
         effectiveFrom:r.SalesPriceDate||day,effectiveTo:r.SellEndDate||null,priceSource:'BASE_PRICE'
       });inserted+=1
     }
@@ -155,5 +159,5 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   if(!changes.length&&sources.length&&sources.every(x=>x.status==='ERROR')){
     throw Object.assign(new Error('Dynamics n’a pas permis de lire les changements de prix du jour.'),{status:502,code:'D365_COMMERCIAL_PRICE_DELTA_FAILED',details:{sources}})
   }
-  return{changes,diagnostics:{mode:'LIVE',day,priceGroup,sources}}
+  return{changes,diagnostics:{mode:'LIVE',day,priceGroup:primaryPriceGroup,priceGroups,retailChannelId:groupContext.retailChannelId||null,sources}}
 }
