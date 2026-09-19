@@ -152,7 +152,7 @@ function cleanList(values=[]){return[...new Set((values||[]).map(v=>String(v||''
 export async function resolveStorePriceGroups(storeId,{force=false}={}){
   const configured=cleanList([config.dynamics.storePriceGroups?.[storeId],config.dynamics.defaultPriceGroup||'Franprix']);
   const store=storeOperationalSettings(storeId),retailChannelId=String(store?.d365?.retailChannelId||'').trim()||null;
-  if(!isD365ReadLive('promotion')||!retailChannelId)return{groups:configured,retailChannelId,source:retailChannelId?'CONFIG_ONLY':'NO_RETAIL_CHANNEL',entity:null,error:null};
+  if(!(isD365ReadLive('promotion')||isD365ReadLive('price'))||!retailChannelId)return{groups:configured,retailChannelId,source:retailChannelId?'CONFIG_ONLY':'NO_RETAIL_CHANNEL',entity:null,error:null};
   const cacheKey=`${storeId}|${retailChannelId}`,ttl=Math.max(5,Math.min(300,Number(process.env.STOREOPS_PRICE_GROUP_CACHE_SECONDS)||15)),cached=priceGroupCache.get(cacheKey);
   if(!force&&cached&&Date.now()<cached.expiresAt)return cached.value;
   const explicit=String(process.env.D365_CHANNEL_PRICE_GROUP_ENTITY||'').trim(),candidates=cleanList(explicit?[explicit]:['RetailChannelPriceGroups','RetailChannelPriceGroupEntity']);
