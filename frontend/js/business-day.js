@@ -1,7 +1,6 @@
 const TZ='Africa/Casablanca';
 
-export function businessDayToday(timeZone=TZ){
- const now=new Date();
+export function businessDayToday(timeZone=TZ,now=new Date()){
  try{
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);
   const get=t=>parts.find(p=>p.type===t)?.value;
