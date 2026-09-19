@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { db,uid,audit,todayISO } from '../db.mjs';
 import { compileExport,validateExportTemplate } from './export-template.mjs';
 import { listLossRecords,ensureLossPostable,markLossPosted } from './loss.mjs';
+import { effectiveLossExportTemplate } from './loss-export-mapping.mjs';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS loss_export_runs(
@@ -42,8 +43,9 @@ const GENERIC_TEMPLATE={
 };
 
 function configuredErpTemplate(){
+ const persisted=effectiveLossExportTemplate();if(persisted)return{...persisted,__source:'STOREOPS_MAPPING'};
  const raw=String(process.env.STOREOPS_LOSS_EXPORT_TEMPLATE_JSON||'').trim();if(!raw)return null;
- try{return validateExportTemplate(JSON.parse(raw))}catch(error){throw Object.assign(new Error(`Template export démarque invalide : ${error.message}`),{status:503,code:'LOSS_EXPORT_TEMPLATE_INVALID'})}
+ try{return{...validateExportTemplate(JSON.parse(raw)),__source:'ENV_CONFIG'}}catch(error){throw Object.assign(new Error(`Template export démarque invalide : ${error.message}`),{status:503,code:'LOSS_EXPORT_TEMPLATE_INVALID'})}
 }
 function activeRows(storeId,businessDate){return listLossRecords(storeId,businessDate,'ALL').filter(x=>!['POSTED','CANCELLED'].includes(x.status))}
 function blockerFor(row){try{ensureLossPostable(row.id);return null}catch(error){return{id:row.id,productName:row.product_name,status:row.status,code:error.code||'LOSS_NOT_POSTABLE',message:error.message}}}
@@ -53,7 +55,7 @@ export function lossExportRun(id){return hydrateRun(db.prepare(`SELECT * FROM lo
 
 export function lossExportStatus(storeId,businessDate=todayISO()){
  const rows=activeRows(storeId,businessDate),blockers=rows.map(blockerFor).filter(Boolean),erpTemplate=configuredErpTemplate(),last=hydrateRun(db.prepare(`SELECT * FROM loss_export_runs WHERE store_id=? AND business_date=? ORDER BY generated_at DESC LIMIT 1`).get(storeId,businessDate));
- return{storeId,businessDate,openLines:rows.length,ready:rows.length>0&&blockers.length===0,blockers,erpTemplateConfigured:!!erpTemplate,erpTemplate:erpTemplate?{code:erpTemplate.code,name:erpTemplate.name,target:erpTemplate.target,version:erpTemplate.version}:null,lastExport:last?{id:last.id,status:last.status,fileName:last.file_name,target:last.target,confirmable:last.confirmable,generatedAt:last.generated_at,confirmedAt:last.confirmed_at,reference:last.external_reference}:null};
+ return{storeId,businessDate,openLines:rows.length,ready:rows.length>0&&blockers.length===0,blockers,erpTemplateConfigured:!!erpTemplate,erpTemplate:erpTemplate?{code:erpTemplate.code,name:erpTemplate.name,target:erpTemplate.target,version:erpTemplate.version,source:erpTemplate.__source||'UNKNOWN'}:null,lastExport:last?{id:last.id,status:last.status,fileName:last.file_name,target:last.target,confirmable:last.confirmable,generatedAt:last.generated_at,confirmedAt:last.confirmed_at,reference:last.external_reference}:null};
 }
 
 export function generateLossClosingPack({storeId,businessDate=todayISO(),user}){
