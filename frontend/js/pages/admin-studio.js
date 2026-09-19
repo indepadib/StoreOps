@@ -21,7 +21,7 @@ function newCode(name){return `CUSTOM_${slug(name)}_${Date.now().toString(36).sl
 function stepCode(title,i){const s=slug(title).toLowerCase().slice(0,28);return s||`step_${i+1}`}
 
 function renderHome(){
- $('#adminStudioContent').innerHTML=`<div class="studio-hero"><div><div class="label">STOREOPS ADMIN STUDIO · V2.12</div><h2>Tout ce qui est réellement disponible.</h2><p>Chaque carte ci-dessous ouvre un module actif. Les fonctionnalités en production ne sont plus cachées derrière des écrans techniques.</p></div><div class="studio-hero-badge"><strong>${processDataLoaded?templates.filter(x=>x.active).length:'—'}</strong><span>process actifs</span></div></div>
+ $('#adminStudioContent').innerHTML=`<div class="studio-hero"><div><div class="label">STOREOPS ADMIN STUDIO · V2.12</div><h2>Qu’est-ce que vous voulez mettre en place ?</h2><p>Tout ce qui est réellement disponible est maintenant visible ici. Chaque carte ouvre un module actif, sans passer par des écrans techniques.</p></div><div class="studio-hero-badge"><strong>${processDataLoaded?templates.filter(x=>x.active).length:'—'}</strong><span>process actifs</span></div></div>
  <div class="banner ban-info" style="margin:0 0 14px"><strong>Modules actifs</strong><span>Développement réseau · Utilisateurs & accès · Magasins / entrepôts / assortiment · Réappro · Intégrations D365 · Marque & vocabulaire.</span></div>
  <div class="studio-intent-grid">
   <button class="studio-intent-card primary" data-studio-action="development"><span class="studio-intent-icon">⌂</span><strong>Développement réseau</strong><small>Sourcing locaux, GO / HOLD / NO GO, contrats, CAPEX, travaux et pré-ouverture.</small><em>Ouvrir →</em></button>
