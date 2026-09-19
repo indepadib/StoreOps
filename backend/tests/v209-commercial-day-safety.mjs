@@ -39,6 +39,8 @@ const {syncCommercialControls,listCommercialControls,commercialSummary}=await im
 const {getCommercialPriceChanges}=await import('../services/dynamics-price.mjs');
 
 assert.equal(todayISO('Africa/Casablanca',new Date('2026-09-18T23:30:00Z')),'2026-09-19','Morocco business day must not lag behind UTC at midnight');
+const {businessDayToday}=await import('../../frontend/js/business-day.js');
+assert.equal(businessDayToday('Africa/Casablanca',new Date('2026-09-18T23:30:00Z')),'2026-09-19','frontend and backend must agree on Morocco business day');
 
 for(const t of ['commercial_controls','commercial_source_state'])db.prepare(`DELETE FROM ${t}`).run();
 
@@ -80,5 +82,8 @@ const frontend=(await import('node:fs/promises')).readFile(new URL('../../fronte
 const frontText=await frontend;
 assert.match(frontText,/businessDayToday\(\)/,'commercial throttle must be scoped by local business day');
 assert.match(frontText,/refreshCommercialNetworkLive/,'network commercial background refresh missing');
+const commercialPage=await (await import('node:fs/promises')).readFile(new URL('../../frontend/js/pages/commercial.js',import.meta.url),'utf8');
+assert.match(commercialPage,/Rafraîchir tous les magasins/,'direction must have an explicit network refresh action');
+assert.match(commercialPage,/carried_from_business_date/,'overdue commercial controls must be visible in UI');
 
 console.log('V2.09 commercial day safety contract: OK');
