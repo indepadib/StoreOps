@@ -105,17 +105,33 @@ export function receivingIntegrationConfig(storeId=null){
 
 function syncTop(){return Math.max(50,Math.min(2000,Number(process.env.D365_PO_SYNC_TOP)||750))}
 function headerEnrichmentLimit(){return Math.max(0,Math.min(50,Number(process.env.D365_PO_HEADER_ENRICH_LIMIT)||30))}
-function syncTimeoutMs(){return Math.max(2500,Math.min(9000,Number(process.env.D365_PO_SYNC_TIMEOUT_MS)||5200))}
+function syncTimeoutMs(){return Math.max(4000,Math.min(20000,Number(process.env.D365_PO_SYNC_TIMEOUT_MS)||12000))}
 function withSyncTimeout(promise){const ms=syncTimeoutMs();return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error(`Synchronisation PO interrompue après ${ms} ms pour protéger StoreOps.`),{status:503,code:'D365_RECEIVING_SYNC_TIMEOUT',details:{timeoutMs:ms}})),ms))])}
 
 async function purchaseOrderLinesForWarehouse(warehouseId){
  const c=receiving();
  if(!c.lineEntity)throw Object.assign(new Error('D365_PO_LINE_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_LINE_MAPPING_REQUIRED'});
- const top=syncTop(),warehouseFilter=`${c.warehouseField} eq '${esc(warehouseId)}'`,remainingFilter=c.remainingQtyField?`${c.remainingQtyField} gt 0`:'';
- const filter=withCompany([warehouseFilter,remainingFilter].filter(Boolean).join(' and '));
- const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()});
- const raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>remainingFor(row,c)>0);
- return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverRemainingFilter:!!remainingFilter};
+ const top=syncTop(),warehouseCandidates=unique([c.warehouseField,'ReceivingWarehouseId','InventoryWarehouseId','WarehouseId','DefaultReceivingWarehouseId','InventLocationId']);
+ const attempts=[];
+ for(const warehouseField of warehouseCandidates){
+  for(const useRemainingFilter of [true,false]){
+   const remainingFilter=useRemainingFilter&&c.remainingQtyField?`${c.remainingQtyField} gt 0`:'';
+   const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,remainingFilter].filter(Boolean).join(' and '));
+   try{
+    const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>remainingFor(row,c)>0);
+    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverRemainingFilter:!!remainingFilter,warehouseField,attempts};
+   }catch(error){
+    attempts.push({warehouseField,serverRemainingFilter:!!remainingFilter,code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
+    if(!remainingFilter)break;
+   }
+  }
+ }
+ let sampleKeys=[];
+ try{
+  const sample=await odataGet(c.lineEntity,{filter:withCompany(''),top:3,extra:extraCompany()}),rows=Array.isArray(sample?.value)?sample.value:[];
+  sampleKeys=unique(rows.flatMap(row=>Object.keys(row||{}))).filter(key=>/warehouse|inventlocation|location/i.test(key)).slice(0,20)
+ }catch{}
+ throw Object.assign(new Error(`Aucun champ warehouse exploitable n’a permis de lire les PO de ${warehouseId}.`),{status:503,code:'D365_RECEIVING_WAREHOUSE_FIELD_UNRESOLVED',details:{warehouseId,entity:c.lineEntity,attemptedFields:warehouseCandidates,sampleWarehouseFields:sampleKeys,attempts:attempts.slice(-8)}})
 }
 
 async function purchaseOrderHeaders(poNumbers){
@@ -153,7 +169,7 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
   };
  });
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,truncated,authoritative:!truncated}};
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
 }
 
 function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}

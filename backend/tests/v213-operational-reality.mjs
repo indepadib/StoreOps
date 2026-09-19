@@ -76,11 +76,12 @@ assert.match(app,/if\(page==='today'\)return invoke\('\.\/pages\/manager-home\.j
 assert.doesNotMatch(app,/isManager\(\)\?invoke\('\.\/pages\/manager-home\.js'/,'Today must no longer split Admin/Direction onto the legacy page');
 assert.doesNotMatch(managerHome,/receipts\/sync/,'Today must never trigger a blocking PO sync in the background');
 
-assert.match(auth,/const BUILD='21(?:3|4|5)0'/);
-assert.match(auth,/const BUILD_LABEL='2\.(?:13|14|15)\.0'/);
-assert.match(index,/v2\.(?:13|14|15)\.0/);
-assert.match(classic,/BUILD='2\.(?:13|14|15)\.0'/);
-assert.match(build,/21(?:3|4|5)0/);
-assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.(?:13|14|15)\.0'/);
+const releaseBuild=auth.match(/const BUILD='([0-9]{4})'/)?.[1],releaseLabel=auth.match(/const BUILD_LABEL='([0-9]+\.[0-9]+\.[0-9]+)'/)?.[1];
+assert(releaseBuild&&releaseLabel,'active release markers required');
+assert.match(index,new RegExp(`v${releaseLabel.replaceAll('.','\\.')}`));
+assert.match(index,new RegExp(`auth-entry\\.js\\?v=${releaseBuild}`));
+assert.match(classic,new RegExp(`BUILD='${releaseLabel.replaceAll('.','\\.')}'`));
+assert.match(build,new RegExp(`STOREOPS_RELEASE_BUILD:-${releaseBuild}`));
+assert.match(bridge,new RegExp(`version:envValue\\('STOREOPS_VERSION'\\)\\|\\|'${releaseLabel.replaceAll('.','\\.')}'`));
 
 console.log('V2.13 operational reality contract passed');
