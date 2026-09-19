@@ -1,0 +1,46 @@
+name: V2.09 Commercial Day Safety
+
+on:
+  push:
+    branches: [storeops-v2.09-commercial-day-safety]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/db.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/business-day.js
+          node --check frontend/js/business-day-runtime.js
+          node --check frontend/js/commercial-live-refresh.js
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/today.js
+      - name: Commercial day safety contract
+        run: node backend/tests/v209-commercial-day-safety.mjs
+      - name: Commercial live delta regression
+        run: node backend/tests/v205-commercial-live-delta.mjs
+      - name: Channel price groups regression
+        run: node backend/tests/v206-channel-price-groups.mjs
+      - name: Manager Today regression
+        run: STOREOPS_DB=/tmp/storeops-v209-fast.db node backend/tests/v185-manager-home-fast.mjs
+      - name: Production asset coherence
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Static guards
+        run: |
+          grep -q "Africa/Casablanca" backend/db.mjs
+          grep -q "removed:0" backend/services/commercial.mjs
+          grep -q "business_date<? AND status!='VERIFIED'" backend/services/commercial.mjs
+          grep -q "/api/commercial/network/sync" backend/server.mjs
+          grep -q "Rafraîchir tous les magasins" frontend/js/pages/commercial.js
