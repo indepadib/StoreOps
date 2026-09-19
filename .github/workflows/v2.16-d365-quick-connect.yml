@@ -1,0 +1,40 @@
+name: V2.16 D365 Quick Connect Contract
+
+on:
+  push:
+    branches: [storeops-v2.16-d365-quick-connect]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/config.mjs
+          node --check backend/services/dynamics-receiving.mjs
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/admin-d365-quick-connect.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/app.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.16 quick connect contract
+        run: node backend/tests/v216-d365-quick-connect.mjs
+      - name: D365 receiving regression
+        run: node backend/tests/dynamics-receiving.mjs
+      - name: V2.15 truthful integrations regression
+        run: node backend/tests/v215-truthful-integrations.mjs
+      - name: V2.14 integration regression
+        run: node backend/tests/v214-integration-p0.mjs
+      - name: V2.13 operational reality regression
+        run: node backend/tests/v213-operational-reality.mjs
