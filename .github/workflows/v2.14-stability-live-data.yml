@@ -28,6 +28,8 @@ jobs:
           node --check backend/services/dlc.mjs
           node --check frontend/js/pages/manager-home.js
           node --check frontend/js/pages/process.js
+          node --check frontend/js/pages/incidents.js
+          node --check frontend/js/pages/dlc.js
           node --check frontend/js/admin-d365-mapping.js
       - name: Typecheck Netlify function
         run: npx tsc -p tsconfig.netlify.json
