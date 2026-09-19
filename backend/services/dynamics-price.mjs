@@ -117,10 +117,12 @@ function clean(v){return String(v??'').trim()}
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function stableFingerprint(parts=[]){return parts.map(v=>String(v??'')).join('|')}
 function previousDays(day,count=2){const out=[];const d=new Date(`${day}T12:00:00Z`);for(let i=0;i<=count;i++){const x=new Date(d);x.setUTCDate(x.getUTCDate()-i);out.push(x.toISOString().slice(0,10))}return out}
+function nextDate(day){const d=new Date(`${day}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10)}
+function priceGroupAllowed(rowGroup,priceGroups=[]){const row=clean(rowGroup);if(!row||/^(all|tous)$/i.test(row))return true;const target=row.toLowerCase();return (priceGroups||[]).some(x=>clean(x).toLowerCase()===target)}
 function orFilter(field,values=[]){const rows=[...new Set((values||[]).map(clean).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 async function dateScopedRows(entity,{dateField,day,filterParts=[],select='',pageSize=200,maxRows=4000}={}){
   const extra=config.dynamics.dataAreaId?'cross-company=true':'';
-  const dateFilters=[`${dateField} eq ${day}`,`${dateField} eq '${escapeOData(day)}'`];
+  const tomorrow=nextDate(day),dateFilters=[`${dateField} eq ${day}`,`${dateField} eq '${escapeOData(day)}'`,`${dateField} ge ${day}T00:00:00Z and ${dateField} lt ${tomorrow}T00:00:00Z`,`${dateField} ge ${day}T00:00:00 and ${dateField} lt ${tomorrow}T00:00:00`];
   let lastError=null;
   for(const dateFilter of dateFilters){
     try{
@@ -145,7 +147,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
     let totalRows=0,totalPages=0,truncated=false;
     for(const scanDay of scanDays){
       const dateField=fields?.validFrom||'PriceApplicableFromDate',groupField=fields?.priceGroup||'PriceCustomerGroupCode';
-      const filterParts=[companyFilter,groupField&&priceGroups.length?orFilter(groupField,priceGroups):''].filter(Boolean);
+      const filterParts=[companyFilter].filter(Boolean);
       const select=fields?[...new Set([fields.item,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(','):AGREEMENT_SELECT_FIELDS.join(',');
       const payload=await dateScopedRows(entity,{dateField,day:scanDay,filterParts,select,pageSize:250,maxRows:6000});
       totalRows+=Number(payload.rowCount||0);totalPages+=Number(payload.pages||0);truncated=truncated||!!payload.truncated;
@@ -154,7 +156,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
       for(const r of normalized){
         const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode),price=Number(r.Price);
         if(!item||!scanDays.includes(rowDay)||!Number.isFinite(price)||price<0)continue;
-        if(rowGroup&&priceGroups.length&&!priceGroups.includes(rowGroup))continue;
+        if(!priceGroupAllowed(rowGroup,priceGroups))continue;
         const record=clean(r.RecordId)||`${item}:${rowGroup||'ALL'}:${rowDay}`;
         const existing=byItem.get(item);
         if(existing&&dateOnly(existing.effectiveFrom)>rowDay)continue;
@@ -170,7 +172,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         })
       }
     }
-    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',priceGroups,rowCount:totalRows,pages:totalPages,truncated,changes:[...byItem.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT').length})
+    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',priceGroups,groupFilter:'LOCAL_ACCEPT_ALL_OR_STORE_GROUP',rowCount:totalRows,pages:totalPages,truncated,changes:[...byItem.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT').length})
   }catch(error){sources.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',code:error.code||'D365_PRICE_AGREEMENTS_DELTA_FAILED',message:error.message})}
 
   try{
