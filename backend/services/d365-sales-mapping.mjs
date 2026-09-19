@@ -113,10 +113,10 @@ export function evaluateD365SalesSmokeRows({rows=[],mapping,retailChannelId,late
  const tickets=new Set(list.map(r=>clean(r?.[normalized.fields.transaction])).filter(Boolean));
  const sales=numericStats(list,normalized.fields.net,normalized.salesSign),quantity=numericStats(list,normalized.fields.quantity,normalized.quantitySign),cost=numericStats(list,normalized.fields.cost,normalized.costSign);
  const channel=clean(retailChannelId),channelMatches=channel?list.filter(r=>clean(r?.[normalized.fields.channel])===channel).length:0;
- const passed=list.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0;
+ const channelOk=!!channel&&channelMatches>0,passed=list.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0&&channelOk;
  return{
   status:passed?'PASSED':'FAILED',checkedAt:new Date().toISOString(),retailChannelId:channel||null,entity:normalized.entity,rowCount:list.length,latencyMs,
-  filtered:!!filtered&&channelMatches>0,channelMatches,uniqueTickets:tickets.size,requiredFieldsPresent:missingInPayload.length===0,missingInPayload,presence,
+  filtered:!!filtered&&channelMatches>0,channelMatches,channelOk,uniqueTickets:tickets.size,requiredFieldsPresent:missingInPayload.length===0,missingInPayload,presence,
   metrics:{sales,quantity,cost},marginCandidate:!!normalized.fields.cost&&cost.numeric>0,
   note:passed?'Structure ventes exploitable. Comparaison métier CA/tickets encore recommandée avant généralisation.':'Le mapping ne satisfait pas les garde-fous techniques.'
  }
