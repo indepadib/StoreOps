@@ -80,10 +80,12 @@ assert.match(refresh,/minIntervalMs=300000/,'background sync must be throttled')
 assert.match(refresh,/storeops:commercial-updated/,'background sync should publish an update event');
 assert.match(refresh,/status=Number\(error\?\.status\)\|\|0;remember\(id\)/,'failed background refreshes must back off instead of retrying on every render');
 assert.match(app,/invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'manager Today must remain lazy');
-assert.match(app,/commercial\.js\?v=2050/);
-assert.match(auth,/const BUILD='2050'/);
-assert.match(enhancements,/const BUILD='2050'/,'deferred modules must share V2.05 cache generation');
-assert.match(classic,/var BUILD='2.05.0'/,'classic boot release must match V2.05');
-assert.match(index,/auth-entry\.js\?v=2050/);
+const runtimeBuild=auth.match(/const BUILD='(\\d+)'/)?.[1];
+const runtimeLabel=auth.match(/const BUILD_LABEL='([^']+)'/)?.[1];
+assert(runtimeBuild&&runtimeLabel,'active release markers must exist');
+assert.match(app,new RegExp(`commercial\\.js\\?v=${runtimeBuild}`),'commercial lazy asset must share active release generation');
+assert.match(enhancements,new RegExp(`const BUILD='${runtimeBuild}'`),'deferred modules must share active release cache generation');
+assert.match(classic,new RegExp(`var BUILD='${runtimeLabel.replaceAll('.','\\.')}'`),'classic boot release must match active release label');
+assert.match(index,new RegExp(`auth-entry\\.js\\?v=${runtimeBuild}`),'entry asset must share active release generation');
 
-console.log('StoreOps V2.05 commercial live delta contract passed');
+console.log(`StoreOps commercial live delta contract passed · active release ${runtimeLabel}`);
