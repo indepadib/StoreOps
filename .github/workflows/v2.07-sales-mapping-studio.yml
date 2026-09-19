@@ -29,9 +29,15 @@ jobs:
         run: STOREOPS_DB=/tmp/storeops-v207-diagnostics.db node backend/tests/v188-d365-mapping-diagnostics.mjs
       - name: Business Pulse regression
         run: STOREOPS_DB=/tmp/storeops-v207-pulse.db node backend/tests/business-pulse.mjs
+      - name: Production asset coherence
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Commercial release regression
+        run: node backend/tests/v205-commercial-live-delta.mjs
       - name: Static guards
         run: |
           grep -q "D365_SALES_MAPPING_NOT_VALIDATED" backend/services/d365-sales-mapping.mjs
           grep -q "STOREOPS_VALIDATED_MAPPING" backend/services/dynamics-sales.mjs
           grep -q "Activer ventes LIVE" frontend/js/admin-d365-mapping.js
           grep -q "unknownCostBecomesZero:false" backend/services/d365-mapping-diagnostics.mjs
+          grep -q "const BUILD='2070'" frontend/js/auth-entry.js
+          grep -q "commercial.js?v=2070" frontend/js/app.js
