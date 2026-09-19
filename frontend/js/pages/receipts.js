@@ -68,7 +68,7 @@ function bindBrowser(ro){
 }
 export async function renderReceipts(){
  ensureReceiptStyles();receiptDetails.clear();
- const [rowsResult,readinessResult]=await Promise.allSettled([api(`/api/stores/${app.storeId}/receipts?view=summary`),api(`/api/stores/${app.storeId}/receipts/readiness`)]);
+ const [rowsResult,readinessResult]=await Promise.allSettled([api(`/api/stores/${app.storeId}/receipts/summary`),api(`/api/stores/${app.storeId}/receipts/readiness`)]);
  receiptRows=rowsResult.status==='fulfilled'?(rowsResult.value||[]):[];receiptRowsError=rowsResult.status==='rejected'?(rowsResult.reason?.message||'Backend Réception indisponible.'):null;receiptReadiness=readinessResult.status==='fulfilled'?readinessResult.value:null;
  ensureSelection();const ro=!canManage();renderReceiptView(ro);await renderSelectedDetail(ro)
 }
