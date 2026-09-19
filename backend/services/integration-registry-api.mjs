@@ -20,6 +20,16 @@ export async function handleIntegrationRegistryApi({req,url,user}){
  if(path==='/api/admin/integrations/d365-mapping/diagnose'&&req.method==='POST'){readAccess(user);const b=await body(req);return{status:200,data:await diagnoseD365Mappings(b.storeId||'val-fleuri')}}
  if(path==='/api/admin/integrations/d365-sales-mapping/draft'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:saveD365SalesMappingDraft({actor:user,input:b})}}
  if(path==='/api/admin/integrations/d365-sales-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365SalesMapping({actor:user,storeId:b.storeId||'val-fleuri',input:b.mapping||null})}}
+ if(path==='/api/admin/integrations/d365-sales-mapping/autoconfigure'&&req.method==='POST'){
+  writeAccess(user);const b=await body(req),storeId=b.storeId||'val-fleuri',diagnostic=await diagnoseD365Mappings(storeId),rec=diagnostic?.recommendation||{},fields=rec.fields||{};
+  const missing=['channel','businessDate','transaction','net'].filter(key=>!fields[key]);
+  if(!rec.salesEntity||missing.length)throw Object.assign(new Error(`Le diagnostic D365 ne fournit pas encore un mapping ventes complet : ${missing.join(', ')||'entité'}.`),{status:409,code:'D365_SALES_AUTOCONFIG_INCOMPLETE',details:{diagnosticStatus:diagnostic?.status||null,salesEntity:rec.salesEntity||null,missing}});
+  const mapping={entity:rec.salesEntity,fields,dateFilterMode:rec.dateFilterMode||'datetime',salesSign:rec.salesSign??-1,quantitySign:rec.quantitySign??1,costSign:rec.costSign??-1};
+  const validated=await smokeD365SalesMapping({actor:user,storeId,input:mapping});
+  if(validated.state!=='VALIDATED'||validated.smoke?.status!=='PASSED'||validated.smoke?.channelValidated!==true)throw Object.assign(new Error('Le smoke ventes n’a pas validé les transactions du magasin ciblé. Aucune activation effectuée.'),{status:409,code:'D365_SALES_AUTOCONFIG_SMOKE_FAILED',details:{smoke:validated.smoke||null}});
+  const live=activateD365SalesMapping({actor:user});
+  return{status:200,data:{mapping:live,smoke:validated.smoke,diagnostic:{status:diagnostic.status,salesEntity:rec.salesEntity,fields}}}
+ }
  if(path==='/api/admin/integrations/d365-sales-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365SalesMapping({actor:user})}}
  if(path==='/api/admin/integrations/d365-sales-mapping/disable'&&req.method==='POST'){writeAccess(user);return{status:200,data:disableD365SalesMapping({actor:user})}}
  if(path==='/api/admin/integrations/d365-price-history-mapping/draft'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:saveD365PriceHistoryMappingDraft({actor:user,input:b})}}
