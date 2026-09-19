@@ -80,7 +80,7 @@ assert.match(refresh,/minIntervalMs=300000/,'background sync must be throttled')
 assert.match(refresh,/storeops:commercial-updated/,'background sync should publish an update event');
 assert.match(refresh,/status=Number\(error\?\.status\)\|\|0;remember\(id\)/,'failed background refreshes must back off instead of retrying on every render');
 assert.match(app,/invoke\('\.\/pages\/manager-home\.js','renderManagerHome'\)/,'manager Today must remain lazy');
-const runtimeBuild=auth.match(/const BUILD='(\\d+)'/)?.[1];
+const runtimeBuild=auth.match(/const BUILD='(\d+)'/)?.[1];
 const runtimeLabel=auth.match(/const BUILD_LABEL='([^']+)'/)?.[1];
 assert(runtimeBuild&&runtimeLabel,'active release markers must exist');
 assert.match(app,new RegExp(`commercial\\.js\\?v=${runtimeBuild}`),'commercial lazy asset must share active release generation');
