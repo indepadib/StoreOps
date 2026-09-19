@@ -4,6 +4,7 @@ const BUILD='2070';
 
 const modules=[
   './pwa.js',
+  './business-day-runtime.js',
   './navigation-polish.js',
   './scanner-resilience.js',
   './manager-more-simplified.js',
