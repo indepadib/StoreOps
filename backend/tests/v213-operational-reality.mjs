@@ -62,7 +62,7 @@ assert.match(pricing,/previousDays\(day,2\)/,'trade-agreement reader must catch 
 assert.match(pricing,/deltaActionType:'PRICE_CHANGE'/,'trade-agreement rows must materialize as price changes');
 
 assert.match(server,/syncExpectedReceiptsFromDynamics/,'PO sync service must be imported into the active router');
-assert.doesNotMatch(server,/receipts'\);if\(p&&req\.method==='GET'[\s\S]{0,500}await syncExpectedReceiptsFromDynamics/,'GET receipts must stay cache-first and never block on Dynamics');
+assert.match(server,/receipts'\);if\(p&&req\.method==='GET'\)\{\s*requireStore\(user,p\.storeId\);\s*return json\(req,res,200,listReceiptsForStore\(p\.storeId\)\)/,'GET receipts must stay cache-first and never block on Dynamics');
 assert.match(server,/receipts\/readiness/,'receiving readiness route missing');
 assert.match(server,/receipts\/sync/,'explicit PO refresh route missing');
 assert.match(receipts,/Synchroniser D365/,'PO page must expose a visible explicit refresh');
