@@ -53,13 +53,13 @@ const wrongChannel=evaluateD365SalesSmokeRows({rows:[{RetailChannelId:'99999',Bu
 assert.equal(wrongChannel.status,'FAILED','an unrelated retail channel must never validate Val Fleuri sales');
 assert.equal(wrongChannel.channelOk,false);
 
-assert.match(auth,/const BUILD='2150'/);
-assert.match(auth,/const BUILD_LABEL='2\.15\.0'/);
-assert.match(classic,/BUILD='2\.15\.0'/);
-assert.match(build,/2150/);
-assert.match(index,/v2\.15\.0/);
-assert.match(app,/receipts\.js\?v=2150/,'Receipts must bypass the previous five-minute module cache');
-assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.15\.0'/);
+assert.match(auth,/const BUILD='2160'/);
+assert.match(auth,/const BUILD_LABEL='2\.16\.0'/);
+assert.match(classic,/BUILD='2\.16\.0'/);
+assert.match(build,/2160/);
+assert.match(index,/v2\.16\.0/);
+assert.match(app,/receipts\.js\?v=2160/,'Receipts must bypass the previous five-minute module cache');
+assert.match(bridge,/version:envValue\('STOREOPS_VERSION'\)\|\|'2\.16\.0'/);
 assert.match(bridge,/D365_PO_SYNC_TIMEOUT_MS/,'Netlify bridge must forward PO safety controls');
 
 console.log('V2.14 Integration P0 contract passed');
