@@ -23,7 +23,7 @@ globalThis.fetch=async(input)=>{
  const url=String(input);calls.push(url);
  if(url.includes('login.microsoftonline.com'))return Response.json({access_token:'test-token',expires_in:3600});
  if(url.includes('/data/PurchaseOrderLinesV2')){
-  if(decodeURIComponent(url).includes('RemainingPurchaseQuantity gt 0'))return new Response(JSON.stringify({error:{message:"Could not find a property named 'RemainingPurchaseQuantity' on type 'Microsoft.Dynamics.DataEntities.PurchaseOrderLineV2'."}}),{status:400,headers:{'content-type':'application/json'}});
+  if(decodeURIComponent(url).replaceAll('+',' ').includes('RemainingPurchaseQuantity gt 0'))return new Response(JSON.stringify({error:{message:"Could not find a property named 'RemainingPurchaseQuantity' on type 'Microsoft.Dynamics.DataEntities.PurchaseOrderLineV2'."}}),{status:400,headers:{'content-type':'application/json'}});
   return Response.json({value:[
    {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:1,ProductNumber:'HS-001',LineDescription:'Lait frais',Barcode:'611100000001',ProcurementProductCategoryName:'Frais',OrderedPurchaseQuantity:10,PurchaseOrderLineStatus:'Backorder',PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
    {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:2,ProductNumber:'HS-002',LineDescription:'Épicerie test',Barcode:'611100000002',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:5,PurchaseOrderLineStatus:'Backorder',PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
@@ -52,7 +52,7 @@ assert.equal(snapshot.diagnostics.lineStateReliable,true,'PurchaseOrderLineStatu
 assert.equal(snapshot.items[0].lines[0].temperatureRequired,1);
 assert.ok(calls.some(x=>x.includes('ReceivingWarehouseId')&&x.includes('FRP0001')),'PO lines must be scoped to the store warehouse');
 assert.ok(calls.some(x=>decodeURIComponent(x).includes('RemainingPurchaseQuantity gt 0')),'legacy remainder filter should be attempted when explicitly configured');
-assert.ok(calls.some(x=>x.includes('/data/PurchaseOrderLinesV2')&&!decodeURIComponent(x).includes('RemainingPurchaseQuantity gt 0')),'invalid remainder filter must retry without the unsupported property');
+assert.ok(calls.some(x=>x.includes('/data/PurchaseOrderLinesV2')&&!decodeURIComponent(x).replaceAll('+',' ').includes('RemainingPurchaseQuantity gt 0')),'invalid remainder filter must retry without the unsupported property');
 
 const sync=await receiving.syncExpectedReceiptsFromDynamics('val-fleuri',{businessDate:'2026-09-10'});
 assert.equal(sync.synced,true);
