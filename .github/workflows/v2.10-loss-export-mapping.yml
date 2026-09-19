@@ -26,8 +26,35 @@ jobs:
         run: node backend/tests/v210-loss-export-mapping.mjs
       - name: Closing Pack regression
         run: STOREOPS_DB=/tmp/storeops-v210-closing.db node backend/tests/loss-closing-pack.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v210-loss-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v210-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v210-api.log 2>&1 &
+          echo $! > /tmp/storeops-v210-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/storeops-v210-health.json; then
+              cat /tmp/storeops-v210-health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-v210-api.log
+          exit 1
       - name: Loss API regression
-        run: STOREOPS_DB=/tmp/storeops-v210-loss-api.db node backend/tests/loss-api.mjs
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/loss-api.mjs
+      - name: Stop StoreOps API
+        if: always()
+        shell: bash
+        run: |
+          if [ -f /tmp/storeops-v210-api.pid ]; then kill "$(cat /tmp/storeops-v210-api.pid)" || true; fi
       - name: Validation Center regression
         run: node backend/tests/v209-validation-center.mjs
       - name: Price history regression
