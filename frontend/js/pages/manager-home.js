@@ -102,6 +102,15 @@ export async function renderManagerHome(){
    if(refreshed?.status==='READY'&&Array.isArray(refreshed.items)){inbox=refreshed;syncManagerNav(inbox);detailsLoading=false;if(refreshed.businessPulse){pulse=refreshed.businessPulse;pulseLoading=false}redraw()}
   }catch(error){console.warn('Mise à jour Today après prix/promos',error)}
  }});
+ setTimeout(async()=>{
+  if(app.storeId!==storeId)return;
+  try{
+   const po=await api(`/api/stores/${storeId}/receipts/sync`,{method:'POST'});
+   if(!po?.sync?.synced||app.storeId!==storeId||app.page!=='today')return;
+   const refreshed=await api(`/api/stores/${storeId}/manager-inbox-batch?force=1`);
+   if(refreshed?.status==='READY'&&Array.isArray(refreshed.items)){inbox=refreshed;syncManagerNav(inbox);detailsLoading=false;if(refreshed.businessPulse){pulse=refreshed.businessPulse;pulseLoading=false}redraw()}
+  }catch(error){console.warn('Mise à jour Today après synchronisation PO',error)}
+ },650);
  try{
   const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
   if(app.storeId!==storeId)return;
