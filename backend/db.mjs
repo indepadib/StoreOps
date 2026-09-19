@@ -219,6 +219,7 @@ ensureColumn('incidents','due_at','TEXT NULL');
 ensureColumn('incidents','requires_evidence','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('incidents','resolution_note','TEXT NULL');
 ensureColumn('incidents','resolved_by','TEXT NULL');
+ensureColumn('incident_evidence','content_blob','BLOB NULL');
 
 const stores = [
   ['val-fleuri','Val Fleuri','VF'],
