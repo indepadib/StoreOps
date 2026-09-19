@@ -25,6 +25,8 @@ jobs:
           node --check frontend/js/manager-receiving-focus.js
           node --check frontend/js/auth-entry.js
           node --check frontend/js/app.js
+          node --check backend/services/dynamics-receiving.mjs
+          node --check backend/server.mjs
       - name: V2.17 contract
         run: node backend/tests/v217-admin-json-po-ux.mjs
       - name: Access regression
