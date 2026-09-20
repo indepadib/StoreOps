@@ -18,7 +18,7 @@ export async function ensureD365SalesAutoConnected(storeId='val-fleuri'){
     try{
       const discovered=await discoverD365SalesMapping(storeId);
       if(discovered.status!=='READY'||!discovered.recommendation){
-        const value={status:'NOT_DISCOVERED',connected:false,reason:discovered.message||discovered.status,diagnostics:{status:discovered.status}};
+        const value={status:'NOT_DISCOVERED',connected:false,reason:discovered.message||discovered.status,diagnostics:{status:discovered.status,attempts:discovered.attempts||[]}};
         attempts.set(storeId,{at:Date.now(),value});return value
       }
       const rec=discovered.recommendation;
@@ -32,7 +32,7 @@ export async function ensureD365SalesAutoConnected(storeId='val-fleuri'){
       }});
       const validated=await smokeD365SalesMapping({actor:null,storeId});
       if(validated?.smoke?.status!=='PASSED'){
-        const value={status:'SMOKE_FAILED',connected:false,reason:validated?.smoke?.note||'Smoke ventes non concluant.',mapping:validated};
+        const value={status:'SMOKE_FAILED',connected:false,reason:validated?.smoke?.note||'Smoke ventes non concluant.',mapping:validated,diagnostics:{attempts:discovered.attempts||[],smoke:validated?.smoke||null}};
         attempts.set(storeId,{at:Date.now(),value});return value
       }
       const active=activateD365SalesMapping({actor:null});
