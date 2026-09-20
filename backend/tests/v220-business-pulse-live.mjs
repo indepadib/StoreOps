@@ -15,7 +15,7 @@ globalThis.fetch=async (url,opts={})=>{
  const u=String(url);seen.push(u);
  if(u.includes('login.microsoftonline.com'))return new Response(JSON.stringify({access_token:'token',expires_in:3600}),{status:200,headers:{'content-type':'application/json'}});
  if(u.includes('/data/RetailTransactionSalesTransBIEntities')){
-  const decoded=decodeURIComponent(u);
+  const decoded=decodeURIComponent(u).replaceAll('+',' ');
   if(decoded.includes("store eq 'FRP0001'")&&decoded.includes('businessDate ge 2026-09-20T00:00:00Z')){
    return new Response(JSON.stringify({error:{message:'Edm.Date expected'}}),{status:400,headers:{'content-type':'application/json'}});
   }
