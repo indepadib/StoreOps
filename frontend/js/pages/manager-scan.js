@@ -98,7 +98,21 @@ async function loadPriceHistory(btn){
  if(!lastContext||btn?.disabled)return;const sku=lastContext.item.productNumber,host=$('#managerPriceHistory');if(!host)return;
  btn.disabled=true;const original=btn.innerHTML;btn.textContent='Chargement…';
  try{
-  let history=priceHistoryCache.get(`${app.storeId}|${sku}`);if(!history){history=app.showcase?showcasePriceHistory(lastContext):await api(`/api/stores/${app.storeId}/items/${encodeURIComponent(sku)}/price-history?days=90`);priceHistoryCache.set(`${app.storeId}|${sku}`,history)}
+  const key=`${app.storeId}|${sku}`;let history=priceHistoryCache.get(key);
+  if(!history){
+   if(app.showcase)history=showcasePriceHistory(lastContext);
+   else{
+    try{
+     const connected=await api(`/api/stores/${app.storeId}/items/${encodeURIComponent(sku)}/price-history/auto-connect?days=90`,{method:'POST',body:JSON.stringify({})});
+     history=connected?.history||null;
+     if(connected?.autoConnect?.connected)toast('Trade Agreements D365 connectés et validés.')
+    }catch(error){
+     console.warn('Auto-connexion Trade Agreements',error);
+    }
+    if(!history)history=await api(`/api/stores/${app.storeId}/items/${encodeURIComponent(sku)}/price-history?days=90`);
+   }
+   priceHistoryCache.set(key,history)
+  }
   host.innerHTML=priceHistoryHtml(history);btn.innerHTML='Historique affiché <span>✓</span>'
  }catch(e){host.innerHTML=`<div class="manager-reco-pending"><strong>Historique indisponible</strong><span>${esc(e.message||'Impossible de charger les anciens prix.')}</span></div>`;btn.innerHTML=original;btn.disabled=false}
 }
