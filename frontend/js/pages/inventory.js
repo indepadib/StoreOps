@@ -37,7 +37,7 @@ export async function renderInventory(){
     </details>
   `;
   bindInventory();
-  setTimeout(()=>{const target=$('#invQuickRecountQty')||$('#invQuickEan');target?.focus?.()},80);
+  setTimeout(()=>{let prefill='';try{prefill=sessionStorage.getItem('storeops_express_prefill_ean')||'';sessionStorage.removeItem('storeops_express_prefill_ean')}catch{}const ean=$('#invQuickEan');if(ean&&prefill){ean.value=prefill;$('#invQuickQty')?.focus?.()}else{const target=$('#invQuickRecountQty')||ean;target?.focus?.()}},80);
 }
 
 function miniKpi(label,value,type=''){return`<div class="inventory-mini-kpi ${type}"><span>${esc(label)}</span><strong>${value}</strong></div>`}
