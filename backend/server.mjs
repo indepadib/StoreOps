@@ -26,6 +26,7 @@ import { handleWorkforceApi } from './services/workforce-api.mjs';
 import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
 import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
+import { handlePriceHistoryApi } from './services/price-history-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -84,6 +85,7 @@ async function api(req,res,url){
   const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
   const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return json(req,res,storeSettingsResponse.status,storeSettingsResponse.data);
+  const priceHistoryResponse=await handlePriceHistoryApi({req,url,user});if(priceHistoryResponse)return json(req,res,priceHistoryResponse.status,priceHistoryResponse.data);
 
   let p;
   if(path==='/api/stores'){const rows=user.role==='ops_director'?db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all():db.prepare(`SELECT * FROM stores WHERE id=? AND active=1`).all(user.store_id);return json(req,res,200,rows)}
