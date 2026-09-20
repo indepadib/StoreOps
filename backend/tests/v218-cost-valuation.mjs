@@ -84,6 +84,7 @@ assert.match(lossesUi,/Valeur au coût/);
 assert.match(lossesUi,/Coût non disponible/);
 assert.match(todayUi,/au coût/);
 assert.match(adminUi,/Activer coût LIVE/);
-assert.doesNotMatch(adminUi,/CostPrice/,'UI must not suggest a generic CostPrice mapping');
+assert.match(adminUi,/entity:saved\.entity\|\|''/,'cost entity must start empty until a real D365 mapping is supplied');
+assert.match(adminUi,/cost:saved\.fields\?\.cost\|\|''/,'cost field must start empty until a real D365 mapping is supplied');
 
 console.log('V2.18 cost valuation contract: OK');
