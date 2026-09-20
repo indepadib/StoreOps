@@ -72,7 +72,7 @@ assert.equal(day.config.dateFilterMode,'date');
 assert.equal(day.data.netSales,150);
 assert.equal(day.data.tickets,2);
 assert.equal(day.data.units,3);
-assert(seen.some(x=>decodeURIComponent(x).includes('businessDate ge 2026-09-20T00:00:00Z')),'datetime attempt expected');
-assert(seen.some(x=>decodeURIComponent(x).includes('businessDate eq 2026-09-20')),'date fallback expected');
+assert(seen.some(x=>decodeURIComponent(x).replaceAll('+',' ').includes('businessDate ge 2026-09-20T00:00:00Z')),'datetime attempt expected');
+assert(seen.some(x=>decodeURIComponent(x).replaceAll('+',' ').includes('businessDate eq 2026-09-20')),'date fallback expected');
 
 console.log('V2.20 live Business Pulse sales fallback: OK');
