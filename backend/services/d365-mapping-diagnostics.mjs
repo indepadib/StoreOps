@@ -68,17 +68,17 @@ export function d365MappingDiagnosticReadiness(storeId='val-fleuri'){
 }
 
 export async function discoverD365SalesMapping(storeId='val-fleuri'){
- const ready=d365MappingDiagnosticReadiness(storeId);
- if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'D365_MODE n’est pas LIVE.'};
+ const ready=d365MappingDiagnosticReadiness(storeId),attempts=[];
+ if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'D365_MODE n’est pas LIVE.'};
  for(const entity of ready.candidates.sales){
   const probe=await safeProbe(entity),inference=infer(probe.rows,SALES_ROLES);
-  if(!probe.ok||!probe.rows.length)continue;
   const fields=Object.fromEntries(Object.entries(inference.fields).map(([role,x])=>[role,x.candidate]));
   const missing=['channel','businessDate','transaction','net'].filter(role=>!fields[role]);
-  if(missing.length)continue;
-  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
+  attempts.push({entity,ok:probe.ok,rowCount:probe.rowCount,latencyMs:probe.latencyMs,error:probe.error||null,code:probe.code||null,missing,fields});
+  if(!probe.ok||!probe.rows.length||missing.length)continue;
+  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},attempts,recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
  }
- return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
+ return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
 }
 
 export function inferD365PriceHistoryMappingRows(rows=[]){
