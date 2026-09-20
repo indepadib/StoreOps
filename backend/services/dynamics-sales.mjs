@@ -1,8 +1,8 @@
 import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
-import { storeOperationalSettings } from './store-settings.mjs';
-import { effectiveD365SalesMapping } from './d365-sales-mapping.mjs';
+import { resolveStoreSalesChannel } from './d365-sales-channel.mjs';
+import { effectiveD365SalesMapping,d365SalesStoreValidation,d365SalesMappingSignature } from './d365-sales-mapping.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -47,7 +47,7 @@ function hourOf(v){
 
 export function salesIntegrationConfig(storeId=null){
  const persisted=effectiveD365SalesMapping(),saved=persisted?.state==='LIVE'?persisted:null;
- const entity=clean(saved?.entity||process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities'),stores=parseMap(process.env.D365_STORE_RETAIL_IDS||''),storeSettings=storeId?storeOperationalSettings(storeId):null,retailId=storeId?(clean(stores[storeId])||clean(storeSettings?.d365?.retailChannelId)||null):null;
+ const entity=clean(saved?.entity||process.env.D365_SALES_ENTITY||'RetailTransactionSalesTransBIEntities');
  const fields={
   store:clean(saved?.fields?.channel)||field('D365_SALES_STORE_FIELD','store'),
   date:clean(saved?.fields?.businessDate)||field('D365_SALES_DATE_FIELD','businessDate'),
@@ -61,11 +61,13 @@ export function salesIntegrationConfig(storeId=null){
   department:clean(saved?.fields?.department)||field('D365_SALES_DEPARTMENT_FIELD',''),
   category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD','')
  };
- const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
- const missing=required.filter(([,ok])=>!ok).map(([k])=>k);
- if(storeId&&!retailId)missing.push('storeMapping');
+ const channel=storeId?resolveStoreSalesChannel(storeId,{channelField:fields.store}):{value:null,source:null,kind:null,field:fields.store},validation=storeId?d365SalesStoreValidation(storeId):null;
+ const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]],missing=required.filter(([,ok])=>!ok).map(([k])=>k);
+ if(storeId&&!channel.value)missing.push('storeMapping');
+ const validationCurrent=!!(saved&&validation?.state==='PASSED'&&validation.entity===entity&&validation.channelField===fields.store&&validation.channelValue===channel.value&&validation.mappingSignature===d365SalesMappingSignature(saved));
+ if(storeId&&saved&&!validationCurrent)missing.push('storeSmoke');
  const live=salesLive(saved);
- return{mode:live?'LIVE':'DISABLED',entity,storeId,retailId,retailIdSource:clean(stores[storeId])?'ENV_CONFIG':storeSettings?.d365?.retailChannelId?'STORE_SETTINGS':null,stores,fields,missing,ready:live&&missing.length===0,mappingSource:saved?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',mappingState:persisted?.state||null,dateFilterMode:saved?.dateFilterMode||clean(process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase(),pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:saved?.salesSign??(Number(process.env.D365_SALES_SIGN||-1)||-1),costSign:saved?.costSign??(Number(process.env.D365_SALES_COST_SIGN||-1)||-1),quantitySign:saved?.quantitySign??(Number(process.env.D365_SALES_QTY_SIGN||1)||1)};
+ return{mode:live?'LIVE':'DISABLED',entity,storeId,retailId:channel.value,retailIdSource:channel.source,channelValue:channel.value,channelSource:channel.source,channelKind:channel.kind,channelField:fields.store,fields,missing:[...new Set(missing)],ready:live&&missing.length===0,storeValidation:validation?{state:validation.state,validatedAt:validation.validatedAt,channelField:validation.channelField,channelValue:validation.channelValue}:null,mappingSource:saved?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',mappingState:persisted?.state||null,dateFilterMode:saved?.dateFilterMode||clean(process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase(),pageSize:Math.max(100,Math.min(2000,Number(process.env.D365_SALES_PAGE_SIZE)||1000)),maxRows:Math.max(1000,Math.min(100000,Number(process.env.D365_SALES_MAX_ROWS)||50000)),sign:saved?.salesSign??(Number(process.env.D365_SALES_SIGN||-1)||-1),costSign:saved?.costSign??(Number(process.env.D365_SALES_COST_SIGN||-1)||-1),quantitySign:saved?.quantitySign??(Number(process.env.D365_SALES_QTY_SIGN||1)||1)};
 }
 
 function taxonomyLabels(productNumber){
