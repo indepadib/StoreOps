@@ -156,12 +156,17 @@ export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=nu
  outer:for(const identifier of identifiers){
   for(const filter of filterVariants(channelField,identifier.value)){
    try{
-    const candidate=await probeDataEntity(mapping.entity,{top:20,filter});
+    const companyFilter=config.dynamics.dataAreaId&&config.dynamics.dataAreaField?`${config.dynamics.dataAreaField} eq '${clean(config.dynamics.dataAreaId).replaceAll("'","''")}'`:'';
+    const scopedFilter=[filter,companyFilter].filter(Boolean).join(' and ');
+    const candidate=await probeDataEntity(mapping.entity,{top:20,filter:scopedFilter,extra:config.dynamics.dataAreaId?'cross-company=true':''});
     if(candidate?.ok&&(candidate.rows||[]).length){probe=candidate;selected=identifier;break outer}
    }catch{}
   }
  }
- if(!probe)probe=await probeDataEntity(mapping.entity,{top:20});
+ if(!probe){
+  const companyFilter=config.dynamics.dataAreaId&&config.dynamics.dataAreaField?`${config.dynamics.dataAreaField} eq '${clean(config.dynamics.dataAreaId).replaceAll("'","''")}'`:'';
+  probe=await probeDataEntity(mapping.entity,{top:20,filter:companyFilter,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+ }
  const rows=Array.isArray(probe?.rows)?probe.rows:[];
  const smoke={...evaluateD365SalesSmokeRows({rows,mapping,retailChannelId:selected.value,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok}),storeId,storeIdentifierKind:selected.kind,storeIdentifier:selected.value,retailChannelIdConfigured:retailChannelId||null};
  const passed=!!probe?.ok&&smoke.status==='PASSED';
