@@ -27,6 +27,8 @@ jobs:
           node --check backend/services/d365-sales-autoconnect.mjs
           node --check backend/services/d365-mapping-diagnostics.mjs
           node --check backend/services/price-history.mjs
+          node --check backend/services/price-history-api.mjs
+          node --check frontend/js/pages/manager-scan.js
           node --check frontend/js/pages/losses.js
           node --check frontend/js/pages/incidents.js
           node --check frontend/js/pages/manager-home.js
@@ -53,4 +55,5 @@ jobs:
           grep -q "BUILD_LABEL='2.18.0'" frontend/js/auth-entry.js
           grep -q "Code_HS" backend/services/loss-export.mjs
           grep -q "getProductCostByProductNumber" backend/services/dynamics.mjs
-          grep -q "ensureD365PriceHistoryAutoConnected" backend/services/price-history.mjs
+          grep -q "price-history/auto-connect" backend/services/price-history-api.mjs
+          grep -q "price-history/auto-connect" frontend/js/pages/manager-scan.js
