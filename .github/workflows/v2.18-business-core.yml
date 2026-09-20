@@ -20,6 +20,7 @@ jobs:
       - name: Syntax
         run: |
           node --check backend/services/dynamics.mjs
+          node --check backend/server.mjs
           node --check backend/services/loss.mjs
           node --check backend/services/loss-api.mjs
           node --check backend/services/loss-export.mjs
