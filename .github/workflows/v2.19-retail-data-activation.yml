@@ -1,0 +1,41 @@
+name: V2.19 Retail Data Activation
+
+on:
+  push:
+    branches: [storeops-v2.19-retail-data-activation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  retail-data-activation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-price-history-autoconnect.mjs
+          node --check backend/services/price-history-api.mjs
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/pages/manager-home.js
+      - name: V2.19 retail data activation contract
+        run: node backend/tests/v219-retail-data-activation.mjs
+      - name: Sales mapping regression
+        run: node backend/tests/v207-sales-mapping.mjs
+      - name: Price history regression
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Business Pulse regression
+        run: node backend/tests/business-pulse.mjs
+      - name: V2.18 cost valuation regression
+        run: node backend/tests/v218-cost-valuation.mjs
+      - name: Production asset coherence
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Safety guards
+        run: |
+          grep -q "SMOKE_FAILED" backend/services/d365-price-history-autoconnect.mjs
+          grep -q "price-history/auto-connect" frontend/js/pages/manager-scan.js
+          grep -q "NOT_DISCOVERED" frontend/js/pages/manager-home.js
+          grep -Eq "BUILD_LABEL='2\\.[0-9]+\\.[0-9]+'" frontend/js/auth-entry.js
