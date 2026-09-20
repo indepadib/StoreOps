@@ -81,13 +81,13 @@ export async function renderManagerMore(){
     <div class="manager-hub-head"><span class="manager-eyebrow">Plus</span><h2>Tous les outils</h2><p>Accès direct aux modules quand vous ne passez pas par la file « À valider ».</p></div>
     <div class="manager-more-grid">
       ${navCard('commercial','Prix & promotions','Scan prix, changements du jour et promotions.')}
-      ${navCard('inventory','Stock & inventaire','Comptages, recomptages, ruptures et écarts.')}
+      ${navCard('inventory','Inventaire express','Scanner → compter → continuer, avec recomptage automatique si nécessaire.','Terrain · 3 gestes')}
       ${navCard('receipts','Réception','Contrôle qualité article par article.')}
       ${navCard('dlc','DLC / DDM','Contrôle article et alertes DLC.')}
       ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
       ${navCard('quality','Qualité','Contrôles ponctuels et historique.')}
       ${navCard('maintenance','Maintenance','Pannes et remises en service.')}
-      ${navCard('losses','Démarque & pertes','Sorties et justificatifs.')}
+      ${navCard('losses','Démarque express','Scanner → motif → quantité → enregistrer. Preuves et validations restent automatiques.','Terrain · saisie rapide')}
       ${navCard('cash','Caisses & clôture','Rapprochement des shifts et moyens de paiement.')}
     </div>`;
 }
