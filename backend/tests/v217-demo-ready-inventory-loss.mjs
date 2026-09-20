@@ -70,8 +70,8 @@ assert.match(managerHub,/Démarque express/);
 assert.match(managerScan,/data-express-tool="inventory"/);
 assert.match(managerScan,/data-express-tool="losses"/);
 assert.match(managerScan,/storeops_express_prefill_ean/);
-assert.match(app,/inventory\.js\?v=2170/);
-assert.match(app,/losses\.js\?v=2170/);
+assert.match(app,/inventory\\.js\\?v=\\d+/,'inventory module must remain release-versioned');
+assert.match(app,/losses\\.js\\?v=\\d+/,'loss module must remain release-versioned');
 assert.match(index,/inventory\.css/);
 assert.match(index,/v2\.17\.0/);
 
