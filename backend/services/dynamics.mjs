@@ -170,6 +170,36 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
   priceGroupCache.set(cacheKey,{value,expiresAt:Date.now()+Math.min(ttl,15)*1000});return value;
 }
 
+const productCostCache=new Map();
+function productCostCandidates(){
+  const configured=String(process.env.D365_PRODUCT_COST_FIELDS||process.env.D365_PRODUCT_COST_FIELD||'').split(',').map(x=>x.trim()).filter(Boolean);
+  return [...new Set([...configured,'CostPrice','PurchasePrice','LatestPurchasePrice'])].filter(x=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(x));
+}
+export async function getProductCostByProductNumber(productNumber,{force=false}={}){
+  const item=String(productNumber||'').trim(),c=config.dynamics;
+  if(!item)return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_ITEM_REQUIRED',message:'Article requis pour lire le coût.'}};
+  if(!isD365ReadLive('product')||!c.productEntity)return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_SOURCE_UNAVAILABLE',message:'Source produit D365 non disponible.'}};
+  const ttl=Math.max(30,Math.min(3600,Number(process.env.STOREOPS_PRODUCT_COST_CACHE_SECONDS)||300)),cacheKey=`${c.productEntity}|${item}`,cached=productCostCache.get(cacheKey);
+  if(!force&&cached&&Date.now()<cached.expiresAt)return{...cached.value,cache:'HIT'};
+  const errors=[];
+  for(const costField of productCostCandidates()){
+    try{
+      const filters=[`${c.productNumberField} eq '${escapeOData(item)}'`];
+      if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+      const select=[c.productNumberField,costField,c.dataAreaId?c.dataAreaField:''].filter(Boolean).join(',');
+      const payload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''}),row=payload?.value?.[0]||null;
+      if(!row)continue;
+      const raw=row[costField],value=raw===null||raw===undefined||raw===''?null:Number(raw);
+      if(!Number.isFinite(value)||value<0)continue;
+      const kind=/purchase/i.test(costField)?'PURCHASE_PRICE':'COST_PRICE';
+      const result={status:'READY',productNumber:item,unitCost:value,field:costField,kind,source:`D365/${c.productEntity}.${costField}`,dataAreaId:row[c.dataAreaField]||row.dataAreaId||c.dataAreaId||null};
+      productCostCache.set(cacheKey,{value:result,expiresAt:Date.now()+ttl*1000});return{...result,cache:'MISS'}
+    }catch(error){errors.push({field:costField,code:error?.code||'D365_COST_FIELD_FAILED',message:error?.message||String(error)})}
+  }
+  const result={status:'UNMAPPED',productNumber:item,unitCost:null,field:null,kind:null,source:null,error:{code:'D365_COST_FIELD_UNMAPPED',message:'Aucun CostPrice / prix d’achat exploitable n’a été trouvé sur la fiche article.',attempts:errors}};
+  productCostCache.set(cacheKey,{value:result,expiresAt:Date.now()+Math.min(ttl,60)*1000});return{...result,cache:'MISS'}
+}
+
 export async function getProductByEan(ean){
   if(!isD365ReadLive('product')) return PRODUCTS[ean] || null;
   const c=config.dynamics;
