@@ -17,7 +17,7 @@ import { listIncidents, incidentById, createIncident, addAction, completeAction,
 import { listQualityProfiles, updateQualityProfile, listSlaPolicies, updateSlaPolicy } from './services/governance.mjs';
 import { dlcConfig, listDlc, dlcSummary, createDlcRecord, addDlcTreatment, recheckDlc, updateDlcThreshold, dlcMedia } from './services/dlc.mjs';
 import { createHandover, listHandover, acknowledgeHandover, resolveHandover, reviewClosingHandover, handoverStats, dayCycleMetrics } from './services/handover.mjs';
-import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
+import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, expressInventoryCount, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
 import { commercialConfig, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
 import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
 import { handleLossApi } from './services/loss-api.mjs';
