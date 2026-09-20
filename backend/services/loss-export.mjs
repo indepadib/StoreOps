@@ -26,18 +26,19 @@ CREATE INDEX IF NOT EXISTS ix_loss_export_store_date ON loss_export_runs(store_i
 `);
 
 const GENERIC_TEMPLATE={
- code:'STOREOPS_LOSS_AUDIT',name:'StoreOps — Démarque du jour',target:'STOREOPS_AUDIT',version:'1',delimiter:';',extension:'csv',encoding:'utf-8',includeHeader:true,fileNamePattern:'demarque_{storeId}_{businessDate}.{extension}',
+ code:'STOREOPS_LOSS_MINIMUM',name:'StoreOps — Démarque minimum exploitable',target:'STOREOPS_AUDIT',version:'2',delimiter:';',extension:'csv',encoding:'utf-8',includeHeader:true,fileNamePattern:'demarque_{storeId}_{businessDate}.{extension}',
  columns:[
   {name:'Date',source:'business_date',required:true,type:'date'},
   {name:'Magasin',source:'store_id',required:true},
-  {name:'EAN',source:'ean',required:true},
-  {name:'Article',source:'product_number'},
-  {name:'Libellé',source:'product_name',required:true},
-  {name:'Motif',source:'reason_code',required:true},
+  {name:'Code_HS',source:'product_number',required:true},
   {name:'Quantité',source:'quantity',required:true,type:'number',decimals:3},
   {name:'Unité',source:'unit',required:true},
-  {name:'Valeur_Unitaire_Vente',source:'unit_retail_value',type:'number',decimals:2},
-  {name:'Valeur_Totale_Vente',source:'total_retail_value',type:'number',decimals:2},
+  {name:'EAN',source:'ean'},
+  {name:'Libellé',source:'product_name',required:true},
+  {name:'Motif',source:'reason_code',required:true},
+  {name:'Cout_Unitaire',source:'unit_cost_value',type:'number',decimals:2},
+  {name:'Valeur_Cout',source:'total_cost_value',type:'number',decimals:2},
+  {name:'Source_Cout',source:'cost_source'},
   {name:'Commentaire',source:'note'}
  ]
 };
@@ -66,7 +67,7 @@ export function generateLossClosingPack({storeId,businessDate=todayISO(),user}){
  const id=uid('loss_export'),checksum=sha256(result.content),lineIds=rows.map(x=>x.id),confirmable=!!erpTemplate;
  db.prepare(`INSERT INTO loss_export_runs(id,store_id,business_date,template_code,target,file_name,checksum,line_ids_json,status,confirmable,generated_by) VALUES(?,?,?,?,?,?,?,?, 'GENERATED',?,?)`).run(id,storeId,businessDate,template.code,template.target,result.fileName,checksum,JSON.stringify(lineIds),confirmable?1:0,user.id);
  audit({storeId,businessDate,userId:user.id,action:'LOSS_CLOSING_PACK_GENERATED',entityType:'LOSS_EXPORT',entityId:id,details:{templateCode:template.code,target:template.target,fileName:result.fileName,rowCount:rows.length,checksum,confirmable}});
- return{run:lossExportRun(id),file:{fileName:result.fileName,mimeType:result.mimeType,encoding:result.encoding,rowCount:result.rowCount,content:result.content,checksum},erpTemplateConfigured:!!erpTemplate,confirmable,message:erpTemplate?'Fichier ERP généré. Importe-le puis confirme la référence d’import pour débloquer la fermeture.':'Template ERP exact non configuré : fichier d’audit généré uniquement. Il ne peut pas être confirmé comme import ERP.'}
+ return{run:lossExportRun(id),file:{fileName:result.fileName,mimeType:result.mimeType,encoding:result.encoding,rowCount:result.rowCount,content:result.content,checksum},erpTemplateConfigured:!!erpTemplate,confirmable,message:erpTemplate?'Fichier ERP généré. Importe-le puis confirme la référence d’import pour débloquer la fermeture.':'Canvas ERP exact non configuré : fichier minimum généré avec Code HS, quantité et unité. Il reste en mode audit et ne peut pas être confirmé comme import ERP.'}
 }
 
 export function confirmLossClosingPackImport({exportId,user,reference}){
