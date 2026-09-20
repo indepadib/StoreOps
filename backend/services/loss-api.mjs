@@ -9,7 +9,7 @@ import { buildPriceCheckContext,executePriceCheck,listPriceChecks,priceGroupForS
 import { createIncident,addAction,completeAction,addEvidence,resolveIncident,incidentById } from './incidents.mjs';
 import { getCashOpeningSnapshot } from './dynamics-cash-opening.mjs';
 import { getStaffingSnapshot } from './dynamics-staffing.mjs';
-import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
+import { lossConfig,listLossRecords,lossSummary,lossRecord,createLossRecord,revalueLossRecord,approveLossRecord,ensureLossPostable,markLossPosted,updateLossPolicy } from './loss.mjs';
 import { cashOpeningConfig,cashOpening,cashOpeningSummary,syncCashOpening,checkCashOpeningLine,updateCashOpeningPolicy } from './cash-opening.mjs';
 import { coldChainConfig,coldChainDay,coldChainSummary,ensureColdChainDay,checkColdChainLine,recheckColdChainLine,updateColdProfile } from './cold-chain.mjs';
 import { staffingConfig,staffingDay,staffingSummary,syncStaffingDay,setAttendance,updateStaffingPolicy } from './staffing.mjs';
@@ -94,6 +94,15 @@ export async function handleLossApi({req,url,user}){
 
  if(path==='/api/loss/config'&&req.method==='GET')return{status:200,data:lossConfig()};
  if(path==='/api/loss/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateLossPolicy({user,evidenceThreshold:b.evidenceThreshold,approvalThreshold:b.approvalThreshold})}}
+ p=route(path,'/api/stores/:storeId/losses/revalue');if(p&&req.method==='POST'){
+  requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),rows=listLossRecords(p.storeId,businessDate,'ALL').filter(x=>!['POSTED','CANCELLED'].includes(x.status)&&x.total_cost_value==null&&x.product_number).slice(0,20),updated=[],unmapped=[];
+  for(let i=0;i<rows.length;i+=5){
+   const batch=rows.slice(i,i+5);
+   const costs=await Promise.all(batch.map(row=>getProductCostByProductNumber(row.product_number).catch(error=>({status:'ERROR',error:{message:error.message}}))));
+   for(let j=0;j<batch.length;j++){const row=batch[j],cost=costs[j];if(cost?.status==='READY'&&cost.unitCost!==null)updated.push(revalueLossRecord({id:row.id,user,unitCost:cost.unitCost,costSource:cost.source||cost.field||'D365_COST'}));else unmapped.push({id:row.id,productNumber:row.product_number,status:cost?.status||'UNAVAILABLE',message:cost?.error?.message||'Coût non disponible'})}
+  }
+  return{status:200,data:{updated:updated.length,unmapped,summary:lossSummary(p.storeId,businessDate),items:listLossRecords(p.storeId,businessDate,'ALL')}}
+ }
  p=route(path,'/api/stores/:storeId/losses');if(p){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();if(req.method==='GET'){const status=(url.searchParams.get('status')||'ALL').toUpperCase();return{status:200,data:{summary:lossSummary(p.storeId,businessDate),items:listLossRecords(p.storeId,businessDate,status)}}}if(req.method==='POST'){requireManage(user,p.storeId);const b=await body(req),product=await getStoreCommerceProduct(p.storeId,String(b.ean||'').trim(),businessDate);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404});return{status:201,data:createLossRecord({storeId:p.storeId,businessDate,user,product,reasonCode:b.reasonCode,quantity:b.quantity,unit:b.unit,note:b.note,sourceType:b.sourceType||'MANUAL',sourceId:b.sourceId||null})}}}
  p=route(path,'/api/losses/:lossId');if(p&&req.method==='GET'){const row=lossRecord(p.lossId);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});requireStore(user,row.store_id);return{status:200,data:row}}
  p=route(path,'/api/losses/:lossId/approve');if(p&&req.method==='POST'){const row=lossRecord(p.lossId);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});requireStore(user,row.store_id);requireDirector(user);return{status:200,data:approveLossRecord({id:p.lossId,user})}}
