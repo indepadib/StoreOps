@@ -14,7 +14,7 @@ export async function renderLosses(){
     <div class="loss-overview">
       ${miniKpi('Aujourd’hui',s.records||0)}
       ${miniKpi('À finaliser',s.blocking||0,s.blocking?'warn':'')}
-      ${miniKpi('Valeur estimée',fmtMoney(s.retailValue||0))}
+      ${miniKpi('Valeur au coût',s.costUnvaluedRecords?`${fmtMoney(s.costValue||0)} · ${Number(s.costCoverage||0)}%`:`${fmtMoney(s.costValue||0)} · 100%`,s.costUnvaluedRecords?'warn':'')}
       ${miniKpi('ERP confirmé',s.posted||0)}
     </div>
     ${s.blocking?'<div class="banner ban-warn loss-followup-banner"><strong>La saisie est faite, StoreOps garde le suivi.</strong><span>Les preuves / approbations / imports encore nécessaires sont listés dans le suivi ci-dessous.</span></div>':''}
@@ -58,7 +58,8 @@ function renderProductPreview(product,error=''){
  if(!product){el.className='loss-product-preview';el.innerHTML='<span>Le produit apparaîtra ici après le scan.</span>';return}
  el.className='loss-product-preview ready';
  const price=product.effectivePrice??product.price??product.basePrice;
- el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · ${esc(product.productNumber)}`:''}</span></div><div><b>${price==null?'Prix non disponible':fmtMoney(price)}</b><span>${product.stock==null?'Stock non disponible':`Stock ${Number(product.stock)}`}</span></div>`;
+ const cost=product.unitCost==null?null:Number(product.unitCost),costLabel=cost==null?`Coût ${product.costReason==='COST_MAPPING_UNMAPPED'?'à connecter':'non disponible'}`:`Coût ${fmtMoney(cost)}`;
+ el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · ${esc(product.productNumber)}`:''}</span></div><div><b>${price==null?'Prix non disponible':fmtMoney(price)}</b><span>${esc(costLabel)} · ${product.stock==null?'Stock non disponible':`Stock ${Number(product.stock)}`}</span></div>`;
 }
 async function lookupProduct(){
  const ean=$('#lossEan')?.value.trim();if(!ean){renderProductPreview(null);return null}
@@ -105,7 +106,7 @@ function lossCard(x){
  const source=x.source_type==='DLC_TREATMENT'?'<span class="loss-flag">Créée depuis DLC</span>':'';
  const approval=x.status==='APPROVAL_REQUIRED'?'<span class="loss-flag danger">Direction requise</span>':x.approved_by_name?`<span class="loss-flag">Approuvée · ${esc(x.approved_by_name)}</span>`:'';
  const posting=x.status==='POSTED'&&x.posted_method?`<span class="loss-flag">${x.posted_method==='FILE_IMPORT'?'Import fichier':'API'}${x.posted_reference?` · ${esc(x.posted_reference)}`:''}</span>`:'';
- return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_retail_value==null?'Valeur prix indisponible':fmtMoney(x.total_retail_value)}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
+ return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_cost_value==null?'Coût non disponible':`${fmtMoney(x.total_cost_value)} au coût`}</span><span class="muted">${x.total_retail_value==null?'Prix vente indisponible':`${fmtMoney(x.total_retail_value)} prix vente`}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
 }
 function downloadFile(file){const blob=new Blob([file.content],{type:file.mimeType||'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=file.fileName||'demarque.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function bind(){
