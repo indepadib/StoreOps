@@ -19,9 +19,13 @@ jobs:
         run: |
           node --check backend/services/d365-cost-mapping.mjs
           node --check backend/services/dynamics-cost.mjs
+          node --check backend/services/excel-workbook.mjs
+          node --check backend/services/operations-excel.mjs
           node --check backend/services/loss.mjs
           node --check backend/services/loss-api.mjs
           node --check backend/services/integration-registry-api.mjs
+          node --check backend/services/loss-export-api.mjs
+          node --check backend/server.mjs
           node --check frontend/js/admin-cost-mapping.js
           node --check frontend/js/pages/losses.js
           node --check frontend/js/pages/today.js
@@ -42,5 +46,9 @@ jobs:
           grep -q "COST_MAPPING_UNMAPPED" backend/services/dynamics-cost.mjs
           grep -q "unit_cost_value" backend/services/loss.mjs
           grep -q "Activer coût LIVE" frontend/js/admin-cost-mapping.js
+          grep -q "Exporter la démarque en Excel" frontend/js/pages/losses.js
+          grep -q "Exporter Excel" frontend/js/pages/inventory.js
+          ! grep -q "Envoyer l’ajustement Dynamics" frontend/js/pages/inventory.js
+          ! grep -q "Confirmer l’import ERP" frontend/js/pages/losses.js
           grep -q "2.18.0" frontend/js/auth-entry.js
           grep -q "2180" frontend/netlify-build.sh

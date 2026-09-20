@@ -3,6 +3,7 @@ import { canAccessStore,canManageStore } from './permissions.mjs';
 import { lossExportRun,lossExportStatus,generateLossClosingPack,confirmLossClosingPackImport } from './loss-export.mjs';
 import { isNetworkDirector,isPlatformAdmin } from './access-management.mjs';
 import { lossExportMappingConfig,saveLossExportMappingDraft,previewLossExportMapping,activateLossExportMapping,disableLossExportMapping } from './loss-export-mapping.mjs';
+import { buildLossExcel } from './operations-excel.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',c=>{d+=c;if(d.length>2e6)reject(Object.assign(new Error('Payload trop volumineux'),{status:413}))});req.on('end',()=>{try{resolve(d?JSON.parse(d):{})}catch{reject(Object.assign(new Error('JSON invalide'),{status:400}))}});req.on('error',reject)})}
@@ -19,6 +20,7 @@ export async function handleLossExportApi({req,url,user}){
  if(path==='/api/admin/loss-export-mapping/activate'&&req.method==='POST'){requirePlatformAdmin(user);const b=await body(req);return{status:200,data:activateLossExportMapping({actor:user,reference:b.reference})}}
  if(path==='/api/admin/loss-export-mapping/disable'&&req.method==='POST'){requirePlatformAdmin(user);return{status:200,data:disableLossExportMapping({actor:user})}}
  p=route(path,'/api/stores/:storeId/losses/export-status');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:lossExportStatus(p.storeId,url.searchParams.get('date')||todayISO())}}
+ p=route(path,'/api/stores/:storeId/losses/export-excel');if(p&&(req.method==='GET'||req.method==='POST')){requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();return{status:200,data:buildLossExcel({storeId:p.storeId,businessDate,user})}}
  p=route(path,'/api/stores/:storeId/losses/export');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireManage(user,p.storeId);const b=await body(req);return{status:201,data:generateLossClosingPack({storeId:p.storeId,businessDate:b.businessDate||url.searchParams.get('date')||todayISO(),user})}}
  p=route(path,'/api/loss-exports/:exportId/confirm');if(p&&req.method==='POST'){const run=lossExportRun(p.exportId);if(!run)throw Object.assign(new Error('Export démarque introuvable.'),{status:404});requireStore(user,run.store_id);requireManage(user,run.store_id);const b=await body(req);return{status:200,data:confirmLossClosingPackImport({exportId:p.exportId,user,reference:b.reference})}}
  return null
