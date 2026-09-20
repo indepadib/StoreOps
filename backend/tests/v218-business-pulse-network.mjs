@@ -38,6 +38,7 @@ globalThis.fetch=async input=>{
  return Response.json({value:[]});
 };
 
+await import('../services/pilot-profile.mjs');
 const {db}=await import('../db.mjs');
 const {storeOperationalSettings}=await import('../services/store-settings.mjs');
 const {resolveStoreSalesChannel}=await import('../services/d365-sales-channel.mjs');
