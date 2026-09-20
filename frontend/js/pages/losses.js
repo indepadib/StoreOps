@@ -14,10 +14,10 @@ export async function renderLosses(){
     <div class="loss-overview">
       ${miniKpi('Aujourd’hui',s.records||0)}
       ${miniKpi('À finaliser',s.blocking||0,s.blocking?'warn':'')}
-      ${miniKpi('Valeur estimée',fmtMoney(s.retailValue||0))}
+      ${miniKpi('Valeur au coût',fmtMoney(s.costValue||0),s.unvaluedCount?'warn':'')}
       ${miniKpi('ERP confirmé',s.posted||0)}
     </div>
-    ${s.blocking?'<div class="banner ban-warn loss-followup-banner"><strong>La saisie est faite, StoreOps garde le suivi.</strong><span>Les preuves / approbations / imports encore nécessaires sont listés dans le suivi ci-dessous.</span></div>':''}
+    ${s.unvaluedCount?`<div class="banner ban-warn loss-followup-banner"><strong>${s.unvaluedCount} ligne(s) non valorisée(s)</strong><span>Le CostPrice / prix d’achat n’est pas encore disponible pour ces articles. StoreOps ne remplace jamais le coût par le prix de vente.</span></div>`:''}${s.blocking?'<div class="banner ban-warn loss-followup-banner"><strong>La saisie est faite, StoreOps garde le suivi.</strong><span>Les preuves / approbations / imports encore nécessaires sont listés dans le suivi ci-dessous.</span></div>':''}
     <details class="card loss-advanced" ${items.length?'open':''}>
       <summary><div><strong>Suivi & Closing Pack</strong><span>Preuves, validations Direction, historique et intégration ERP.</span></div><b>⌄</b></summary>
       <div class="loss-advanced-body">
@@ -35,7 +35,7 @@ export async function renderLosses(){
 
 function miniKpi(label,value,type=''){return`<div class="loss-mini-kpi ${type}"><span>${esc(label)}</span><strong>${value}</strong></div>`}
 function quickPanel(config){return`<section class="card loss-express">
-  <div class="loss-express-head"><div><span class="manager-eyebrow">DÉMARQUE EXPRESS</span><h2>Scanner, choisir le motif, enregistrer.</h2><p>La preuve et l’approbation sont déclenchées automatiquement selon la valeur et la politique réseau.</p></div><span class="pill">Terrain</span></div>
+  <div class="loss-express-head"><div><span class="manager-eyebrow">DÉMARQUE EXPRESS</span><h2>Scanner, choisir le motif, enregistrer.</h2><p>La valorisation utilise le CostPrice / prix d’achat × quantité. Le prix de vente n’est jamais utilisé pour valoriser la démarque.</p></div><span class="pill">Terrain</span></div>
   <div class="loss-scan-row">
     <label><span>1 · Scanner l’article</span><input id="lossEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir le code-barres"></label>
     <button class="btn soft" id="lossLookupBtn">Identifier</button>
@@ -57,8 +57,8 @@ function renderProductPreview(product,error=''){
  if(error){el.className='loss-product-preview error';el.innerHTML=`<strong>Article non identifié</strong><span>${esc(error)}</span>`;return}
  if(!product){el.className='loss-product-preview';el.innerHTML='<span>Le produit apparaîtra ici après le scan.</span>';return}
  el.className='loss-product-preview ready';
- const price=product.effectivePrice??product.price??product.basePrice;
- el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · ${esc(product.productNumber)}`:''}</span></div><div><b>${price==null?'Prix non disponible':fmtMoney(price)}</b><span>${product.stock==null?'Stock non disponible':`Stock ${Number(product.stock)}`}</span></div>`;
+ const cost=product.valuationPrice??product.costPrice??product.purchasePrice;
+ el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · HS ${esc(product.productNumber)}`:''}</span></div><div><b>${cost==null?'Coût non disponible':`Coût ${fmtMoney(cost)}`}</b><span>${cost==null?'Valorisation laissée vide — aucun fallback prix de vente':esc(product.costField||product.valuationSource||'CostPrice D365')}${product.stock==null?'':' · Stock '+Number(product.stock)}</span></div>`;
 }
 async function lookupProduct(){
  const ean=$('#lossEan')?.value.trim();if(!ean){renderProductPreview(null);return null}
@@ -93,7 +93,7 @@ function closingPackPanel(x={}){
  return`<div class="loss-closing-card">
   <div class="row"><div><strong>Closing Pack démarque</strong><div class="small muted">${x.openLines} ligne(s) · ${template}. La fermeture reste bloquée jusqu’à confirmation de l’import ERP.</div></div>${status(x.ready?'Prêt à générer':`${blockers.length} blocage(s)`,x.ready?'ok':'danger')}</div>
   ${blockers.length?`<div class="banner ban-danger" style="margin-top:10px"><strong>À terminer avant export</strong><span>${blockers.slice(0,3).map(b=>esc(`${b.productName} — ${b.message}`)).join('<br>')}</span></div>`:''}
-  ${!x.erpTemplateConfigured?'<div class="banner ban-info" style="margin-top:10px"><strong>Mode audit uniquement</strong><span>Le canvas ERP exact n’est pas encore configuré : StoreOps ne prétendra pas avoir posté la démarque.</span></div>':''}
+  ${!x.erpTemplateConfigured?'<div class="banner ban-info" style="margin-top:10px"><strong>Canvas minimum disponible</strong><span>Le canvas ERP exact n’est pas encore configuré. Le CSV minimum contient Code HS interne + quantité + unité, avec coût quand D365 le fournit. StoreOps ne prétendra pas avoir posté la démarque.</span></div>':''}
   <div class="row" style="margin-top:12px"><button class="btn brand" id="generateLossPackBtn" ${x.ready?'':'disabled'}>Générer le fichier final</button>${last?`<span class="small muted">Dernier fichier : ${esc(last.fileName)} · ${esc(last.status)}</span>`:''}</div>
   ${last?.status==='GENERATED'&&last.confirmable?`<div class="form-grid" style="margin-top:12px"><div class="field"><label>Référence / preuve d’import ERP *</label><input id="lossImportReference" placeholder="Journal, batch, numéro d’import..."></div><div class="field" style="align-self:end"><button class="btn brand" id="confirmLossImportBtn" data-export-id="${esc(last.id)}">Confirmer l’import ERP</button></div></div>`:''}
  </div>`
@@ -105,7 +105,7 @@ function lossCard(x){
  const source=x.source_type==='DLC_TREATMENT'?'<span class="loss-flag">Créée depuis DLC</span>':'';
  const approval=x.status==='APPROVAL_REQUIRED'?'<span class="loss-flag danger">Direction requise</span>':x.approved_by_name?`<span class="loss-flag">Approuvée · ${esc(x.approved_by_name)}</span>`:'';
  const posting=x.status==='POSTED'&&x.posted_method?`<span class="loss-flag">${x.posted_method==='FILE_IMPORT'?'Import fichier':'API'}${x.posted_reference?` · ${esc(x.posted_reference)}`:''}</span>`:'';
- return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_retail_value==null?'Valeur prix indisponible':fmtMoney(x.total_retail_value)}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
+ return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_cost_value==null?'Coût non disponible':fmtMoney(x.total_cost_value)}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
 }
 function downloadFile(file){const blob=new Blob([file.content],{type:file.mimeType||'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=file.fileName||'demarque.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function bind(){
@@ -116,7 +116,7 @@ function bind(){
  $('#lossQty')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveQuickLoss()}});
  $('#createLossBtn')?.addEventListener('click',saveQuickLoss);
  document.querySelectorAll('[data-approve-loss]').forEach(b=>b.onclick=async()=>{try{await api(`/api/losses/${b.dataset.approveLoss}/approve`,{method:'POST'});toast('Perte approuvée par la Direction.');renderLosses()}catch(e){toast(e.message)}});
- const generate=$('#generateLossPackBtn');if(generate)generate.onclick=async()=>{try{generate.disabled=true;const result=await api(`/api/stores/${app.storeId}/losses/export`,{method:'POST',body:JSON.stringify({})});downloadFile(result.file);toast(result.confirmable?'Fichier ERP généré. Importez-le puis confirmez la référence.':'CSV d’audit généré. Le template ERP exact reste à mapper.');renderLosses()}catch(e){generate.disabled=false;toast(e.message)}};
+ const generate=$('#generateLossPackBtn');if(generate)generate.onclick=async()=>{try{generate.disabled=true;const result=await api(`/api/stores/${app.storeId}/losses/export`,{method:'POST',body:JSON.stringify({})});downloadFile(result.file);toast(result.confirmable?'Fichier ERP généré. Importez-le puis confirmez la référence.':'CSV minimum généré : Code HS + quantité + unité. Le canvas ERP exact reste à mapper.');renderLosses()}catch(e){generate.disabled=false;toast(e.message)}};
  const confirm=$('#confirmLossImportBtn');if(confirm)confirm.onclick=async()=>{try{const reference=$('#lossImportReference').value.trim();if(!reference)throw new Error('Référence d’import ERP obligatoire.');await api(`/api/loss-exports/${confirm.dataset.exportId}/confirm`,{method:'POST',body:JSON.stringify({reference})});toast('Import ERP confirmé. La démarque du fichier est clôturée.');renderLosses()}catch(e){toast(e.message)}};
  const save=$('#saveLossPolicyBtn');if(save)save.onclick=async()=>{try{await api('/api/loss/policy',{method:'PUT',body:JSON.stringify({evidenceThreshold:Number($('#lossEvidenceThreshold').value),approvalThreshold:Number($('#lossApprovalThreshold').value)})});toast('Politique démarque mise à jour.');renderLosses()}catch(e){toast(e.message)}};
 }
