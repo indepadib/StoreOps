@@ -17,12 +17,9 @@ export async function ensureD365SalesAutoConnected(storeId='val-fleuri'){
   const promise=(async()=>{
     try{
       const discovered=await discoverD365SalesMapping(storeId);
-      if(discovered.status!=='READY'||!discovered.recommendation){
-        const value={status:'NOT_DISCOVERED',connected:false,reason:discovered.message||discovered.status,diagnostics:{status:discovered.status}};
-        attempts.set(storeId,{at:Date.now(),value});return value
-      }
-      const rec=discovered.recommendation;
-      const draft=saveD365SalesMappingDraft({actor:null,input:{
+      const fallback={salesEntity:'RetailTransactionSalesTransBIEntities',fields:{channel:'store',businessDate:'businessDate',transaction:'transactionId',net:'netAmountInclTax',quantity:'qty',product:'itemId',time:'time',cost:'',productName:'',department:'',category:''},dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1};
+      const rec=discovered.status==='READY'&&discovered.recommendation?discovered.recommendation:fallback;
+      saveD365SalesMappingDraft({actor:null,input:{
         entity:rec.salesEntity,
         fields:rec.fields,
         dateFilterMode:rec.dateFilterMode||'datetime',
@@ -32,11 +29,11 @@ export async function ensureD365SalesAutoConnected(storeId='val-fleuri'){
       }});
       const validated=await smokeD365SalesMapping({actor:null,storeId});
       if(validated?.smoke?.status!=='PASSED'){
-        const value={status:'SMOKE_FAILED',connected:false,reason:validated?.smoke?.note||'Smoke ventes non concluant.',mapping:validated};
+        const value={status:'SMOKE_FAILED',connected:false,reason:validated?.smoke?.note||'Smoke ventes non concluant.',mapping:validated,discoveryStatus:discovered.status,fallbackUsed:discovered.status!=='READY'};
         attempts.set(storeId,{at:Date.now(),value});return value
       }
       const active=activateD365SalesMapping({actor:null});
-      const value={status:'LIVE',connected:true,mapping:active,discovered:{entity:rec.salesEntity,fields:rec.fields}};
+      const value={status:'LIVE',connected:true,mapping:active,discovered:{entity:rec.salesEntity,fields:rec.fields},fallbackUsed:discovered.status!=='READY'};
       attempts.set(storeId,{at:Date.now(),value});return value
     }catch(error){
       const value={status:'ERROR',connected:false,reason:error?.message||String(error),code:error?.code||'D365_SALES_AUTOCONNECT_FAILED'};
