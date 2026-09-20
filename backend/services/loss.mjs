@@ -111,6 +111,23 @@ export function createLossRecord({storeId,businessDate=todayISO(),user,product,r
  audit({storeId,businessDate,userId:user.id,action:'LOSS_RECORDED',entityType:'LOSS_RECORD',entityId:id,details:{ean:product.ean,productNumber:product.productNumber||null,reasonCode,quantity:qty,unit,unitCostValue:unitCost,totalCostValue:total,costSource:valuation.source,requiresEvidence,requiresApproval,sourceType,sourceId,evidenceAlreadySatisfied,evidenceSourceType,evidenceSourceId}});
  return lossRecord(id);
 }
+
+export function revalueLossRecord({id,user,unitCost,costSource='D365_COST'}){
+ const row=lossRecord(id);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404,code:'LOSS_NOT_FOUND'});
+ if(['POSTED','CANCELLED'].includes(row.status))return row;
+ const cost=Number(unitCost);if(!Number.isFinite(cost)||cost<0)throw Object.assign(new Error('Coût article invalide.'),{status:422,code:'LOSS_COST_INVALID'});
+ const total=round(cost*Number(row.quantity||0)),policy=lossPolicy(),requiresEvidence=total>=Number(policy.evidence_threshold_dh),requiresApproval=total>=Number(policy.approval_threshold_dh);
+ let incidentId=row.incident_id||null,status=row.status;
+ if(requiresEvidence&&!row.evidence_satisfied&&!incidentId){
+  const inc=createIncident({storeId:row.store_id,user,title:`Perte à documenter · ${row.product_name}`,description:`${row.quantity} ${row.unit} · ${LOSS_REASONS.find(x=>x.code===row.reason_code)?.label||row.reason_code} · valeur au coût ${total} DH`,category:'LOSS',criticality:requiresApproval?'HIGH':'MEDIUM',blockingLevel:'STORE_CLOSING',sourceType:'LOSS_RECORD',sourceId:row.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});
+  addAction({incidentId:inc.id,user,title:'Joindre la preuve et documenter la sortie de stock',note:row.note||'',assignedTo:user.role==='store_manager'?user.id:null});incidentId=inc.id;
+ }
+ if(row.approved_by)status='APPROVED';else status=requiresApproval?'APPROVAL_REQUIRED':'READY_TO_POST';
+ db.prepare(`UPDATE loss_records SET unit_cost_value=?,total_cost_value=?,cost_source=?,requires_evidence=?,incident_id=?,status=? WHERE id=?`).run(round(cost),total,String(costSource||'D365_COST'),requiresEvidence?1:0,incidentId,status,id);
+ audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:'LOSS_REVALUED_AT_COST',entityType:'LOSS_RECORD',entityId:id,details:{unitCost:round(cost),totalCostValue:total,costSource,requiresEvidence,requiresApproval}});
+ return lossRecord(id)
+}
+
 export function approveLossRecord({id,user}){
  if(user.role!=='ops_director')throw Object.assign(new Error('Validation de perte réservée au Directeur d’exploitation.'),{status:403});
  const row=db.prepare(`SELECT * FROM loss_records WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});
