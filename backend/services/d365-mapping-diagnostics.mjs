@@ -76,7 +76,9 @@ export async function discoverD365SalesMapping(storeId='val-fleuri'){
   const fields=Object.fromEntries(Object.entries(inference.fields).map(([role,x])=>[role,x.candidate]));
   const missing=['channel','businessDate','transaction','net'].filter(role=>!fields[role]);
   if(missing.length)continue;
-  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
+  const sampleDate=clean((probe.rows||[]).find(r=>r?.[fields.businessDate]!==null&&r?.[fields.businessDate]!==undefined)?.[fields.businessDate]);
+  const dateFilterMode=/^\d{4}-\d{2}-\d{2}$/.test(sampleDate)?'date':'datetime';
+  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{salesEntity:entity,fields,dateFilterMode,salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
  }
  return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
 }
