@@ -171,10 +171,13 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
 }
 
 const productCostCache=new Map();
+let discoveredProductCostField=null;
 function productCostCandidates(){
   const configured=String(process.env.D365_PRODUCT_COST_FIELDS||process.env.D365_PRODUCT_COST_FIELD||'').split(',').map(x=>x.trim()).filter(Boolean);
-  return [...new Set([...configured,'CostPrice','PurchasePrice','LatestPurchasePrice'])].filter(x=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(x));
+  return [...new Set([discoveredProductCostField,...configured,'CostPrice','costPrice','ProductCostPrice','PurchasePrice','LatestPurchasePrice','LastPurchasePrice'].filter(Boolean))].filter(x=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(x));
 }
+function costFieldScore(name){const k=String(name||'').toLowerCase();if(k==='costprice')return 100;if(k.includes('productcostprice'))return 95;if(k.includes('purchaseprice'))return 90;if(k.includes('cost')&&k.includes('price'))return 80;if(k.includes('costamount'))return 70;if(k.includes('cost'))return 50;return 0}
+function discoverCostFromRow(row={}){const ranked=Object.keys(row).map(name=>({name,score:costFieldScore(name),raw:row[name]})).filter(x=>x.score>0&&x.raw!==null&&x.raw!==undefined&&x.raw!==''&&Number.isFinite(Number(x.raw))&&Number(x.raw)>=0).sort((a,b)=>b.score-a.score);return ranked[0]||null}
 export async function getProductCostByProductNumber(productNumber,{force=false}={}){
   const item=String(productNumber||'').trim(),c=config.dynamics;
   if(!item)return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_ITEM_REQUIRED',message:'Article requis pour lire le coût.'}};
@@ -196,6 +199,14 @@ export async function getProductCostByProductNumber(productNumber,{force=false}=
       productCostCache.set(cacheKey,{value:result,expiresAt:Date.now()+ttl*1000});return{...result,cache:'MISS'}
     }catch(error){errors.push({field:costField,code:error?.code||'D365_COST_FIELD_FAILED',message:error?.message||String(error)})}
   }
+  try{
+    const filter=`${c.productNumberField} eq '${escapeOData(item)}'`,probe=await probeDataEntity(c.productEntity,{top:3,filter}),row=(probe.rows||[])[0]||null,dynamic=row?discoverCostFromRow(row):null;
+    if(dynamic){
+      discoveredProductCostField=dynamic.name;
+      const value=Number(dynamic.raw),kind=/purchase/i.test(dynamic.name)?'PURCHASE_PRICE':'COST_PRICE',result={status:'READY',productNumber:item,unitCost:value,field:dynamic.name,kind,source:`D365/${c.productEntity}.${dynamic.name}`,dataAreaId:row[c.dataAreaField]||row.dataAreaId||c.dataAreaId||null,discovered:true};
+      productCostCache.set(cacheKey,{value:result,expiresAt:Date.now()+ttl*1000});return{...result,cache:'MISS'}
+    }
+  }catch(error){errors.push({field:'AUTO_DISCOVERY',code:error?.code||'D365_COST_DISCOVERY_FAILED',message:error?.message||String(error)})}
   const result={status:'UNMAPPED',productNumber:item,unitCost:null,field:null,kind:null,source:null,error:{code:'D365_COST_FIELD_UNMAPPED',message:'Aucun CostPrice / prix d’achat exploitable n’a été trouvé sur la fiche article.',attempts:errors}};
   productCostCache.set(cacheKey,{value:result,expiresAt:Date.now()+Math.min(ttl,60)*1000});return{...result,cache:'MISS'}
 }
