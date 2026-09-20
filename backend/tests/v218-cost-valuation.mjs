@@ -24,7 +24,7 @@ globalThis.fetch=async url=>{
 await import('../services/pilot-profile.mjs');
 const {db}=await import('../db.mjs');
 const {
- saveD365CostMappingDraft,d365CostMappingSettings,evaluateD365CostSmokeRows,
+ saveD365CostMappingDraft,d365CostMappingSettings,evaluateD365CostSmokeRows,smokeD365CostMapping,
  activateD365CostMapping,disableD365CostMapping
 }=await import('../services/d365-cost-mapping.mjs');
 const {getProductCost,costIntegrationConfig}=await import('../services/dynamics-cost.mjs');
@@ -44,7 +44,9 @@ const smoke=evaluateD365CostSmokeRows({rows:[{SKU:'HS-COST',Amount:120,StartDate
 assert.equal(smoke.status,'PASSED');
 assert.equal(smoke.matchingRows,1);
 
-db.prepare(`UPDATE d365_cost_mapping_settings SET state='VALIDATED',smoke_json=?,validated_at=CURRENT_TIMESTAMP,validated_by=? WHERE id='default'`).run(JSON.stringify(smoke),actor.id);
+saved=await smokeD365CostMapping({actor,productNumber:'HS-COST'});
+assert.equal(saved.state,'VALIDATED');
+assert.equal(saved.smoke.status,'PASSED');
 saved=activateD365CostMapping({actor});
 assert.equal(saved.state,'LIVE');
 assert.equal(costIntegrationConfig('val-fleuri').ready,true);
