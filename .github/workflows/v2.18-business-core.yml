@@ -1,0 +1,56 @@
+name: V2.18 Business Core Contract
+
+on:
+  push:
+    branches: [storeops-v2.18-business-core]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/loss.mjs
+          node --check backend/services/loss-api.mjs
+          node --check backend/services/loss-export.mjs
+          node --check backend/services/d365-price-history-autoconnect.mjs
+          node --check backend/services/d365-sales-autoconnect.mjs
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/price-history.mjs
+          node --check frontend/js/pages/losses.js
+          node --check frontend/js/pages/incidents.js
+          node --check frontend/js/pages/manager-home.js
+      - name: Netlify bridge typecheck
+        run: npx tsc -p tsconfig.netlify.json
+      - name: V2.18 business core
+        run: node backend/tests/v218-business-core.mjs
+      - name: V2.17 inventory and loss regression
+        run: STOREOPS_DB=/tmp/storeops-v218-v217.db node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Loss engine regressions
+        run: |
+          STOREOPS_DB=/tmp/storeops-v218-loss-engine.db node backend/tests/loss-engine.mjs
+          STOREOPS_DB=/tmp/storeops-v218-loss-pack.db node backend/tests/loss-closing-pack.mjs
+      - name: Incident regression
+        run: STOREOPS_DB=/tmp/storeops-v218-incident.db node backend/tests/incident-resolution-policy.mjs
+      - name: Business Pulse regression
+        run: STOREOPS_DB=/tmp/storeops-v218-pulse.db node backend/tests/business-pulse.mjs
+      - name: Price history mapping regression
+        run: STOREOPS_DB=/tmp/storeops-v218-price-history.db node backend/tests/v208-price-history-mapping.mjs
+      - name: Inventory privacy regression
+        run: STOREOPS_DB=/tmp/storeops-v218-inventory.db node backend/tests/inventory-privacy.mjs
+      - name: Release guards
+        run: |
+          grep -q "BUILD_LABEL='2.18.0'" frontend/js/auth-entry.js
+          grep -q "Code_HS" backend/services/loss-export.mjs
+          grep -q "getProductCostByProductNumber" backend/services/dynamics.mjs
+          grep -q "ensureD365PriceHistoryAutoConnected" backend/services/price-history.mjs
