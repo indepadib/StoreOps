@@ -5,11 +5,11 @@ const {createLossRecord,lossSummary,blockingLossCount,approveLossRecord,markLoss
 const {addEvidence,completeAction,resolveIncident}=await import('../services/incidents.mjs');
 function ok(v,m){if(!v)throw new Error(m)}
 const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get(),director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
-const product={ean:'6111040001111',productNumber:'LAIT1L',name:'Lait frais entier 1L',category:'Frais',price:12.9};
+const product={ean:'6111040001111',productNumber:'LAIT1L',name:'Lait frais entier 1L',category:'Frais',price:19.9,costPrice:12.9,valuationPrice:12.9,valuationSource:'TEST_COST'};
 const cfg=lossConfig();ok(Number(cfg.policy.evidence_threshold_dh)===100&&Number(cfg.policy.approval_threshold_dh)===500,'loss policy defaults failed');
 
 let low=createLossRecord({storeId:'val-fleuri',user:manager,product,reasonCode:'BREAKAGE',quantity:1,unit:'pièce',note:'Bouteille cassée'});
-ok(low.status==='READY_TO_POST'&&low.requires_evidence===0&&low.total_retail_value===12.9,'low loss classification failed');
+ok(low.status==='READY_TO_POST'&&low.requires_evidence===0&&low.total_cost_value===12.9&&low.total_retail_value===null,'low loss classification failed');
 low=markLossPosted({id:low.id,user:manager});ok(low.status==='POSTED','low loss posting failed');
 
 let medium=createLossRecord({storeId:'val-fleuri',user:manager,product,reasonCode:'DAMAGED',quantity:10,unit:'pièce',note:'Carton détérioré'});
@@ -26,5 +26,5 @@ high=approveLossRecord({id:high.id,user:director});ok(high.status==='APPROVED','
 inc=high.incident;addEvidence({incidentId:inc.id,user:manager,dataUrl:png,fileName:'preuve-demarque.png',caption:'Investigation démarque'});completeAction({incidentId:inc.id,actionId:inc.actions[0].id,user:manager,note:'Investigation terminée'});resolveIncident({incidentId:inc.id,user:manager,resolutionNote:'Écart documenté et approuvé'});
 high=markLossPosted({id:high.id,user:manager});ok(high.status==='POSTED','approved high loss posting failed');
 
-const sum=lossSummary('val-fleuri');ok(sum.records===3&&sum.posted===3&&sum.blocking===0&&sum.retailValue===786.9,'loss summary failed');ok(blockingLossCount('val-fleuri')===0,'loss blocking count failed');
-console.log('StoreOps V1.10 loss & waste engine tests passed');
+const sum=lossSummary('val-fleuri');ok(sum.records===3&&sum.posted===3&&sum.blocking===0&&sum.costValue===786.9&&sum.retailValue===0,'loss summary failed');ok(blockingLossCount('val-fleuri')===0,'loss blocking count failed');
+console.log('StoreOps loss & waste engine cost-valuation regression passed');
