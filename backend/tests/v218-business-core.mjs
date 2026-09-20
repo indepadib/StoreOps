@@ -50,6 +50,8 @@ assert.match(costSource,/getProductCostByProductNumber/);
 assert.match(costSource,/CostPrice/);
 const priceHistory=read('backend/services/price-history.mjs');
 assert.doesNotMatch(priceHistory,/ensureD365PriceHistoryAutoConnected/,'price history GET must stay read-only');
+const server=read('backend/server.mjs');
+assert.match(server,/handlePriceHistoryApi/,'price history API must be wired into the main router');
 const priceHistoryApi=read('backend/services/price-history-api.mjs');
 assert.match(priceHistoryApi,/price-history\/auto-connect/);
 assert.match(priceHistoryApi,/ensureD365PriceHistoryAutoConnected/);
