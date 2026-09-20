@@ -2,9 +2,9 @@ import { config } from '../config.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 
 const PRODUCTS = {
-  '3017620422003': {ean:'3017620422003',name:'Nutella 750g',price:64.90,stock:17,category:'Épicerie',productNumber:'NUT750'},
-  '6111040001111': {ean:'6111040001111',name:'Lait frais entier 1L',price:12.90,stock:24,category:'Frais',productNumber:'LAIT1L'},
-  '3274080005003': {ean:'3274080005003',name:'Yaourt nature 4x110g',price:18.50,stock:36,category:'Frais',productNumber:'YAOURT4'}
+  '3017620422003': {ean:'3017620422003',name:'Nutella 750g',price:64.90,costPrice:64.00,stock:17,category:'Épicerie',productNumber:'NUT750'},
+  '6111040001111': {ean:'6111040001111',name:'Lait frais entier 1L',price:12.90,costPrice:9.40,stock:24,category:'Frais',productNumber:'LAIT1L'},
+  '3274080005003': {ean:'3274080005003',name:'Yaourt nature 4x110g',price:18.50,costPrice:13.20,stock:36,category:'Frais',productNumber:'YAOURT4'}
 };
 
 let tokenCache={token:null,expiresAt:0};
@@ -178,7 +178,7 @@ function productCostCandidates(){
 export async function getProductCostByProductNumber(productNumber,{force=false}={}){
   const item=String(productNumber||'').trim(),c=config.dynamics;
   if(!item)return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_ITEM_REQUIRED',message:'Article requis pour lire le coût.'}};
-  if(!isD365ReadLive('product')||!c.productEntity)return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_SOURCE_UNAVAILABLE',message:'Source produit D365 non disponible.'}};
+  if(!isD365ReadLive('product')||!c.productEntity){const demo=Object.values(PRODUCTS).find(x=>x.productNumber===item&&Number.isFinite(Number(x.costPrice)));if(demo)return{status:'READY',productNumber:item,unitCost:Number(demo.costPrice),field:'costPrice',kind:'COST_PRICE',source:'SIMULATED/PRODUCTS.costPrice',cache:'MISS'};return{status:'UNAVAILABLE',productNumber:item,unitCost:null,field:null,source:null,error:{code:'D365_COST_SOURCE_UNAVAILABLE',message:'Source produit D365 non disponible.'}}}
   const ttl=Math.max(30,Math.min(3600,Number(process.env.STOREOPS_PRODUCT_COST_CACHE_SECONDS)||300)),cacheKey=`${c.productEntity}|${item}`,cached=productCostCache.get(cacheKey);
   if(!force&&cached&&Date.now()<cached.expiresAt)return{...cached.value,cache:'HIT'};
   const errors=[];
