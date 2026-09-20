@@ -1,0 +1,46 @@
+name: V2.18 Cost & Operational Valuation
+
+on:
+  push:
+    branches: [storeops-v2.18-cost-valuation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  cost-valuation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-cost-mapping.mjs
+          node --check backend/services/dynamics-cost.mjs
+          node --check backend/services/loss.mjs
+          node --check backend/services/loss-api.mjs
+          node --check backend/services/integration-registry-api.mjs
+          node --check frontend/js/admin-cost-mapping.js
+          node --check frontend/js/pages/losses.js
+          node --check frontend/js/pages/today.js
+          node --check frontend/js/enhancements-entry.js
+      - name: Cost valuation contract
+        run: node backend/tests/v218-cost-valuation.mjs
+      - name: V2.17 inventory and loss regression
+        run: node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Truthful integrations regression
+        run: node backend/tests/v215-truthful-integrations.mjs
+      - name: Price history regression
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Production asset coherence
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Safety guards
+        run: |
+          grep -q "D365_COST_MAPPING_NOT_VALIDATED" backend/services/d365-cost-mapping.mjs
+          grep -q "COST_MAPPING_UNMAPPED" backend/services/dynamics-cost.mjs
+          grep -q "unit_cost_value" backend/services/loss.mjs
+          grep -q "Activer coût LIVE" frontend/js/admin-cost-mapping.js
+          grep -q "2.18.0" frontend/js/auth-entry.js
+          grep -q "2180" frontend/netlify-build.sh
