@@ -26,6 +26,18 @@ CREATE TABLE IF NOT EXISTS d365_sales_mapping_settings(
  updated_by TEXT NULL REFERENCES users(id),
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS d365_sales_store_validation(
+ store_id TEXT PRIMARY KEY REFERENCES stores(id),
+ entity TEXT NOT NULL,
+ channel_field TEXT NOT NULL,
+ channel_value TEXT NOT NULL,
+ channel_kind TEXT NULL,
+ mapping_signature TEXT NOT NULL,
+ state TEXT NOT NULL DEFAULT 'FAILED',
+ smoke_json TEXT NULL,
+ validated_at TEXT NULL,
+ updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `);
 
 function safeJson(raw,fallback={}){try{const x=JSON.parse(raw||'');return x&&typeof x==='object'?x:fallback}catch{return fallback}}
