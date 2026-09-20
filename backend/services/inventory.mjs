@@ -87,6 +87,15 @@ export function createInventorySession({storeId,user,type='CYCLE',zone='',commen
  audit({storeId,userId:user.id,action:'INVENTORY_STARTED',entityType:'INVENTORY_SESSION',entityId:id,details:{type,zone}});
  return inventorySession(id);
 }
+export function activeExpressInventory(storeId,businessDate=todayISO()){
+ const row=db.prepare(`SELECT * FROM inventory_sessions WHERE store_id=? AND business_date=? AND inventory_type='TARGETED' AND zone='Express' AND status IN ('COUNTING','REVIEW') ORDER BY created_at DESC LIMIT 1`).get(storeId,businessDate);
+ return hydrateSession(row);
+}
+export function getOrCreateExpressInventory({storeId,user,businessDate=todayISO()}){
+ const active=activeExpressInventory(storeId,businessDate);
+ if(active)return active;
+ return createInventorySession({storeId,user,type:'TARGETED',zone:'Express',comment:'Inventaire express StoreOps'});
+}
 export function addInventoryLine({sessionId,user,product}){
  const session=db.prepare(`SELECT * FROM inventory_sessions WHERE id=?`).get(sessionId);if(!session)throw Object.assign(new Error('Inventaire introuvable.'),{status:404});
  if(!['COUNTING','REVIEW'].includes(session.status))throw Object.assign(new Error('Cet inventaire ne peut plus recevoir de nouvelles lignes.'),{status:409});
@@ -120,6 +129,22 @@ export function countInventoryLine({lineId,user,quantity,reasonCode=null,note=''
  }
  db.prepare(`UPDATE inventory_sessions SET status=CASE WHEN status='COUNTING' THEN 'REVIEW' ELSE status END WHERE id=?`).run(line.session_id);
  return inventorySession(line.session_id);
+}
+export function expressInventoryCount({storeId,user,product,quantity,reasonCode=null,note=''}) {
+ const session=getOrCreateExpressInventory({storeId,user});
+ let line=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(session.id,product.ean);
+ if(!line)line=addInventoryLine({sessionId:session.id,user,product});
+ else line=hydrateLine(line);
+ if(line.status==='COUNTED')throw Object.assign(new Error('Cet article est déjà compté dans l’inventaire express en cours.'),{status:409,code:'INVENTORY_EXPRESS_ALREADY_COUNTED',details:{sessionId:session.id,lineId:line.id,ean:line.ean}});
+ const recount=line.status==='RECOUNT';
+ const updated=countInventoryLine({lineId:line.id,user,quantity,reasonCode,note,recount});
+ const current=updated.lines.find(x=>x.id===line.id);
+ return{
+  session:updated,
+  line:current,
+  step:current?.status==='RECOUNT'?'RECOUNT_REQUIRED':'COUNTED',
+  nextAction:current?.status==='RECOUNT'?'RECOUNT':'SCAN_NEXT'
+ };
 }
 export function finalizeInventorySession({sessionId,user}){
  const session=inventorySession(sessionId);if(!session)throw Object.assign(new Error('Inventaire introuvable.'),{status:404});
