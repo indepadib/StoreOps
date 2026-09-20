@@ -1,6 +1,6 @@
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore } from './permissions.mjs';
-import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
+import { getProductByEan,getProductCostByProductNumber,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
 import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
 import { getStockSignals } from './stock-signals.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
@@ -25,14 +25,21 @@ function finitePrice(value){if(value===null||value===undefined||value==='')retur
 async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
  const product=await getStoreProductByEan(storeId,String(ean||'').trim());
  if(!product)return null;
- if(!product.productNumber)return product;
- try{
-  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category});
-  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price);
-  const price=effective??base??fallback;
-  return{...product,price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0)};
- }catch(error){
-  return{...product,pricingError:{code:error?.code||'D365_PRICING_UNAVAILABLE',message:error?.message||'Prix Dynamics indisponible'}};
+ if(!product.productNumber)return{...product,valuationPrice:null,valuationSource:null,costStatus:'UNAVAILABLE'};
+ const [pricingResult,costResult]=await Promise.allSettled([
+  getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category}),
+  getProductCostByProductNumber(product.productNumber)
+ ]);
+ const pricing=pricingResult.status==='fulfilled'?pricingResult.value:null,cost=costResult.status==='fulfilled'?costResult.value:null;
+ const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price),price=effective??base??fallback;
+ const valuationPrice=finitePrice(cost?.unitCost);
+ return{
+  ...product,
+  price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0),
+  costPrice:cost?.kind==='COST_PRICE'?valuationPrice:null,purchasePrice:cost?.kind==='PURCHASE_PRICE'?valuationPrice:null,
+  valuationPrice,valuationSource:cost?.source||null,costField:cost?.field||null,costStatus:cost?.status||'UNAVAILABLE',
+  pricingError:pricingResult.status==='rejected'?{code:pricingResult.reason?.code||'D365_PRICING_UNAVAILABLE',message:pricingResult.reason?.message||'Prix Dynamics indisponible'}:null,
+  costError:costResult.status==='rejected'?{code:costResult.reason?.code||'D365_COST_UNAVAILABLE',message:costResult.reason?.message||'Coût Dynamics indisponible'}:(cost?.error||null)
  }
 }
 
