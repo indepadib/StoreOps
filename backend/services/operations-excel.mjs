@@ -1,4 +1,4 @@
-import { audit,todayISO } from '../db.mjs';
+import { db,audit,todayISO } from '../db.mjs';
 import { listLossRecords,lossSummary,LOSS_REASONS } from './loss.mjs';
 import { inventorySession,INVENTORY_REASON_CODES } from './inventory.mjs';
 import { excelWorkbook } from './excel-workbook.mjs';
@@ -8,7 +8,7 @@ const n=v=>v===null||v===undefined||v===''?null:Number(v);
 const num=v=>[n(v),'Number'];
 const txt=v=>[v??'','String'];
 const safeFile=v=>String(v||'export').replace(/[^A-Za-z0-9._-]+/g,'-').replace(/-+/g,'-');
-function storeName(storeId){return storeId}
+function storeName(storeId){return db.prepare(`SELECT name FROM stores WHERE id=?`).get(storeId)?.name||storeId}
 
 export function buildLossExcel({storeId,businessDate=todayISO(),user}){
  const rows=listLossRecords(storeId,businessDate,'ALL').filter(x=>x.status!=='CANCELLED');
@@ -20,7 +20,7 @@ export function buildLossExcel({storeId,businessDate=todayISO(),user}){
    [txt('Lignes coût non disponible'),num(summary.costUnvaluedRecords)]
   ]},
   {name:'Demarque',headers:['Date','Magasin','EAN','Code article','Libellé','Catégorie','Motif','Quantité','Unité','Coût unitaire','Valeur au coût','Prix vente unitaire','Valeur prix vente','Statut','Preuve','Validation Direction','Commentaire','Source'],widths:[85,100,115,105,210,120,150,75,70,95,95,105,105,120,100,125,240,110],rows:rows.map(x=>[
-   txt(x.business_date),txt(x.store_id),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(reason(LOSS_REASONS,x.reason_code)),num(x.quantity),txt(x.unit),
+   txt(x.business_date),txt(storeName(x.store_id)),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(reason(LOSS_REASONS,x.reason_code)),num(x.quantity),txt(x.unit),
    num(x.unit_cost_value),num(x.total_cost_value),num(x.unit_retail_value),num(x.total_retail_value),txt(x.status),
    txt(x.requires_evidence?(x.evidence_satisfied?'OK':'REQUISE'):'NON REQUISE'),txt(x.approved_at?'APPROUVÉE':x.status==='APPROVAL_REQUIRED'?'À VALIDER':'NON REQUISE'),
    txt(x.note),txt(x.source_type)
@@ -37,7 +37,7 @@ export function buildInventoryExcel({sessionId,user}){
  const finalLines=inv.lines.filter(x=>x.final_qty!==null&&x.final_qty!==undefined),adjustments=finalLines.filter(x=>Number(x.final_variance||0)!==0);
  const workbook=excelWorkbook({sheets:[
   {name:'Synthese',headers:['Indicateur','Valeur'],widths:[210,170],rows:[
-   [txt('Date'),txt(inv.business_date)],[txt('Magasin'),txt(inv.store_id)],[txt('Session'),txt(inv.id)],[txt('Type'),txt(inv.inventory_type)],[txt('Zone'),txt(inv.zone||'')],
+   [txt('Date'),txt(inv.business_date)],[txt('Magasin'),txt(storeName(inv.store_id))],[txt('Session'),txt(inv.id)],[txt('Type'),txt(inv.inventory_type)],[txt('Zone'),txt(inv.zone||'')],
    [txt('Statut StoreOps'),txt(inv.status)],[txt('Articles'),num(inv.metrics?.lines||0)],[txt('Articles comptés'),num(inv.metrics?.counted||0)],
    [txt('Lignes avec écart'),num(inv.metrics?.varianceLines||0)],[txt('Écart absolu cumulé'),num(inv.metrics?.absoluteVarianceQty||0)]
   ]},
