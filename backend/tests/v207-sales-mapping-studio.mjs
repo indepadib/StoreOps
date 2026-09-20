@@ -6,7 +6,7 @@ process.env.D365_SALES_READ_MODE='simulated';
 
 await import('../services/pilot-profile.mjs');
 const {db}=await import('../db.mjs');
-const {saveD365SalesMappingDraft,d365SalesMappingSettings,evaluateD365SalesSmokeRows,activateD365SalesMapping,disableD365SalesMapping}=await import('../services/d365-sales-mapping.mjs');
+const {saveD365SalesMappingDraft,d365SalesMappingSettings,evaluateD365SalesSmokeRows,activateD365SalesMapping,disableD365SalesMapping,d365SalesMappingSignature}=await import('../services/d365-sales-mapping.mjs');
 const {salesIntegrationConfig,aggregateSalesRows}=await import('../services/dynamics-sales.mjs');
 const {integrationSnapshot}=await import('../services/integration-registry.mjs');
 
@@ -57,8 +57,12 @@ db.prepare(`UPDATE d365_sales_mapping_settings SET state='VALIDATED',smoke_json=
 saved=activateD365SalesMapping({actor});
 assert.equal(saved.state,'LIVE');
 
-const cfg=salesIntegrationConfig('val-fleuri');
+let cfg=salesIntegrationConfig('val-fleuri');
 assert.equal(cfg.mode,'LIVE');
+assert.equal(cfg.ready,false,'global mapping must not make a store ready before its own smoke');
+assert(cfg.missing.includes('storeSmoke'));
+db.prepare(`INSERT OR REPLACE INTO d365_sales_store_validation(store_id,entity,channel_field,channel_value,channel_kind,mapping_signature,state,smoke_json,validated_at,updated_at) VALUES(?,?,?,?,?,?, 'PASSED', ?, CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`).run('val-fleuri',mapping.entity,mapping.fields.channel,'10001','RETAIL_CHANNEL',d365SalesMappingSignature(saved),JSON.stringify({...smoke,storeId:'val-fleuri'}));
+cfg=salesIntegrationConfig('val-fleuri');
 assert.equal(cfg.ready,true);
 assert.equal(cfg.mappingSource,'STOREOPS_VALIDATED_MAPPING');
 assert.equal(cfg.retailId,'10001');
