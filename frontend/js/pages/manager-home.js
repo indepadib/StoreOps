@@ -97,7 +97,7 @@ async function tryAutoConnectPulse(storeId,pulse){
  if(!integration.retailId)return pulse;
  try{
   const healed=await api(`/api/stores/${storeId}/business-pulse/auto-connect`,{method:'POST'});
-  return healed?.pulse||pulse
+  return {...(healed?.pulse||pulse),autoConnect:healed?.autoConnect||null}
  }catch(error){
   console.warn('Auto-connexion Business Pulse',error);
   return pulse
@@ -113,7 +113,7 @@ export async function renderManagerHome(){
  if(fast)renderState({fast,inbox:null,pulse:null,pulseLoading:true,detailsLoading:true});
  else{try{inbox=await loadManagerInbox();syncManagerNav(inbox);detailsLoading=false;renderState({fast:null,inbox,pulse:null,pulseLoading:true,detailsLoading:false})}catch{return}}
  const redraw=()=>{if(app.storeId===storeId&&app.page==='today')renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
- scheduleCommercialLiveRefresh(storeId,{delayMs:220,minIntervalMs:300000,onUpdated:async()=>{
+ const pulsePromise=(async()=>{try{let value=await api(`/api/stores/${storeId}/business-pulse`);if(value?.status!=='READY')value=await tryAutoConnectPulse(storeId,value);return value}catch{return null}})(); scheduleCommercialLiveRefresh(storeId,{delayMs:220,minIntervalMs:300000,onUpdated:async()=>{
   if(app.storeId!==storeId||app.page!=='today')return;
   try{
    const refreshed=await api(`/api/stores/${storeId}/manager-inbox-batch`);
@@ -124,13 +124,13 @@ export async function renderManagerHome(){
   const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
   if(app.storeId!==storeId)return;
   inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
-  if(enriched?.businessPulse){pulse=await tryAutoConnectPulse(storeId,enriched.businessPulse);pulseLoading=false;redraw();return}
+  if(enriched?.businessPulse){pulse=enriched.businessPulse.status==='READY'?enriched.businessPulse:await pulsePromise||await tryAutoConnectPulse(storeId,enriched.businessPulse);pulseLoading=false;redraw();return}
   redraw();
-  try{pulse=await api(`/api/stores/${storeId}/business-pulse`);pulse=await tryAutoConnectPulse(storeId,pulse)}catch{pulse=null}
+  pulse=await pulsePromise
   pulseLoading=false;redraw();
  }catch{
   detailsLoading=false;
-  try{pulse=await api(`/api/stores/${storeId}/business-pulse`);pulse=await tryAutoConnectPulse(storeId,pulse)}catch{pulse=null}
+  pulse=await pulsePromise
   pulseLoading=false;redraw();
  }
 }
