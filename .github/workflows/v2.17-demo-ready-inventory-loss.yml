@@ -1,0 +1,40 @@
+name: V2.17 Demo Ready — Inventory & Loss
+
+on:
+  push:
+    branches: [storeops-v2.17-demo-ready-inventory-loss]
+  pull_request:
+    branches: [main]
+
+jobs:
+  demo-ready:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/inventory.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/pages/losses.js
+          node --check frontend/js/pages/manager-hubs.js
+          node --check frontend/js/app.js
+      - name: Demo-ready express flows
+        run: node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Inventory privacy regression
+        run: node backend/tests/inventory-privacy.mjs
+      - name: Loss engine regression
+        env:
+          STOREOPS_DB: /tmp/storeops-v217-loss.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v217-loss-media
+        run: node backend/tests/loss-engine.mjs
+      - name: Static release guards
+        run: |
+          grep -q "INVENTAIRE EXPRESS" frontend/js/pages/inventory.js
+          grep -q "DÉMARQUE EXPRESS" frontend/js/pages/losses.js
+          grep -q "inventory.css" frontend/index.html
+          grep -q "2.17.0" frontend/js/auth-entry.js
