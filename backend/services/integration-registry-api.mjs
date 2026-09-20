@@ -4,6 +4,7 @@ import { d365MappingDiagnosticReadiness,diagnoseD365Mappings,discoverD365SalesMa
 import { d365SalesMappingSettings,saveD365SalesMappingDraft,smokeD365SalesMapping,activateD365SalesMapping,disableD365SalesMapping } from './d365-sales-mapping.mjs';
 import { d365PriceHistoryMappingSettings,saveD365PriceHistoryMappingDraft,smokeD365PriceHistoryMapping,activateD365PriceHistoryMapping,disableD365PriceHistoryMapping } from './d365-price-history-mapping.mjs';
 import { d365TaxonomyMappingSettings,saveD365TaxonomyMappingDraft,smokeD365TaxonomyMapping,activateD365TaxonomyMapping,disableD365TaxonomyMapping } from './d365-taxonomy-mapping.mjs';
+import { d365CostMappingSettings,saveD365CostMappingDraft,smokeD365CostMapping,activateD365CostMapping,disableD365CostMapping } from './d365-cost-mapping.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
@@ -17,6 +18,7 @@ export async function handleIntegrationRegistryApi({req,url,user}){
  if(path==='/api/admin/integrations/d365-sales-mapping'&&req.method==='GET'){readAccess(user);return{status:200,data:{mapping:d365SalesMappingSettings(),canManage:isPlatformAdmin(user)}}}
  if(path==='/api/admin/integrations/d365-price-history-mapping'&&req.method==='GET'){readAccess(user);return{status:200,data:{mapping:d365PriceHistoryMappingSettings(),canManage:isPlatformAdmin(user)}}}
  if(path==='/api/admin/integrations/d365-taxonomy-mapping'&&req.method==='GET'){readAccess(user);return{status:200,data:{mapping:d365TaxonomyMappingSettings(),canManage:isPlatformAdmin(user)}}}
+ if(path==='/api/admin/integrations/d365-cost-mapping'&&req.method==='GET'){readAccess(user);return{status:200,data:{mapping:d365CostMappingSettings(),canManage:isPlatformAdmin(user)}}}
  if(path==='/api/admin/integrations/d365-mapping/diagnose'&&req.method==='POST'){readAccess(user);const b=await body(req);return{status:200,data:await diagnoseD365Mappings(b.storeId||'val-fleuri')}}
  if(path==='/api/admin/integrations/d365-sales-mapping/auto-connect'&&req.method==='POST'){
   writeAccess(user);const b=await body(req),storeId=b.storeId||'val-fleuri',discovery=await discoverD365SalesMapping(storeId),rec=discovery?.recommendation;
@@ -45,6 +47,10 @@ export async function handleIntegrationRegistryApi({req,url,user}){
  if(path==='/api/admin/integrations/d365-price-history-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365PriceHistoryMapping({actor:user,productNumber:b.productNumber,input:b.mapping||null})}}
  if(path==='/api/admin/integrations/d365-price-history-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365PriceHistoryMapping({actor:user})}}
  if(path==='/api/admin/integrations/d365-price-history-mapping/disable'&&req.method==='POST'){writeAccess(user);return{status:200,data:disableD365PriceHistoryMapping({actor:user})}}
+ if(path==='/api/admin/integrations/d365-cost-mapping/draft'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:saveD365CostMappingDraft({actor:user,input:b})}}
+ if(path==='/api/admin/integrations/d365-cost-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365CostMapping({actor:user,productNumber:b.productNumber,input:b.mapping||null})}}
+ if(path==='/api/admin/integrations/d365-cost-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365CostMapping({actor:user})}}
+ if(path==='/api/admin/integrations/d365-cost-mapping/disable'&&req.method==='POST'){writeAccess(user);return{status:200,data:disableD365CostMapping({actor:user})}}
  if(path==='/api/admin/integrations/d365-taxonomy-mapping/draft'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:saveD365TaxonomyMappingDraft({actor:user,input:b})}}
  if(path==='/api/admin/integrations/d365-taxonomy-mapping/smoke'&&req.method==='POST'){writeAccess(user);const b=await body(req);return{status:200,data:await smokeD365TaxonomyMapping({actor:user,productNumber:b.productNumber,input:b.mapping||null})}}
  if(path==='/api/admin/integrations/d365-taxonomy-mapping/activate'&&req.method==='POST'){writeAccess(user);return{status:200,data:activateD365TaxonomyMapping({actor:user})}}

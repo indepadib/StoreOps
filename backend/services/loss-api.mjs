@@ -14,6 +14,7 @@ import { cashOpeningConfig,cashOpening,cashOpeningSummary,syncCashOpening,checkC
 import { coldChainConfig,coldChainDay,coldChainSummary,ensureColdChainDay,checkColdChainLine,recheckColdChainLine,updateColdProfile } from './cold-chain.mjs';
 import { staffingConfig,staffingDay,staffingSummary,syncStaffingDay,setAttendance,updateStaffingPolicy } from './staffing.mjs';
 import { receivingIntegrationConfig,syncExpectedReceiptsFromDynamics,listReceiptsForStore } from './dynamics-receiving.mjs';
+import { getProductCost,costIntegrationConfig } from './dynamics-cost.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',c=>{d+=c;if(d.length>8e6)reject(Object.assign(new Error('Payload trop volumineux'),{status:413}))});req.on('end',()=>{try{resolve(d?JSON.parse(d):{})}catch{reject(Object.assign(new Error('JSON invalide'),{status:400}))}});req.on('error',reject)})}
@@ -26,13 +27,26 @@ async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
  const product=await getStoreProductByEan(storeId,String(ean||'').trim());
  if(!product)return null;
  if(!product.productNumber)return product;
- try{
-  const pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category});
-  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price);
-  const price=effective??base??fallback;
-  return{...product,price:price??null,basePrice:base??null,effectivePrice:effective??null,pricingSources:pricing?.sources||null,promotionCount:Number(pricing?.promotions?.activeCount||0)};
- }catch(error){
-  return{...product,pricingError:{code:error?.code||'D365_PRICING_UNAVAILABLE',message:error?.message||'Prix Dynamics indisponible'}};
+ const [pricingResult,costResult]=await Promise.allSettled([
+  getProductPricing(product.productNumber,{businessDate,priceGroup:priceGroupForStore(storeId),productName:product.name,productCategory:product.category}),
+  getProductCost(storeId,product.productNumber,{businessDate})
+ ]);
+ const pricing=pricingResult.status==='fulfilled'?pricingResult.value:null,cost=costResult.status==='fulfilled'?costResult.value:null;
+ const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price),price=effective??base??fallback;
+ return{
+  ...product,
+  price:price??null,
+  basePrice:base??null,
+  effectivePrice:effective??null,
+  pricingSources:pricing?.sources||null,
+  promotionCount:Number(pricing?.promotions?.activeCount||0),
+  pricingError:pricingResult.status==='rejected'?{code:pricingResult.reason?.code||'D365_PRICING_UNAVAILABLE',message:pricingResult.reason?.message||'Prix Dynamics indisponible'}:null,
+  unitCost:cost?.unitCost??null,
+  costCurrency:cost?.currency||null,
+  costSource:cost?.source||null,
+  costState:cost?.status||'UNAVAILABLE',
+  costReason:cost?.reason||null,
+  costError:costResult.status==='rejected'?{code:costResult.reason?.code||'D365_COST_UNAVAILABLE',message:costResult.reason?.message||'Coût Dynamics indisponible'}:null
  }
 }
 
@@ -42,6 +56,7 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/dynamics/probe'&&req.method==='GET'){requireDirector(user);const entity=url.searchParams.get('entity')||'';return{status:200,data:await probeDataEntity(entity,{top:url.searchParams.get('top')||1,filter:url.searchParams.get('filter')||''})}}
  if(path==='/api/dynamics/stock/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:stockIntegrationConfig()}}
  if(path==='/api/dynamics/receiving/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:receivingIntegrationConfig()}}
+ if(path==='/api/dynamics/cost/config'&&req.method==='GET'){requireDirector(user);return{status:200,data:costIntegrationConfig(url.searchParams.get('storeId')||null)}}
  p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();let sync;try{sync=await syncExpectedReceiptsFromDynamics(p.storeId,{businessDate})}catch(error){sync={synced:false,mode:'ERROR',error:error?.message||String(error),code:error?.code||'D365_RECEIVING_SYNC_FAILED'}}const integration={mode:sync.mode||'SIMULATED',synced:!!sync.synced,warehouseId:sync.warehouseId||null,error:sync.error||null,code:sync.code||null};return{status:200,data:listReceiptsForStore(p.storeId).map(r=>({...r,integration}))}}
  p=route(path,'/api/stores/:storeId/receipts/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await syncExpectedReceiptsFromDynamics(p.storeId,{businessDate});return{status:200,data:{sync,items:listReceiptsForStore(p.storeId)}}}
  if(path==='/api/dynamics/sales-price-agreements'&&req.method==='GET'){requireDirector(user);const item=url.searchParams.get('item')||'';return{status:200,data:await getSalesPriceAgreementsByItem(item)}}
