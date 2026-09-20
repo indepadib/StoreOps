@@ -34,6 +34,10 @@ jobs:
         run: STOREOPS_DB=/tmp/storeops-v218-aggregate.db node backend/tests/business-pulse.mjs
       - name: Existing V2.16 sales self-heal regression
         run: node backend/tests/v216-operational-fixes.mjs
+      - name: Sales Mapping Studio regression
+        run: STOREOPS_DB=/tmp/storeops-v218-sales-studio.db node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Confirmed One Retail mapping regression
+        run: STOREOPS_DB=/tmp/storeops-v218-realdata.db node backend/tests/v183-development-realdata.mjs
       - name: Start StoreOps API
         shell: bash
         env:
