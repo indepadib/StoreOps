@@ -55,6 +55,7 @@ const managerHub=readFileSync(path.join(root,'frontend/js/pages/manager-hubs.js'
 const app=readFileSync(path.join(root,'frontend/js/app.js'),'utf8');
 const index=readFileSync(path.join(root,'frontend/index.html'),'utf8');
 const server=readFileSync(path.join(root,'backend/server.mjs'),'utf8');
+const mockApi=readFileSync(path.join(root,'frontend/js/mock-api.js'),'utf8');
 
 assert.match(server,/\/inventory\/express\/count/);
 assert.match(inventoryUi,/INVENTAIRE EXPRESS/);
