@@ -46,8 +46,8 @@ function infer(rows,roles){
  return{keys,fields};
 }
 function maskedRows(rows=[]){return rows.slice(0,3).map(row=>Object.fromEntries(Object.entries(row||{}).map(([k,v])=>[k,typeof v==='string'&&v.length>80?`${v.slice(0,77)}…`:v])))}
-async function safeProbe(entity,{filter=''}={}){
- try{const r=await probeDataEntity(entity,{top:3,filter});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
+async function safeProbe(entity,{filter='',extra=''}={}){
+ try{const r=await probeDataEntity(entity,{top:3,filter,extra});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
  catch(e){return{ok:false,entity,latencyMs:null,rowCount:0,rows:[],error:e.message,code:e.code||'D365_PROBE_FAILED'}}
 }
 
@@ -71,7 +71,7 @@ export async function discoverD365SalesMapping(storeId='val-fleuri'){
  const ready=d365MappingDiagnosticReadiness(storeId),attempts=[];
  if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'D365_MODE n’est pas LIVE.'};
  for(const entity of ready.candidates.sales){
-  const probe=await safeProbe(entity),inference=infer(probe.rows,SALES_ROLES);
+  const probe=await safeProbe(entity,{extra:config.dynamics.dataAreaId?'cross-company=true':''}),inference=infer(probe.rows,SALES_ROLES);
   const fields=Object.fromEntries(Object.entries(inference.fields).map(([role,x])=>[role,x.candidate]));
   const missing=['channel','businessDate','transaction','net'].filter(role=>!fields[role]);
   attempts.push({entity,ok:probe.ok,rowCount:probe.rowCount,latencyMs:probe.latencyMs,error:probe.error||null,code:probe.code||null,missing,fields});
