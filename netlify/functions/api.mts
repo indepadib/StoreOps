@@ -118,7 +118,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.19.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.20.1',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -161,8 +161,18 @@ async function handleLightRoute(request:Request,runtime:DbRuntime){
       const {getManagerInboxBatch}=await import('../../backend/services/manager-inbox-batch.mjs');
       return Response.json(await getManagerInboxBatch(storeId,businessDate,{force}),{headers:{'X-StoreOps-Fast-Path':'manager-inbox'}})
     }
-    const {getBusinessPulse}=await import('../../backend/services/business-pulse.mjs');
-    return Response.json(await getBusinessPulse(storeId,businessDate,{force}),{headers:{'X-StoreOps-Fast-Path':'business-pulse'}})
+    const {getBusinessPulse,clearBusinessPulseCache}=await import('../../backend/services/business-pulse.mjs');
+    let pulse=await getBusinessPulse(storeId,businessDate,{force});
+    if(pulse?.status==='UNAVAILABLE'){
+      const {ensureD365SalesAutoConnected}=await import('../../backend/services/d365-sales-autoconnect.mjs');
+      const autoConnect=await ensureD365SalesAutoConnected(storeId);
+      if(autoConnect?.connected){
+        clearBusinessPulseCache(storeId);
+        pulse=await getBusinessPulse(storeId,businessDate,{force:true});
+        pulse={...pulse,autoConnected:true};
+      }else pulse={...pulse,autoConnect:{status:autoConnect?.status||'UNAVAILABLE',reason:autoConnect?.reason||null,diagnostics:autoConnect?.diagnostics||null}};
+    }
+    return Response.json(pulse,{headers:{'X-StoreOps-Fast-Path':'business-pulse'}})
   }
   return null
 }
