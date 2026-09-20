@@ -45,8 +45,12 @@ function pulseCompact(p,loading=false){
  if(!p||p.status!=='READY'||!p.snapshot){
   const integration=p?.integration||{},channel=integration.retailId,mappingState=integration.mappingState;
   if(p?.status==='DEGRADED')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Connexion ventes Dynamics à vérifier.</h3></div></div><p>${esc(p?.error?.message||'La dernière lecture ventes a échoué. Aucun chiffre incomplet n’est affiché.')}</p></section>`;
-  if(channel&&mappingState!=='LIVE')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Ventes Dynamics à finaliser.</h3></div></div><p>Le canal magasin <strong>${esc(channel)}</strong> est identifié. Le mapping transactions doit encore réussir son smoke et être activé dans Admin Studio. Aucun CA n’est inventé.</p></section>`;
-  return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Les ventes ne sont pas encore connectées.</h3></div></div><p>StoreOps n’invente aucun chiffre. Les opérations terrain restent disponibles.</p></section>`
+  const auto=p?.autoConnect||{},reason=String(auto.reason||'').trim();
+  if(auto.status==='SMOKE_FAILED')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Ventes détectées, validation à corriger.</h3></div><span class="today-pulse-live">Smoke D365</span></div><p>${esc(reason||'La source ventes a été trouvée mais ne satisfait pas encore les contrôles de cohérence. Aucun CA incomplet n’est affiché.')}</p></section>`;
+  if(auto.status==='NOT_DISCOVERED')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Source ventes D365 non identifiée.</h3></div></div><p>${esc(reason||'StoreOps a testé les sources ventes connues sans trouver un mapping exploitable.')}</p></section>`;
+  if(auto.status==='ERROR')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Connexion ventes Dynamics à vérifier.</h3></div></div><p>${esc(reason||'La connexion automatique a échoué. Aucun chiffre n’est inventé.')}</p></section>`;
+  if(channel&&mappingState!=='LIVE')return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Ventes Dynamics à finaliser.</h3></div></div><p>Le canal magasin <strong>${esc(channel)}</strong> est identifié. StoreOps tente automatiquement le mapping et ne l’active qu’après un smoke réussi.</p></section>`;
+  return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Les ventes ne sont pas encore connectées.</h3></div></div><p>${esc(reason||'StoreOps n’invente aucun chiffre. Les opérations terrain restent disponibles.')}</p></section>`
  }
  const k=p.snapshot.kpis||{},change=k.changeVsComparison;
  return `<section class="today-pulse today-pulse-hero"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Votre magasin aujourd’hui</h3></div><button class="today-text-link" data-manager-go="managerPerformance">Voir le détail</button></div><div class="today-pulse-grid today-pulse-grid-4"><div><span>CA</span><strong>${money(k.netSales)}</strong><small>${change==null?'Aujourd’hui':`${pct(change)} vs D-7`}</small></div><div><span>Tickets</span><strong>${number(k.tickets)}</strong><small>${number(k.units)} article${Number(k.units||0)>1?'s':''}</small></div><div><span>Panier</span><strong>${money(k.averageBasket)}</strong><small>${k.marginRate==null?'Marge non connectée':`Marge ${pct(k.marginRate)}`}</small></div><div><span>Ruptures</span><strong>${number(k.outOfStockCount)}</strong><small>${p.stock?.assortmentReady?'Assortiment actif':'Assortiment à vérifier'}</small></div></div></section>`;
@@ -97,10 +101,10 @@ async function tryAutoConnectPulse(storeId,pulse){
  if(!integration.retailId)return pulse;
  try{
   const healed=await api(`/api/stores/${storeId}/business-pulse/auto-connect`,{method:'POST'});
-  return healed?.pulse||pulse
+  return {...(healed?.pulse||pulse),autoConnect:healed?.autoConnect||null}
  }catch(error){
   console.warn('Auto-connexion Business Pulse',error);
-  return pulse
+  return {...(pulse||{}),autoConnect:{status:'ERROR',reason:error?.message||'Connexion ventes impossible',code:error?.code||null}}
  }
 }
 
