@@ -17,6 +17,7 @@ export async function ensureD365PriceHistoryAutoConnected(productNumber){
  if(!sku)return{status:'MISSING_SAMPLE',connected:false,reason:'PRODUCT_REQUIRED'};
  const current=d365PriceHistoryMappingSettings();
  if(current?.state==='LIVE'&&current?.smoke?.status==='PASSED')return{status:'LIVE',connected:true,mapping:current,cached:true};
+ if(current?.state==='VALIDATED'&&current?.smoke?.status==='PASSED'){const active=activateD365PriceHistoryMapping({actor:null});return{status:'LIVE',connected:true,mapping:active,reusedValidation:true}};
  if(config.dynamics.mode!=='live')return{status:'DISABLED',connected:false,reason:'D365_MODE_NOT_LIVE'};
  const key=sku;
  const cached=attempts.get(key);
