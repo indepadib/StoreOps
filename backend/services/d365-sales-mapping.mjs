@@ -126,7 +126,7 @@ export function evaluateD365SalesSmokeRows({rows=[],mapping,retailChannelId=null
 function mappingShape(base){
  return{entity:base.entity,fields:base.fields,dateFilterMode:base.dateFilterMode,salesSign:base.salesSign,quantitySign:base.quantitySign,costSign:base.costSign}
 }
-function mappingSignature(mapping){return JSON.stringify(mappingShape(mapping))}
+export function d365SalesMappingSignature(mapping){return JSON.stringify(mappingShape(mapping))}
 function storeValidationRow(row){
  if(!row)return null;
  return{storeId:row.store_id,entity:row.entity,channelField:row.channel_field,channelValue:row.channel_value,channelKind:row.channel_kind||null,mappingSignature:row.mapping_signature,state:row.state,smoke:safeJson(row.smoke_json,null),validatedAt:row.validated_at||null,updatedAt:row.updated_at||null}
@@ -135,7 +135,7 @@ export function d365SalesStoreValidation(storeId){
  return storeValidationRow(db.prepare(`SELECT * FROM d365_sales_store_validation WHERE store_id=?`).get(clean(storeId)))
 }
 function saveStoreValidation({storeId,mapping,channel,smoke}){
- const state=smoke?.status==='PASSED'?'PASSED':'FAILED',signature=mappingSignature(mapping);
+ const state=smoke?.status==='PASSED'?'PASSED':'FAILED',signature=d365SalesMappingSignature(mapping);
  db.prepare(`INSERT INTO d365_sales_store_validation(store_id,entity,channel_field,channel_value,channel_kind,mapping_signature,state,smoke_json,validated_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(store_id) DO UPDATE SET entity=excluded.entity,channel_field=excluded.channel_field,channel_value=excluded.channel_value,channel_kind=excluded.channel_kind,mapping_signature=excluded.mapping_signature,state=excluded.state,smoke_json=excluded.smoke_json,validated_at=excluded.validated_at,updated_at=CURRENT_TIMESTAMP`)
   .run(storeId,mapping.entity,mapping.fields.channel,channel.value,channel.kind||null,signature,state,JSON.stringify(smoke||{}),state==='PASSED'?smoke.checkedAt:null);
  return d365SalesStoreValidation(storeId)
