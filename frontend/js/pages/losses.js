@@ -30,7 +30,7 @@ export async function renderLosses(){
       </div>
     </details>`;
   bind();
-  setTimeout(()=>$('#lossEan')?.focus?.(),80);
+  setTimeout(async()=>{let prefill='';try{prefill=sessionStorage.getItem('storeops_express_prefill_ean')||'';sessionStorage.removeItem('storeops_express_prefill_ean')}catch{}const input=$('#lossEan');if(input&&prefill){input.value=prefill;await lookupProduct()}else input?.focus?.()},80);
 }
 
 function miniKpi(label,value,type=''){return`<div class="loss-mini-kpi ${type}"><span>${esc(label)}</span><strong>${value}</strong></div>`}
