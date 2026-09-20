@@ -27,7 +27,16 @@ export async function handleBusinessPulseApi({req,url,user}){
  if(p&&req.method==='GET'){
   if(!canAccessStore(user,p.storeId))return forbidden();
   const businessDate=url.searchParams.get('date')||todayISO();
-  return{status:200,data:await getBusinessPulse(p.storeId,businessDate,{force})};
+  let pulse=await getBusinessPulse(p.storeId,businessDate,{force});
+  if(pulse?.status==='UNAVAILABLE'){
+   const autoConnect=await ensureD365SalesAutoConnected(p.storeId);
+   if(autoConnect?.connected){
+    clearBusinessPulseCache(p.storeId);
+    pulse=await getBusinessPulse(p.storeId,businessDate,{force:true});
+    pulse.autoConnected=true;
+   }else pulse.autoConnect={status:autoConnect?.status||'UNAVAILABLE',reason:autoConnect?.reason||null};
+  }
+  return{status:200,data:pulse};
  }
  p=route(url.pathname,'/api/stores/:storeId/business-pulse/auto-connect');
  if(p&&req.method==='POST'){

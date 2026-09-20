@@ -39,6 +39,28 @@ function normalizeFields(input={}){
  }
  return out
 }
+
+export function salesStoreIdentifiers(storeId='val-fleuri',storeField=''){
+ const settings=storeOperationalSettings(storeId),d=settings?.d365||{},field=clean(storeField).toLowerCase();
+ const candidates=[
+  {kind:'RETAIL_CHANNEL',value:clean(d.retailChannelId)},
+  {kind:'STORE_NUMBER',value:clean(d.storeNumber)},
+  {kind:'WAREHOUSE',value:clean(settings?.storeWarehouseId)},
+  {kind:'OPERATING_UNIT',value:clean(d.operatingUnitNumber)}
+ ].filter(x=>x.value);
+ const priority=field.includes('channel')?['RETAIL_CHANNEL','STORE_NUMBER','WAREHOUSE','OPERATING_UNIT']:
+  field.includes('warehouse')?['WAREHOUSE','STORE_NUMBER','RETAIL_CHANNEL','OPERATING_UNIT']:
+  field.includes('operating')||field.includes('unit')?['OPERATING_UNIT','STORE_NUMBER','RETAIL_CHANNEL','WAREHOUSE']:
+  field.includes('store')?['STORE_NUMBER','RETAIL_CHANNEL','WAREHOUSE','OPERATING_UNIT']:
+  ['RETAIL_CHANNEL','STORE_NUMBER','WAREHOUSE','OPERATING_UNIT'];
+ const rank=new Map(priority.map((x,i)=>[x,i])),seen=new Set();
+ return candidates.sort((a,b)=>(rank.get(a.kind)??99)-(rank.get(b.kind)??99)).filter(x=>{const k=`${x.kind}:${x.value}`;if(seen.has(k))return false;seen.add(k);return true})
+}
+function filterVariants(field,value){
+ const escaped=clean(value).replaceAll("'","''"),out=[`${field} eq '${escaped}'`];
+ if(/^-?\d+(?:\.\d+)?$/.test(escaped))out.push(`${field} eq ${escaped}`);
+ return [...new Set(out)]
+}
 function validateMappingInput(input={}){
  const entity=clean(input.entity||'RetailTransactionSalesTransBIEntities');
  if(!/^[A-Za-z0-9_]+$/.test(entity))throw Object.assign(new Error('Entité ventes D365 invalide.'),{status:400,code:'D365_SALES_ENTITY_INVALID'});
@@ -127,13 +149,21 @@ export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=nu
  const base=input?validateMappingInput(input):d365SalesMappingSettings();
  if(!base)throw Object.assign(new Error('Aucun mapping ventes à valider.'),{status:404,code:'D365_SALES_MAPPING_NOT_FOUND'});
  const mapping=input?base:{entity:base.entity,fields:base.fields,dateFilterMode:base.dateFilterMode,salesSign:base.salesSign,quantitySign:base.quantitySign,costSign:base.costSign};
- const store=storeOperationalSettings(storeId),retailChannelId=clean(store?.d365?.retailChannelId);
- if(!retailChannelId)throw Object.assign(new Error('Retail Channel ID absent pour le magasin.'),{status:409,code:'D365_SALES_STORE_CHANNEL_REQUIRED'});
- const channelField=mapping.fields.channel,filter=`${channelField} eq '${retailChannelId.replaceAll("'","''")}'`;
- let probe=await probeDataEntity(mapping.entity,{top:25,filter});
- if(!probe?.ok||!(probe.rows||[]).length)probe=await probeDataEntity(mapping.entity,{top:25});
+ const store=storeOperationalSettings(storeId),retailChannelId=clean(store?.d365?.retailChannelId),identifiers=salesStoreIdentifiers(storeId,mapping.fields.channel);
+ if(!identifiers.length)throw Object.assign(new Error('Identifiant D365 magasin absent.'),{status:409,code:'D365_SALES_STORE_IDENTIFIER_REQUIRED'});
+ const channelField=mapping.fields.channel;
+ let probe=null,selected=identifiers[0];
+ outer:for(const identifier of identifiers){
+  for(const filter of filterVariants(channelField,identifier.value)){
+   try{
+    const candidate=await probeDataEntity(mapping.entity,{top:20,filter});
+    if(candidate?.ok&&(candidate.rows||[]).length){probe=candidate;selected=identifier;break outer}
+   }catch{}
+  }
+ }
+ if(!probe)probe=await probeDataEntity(mapping.entity,{top:20});
  const rows=Array.isArray(probe?.rows)?probe.rows:[];
- const smoke={...evaluateD365SalesSmokeRows({rows,mapping,retailChannelId,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok}),storeId};
+ const smoke={...evaluateD365SalesSmokeRows({rows,mapping,retailChannelId:selected.value,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok}),storeId,storeIdentifierKind:selected.kind,storeIdentifier:selected.value,retailChannelIdConfigured:retailChannelId||null};
  const passed=!!probe?.ok&&smoke.status==='PASSED';
  if(!passed)smoke.status='FAILED';
  if(input)saveD365SalesMappingDraft({actor,input:mapping});
