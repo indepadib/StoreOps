@@ -1,0 +1,72 @@
+name: V2.18 Business Pulse Network
+
+on:
+  push:
+    branches: [storeops-v2.18-business-pulse-network]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install runtime dependencies
+        run: npm install --ignore-scripts
+      - name: Syntax
+        run: |
+          node --check backend/services/d365-sales-channel.mjs
+          node --check backend/services/d365-store-identity.mjs
+          node --check backend/services/d365-sales-mapping.mjs
+          node --check backend/services/d365-sales-autoconnect.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/business-pulse-api.mjs
+          node --check backend/services/store-settings.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/network.js
+      - name: V2.18 store-isolated sales contract
+        run: node backend/tests/v218-business-pulse-network.mjs
+      - name: Existing Business Pulse aggregation
+        run: STOREOPS_DB=/tmp/storeops-v218-aggregate.db node backend/tests/business-pulse.mjs
+      - name: Existing V2.16 sales self-heal regression
+        run: node backend/tests/v216-operational-fixes.mjs
+      - name: Start StoreOps API
+        shell: bash
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v218-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v218-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v218-api.log 2>&1 &
+          echo $! > /tmp/storeops-v218-api.pid
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v218-api.log
+          exit 1
+      - name: Network Business Pulse API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/v218-business-pulse-network-api.mjs
+      - name: Existing Business Pulse API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/business-pulse-api.mjs
+      - name: Stop StoreOps API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v218-api.pid ]; then kill "$(cat /tmp/storeops-v218-api.pid)" || true; fi
+      - name: Release guards
+        run: |
+          grep -q "BUILD='2180'" frontend/js/auth-entry.js
+          grep -q "BUILD='2.18.0'" frontend/js/boot-classic.js
+          grep -q "v2.18.0" frontend/index.html
+          grep -q "network.js?v=2180" frontend/js/app.js
+          grep -q "version:envValue('STOREOPS_VERSION')||'2.18.0'" netlify/functions/api.mts
