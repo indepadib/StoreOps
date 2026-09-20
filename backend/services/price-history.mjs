@@ -2,7 +2,6 @@ import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
 import { salesIntegrationConfig } from './dynamics-sales.mjs';
-import { ensureD365PriceHistoryAutoConnected } from './d365-price-history-autoconnect.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
@@ -37,8 +36,7 @@ async function observedStorePrices(storeId,productNumber,{businessDate,days}){
 
 export async function itemPriceHistory({storeId,productNumber,businessDate=null,days=90}){
  const sku=clean(productNumber);if(!sku)throw Object.assign(new Error('Article requis.'),{status:400,code:'PRICE_HISTORY_ITEM_REQUIRED'});
- let agreements={mode:'UNAVAILABLE',rows:[],basePrice:null},agreementError=null,tradeAutoConnect=null;
- try{tradeAutoConnect=await ensureD365PriceHistoryAutoConnected(sku)}catch(error){tradeAutoConnect={status:'ERROR',connected:false,reason:error?.message||String(error)}}
+ let agreements={mode:'UNAVAILABLE',rows:[],basePrice:null},agreementError=null;
  try{agreements=await getSalesPriceAgreementsByItem(sku)}catch(error){agreementError={message:error.message,code:error.code||'PRICE_AGREEMENTS_FAILED'}}
  let observed={status:'UNAVAILABLE',items:[]},observedError=null;
  try{observed=await observedStorePrices(storeId,sku,{businessDate,days})}catch(error){observedError={message:error.message,code:error.code||'OBSERVED_PRICE_HISTORY_FAILED'}}
@@ -46,7 +44,7 @@ export async function itemPriceHistory({storeId,productNumber,businessDate=null,
  return{
   storeId,productNumber:sku,businessDate:dateOnly(businessDate)||new Date().toISOString().slice(0,10),
   currentBase:{price:currentBasePrice,unit:clean(base?.SalesUnitSymbol)||null,priceQuantity:Number.isFinite(Number(base?.SalesPriceQuantity))?Number(base.SalesPriceQuantity):null,source:agreements?.basePrice?.mode==='LIVE'?`D365/${agreements.basePrice.entity}`:agreements?.basePrice?.mode||'UNAVAILABLE'},
-  tradeAgreements:{status:agreements?.mode||'UNAVAILABLE',source:agreements?.entity?`D365/${agreements.entity}`:null,items:normalizeAgreementHistory(agreements),error:agreementError,autoConnect:tradeAutoConnect},
+  tradeAgreements:{status:agreements?.mode||'UNAVAILABLE',source:agreements?.entity?`D365/${agreements.entity}`:null,items:normalizeAgreementHistory(agreements),error:agreementError},
   observedSales:{...observed,error:observedError},
   semantics:{tradeAgreements:'Prix paramétrés avec période de validité.',observedSales:'Prix unitaire réellement observé en caisse, calculé à partir des ventes TTC / quantité. Peut inclure promotions et remises.',priceReport:'Dynamics 365 Commerce propose aussi un Price report historique par canal; son exposition API doit être validée dans votre environnement.'}
  }
