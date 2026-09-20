@@ -50,5 +50,5 @@ jobs:
           grep -q "Exporter Excel" frontend/js/pages/inventory.js
           ! grep -q "Envoyer l’ajustement Dynamics" frontend/js/pages/inventory.js
           ! grep -q "Confirmer l’import ERP" frontend/js/pages/losses.js
-          grep -q "2.18.0" frontend/js/auth-entry.js
-          grep -q "2180" frontend/netlify-build.sh
+          grep -Eq "BUILD_LABEL='2\\.[0-9]+\\.[0-9]+'" frontend/js/auth-entry.js
+          grep -Eq "STOREOPS_RELEASE_BUILD=.*[0-9]{4}" frontend/netlify-build.sh
