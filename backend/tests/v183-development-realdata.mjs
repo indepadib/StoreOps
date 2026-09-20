@@ -59,7 +59,8 @@ assert.equal(store.d365.source,'STOREOPS_CONFIG');
 assert.equal(store.supplyWarehouseId,'LVE Lakhya');
 assert.equal(store.supplyWarehouseSource,'NETWORK_DEFAULT');
 const sales=salesIntegrationConfig('val-fleuri');
-assert.equal(sales.retailId,'10001');
+assert.equal(sales.channelKind,'STORE_NUMBER');
+assert.equal(sales.retailId,'FRP0001');
 assert.equal(sales.retailIdSource,'STORE_SETTINGS');
 
 assert.equal(developmentProject(p.id)?.name,'Franprix Racine');
