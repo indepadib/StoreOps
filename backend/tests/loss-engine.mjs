@@ -5,7 +5,7 @@ const {createLossRecord,lossSummary,blockingLossCount,approveLossRecord,markLoss
 const {addEvidence,completeAction,resolveIncident}=await import('../services/incidents.mjs');
 function ok(v,m){if(!v)throw new Error(m)}
 const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get(),director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
-const product={ean:'6111040001111',productNumber:'LAIT1L',name:'Lait frais entier 1L',category:'Frais',price:12.9};
+const product={ean:'6111040001111',productNumber:'LAIT1L',name:'Lait frais entier 1L',category:'Frais',price:12.9,retailUnit:'pièce',retailPriceQuantity:1};
 const cfg=lossConfig();ok(Number(cfg.policy.evidence_threshold_dh)===100&&Number(cfg.policy.approval_threshold_dh)===500,'loss policy defaults failed');
 
 let low=createLossRecord({storeId:'val-fleuri',user:manager,product,reasonCode:'BREAKAGE',quantity:1,unit:'pièce',note:'Bouteille cassée'});
