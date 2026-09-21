@@ -19,6 +19,8 @@ jobs:
         run: |
           node --check backend/services/d365-cost-mapping.mjs
           node --check backend/services/dynamics-cost.mjs
+          node --check backend/services/unit-conversion.mjs
+          node --check backend/services/loss-valuation.mjs
           node --check backend/services/excel-workbook.mjs
           node --check backend/services/operations-excel.mjs
           node --check backend/services/loss.mjs
@@ -32,6 +34,8 @@ jobs:
           node --check frontend/js/enhancements-entry.js
       - name: Cost valuation contract
         run: node backend/tests/v218-cost-valuation.mjs
+      - name: Weighted loss unit valuation contract
+        run: node backend/tests/v2221-loss-unit-valuation.mjs
       - name: V2.17 inventory and loss regression
         run: node backend/tests/v217-demo-ready-inventory-loss.mjs
       - name: Truthful integrations regression
@@ -45,6 +49,9 @@ jobs:
           grep -q "D365_COST_MAPPING_NOT_VALIDATED" backend/services/d365-cost-mapping.mjs
           grep -q "COST_MAPPING_UNMAPPED" backend/services/dynamics-cost.mjs
           grep -q "unit_cost_value" backend/services/loss.mjs
+          grep -q "LOSS_VALUATION_VERSION" backend/services/loss.mjs
+          grep -q "Quantité démarquée" backend/services/operations-excel.mjs
+          grep -q "6000 g" frontend/js/pages/losses.js
           grep -q "Activer coût LIVE" frontend/js/admin-cost-mapping.js
           grep -q "Exporter la démarque en Excel" frontend/js/pages/losses.js
           grep -q "Exporter Excel" frontend/js/pages/inventory.js
