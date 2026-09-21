@@ -33,13 +33,14 @@ async function drawReceipts(errors={}){
  const warehouse=health?.warehouseId||readiness?.storeWarehouses?.[app.storeId]||null,lastSuccess=health?.lastSuccessAt||rows.map(r=>r.source_updated_at).filter(Boolean).sort().at(-1)||null;
  const lastSyncLabel=lastSuccess?new Date(String(lastSuccess).replace(' ','T')+'Z').toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):null;
  const error=documentType==='PO'?errors.poError:errors.toError;
+ const pendingLabel=documentType==='PO'?'Connexion PO Dynamics à valider':'Connexion TO Dynamics à valider';
  const sourceBanner=error
   ?`<div class="banner ban-danger"><strong>Cache ${documentType} indisponible</strong><span>${esc(error.message||'Backend Réception indisponible.')}</span></div>`
   :health?.state==='DEGRADED'
    ?`<div class="banner ban-warn"><strong>${documentType} Dynamics à vérifier</strong><span>${esc(health.lastErrorMessage||health.reason||'Dernière synchronisation non fiable')}. Le dernier cache reste visible.</span></div>`
    :health?.state==='LIVE'
     ?`<div class="banner ban-ok"><strong>${documentType==='PO'?'PO Dynamics synchronisés':'TO Dynamics synchronisés'}</strong><span>Warehouse ${esc(warehouse||'—')}${lastSyncLabel?` · synchronisé ${lastSyncLabel}`:''} · dernier cache fiable disponible.</span></div>`
-    :'';
+    :`<div class="banner ban-info"><strong>${pendingLabel}</strong><span>Aucune synchronisation fiable n’est encore confirmée pour ce flux.</span></div>`;
  const tabs=`<div class="receipt-doc-tabs">
    <button class="btn ${documentType==='PO'?'brand':'ghost'}" data-receipt-type="PO"><span>PO · Commandes</span><span class="pill">${docCount('PO')}</span></button>
    <button class="btn ${documentType==='TO'?'brand':'ghost'}" data-receipt-type="TO"><span>TO · Transferts</span><span class="pill">${docCount('TO')}</span></button>
