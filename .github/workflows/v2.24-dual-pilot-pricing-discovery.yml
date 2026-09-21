@@ -1,0 +1,60 @@
+name: V2.24 Dual Pilot Pricing Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pricing-discovery:
+    if: github.head_ref == 'storeops-v2.24-dual-pilot-pricing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Discover pricing sources for both pilots
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for channel in 10001 10002; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=RetailChannelPriceGroups&top=50&filter=RetailChannelId%20eq%20%27$channel%27"               -o "/tmp/groups-$channel.json"
+          done
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=20&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/base-price.json
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/trade.json || true
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/entities?q=SalesPrice"             -o /tmp/entities.json
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
+          const groups={};
+          for(const ch of ['10001','10002']){
+            const p=read('/tmp/groups-'+ch+'.json');
+            groups[ch]=(p.rows||[]).map(r=>({RetailChannelId:r.RetailChannelId,GroupCode:r.GroupCode,PriceGroupId:r.PriceGroupId,Name:r.Name}));
+          }
+          const base=read('/tmp/base-price.json');
+          const trade=read('/tmp/trade.json');
+          const entities=read('/tmp/entities.json');
+          const baseRows=(base.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|salesprice|salesunit|pricequantity|date|tax|discount/i.test(k)&&v!==null&&v!=='')));
+          const tradeRows=(trade.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')));
+          const entityRows=Array.isArray(entities)?entities:Array.isArray(entities.value)?entities.value:[];
+          const entityNames=entityRows.map(x=>x.PublicCollectionName||x.PublicEntityName||x.Name||x.EntityName).filter(Boolean);
+          console.log(JSON.stringify({
+            groups,
+            base:{ok:base.ok,rowCount:base.rowCount,rows:baseRows},
+            trade:{ok:trade.ok,rowCount:trade.rowCount,error:trade.error||trade.message||null,rows:tradeRows},
+            salesPriceEntities:entityNames
+          },null,2));
+          if(!groups['10001'].length)process.exit(2);
+          if(!groups['10002'].length)process.exit(3);
+          if(!baseRows.length)process.exit(4);
+          NODE
