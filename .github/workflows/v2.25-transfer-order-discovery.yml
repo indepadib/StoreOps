@@ -24,7 +24,11 @@ jobs:
           test "$code" = "200"
 
           for q in Transfer InventTransfer Transit; do
-            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/entities?q=$q"               -o "/tmp/entities-$q.json"
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
+          done
+
+          for entity in TransferOrderHeaders TransferOrderLinesV2 InventTransferTableBiEntities InventTransferLineBiEntities; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=10&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
           done
 
           node - <<'NODE'
@@ -41,6 +45,15 @@ jobs:
             })).filter(x=>x.publicEntityName||x.publicCollectionName);
           }
           console.log(JSON.stringify(out,null,2));
+          for(const entity of ['TransferOrderHeaders','TransferOrderLinesV2','InventTransferTableBiEntities','InventTransferLineBiEntities']){
+            const p=JSON.parse(fs.readFileSync('/tmp/probe-'+entity+'.json','utf8'));
+            const rows=p.rows||p.value||[];
+            console.log('\nPROBE '+entity+'\n'+JSON.stringify({
+              ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,
+              keys:[...new Set(rows.flatMap(r=>Object.keys(r||{})))],
+              rows:rows.slice(0,5)
+            },null,2));
+          }
           const all=Object.values(out).flat();
           if(!all.some(x=>/transfer/i.test(String(x.publicEntityName||'')+' '+String(x.publicCollectionName||''))))process.exit(2);
           NODE
