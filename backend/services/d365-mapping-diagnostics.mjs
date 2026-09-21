@@ -36,18 +36,25 @@ const PRICE_ROLES={
  recordId:['recordid','recid','record']
 };
 
+const ROLE_EXACT_PRIORITY={
+ channel:['store','storeid','retailchannelid','retailchannel','channelid','terminalstore','channel']
+};
 function infer(rows,roles){
  const keys=unique((rows||[]).flatMap(r=>Object.keys(r||{})));
  const fields={};
  for(const [role,patterns] of Object.entries(roles)){
-  const ranked=keys.map(key=>({key,score:keyScore(key,patterns)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+  const priority=ROLE_EXACT_PRIORITY[role]||[];
+  const ranked=keys.map(key=>{
+   const lower=clean(key).toLowerCase(),idx=priority.indexOf(lower),bonus=idx>=0?(priority.length-idx)*20:0;
+   return{key,score:keyScore(key,patterns)+bonus}
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
   fields[role]={candidate:ranked[0]?.key||null,confidence:ranked[0]?.score>=6?'HIGH':ranked[0]?.score>=3?'MEDIUM':ranked[0]?.score>0?'LOW':'NONE',alternatives:ranked.slice(1,4)};
  }
  return{keys,fields};
 }
 function maskedRows(rows=[]){return rows.slice(0,3).map(row=>Object.fromEntries(Object.entries(row||{}).map(([k,v])=>[k,typeof v==='string'&&v.length>80?`${v.slice(0,77)}…`:v])))}
-async function safeProbe(entity,{filter=''}={}){
- try{const r=await probeDataEntity(entity,{top:3,filter});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
+async function safeProbe(entity,{filter='',extra=''}={}){
+ try{const r=await probeDataEntity(entity,{top:3,filter,extra});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
  catch(e){return{ok:false,entity,latencyMs:null,rowCount:0,rows:[],error:e.message,code:e.code||'D365_PROBE_FAILED'}}
 }
 
@@ -68,17 +75,17 @@ export function d365MappingDiagnosticReadiness(storeId='val-fleuri'){
 }
 
 export async function discoverD365SalesMapping(storeId='val-fleuri'){
- const ready=d365MappingDiagnosticReadiness(storeId);
- if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'D365_MODE n’est pas LIVE.'};
+ const ready=d365MappingDiagnosticReadiness(storeId),attempts=[];
+ if(config.dynamics.mode!=='live')return{status:'DISABLED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'D365_MODE n’est pas LIVE.'};
  for(const entity of ready.candidates.sales){
-  const probe=await safeProbe(entity),inference=infer(probe.rows,SALES_ROLES);
-  if(!probe.ok||!probe.rows.length)continue;
+  const probe=await safeProbe(entity,{extra:config.dynamics.dataAreaId?'cross-company=true':''}),inference=infer(probe.rows,SALES_ROLES);
   const fields=Object.fromEntries(Object.entries(inference.fields).map(([role,x])=>[role,x.candidate]));
   const missing=['channel','businessDate','transaction','net'].filter(role=>!fields[role]);
-  if(missing.length)continue;
-  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
+  attempts.push({entity,ok:probe.ok,rowCount:probe.rowCount,latencyMs:probe.latencyMs,error:probe.error||null,code:probe.code||null,missing,fields});
+  if(!probe.ok||!probe.rows.length||missing.length)continue;
+  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},attempts,recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
  }
- return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
+ return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
 }
 
 export function inferD365PriceHistoryMappingRows(rows=[]){

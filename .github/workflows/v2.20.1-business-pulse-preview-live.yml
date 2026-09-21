@@ -1,0 +1,49 @@
+name: V2.20.1 Business Pulse Preview Live
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  live-preview:
+    if: github.head_ref == 'storeops-v2.20.1-pulse-diagnostics'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wait for Netlify preview and read Business Pulse
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          echo "Preview: $PREVIEW_URL"
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/pulse.json -w "%{http_code}" "$PREVIEW_URL/api/stores/val-fleuri/business-pulse?force=1" || true)
+            if [ "$code" = "200" ]; then break; fi
+            echo "Attempt $i: HTTP $code"
+            sleep 5
+          done
+          test "$code" = "200"
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('/tmp/pulse.json','utf8'));
+          const safe={
+            status:p.status,
+            businessDate:p.businessDate,
+            source:p.source,
+            integration:p.integration,
+            autoConnected:p.autoConnected||false,
+            autoConnect:p.autoConnect||null,
+            diagnostics:p.diagnostics||null,
+            kpis:p.snapshot?.kpis||null
+          };
+          console.log(JSON.stringify(safe,null,2));
+          if(p.status!=='READY'){
+            console.error('Business Pulse is not READY');
+            process.exit(2);
+          }
+          if(!Number.isFinite(Number(p.snapshot?.kpis?.netSales))){
+            console.error('Daily net sales missing');
+            process.exit(3);
+          }
+          NODE
