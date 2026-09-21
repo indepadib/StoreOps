@@ -80,12 +80,13 @@ function agreementActiveOn(row,day){
   const from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate);
   return (openDate(from)||from<=day)&&(openDate(to)||to>=day)
 }
-export function selectApplicableSalesPriceAgreement(rows,{businessDate=null,priceGroups=[],warehouseId=null,siteId=null,quantity=1,defaultPriceGroup=null}={}){
-  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),groups=[...new Set((priceGroups||[]).map(clean).filter(Boolean))],qty=Math.max(0,Number(quantity)||1),warehouse=clean(warehouseId),site=clean(siteId),defaultGroup=clean(defaultPriceGroup||config.dynamics.defaultPriceGroup||'Franprix');
+export function selectApplicableSalesPriceAgreement(rows,{businessDate=null,priceGroups=[],warehouseId=null,siteId=null,quantity=1,defaultPriceGroup=null,expectedUnit=null}={}){
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),groups=[...new Set((priceGroups||[]).map(clean).filter(Boolean))],qty=Math.max(0,Number(quantity)||1),warehouse=clean(warehouseId),site=clean(siteId),defaultGroup=clean(defaultPriceGroup||config.dynamics.defaultPriceGroup||'Franprix'),salesUnit=clean(expectedUnit).toLowerCase();
   const eligible=(Array.isArray(rows)?rows:[]).filter(row=>{
     const price=normalizedPrice(row?.Price,row?.SalesPriceQuantity||1);if(price===null||!agreementActiveOn(row,day))return false;
-    const group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),rowWh=clean(row?.PriceWarehouseId),rowSite=clean(row?.PriceSiteId);
+    const group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),rowWh=clean(row?.PriceWarehouseId),rowSite=clean(row?.PriceSiteId),rowUnit=clean(row?.QuantityUnitySymbol).toLowerCase();
     if(customer)return false;
+    if(rowUnit&&(!salesUnit||rowUnit!==salesUnit))return false;
     if(group&&groups.length&&!groups.includes(group))return false;
     if(group&&!groups.length)return false;
     if(rowWh&&(!warehouse||rowWh!==warehouse))return false;
@@ -106,6 +107,7 @@ export function selectApplicableSalesPriceAgreement(rows,{businessDate=null,pric
     priceGroups:groups,
     warehouseId:warehouse||null,
     siteId:site||null,
+    expectedUnit:clean(expectedUnit)||null,
     quantity:qty,
     eligibleCount:eligible.length,
     selected:selected?{
