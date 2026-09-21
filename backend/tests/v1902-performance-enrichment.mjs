@@ -10,12 +10,14 @@ const homeSource=read('frontend/js/pages/manager-home.js');
 const authSource=read('frontend/js/auth-entry.js');
 
 assert.match(batchSource,/getBusinessPulse/,'manager batch must import Business Pulse');
-assert.match(batchSource,/\[stockData,businessPulse\]=await Promise\.all/,'stock and Business Pulse must enrich in parallel');
+assert.match(batchSource,/peekStockSignals/,'LIVE manager batch must use cached stock signals without blocking on D365');
+assert.doesNotMatch(batchSource,/\[stockData,businessPulse\]=await Promise\.all/,'manager batch must not block Business Pulse on heavy stock refresh');
 assert.match(batchSource,/businessPulse,items:sorted/,'manager batch must return Business Pulse');
 assert.match(batchSource,/pulseBundled:true/,'manager diagnostics must expose bundled pulse');
 assert.match(homeSource,/enriched\?\.businessPulse/,'manager home must consume bundled Business Pulse first');
 assert.match(homeSource,/manager-home-fast/,'first paint must remain on the local fast endpoint');
 assert.match(homeSource,/manager-inbox-batch/,'second network request must remain the enrichment batch');
+assert.match(homeSource,/business-pulse\/stockouts/,'ruptures must hydrate asynchronously after first paint');
 const build=Number(authSource.match(/const BUILD='(\d+)'/)?.[1]||0);
 assert(build>=1902,'frontend runtime must remain cache-busted beyond V1.90.2');
 
