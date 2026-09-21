@@ -14,6 +14,16 @@ ensureColumn('users','updated_at','TEXT NULL');
 
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity_provider_subject ON users(identity_provider,identity_subject) WHERE identity_provider IS NOT NULL AND identity_subject IS NOT NULL;`);
 
+function migrateLegacyQualityPilotAccount(){
+ const row=db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users WHERE id='u-tr'`).get();
+ if(!row)return;
+ const name=String(row.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ if(name.includes('amine')&&name.includes('chibani')&&row.permissions_profile!=='quality_audit'){
+  db.prepare(`UPDATE users SET role='employee',store_id=NULL,permissions_profile='quality_audit',updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(row.id);
+ }
+}
+migrateLegacyQualityPilotAccount();
+
 const PROFILE_DEFS=Object.freeze({
  PLATFORM_ADMIN:{code:'PLATFORM_ADMIN',label:'Administrateur StoreOps',description:'Configuration complète du tenant, accès, intégrations et réseau.',role:'ops_director',permissionsProfile:'platform_admin',scope:'NETWORK',sensitive:true},
  OPS_DIRECTOR:{code:'OPS_DIRECTOR',label:'Direction d’exploitation',description:'Pilotage de tous les magasins et opérations réseau.',role:'ops_director',permissionsProfile:null,scope:'NETWORK',sensitive:true},
