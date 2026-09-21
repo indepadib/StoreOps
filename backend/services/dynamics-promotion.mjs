@@ -1,7 +1,8 @@
 import { config } from '../config.mjs';
 import { odataGet, resolveStorePriceGroups } from './dynamics.mjs';
 import { odataGetAllBySkip } from './dynamics-query.mjs';
-import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
+import { getSalesPriceAgreementsByItem,selectApplicableSalesPriceAgreement } from './dynamics-price.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 export const RETAIL_DISCOUNT_ENTITY='RetailDiscounts';
 export const RETAIL_DISCOUNT_LINE_ENTITY='RetailDiscountLines';
@@ -42,6 +43,7 @@ export function computeSimpleEffectivePrice(basePrice,mechanic){
   if(mechanic.mechanic==='FIXED_PRICE'&&Number.isFinite(Number(mechanic.dealPrice)))return Number(mechanic.dealPrice);
   return null;
 }
+function pricePerBasis(price,quantity=1){const p=Number(price),q=Number(quantity||1);return Number.isFinite(p)&&p>=0&&Number.isFinite(q)&&q>0?p/q:null}
 export function chooseEffectiveUnitPrice(basePrice,simpleEffectivePrices=[]){
   const candidates=[];
   if(basePrice!==null&&basePrice!==undefined&&basePrice!==''){const b=Number(basePrice);if(Number.isFinite(b)&&b>=0)candidates.push(b)}
@@ -193,9 +195,12 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
   const priceDiagnostics=priceResult.status==='fulfilled'?priceResult.value:{mode:'ERROR',basePrice:null,rowCount:0,rows:[]};
   const promoDiagnostics=promoResult.status==='fulfilled'?promoResult.value:{mode:'ERROR',productNumber:item,businessDate:dateOnly(businessDate)||new Date().toISOString().slice(0,10),priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},error:promotionError};
 
-  const baseRow=priceDiagnostics.basePrice?.row||null,basePrice=baseRow?Number(baseRow.SalesPrice):null;
+  const baseRow=priceDiagnostics.basePrice?.row||null,baseRawPrice=baseRow?Number(baseRow.SalesPrice):null,basePrice=baseRow?pricePerBasis(baseRawPrice,baseRow.SalesPriceQuantity||1):null;
+  const storeSettings=storeId?storeOperationalSettings(storeId):null,priceGroupsResolved=promoDiagnostics.priceGroups||resolvePriceGroups(resolvedPriceGroup,priceGroups);
+  const agreementResolution=selectApplicableSalesPriceAgreement(priceDiagnostics.rows||[],{businessDate:promoDiagnostics.businessDate||businessDate,priceGroups:priceGroupsResolved,warehouseId:storeSettings?.storeWarehouseId||null,siteId:null,quantity:1,defaultPriceGroup:config.dynamics.defaultPriceGroup||'Franprix'});
+  const agreementPrice=agreementResolution.selected?.unitPrice??null,referencePrice=agreementPrice??basePrice,referenceSource=agreementPrice!==null?'TRADE_AGREEMENT':'BASE_PRICE';
   const activePromotions=(promoDiagnostics.promotions||[]).filter(x=>x.activeForRequestedContext),simplePromotions=activePromotions.filter(x=>x.mechanic.type==='DISCOUNT'),conditionalPromotions=activePromotions.filter(x=>x.mechanic.type==='MIX_AND_MATCH');
-  const simpleEffectivePrices=simplePromotions.map(x=>computeSimpleEffectivePrice(basePrice,x.mechanic)).filter(Number.isFinite),effectiveUnitPrice=chooseEffectiveUnitPrice(basePrice,simpleEffectivePrices);
+  const simpleEffectivePrices=simplePromotions.map(x=>computeSimpleEffectivePrice(referencePrice,x.mechanic)).filter(Number.isFinite),effectiveUnitPrice=chooseEffectiveUnitPrice(referencePrice,simpleEffectivePrices);
   const priceMode=priceDiagnostics.mode||'SIMULATED',promotionMode=promoDiagnostics.mode||'SIMULATED';
   const fullyLive=priceMode==='LIVE'&&promotionMode==='LIVE';
   const partlyLive=priceMode==='LIVE'||promotionMode==='LIVE';
@@ -206,12 +211,15 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
     productNumber:item,
     businessDate:promoDiagnostics.businessDate||dateOnly(businessDate)||new Date().toISOString().slice(0,10),
     priceGroup:promoDiagnostics.priceGroup||resolvedPriceGroup,
-    priceGroups:promoDiagnostics.priceGroups||resolvePriceGroups(resolvedPriceGroup,priceGroups),
+    priceGroups:priceGroupsResolved,
     priceGroupContext:promoDiagnostics.priceGroupContext||null,
-    basePrice:baseRow?{price:basePrice,unit:baseRow.SalesUnitSymbol||null,priceQuantity:baseRow.SalesPriceQuantity??null,priceDate:baseRow.SalesPriceDate||null,source:baseRow.BaseSalesPriceSource||null}:null,
-    tradeAgreements:{rowCount:priceDiagnostics.rowCount||0,rows:priceDiagnostics.rows||[]},
+    basePrice:baseRow?{price:basePrice,rawPrice:baseRawPrice,unit:baseRow.SalesUnitSymbol||null,priceQuantity:baseRow.SalesPriceQuantity??null,priceDate:baseRow.SalesPriceDate||null,source:baseRow.BaseSalesPriceSource||null}:null,
+    tradeAgreements:{rowCount:priceDiagnostics.rowCount||0,rows:priceDiagnostics.rows||[],resolution:agreementResolution,active:agreementResolution.selected||null},
+    referencePrice,
+    referencePriceSource:referenceSource,
     promotions:{rowCount:promoDiagnostics.rowCount||0,activeCount:activePromotions.length,items:promoDiagnostics.promotions||[],coverage:promoDiagnostics.coverage||{directItem:true,category:false},scan:promoDiagnostics.scan||null,warnings:promoDiagnostics.warnings||null,error:promotionError},
     effectiveUnitPrice,
+    effectivePriceSource:simpleEffectivePrices.length&&effectiveUnitPrice!==referencePrice?'PROMOTION':referenceSource,
     conditionalPromotions,
     pricingNote:promotionError?'Article et prix disponibles ; lecture promotion Dynamics indisponible pour ce scan.':conditionalPromotions.length?'Le prix unitaire n’est pas artificiellement recalculé pour les offres Mix & Match. La mécanique du lot reste séparée.':null
   };
