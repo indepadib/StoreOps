@@ -1,0 +1,36 @@
+name: V2.24.1 Navigation Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    if: github.head_ref == 'storeops-v2.23.1-nav-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/app.js
+          node --check frontend/js/auth-entry.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/boot-classic.js
+      - name: Production shell and Showcase
+        run: node backend/tests/v200-production-assets.mjs
+      - name: Cache-generation regressions
+        run: |
+          node backend/tests/v194-today-ux-pipeline.mjs
+          node backend/tests/v198-action-first-mobile.mjs
+          node backend/tests/v199-exception-first-director.mjs
+          node backend/tests/v209-validation-center.mjs
+      - name: Quality access regression
+        run: node backend/tests/quality-audit-access.mjs
+      - name: Fatal selector guard
+        run: |
+          ! grep -Fq "$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach" frontend/js/app.js
+          grep -Fq "document.querySelectorAll('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach" frontend/js/app.js
