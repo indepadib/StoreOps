@@ -1,0 +1,41 @@
+name: V2.21 Live Stockout Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  live-stockout:
+    if: github.head_ref == 'storeops-v2.21-sales30-stockouts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for preview and validate 30-day stockout rule
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/pulse.json -w "%{http_code}" "$PREVIEW_URL/api/stores/val-fleuri/business-pulse?force=1" || true)
+            if [ "$code" = "200" ]; then break; fi
+            echo "Attempt $i: HTTP $code"
+            sleep 5
+          done
+          test "$code" = "200"
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('/tmp/pulse.json','utf8'));
+          const safe={
+            status:p.status,
+            businessDate:p.businessDate,
+            source:p.source,
+            stock:p.stock,
+            outOfStockCount:p.snapshot?.kpis?.outOfStockCount ?? null
+          };
+          console.log(JSON.stringify(safe,null,2));
+          if(p.status!=='READY')process.exit(2);
+          if(p.stock?.ruptureMethod!=='SALES_30D_ZERO_STOCK')process.exit(3);
+          if(p.stock?.ruptureReady!==true)process.exit(4);
+          if(!Number.isFinite(Number(p.snapshot?.kpis?.outOfStockCount)))process.exit(5);
+          NODE
