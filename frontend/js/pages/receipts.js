@@ -38,7 +38,7 @@ async function drawReceipts(errors={}){
   :health?.state==='DEGRADED'
    ?`<div class="banner ban-warn"><strong>${documentType} Dynamics à vérifier</strong><span>${esc(health.lastErrorMessage||health.reason||'Dernière synchronisation non fiable')}. Le dernier cache reste visible.</span></div>`
    :health?.state==='LIVE'
-    ?`<div class="banner ban-ok"><strong>${documentType} Dynamics à jour</strong><span>Warehouse ${esc(warehouse||'—')}${lastSyncLabel?` · synchronisé ${lastSyncLabel}`:''}.</span></div>`
+    ?`<div class="banner ban-ok"><strong>${documentType==='PO'?'PO Dynamics synchronisés':'TO Dynamics synchronisés'}</strong><span>Warehouse ${esc(warehouse||'—')}${lastSyncLabel?` · synchronisé ${lastSyncLabel}`:''} · dernier cache fiable disponible.</span></div>`
     :'';
  const tabs=`<div class="receipt-doc-tabs">
    <button class="btn ${documentType==='PO'?'brand':'ghost'}" data-receipt-type="PO"><span>PO · Commandes</span><span class="pill">${docCount('PO')}</span></button>
