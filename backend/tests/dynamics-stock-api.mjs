@@ -17,7 +17,12 @@ assert(vfConfig,'Val Fleuri stock configuration must be exposed');
 assert.equal(vfConfig.warehouseId,'FRP0001');
 assert.equal(vfConfig.supplyWarehouseId,null);
 assert(['PILOT_FALLBACK','STOREOPS_CONFIG','ENV_CONFIG'].includes(vfConfig.settingsSource));
-for(const row of config.body.stores.filter(x=>x.storeId!=='val-fleuri')){
+const trConfig=config.body.stores.find(x=>x.storeId==='trefle');
+assert(trConfig,'Trèfle stock configuration must be exposed');
+assert.equal(trConfig.warehouseId,'FRP0002');
+assert.equal(trConfig.supplyWarehouseId,null);
+assert(['PILOT_FALLBACK','CONFIRMED_PILOT','STOREOPS_CONFIG','ENV_CONFIG'].includes(trConfig.settingsSource));
+for(const row of config.body.stores.filter(x=>!['val-fleuri','trefle'].includes(x.storeId))){
   assert.equal(row.warehouseId,null,`${row.storeId} must remain unmapped until explicitly configured`);
   assert.equal(row.supplyWarehouseId,null);
   assert.equal(row.settingsSource,'UNMAPPED');
@@ -35,11 +40,10 @@ assert.equal(vf.body.ean,'3017620422003');
 assert.equal(vf.body.warehouseId,'FRP0001');
 assert.equal(vf.body.stock,17);
 
-// A store without an explicit mapping must never inherit a fictitious warehouse.
+// Trèfle is the second confirmed pilot and must use its own D365 warehouse.
 const tr=await get('/api/stores/trefle/products/3017620422003','u-tr');
 assert.equal(tr.status,200);
-assert.equal(tr.body.warehouseId,null);
-assert.equal(tr.body.stockSource,'UNMAPPED_D365');
+assert.equal(tr.body.warehouseId,'FRP0002');
 
 const forbidden=await get('/api/stores/trefle/products/3017620422003','u-vf');
 assert.equal(forbidden.status,403);

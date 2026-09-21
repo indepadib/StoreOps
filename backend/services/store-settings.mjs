@@ -6,7 +6,8 @@ const LEGACY_STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
 const CONFIRMED_ONE_RETAIL_PROFILE=Object.freeze({
  defaultSupplyWarehouseId:'LVE Lakhya',
  stores:{
-  'val-fleuri':{storeNumber:'FRP0001',storeWarehouseId:'FRP0001',retailChannelId:'10001',operatingUnitNumber:'00000063',legalEntityId:'5001',assortmentProfile:'COMPLEMENTAIRE_PLUS'}
+  'val-fleuri':{storeNumber:'FRP0001',storeWarehouseId:'FRP0001',retailChannelId:'10001',operatingUnitNumber:'00000063',legalEntityId:'5001',assortmentProfile:'COMPLEMENTAIRE_PLUS'},
+  'trefle':{storeNumber:'FRP0002',storeWarehouseId:'FRP0002',retailChannelId:'10002',operatingUnitNumber:'00000064',legalEntityId:'5001'}
  }
 });
 
