@@ -308,7 +308,7 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
   if(receipt&&receipt.store_id!==storeId)continue;
   if(!receipt){
    const id=uid('receipt');
-   db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'PO',?,?,?)`).run(id,storeId,po.poNumber,po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId);
+   db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'PO',?,?)`).run(id,storeId,po.poNumber,po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId);
    receipt=db.prepare(`SELECT * FROM receipts WHERE id=?`).get(id);created++;
   }else{
    db.prepare(`UPDATE receipts SET vendor=?,eta=?,source='D365',source_status=?,source_warehouse_id=?,source_updated_at=CURRENT_TIMESTAMP,document_type='PO',source_origin=?,source_destination=?,status=CASE WHEN status='POSTED' THEN status ELSE 'EXPECTED' END WHERE id=?`).run(po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId,receipt.id);updated++;
@@ -338,7 +338,7 @@ export async function syncExpectedTransferOrdersFromDynamics(storeId,{businessDa
   let receipt=db.prepare(`SELECT * FROM receipts WHERE po_number=?`).get(doc.documentNumber);
   if(receipt&&receipt.store_id!==storeId)continue;
   if(!receipt){
-   const id=uid('receipt');db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'TO',?,?,?)`).run(id,storeId,doc.documentNumber,doc.vendor,doc.eta,doc.sourceStatus,doc.warehouseId,doc.origin||doc.vendor,doc.warehouseId);receipt=db.prepare(`SELECT * FROM receipts WHERE id=?`).get(id);created++
+   const id=uid('receipt');db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'TO',?,?)`).run(id,storeId,doc.documentNumber,doc.vendor,doc.eta,doc.sourceStatus,doc.warehouseId,doc.origin||doc.vendor,doc.warehouseId);receipt=db.prepare(`SELECT * FROM receipts WHERE id=?`).get(id);created++
   }else{db.prepare(`UPDATE receipts SET vendor=?,eta=?,source='D365',source_status=?,source_warehouse_id=?,source_updated_at=CURRENT_TIMESTAMP,document_type='TO',source_origin=?,source_destination=?,status=CASE WHEN status='POSTED' THEN status ELSE 'EXPECTED' END WHERE id=?`).run(doc.vendor,doc.eta,doc.sourceStatus,doc.warehouseId,doc.origin||doc.vendor,doc.warehouseId,receipt.id);updated++}
   if(authoritative)db.prepare(`UPDATE receipt_lines SET source_active=0 WHERE receipt_id=? AND source_line_number IS NOT NULL`).run(receipt.id);
   for(const line of doc.lines){
