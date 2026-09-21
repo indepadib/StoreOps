@@ -1,0 +1,118 @@
+name: V2.24.2 Operations Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract:
+    if: github.head_ref == 'storeops-v2.24.2-ops-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/inventory.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/inventory.js
+      - name: V2.24.2 contract
+        env:
+          STOREOPS_DB: /tmp/storeops-v2242-contract.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2242-contract-media
+        run: node backend/tests/v2242-ops-hotfix.mjs
+      - name: Guided inventory regression
+        env:
+          STOREOPS_DB: /tmp/storeops-v2242-inventory.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2242-inventory-media
+        run: node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Start API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          STOREOPS_REAL_ONLY: "0"
+          STOREOPS_STAFFING_SOURCE: storeops
+          STOREOPS_CASH_OPENING_SOURCE: storeops
+          STOREOPS_DB: /tmp/storeops-v2242-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2242-api-media
+          PORT: "8787"
+        run: |
+          node backend/server.mjs >/tmp/storeops-v2242.log 2>&1 &
+          echo $! >/tmp/storeops-v2242.pid
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8787/api/health >/tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v2242.log
+          exit 1
+      - name: Cash opening API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+      - name: Staffing API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v2242.pid ]; then kill "$(cat /tmp/storeops-v2242.pid)" || true; fi
+
+  preview:
+    if: github.head_ref == 'storeops-v2.24.2-ops-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Validate deployed operational routes and quality profile
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 80); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ] && grep -q '"version":"2.24.2"' /tmp/health.json; then break; fi
+            sleep 5
+          done
+          test "$code" = "200"
+          grep -q '"version":"2.24.2"' /tmp/health.json
+
+          curl -fsS -H "x-demo-user: u-vf" "$PREVIEW_URL/api/stores/val-fleuri/cash-opening" -o /tmp/cash.json
+          curl -fsS -H "x-demo-user: u-vf" "$PREVIEW_URL/api/stores/val-fleuri/staffing" -o /tmp/staffing.json
+          curl -fsS -H "x-demo-user: u-quality-audit" "$PREVIEW_URL/api/session" -o /tmp/quality-session.json
+          curl -fsS -H "x-demo-user: u-quality-audit" "$PREVIEW_URL/api/stores" -o /tmp/quality-stores.json
+          curl -fsS -H "x-demo-user: u-quality-audit" "$PREVIEW_URL/api/stores/val-fleuri/receipts" -o /tmp/quality-receipts.json
+          curl -fsS -H "x-demo-user: u-ops" "$PREVIEW_URL/api/admin/access/config" -o /tmp/access.json
+          curl -fsS "$PREVIEW_URL/" -o /tmp/index.html
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const cash=JSON.parse(fs.readFileSync('/tmp/cash.json','utf8'));
+          const staffing=JSON.parse(fs.readFileSync('/tmp/staffing.json','utf8'));
+          const session=JSON.parse(fs.readFileSync('/tmp/quality-session.json','utf8'));
+          const stores=JSON.parse(fs.readFileSync('/tmp/quality-stores.json','utf8'));
+          const access=JSON.parse(fs.readFileSync('/tmp/access.json','utf8'));
+          console.log(JSON.stringify({
+            cash:{status:cash.opening?.status,lines:cash.opening?.lines?.length,source:cash.sync?.source},
+            staffing:{status:staffing.day?.status,lines:staffing.day?.lines?.length,source:staffing.sync?.source},
+            quality:session.user,
+            stores:stores.map(x=>x.id),
+            qualityProfile:access.profiles?.find(x=>x.code==='QUALITY_AUDIT')
+          },null,2));
+          if(!cash.opening?.lines?.length)process.exit(2);
+          if(!staffing.day?.metrics)process.exit(3);
+          if(session.user?.permissions_profile!=='quality_audit')process.exit(4);
+          for(const id of ['val-fleuri','trefle'])if(!stores.some(x=>x.id===id))process.exit(5);
+          const qp=access.profiles?.find(x=>x.code==='QUALITY_AUDIT');
+          if(!qp||qp.scope!=='NETWORK'||qp.sensitive!==false)process.exit(6);
+          NODE
+
+          grep -q 'v2.24.2' /tmp/index.html
+          grep -q 'data-page="receipts">Réceptions' /tmp/index.html
