@@ -3,7 +3,7 @@ import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inventory-privacy.js';
 
-let cfg=null,data=null;
+let cfg=null,data=null,quickProduct=null;
 const countingPolicy=()=>({...DEFAULT_INVENTORY_COUNTING_POLICY,...(cfg?.countingPolicy||{})});
 const reasonLabel=code=>cfg?.reasons?.find(x=>x.code===code)?.label||code||'—';
 const sessionLabel=x=>({CYCLE:'Inventaire tournant',TARGETED:'Inventaire ciblé',FULL:'Inventaire complet'}[x]||x);
@@ -13,6 +13,8 @@ const dt=v=>v?new Date(String(v).replace(' ','T')+'Z').toLocaleString('fr-FR',{d
 const lineById=id=>(data?.items||[]).flatMap(x=>x.lines||[]).find(x=>x.id===id)||null;
 const isExpress=x=>x?.inventory_type==='TARGETED'&&x?.zone==='Express';
 const activeExpress=items=>(items||[]).find(x=>isExpress(x)&&['COUNTING','REVIEW'].includes(x.status))||null;
+const unitOf=x=>String(x?.stock_unit||x?.inventoryUnit||'').trim();
+const qtyWithUnit=(v,u)=>String(v??'—')+(u?' '+esc(u):'');
 
 export async function renderInventory(){
   [cfg,data]=await Promise.all([api('/api/inventory/config'),api(`/api/stores/${app.storeId}/inventory?status=ALL`)]);
@@ -29,7 +31,7 @@ export async function renderInventory(){
       <summary><div><strong>Détails & inventaires avancés</strong><span>Sessions, inventaire complet, politique et export Excel.</span></div><b>⌄</b></summary>
       <div class="inventory-advanced-body">
         ${policy.blindFirstCount?'<div class="banner ban-info"><strong>Comptage aveugle actif</strong><span>Le stock théorique Dynamics reste masqué pendant le comptage pour éviter le biais.</span></div>':''}
-        <div class="grid g2" style="margin-top:12px">${isDirector()?policyCard():conceptCard()}<div class="card"><div class="label">Écart absolu ouvert</div><div class="kpi">${s.absoluteVarianceQty||0}</div><div class="small muted">unités cumulées sur les sessions ouvertes</div></div></div>
+        <div class="grid g2" style="margin-top:12px">${isDirector()?policyCard():conceptCard()}<div class="card"><div class="label">Unités de comptage</div><div class="kpi">${s.varianceLines||0}</div><div class="small muted">ligne(s) avec écart · g, kg et pièces ne sont jamais additionnés ensemble</div></div></div>
         ${canManage()?createPanel():''}
         <div class="network-section-title"><div><strong>Sessions d’inventaire</strong><span>Traçabilité complète des comptages, écarts et validations.</span></div><span class="pill">${items.length}</span></div>
         <div class="inventory-session-list">${items.length?items.map(sessionCard).join(''):'<div class="card empty">Aucun inventaire enregistré.</div>'}</div>
@@ -79,7 +81,7 @@ function sessionCard(inv){
  const editable=canManage()&&['COUNTING','REVIEW'].includes(inv.status),ready=inv.status==='READY_TO_POST',pending=Number(inv.metrics?.pending||0),unexplained=Number(inv.metrics?.unexplained||0),blocking=pending+unexplained,pct=inv.metrics?.lines?Math.round((Number(inv.metrics.counted||0)/Number(inv.metrics.lines))*100):0;
  return`<article class="card inventory-session ${ready?'inventory-ready':''}">
    <div class="row"><div><div class="small muted">${isExpress(inv)?'Inventaire express':sessionLabel(inv.inventory_type)} · ${esc(inv.zone||'Périmètre non précisé')}</div><h3>${esc(inv.id)}</h3><div class="small muted">Créé par ${esc(inv.created_by_name||'—')} · ${dt(inv.created_at)}</div></div>${status(sessionStatus(inv.status),statusKind(inv.status))}</div>
-   <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Écart abs.</span><strong>${inv.metrics.absoluteVarianceQty}</strong></div></div>
+   <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Lignes en écart</span><strong>${inv.metrics.varianceLines}</strong></div></div>
    ${editable&&inv.metrics.lines?`<div class="small muted inventory-progress-line">Progression ${pct}% · ${pending} à compter · ${unexplained} écart(s) à expliquer</div>`:''}
    ${editable&&!isExpress(inv)?addLinePanel(inv):''}
    <div class="table-wrap inventory-table-wrap" style="margin-top:10px"><table class="table inventory-table"><thead><tr><th>Article</th><th>Théorique</th><th>1er comptage</th><th>Écart</th><th>Recomptage / final</th><th>Motif</th><th>Action</th></tr></thead><tbody>${inv.lines.map(lineRow).join('')||'<tr><td colspan="7"><div class="empty compact">Aucun article.</div></td></tr>'}</tbody></table></div>
