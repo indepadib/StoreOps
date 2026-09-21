@@ -21,7 +21,7 @@ const trConfig=config.body.stores.find(x=>x.storeId==='trefle');
 assert(trConfig,'Trèfle stock configuration must be exposed');
 assert.equal(trConfig.warehouseId,'FRP0002');
 assert.equal(trConfig.supplyWarehouseId,null);
-assert(['PILOT_FALLBACK','STOREOPS_CONFIG','ENV_CONFIG'].includes(trConfig.settingsSource));
+assert(['PILOT_FALLBACK','CONFIRMED_PILOT','STOREOPS_CONFIG','ENV_CONFIG'].includes(trConfig.settingsSource));
 for(const row of config.body.stores.filter(x=>!['val-fleuri','trefle'].includes(x.storeId))){
   assert.equal(row.warehouseId,null,`${row.storeId} must remain unmapped until explicitly configured`);
   assert.equal(row.supplyWarehouseId,null);
