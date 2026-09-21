@@ -1,14 +1,15 @@
+import { config } from '../config.mjs';
 import { normalizeRetailInsights,quickPulse } from './retail-insights.mjs';
 import { readStoreSalesDay,salesComparisonDate,salesIntegrationConfig } from './dynamics-sales.mjs';
-import { peekStockSignals } from './stock-signals.mjs';
+import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
 
 const cache=new Map();
 const inflight=new Map();
 const ttlMs=()=>Math.max(15,Math.min(600,Number(process.env.STOREOPS_BUSINESS_PULSE_CACHE_SECONDS)||90))*1000;
 const round2=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
 
-function stockSummary(storeId,businessDate){
- const s=peekStockSignals(storeId,{businessDate,allowStale:true});
+async function stockSummary(storeId,businessDate){
+ const s=config.dynamics.mode==='live'?peekStockSignals(storeId,{businessDate,allowStale:true}):await getStockSignals(storeId,{businessDate});
  if(!s)return{source:null,outOfStockCount:null,negativeStockCount:null,residualOutsideAssortment:null,ruptureReady:false,rupturePending:true,ruptureMethod:'SALES_30D_ZERO_STOCK',salesWindowDays:30,salesWindowProducts:null,assortmentReady:false,assortmentState:null,cache:null};
  const assortmentReady=!!s.summary?.assortmentReady,ruptureReady=!!s.summary?.ruptureReady;
  return{source:s.source||null,outOfStockCount:ruptureReady?Number(s.summary?.outOfStock||0):null,negativeStockCount:Number(s.summary?.negative||0),residualOutsideAssortment:assortmentReady?Number(s.summary?.residualOutsideAssortment||0):null,ruptureReady,rupturePending:false,ruptureMethod:s.summary?.ruptureMethod||null,salesWindowDays:s.summary?.salesWindowDays||null,salesWindowProducts:s.summary?.salesWindowProducts??null,assortmentReady,assortmentState:s.summary?.assortmentState||null,cache:s.cache||null};
@@ -16,7 +17,7 @@ function stockSummary(storeId,businessDate){
 
 async function computeBusinessPulse(storeId,businessDate){
  const comparisonDate=salesComparisonDate(businessDate,7),integration=salesIntegrationConfig(storeId),integrationView={mode:integration.mode,entity:integration.entity,retailId:integration.retailId,retailIdSource:integration.retailIdSource,missing:integration.missing,mappingSource:integration.mappingSource||null,mappingState:integration.mappingState||null};
- const stock=stockSummary(storeId,businessDate);
+ const stock=await stockSummary(storeId,businessDate);
  let current,comparison;
  const [currentResult,comparisonResult]=await Promise.allSettled([readStoreSalesDay(storeId,businessDate),readStoreSalesDay(storeId,comparisonDate)]);
  if(currentResult.status==='rejected'){
