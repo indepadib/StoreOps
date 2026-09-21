@@ -11,7 +11,7 @@ const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const validField=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
 const esc=v=>String(v).replaceAll("'","''");
 const assortmentMaxAgeHours=()=>Math.max(1,Math.min(24*30,Number(process.env.STOREOPS_ASSORTMENT_MAX_AGE_HOURS)||36));
-const stockSignalsCacheSeconds=()=>Math.max(5,Math.min(300,Number(process.env.STOREOPS_STOCK_SIGNALS_CACHE_SECONDS)||45));
+const stockSignalsCacheSeconds=()=>Math.max(30,Math.min(3600,Number(process.env.STOREOPS_STOCK_SIGNALS_CACHE_SECONDS)||900));
 const signalCache=new Map();
 const signalInflight=new Map();
 
@@ -93,6 +93,14 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   }).filter(Boolean).slice(0,maxOut):[];
   const items=[...negative,...out,...residual];
   return {source:`D365/${entity}`,storeId,warehouse,checkedAt:new Date().toISOString(),entity,items,summary:{total:items.length,negative:negative.length,outOfStock:ruptureReady?out.length:null,ruptureReady,ruptureMethod:'SALES_30D_ZERO_STOCK',salesWindowDays:30,salesWindowStatus:salesActivity?.status||'UNAVAILABLE',salesWindowProducts:(salesActivity?.products||[]).length,salesWindowRows:salesActivity?.rowCount??null,salesWindowTruncated:!!salesActivity?.truncated,residualOutsideAssortment:residual.length,assortmentUnknownZero:unknownZero,assortmentReady:index.status==='READY',assortmentState:index.status,assortmentModel:index.model||'SNAPSHOT',assortmentMaxAgeHours:maxAgeHours,assortmentSyncedAt:index.syncedAt||null,activeAssortments:index.assortments?.length||0,aggregatedProducts:aggregated.length,rowsRead:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated}}
+}
+
+export function peekStockSignals(storeId,{businessDate=null,allowStale=true}={}){
+  const key=`${clean(storeId)}|${clean(businessDate)||'today'}`,cached=signalCache.get(key);
+  if(!cached)return null;
+  const fresh=Date.now()<cached.expiresAt;
+  if(!fresh&&!allowStale)return null;
+  return {...cached.value,cache:{status:fresh?'HIT':'STALE',ttlSeconds:stockSignalsCacheSeconds()}};
 }
 
 export async function getStockSignals(storeId,{businessDate=null,force=false}={}){
