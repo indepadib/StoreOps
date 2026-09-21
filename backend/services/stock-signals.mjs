@@ -4,6 +4,7 @@ import { STORE_WAREHOUSES,STOCK_ENTITY } from './dynamics-stock.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 import { assortmentIndex } from './assortment-resolver.mjs';
 import { classifyAvailability } from './assortment.mjs';
+import { readStoreSalesActivityWindow } from './dynamics-sales.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -78,11 +79,20 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const classified=aggregated.map(x=>({product:x,classification:classifyAvailability({storeId,productNumber:x.productNumber,availableQty:x.availableQty,businessDate,index,maxAgeHours})}));
   const allSignals=classified.map(({product,classification})=>signalFromClassification(product,warehouse,classification)).filter(Boolean);
   const negative=allSignals.filter(x=>x.type==='NEGATIVE').sort((a,b)=>a.availableQty-b.availableQty);
-  const out=allSignals.filter(x=>x.type==='OUT').slice(0,Math.max(1,Number(c.maxOutOfStock)||100));
   const residual=allSignals.filter(x=>x.type==='OUTSIDE_ASSORTMENT');
   const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
+  const stockByProduct=new Map(aggregated.map(x=>[clean(x.productNumber),x]));
+  let salesActivity=null;
+  try{salesActivity=await readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30})}catch(error){salesActivity={status:'UNAVAILABLE',products:[],error:{code:error?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:error?.message||String(error)}}}
+  const ruptureReady=salesActivity?.status==='READY'&&!fetched.truncated;
+  const maxOut=Math.max(1,Number(c.maxOutOfStock)||100);
+  const out=ruptureReady?(salesActivity.products||[]).map(sale=>{
+    const stock=stockByProduct.get(clean(sale.productNumber)),available=stock?Math.round((num(stock.availableQty)+Number.EPSILON)*1000)/1000:0,physical=stock?Math.round((num(stock.physicalQty)+Number.EPSILON)*1000)/1000:0;
+    if(available!==0)return null;
+    return{id:`oos30-${warehouse}-${sale.productNumber}`,type:'OUT',priority:'P1',product:clean(stock?.product)||clean(sale.name)||sale.productNumber,productNumber:sale.productNumber,ean:stock?.ean||null,qty:0,availableQty:0,physicalQty:physical,warehouse,assortmentStatus:index.status==='READY'?(index.included.has(sale.productNumber)?'ASSORTED':'NOT_ASSORTED'):'UNKNOWN',ruptureBasis:'SALES_30D_ZERO_STOCK',salesWindowDays:30,lastSaleDate:sale.lastSaleDate||null,salesUnits30:sale.units||null,stockEvidence:stock?'WAREHOUSE_SNAPSHOT':'NO_ON_HAND_ROW',detail:'Vendu sur les 30 derniers jours · stock disponible magasin 0 · rupture à contrôler'};
+  }).filter(Boolean).slice(0,maxOut):[];
   const items=[...negative,...out,...residual];
-  return {source:`D365/${entity}`,storeId,warehouse,checkedAt:new Date().toISOString(),entity,items,summary:{total:items.length,negative:negative.length,outOfStock:out.length,residualOutsideAssortment:residual.length,assortmentUnknownZero:unknownZero,assortmentReady:index.status==='READY',assortmentState:index.status,assortmentModel:index.model||'SNAPSHOT',assortmentMaxAgeHours:maxAgeHours,assortmentSyncedAt:index.syncedAt||null,activeAssortments:index.assortments?.length||0,aggregatedProducts:aggregated.length,rowsRead:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated}}
+  return {source:`D365/${entity}`,storeId,warehouse,checkedAt:new Date().toISOString(),entity,items,summary:{total:items.length,negative:negative.length,outOfStock:ruptureReady?out.length:null,ruptureReady,ruptureMethod:'SALES_30D_ZERO_STOCK',salesWindowDays:30,salesWindowStatus:salesActivity?.status||'UNAVAILABLE',salesWindowProducts:(salesActivity?.products||[]).length,salesWindowRows:salesActivity?.rowCount??null,salesWindowTruncated:!!salesActivity?.truncated,residualOutsideAssortment:residual.length,assortmentUnknownZero:unknownZero,assortmentReady:index.status==='READY',assortmentState:index.status,assortmentModel:index.model||'SNAPSHOT',assortmentMaxAgeHours:maxAgeHours,assortmentSyncedAt:index.syncedAt||null,activeAssortments:index.assortments?.length||0,aggregatedProducts:aggregated.length,rowsRead:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated}}
 }
 
 export async function getStockSignals(storeId,{businessDate=null,force=false}={}){

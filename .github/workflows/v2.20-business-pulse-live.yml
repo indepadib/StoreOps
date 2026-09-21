@@ -21,6 +21,7 @@ jobs:
           node --check backend/services/dynamics-sales.mjs
           node --check backend/services/business-pulse-api.mjs
           node --check backend/services/business-pulse.mjs
+          node --check backend/services/stock-signals.mjs
       - name: Live-sales fallback contract
         run: node backend/tests/v220-business-pulse-live.mjs
       - name: Existing Business Pulse contracts
@@ -29,9 +30,12 @@ jobs:
           node backend/tests/v207-sales-mapping-studio.mjs
       - name: Truthful stockout KPI
         run: node backend/tests/v2202-truthful-stockout.mjs
+      - name: Sales 30d stockout rule
+        run: node backend/tests/v221-sales30-stockouts.mjs
       - name: Safety
         run: |
           grep -q "salesStoreIdentifiers" backend/services/d365-sales-mapping.mjs
           grep -q "dateFilterMode:mode" backend/services/dynamics-sales.mjs
           grep -q "ensureD365SalesAutoConnected" backend/services/business-pulse-api.mjs
           grep -q "Promise.allSettled" backend/services/business-pulse.mjs
+          grep -q "SALES_30D_ZERO_STOCK" backend/services/stock-signals.mjs
