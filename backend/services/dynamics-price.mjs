@@ -67,7 +67,61 @@ function canonicalHistoryRow(row,fields){
     PriceCustomerGroupCode:fields.priceGroup?row?.[fields.priceGroup]:null,
     CustomerAccountNumber:fields.customer?row?.[fields.customer]:null,
     PriceWarehouseId:fields.warehouse?row?.[fields.warehouse]:null,
-    PriceSiteId:fields.site?row?.[fields.site]:null
+    PriceSiteId:fields.site?row?.[fields.site]:null,
+    FromQuantity:null,
+    ToQuantity:null,
+    WillSearchContinue:null
+  }
+}
+
+function openDate(v){const d=dateOnly(v);return !d||d==='1900-01-01'||d==='1900-01-02'}
+function normalizedPrice(price,quantity=1){const p=Number(price),q=Number(quantity||1);return Number.isFinite(p)&&p>=0&&Number.isFinite(q)&&q>0?p/q:null}
+function agreementActiveOn(row,day){
+  const from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate);
+  return (openDate(from)||from<=day)&&(openDate(to)||to>=day)
+}
+export function selectApplicableSalesPriceAgreement(rows,{businessDate=null,priceGroups=[],warehouseId=null,siteId=null,quantity=1,defaultPriceGroup=null}={}){
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),groups=[...new Set((priceGroups||[]).map(clean).filter(Boolean))],qty=Math.max(0,Number(quantity)||1),warehouse=clean(warehouseId),site=clean(siteId),defaultGroup=clean(defaultPriceGroup||config.dynamics.defaultPriceGroup||'Franprix');
+  const eligible=(Array.isArray(rows)?rows:[]).filter(row=>{
+    const price=normalizedPrice(row?.Price,row?.SalesPriceQuantity||1);if(price===null||!agreementActiveOn(row,day))return false;
+    const group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),rowWh=clean(row?.PriceWarehouseId),rowSite=clean(row?.PriceSiteId);
+    if(customer)return false;
+    if(group&&groups.length&&!groups.includes(group))return false;
+    if(group&&!groups.length)return false;
+    if(rowWh&&(!warehouse||rowWh!==warehouse))return false;
+    if(rowSite&&(!site||rowSite!==site))return false;
+    const fromQty=Number(row?.FromQuantity||0),toQty=Number(row?.ToQuantity||0);
+    if(Number.isFinite(fromQty)&&fromQty>0&&qty<fromQty)return false;
+    if(Number.isFinite(toQty)&&toQty>0&&qty>toQty)return false;
+    return true
+  }).map(row=>{
+    const group=clean(row.PriceCustomerGroupCode),from=dateOnly(row.PriceApplicableFromDate);
+    let score=0;if(group)score+=group===defaultGroup?20:40;if(clean(row.PriceWarehouseId))score+=20;if(clean(row.PriceSiteId))score+=10;if(Number(row.FromQuantity||0)>0||Number(row.ToQuantity||0)>0)score+=5;
+    return{row,score,from:from||'0000-00-00',unitPrice:normalizedPrice(row.Price,row.SalesPriceQuantity||1)}
+  }).sort((a,b)=>b.score-a.score||b.from.localeCompare(a.from)||Number(b.row?.RecordId||0)-Number(a.row?.RecordId||0));
+  const selected=eligible[0]||null;
+  return{
+    status:selected?'APPLICABLE':'NONE',
+    businessDate:day,
+    priceGroups:groups,
+    warehouseId:warehouse||null,
+    siteId:site||null,
+    quantity:qty,
+    eligibleCount:eligible.length,
+    selected:selected?{
+      recordId:selected.row.RecordId??null,
+      price:Number(selected.row.Price),
+      unitPrice:selected.unitPrice,
+      priceQuantity:Number(selected.row.SalesPriceQuantity||1),
+      unit:clean(selected.row.QuantityUnitySymbol)||null,
+      currency:clean(selected.row.PriceCurrencyCode)||null,
+      priceGroup:clean(selected.row.PriceCustomerGroupCode)||null,
+      warehouse:clean(selected.row.PriceWarehouseId)||null,
+      site:clean(selected.row.PriceSiteId)||null,
+      validFrom:dateOnly(selected.row.PriceApplicableFromDate),
+      validTo:dateOnly(selected.row.PriceApplicableToDate),
+      willSearchContinue:selected.row.WillSearchContinue??null
+    }:null
   }
 }
 
