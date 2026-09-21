@@ -44,13 +44,13 @@ export function buildInventoryExcel({sessionId,user}){
   {name:'Synthese',headers:['Indicateur','Valeur'],widths:[210,170],rows:[
    [txt('Date'),txt(inv.business_date)],[txt('Magasin'),txt(storeName(inv.store_id))],[txt('Session'),txt(inv.id)],[txt('Type'),txt(inv.inventory_type)],[txt('Zone'),txt(inv.zone||'')],
    [txt('Statut StoreOps'),txt(inv.status)],[txt('Articles'),num(inv.metrics?.lines||0)],[txt('Articles comptés'),num(inv.metrics?.counted||0)],
-   [txt('Lignes avec écart'),num(inv.metrics?.varianceLines||0)],[txt('Écart absolu cumulé'),num(inv.metrics?.absoluteVarianceQty||0)]
+   [txt('Lignes avec écart'),num(inv.metrics?.varianceLines||0)],[txt('Agrégation des quantités'),txt('Non agrégée entre unités différentes (g / kg / pièce / etc.)')]
   ]},
-  {name:'Ajustements',headers:['Date','Magasin','Session','EAN','Code article','Libellé','Catégorie','Stock théorique','Stock compté final','Ajustement à saisir','Motif','Commentaire'],widths:[85,100,135,115,105,210,120,95,105,105,160,240],rows:adjustments.map(x=>[
-   txt(inv.business_date),txt(inv.store_id),txt(inv.id),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),num(x.theoretical_qty),num(x.final_qty),num(x.final_variance),txt(reason(INVENTORY_REASON_CODES,x.reason_code)),txt(x.note)
+  {name:'Ajustements',headers:['Date','Magasin','Session','EAN','Code article','Libellé','Catégorie','Unité stock','Stock théorique','Stock compté final','Ajustement à saisir','Motif','Commentaire'],widths:[85,100,135,115,105,210,120,80,95,105,105,160,240],rows:adjustments.map(x=>[
+   txt(inv.business_date),txt(inv.store_id),txt(inv.id),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(x.stock_unit),num(x.theoretical_qty),num(x.final_qty),num(x.final_variance),txt(reason(INVENTORY_REASON_CODES,x.reason_code)),txt(x.note)
   ])},
-  {name:'Comptage complet',headers:['Date','Magasin','Session','EAN','Code article','Libellé','Catégorie','Stock théorique','1er comptage','2e comptage','Stock final','Écart final','Motif','Commentaire','Statut'],widths:[85,100,135,115,105,210,120,95,95,95,95,90,160,240,100],rows:inv.lines.map(x=>[
-   txt(inv.business_date),txt(inv.store_id),txt(inv.id),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),num(x.theoretical_qty),num(x.count1_qty),num(x.count2_qty),num(x.final_qty),num(x.final_variance),txt(reason(INVENTORY_REASON_CODES,x.reason_code)),txt(x.note),txt(x.status)
+  {name:'Comptage complet',headers:['Date','Magasin','Session','EAN','Code article','Libellé','Catégorie','Unité stock','Stock théorique','1er comptage','2e comptage','Stock final','Écart final','Motif','Commentaire','Statut'],widths:[85,100,135,115,105,210,120,80,95,95,95,95,90,160,240,100],rows:inv.lines.map(x=>[
+   txt(inv.business_date),txt(inv.store_id),txt(inv.id),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(x.stock_unit),num(x.theoretical_qty),num(x.count1_qty),num(x.count2_qty),num(x.final_qty),num(x.final_variance),txt(reason(INVENTORY_REASON_CODES,x.reason_code)),txt(x.note),txt(x.status)
   ])}
  ]});
  const fileName=`inventaire_${safeFile(inv.store_id)}_${inv.business_date}_${safeFile(inv.id)}.xls`;
