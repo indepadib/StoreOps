@@ -21,6 +21,10 @@ import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySessi
 import { buildInventoryExcel } from './services/operations-excel.mjs';
 import { commercialConfig, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
 import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
+import { cashOpeningConfig, cashOpening, cashOpeningSummary, syncCashOpening, checkCashOpeningLine, markCashOpeningOpened, updateCashOpeningPolicy } from './services/cash-opening.mjs';
+import { getCashOpeningSnapshot } from './services/dynamics-cash-opening.mjs';
+import { staffingConfig, staffingDay, staffingSummary, syncStaffingDay, setAttendance, markStaffingOpened, updateStaffingPolicy } from './services/staffing.mjs';
+import { getStaffingSnapshot } from './services/dynamics-staffing.mjs';
 import { handleLossApi } from './services/loss-api.mjs';
 import { handleMerchandisingApi } from './services/merchandising-api.mjs';
 import { handleWorkforceApi } from './services/workforce-api.mjs';
@@ -70,6 +74,8 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
  const preserveExisting=sources.some(x=>x.status==='ERROR');return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes,preserveExisting}),sources}
 }
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
+async function refreshCashOpening(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashOpeningSnapshot(storeId,businessDate);const opening=syncCashOpening({storeId,businessDate,snapshot});return{ok:true,source:snapshot.source||null,opening}}catch(e){if(required)throw e;return{ok:false,error:e.message,code:e.code||'CASH_OPENING_SYNC_FAILED'}}}
+async function refreshStaffing(storeId,businessDate,{required=false}={}){try{const snapshot=await getStaffingSnapshot(storeId,businessDate);const day=syncStaffingDay({storeId,businessDate,snapshot});return{ok:true,source:snapshot.source||null,day}}catch(e){if(required)throw e;return{ok:false,error:e.message,code:e.code||'STAFFING_SYNC_FAILED'}}}
 
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
@@ -95,6 +101,20 @@ async function api(req,res,url){
   p=route(path,'/api/handover/:handoverId/acknowledge');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);return json(req,res,200,acknowledgeHandover({id:p.handoverId,user}))}
   p=route(path,'/api/handover/:handoverId/resolve');if(p&&req.method==='POST'){const row=db.prepare(`SELECT * FROM handover_items WHERE id=?`).get(p.handoverId);if(!row)return json(req,res,404,{error:'Passation introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,resolveHandover({id:p.handoverId,user,note:b.note||''}))}
   p=route(path,'/api/stores/:storeId/handover/review-closing');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const day=ensureStoreDay(p.storeId,url.searchParams.get('date')||todayISO());return json(req,res,200,{day:reviewClosingHandover({storeDay:day,user}),stats:handoverStats(p.storeId,day.business_date)})}
+
+  if(path==='/api/staffing/config'&&req.method==='GET')return json(req,res,200,staffingConfig());
+  if(path==='/api/staffing/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateStaffingPolicy({user,requiredManagers:b.requiredManagers,requiredCashiers:b.requiredCashiers,requiredFloor:b.requiredFloor}))}
+  p=route(path,'/api/stores/:storeId/staffing');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshStaffing(p.storeId,businessDate,{required:false}),day=staffingDay(p.storeId,businessDate);return json(req,res,200,{day,summary:staffingSummary(p.storeId,businessDate),sync})}
+  p=route(path,'/api/stores/:storeId/staffing/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshStaffing(p.storeId,businessDate,{required:true});return json(req,res,200,{day:sync.day,summary:staffingSummary(p.storeId,businessDate),sync})}
+  p=route(path,'/api/staffing/lines/:lineId/attendance');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM staffing_lines l JOIN staffing_days d ON d.id=l.staffing_day_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Collaborateur planning introuvable.'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,setAttendance({lineId:p.lineId,user,status:b.status,replacementName:b.replacementName||'',note:b.note||''}))}
+  p=route(path,'/api/stores/:storeId/staffing/open');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return json(req,res,200,markStaffingOpened({storeId:p.storeId,businessDate:url.searchParams.get('date')||todayISO(),user}))}
+
+  if(path==='/api/cash-opening/config'&&req.method==='GET')return json(req,res,200,cashOpeningConfig());
+  if(path==='/api/cash-opening/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateCashOpeningPolicy({user,floatTolerance:b.floatTolerance}))}
+  p=route(path,'/api/stores/:storeId/cash-opening');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCashOpening(p.storeId,businessDate,{required:false}),opening=cashOpening(p.storeId,businessDate);return json(req,res,200,{opening,summary:cashOpeningSummary(p.storeId,businessDate),sync})}
+  p=route(path,'/api/stores/:storeId/cash-opening/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await refreshCashOpening(p.storeId,businessDate,{required:true});return json(req,res,200,{opening:sync.opening,summary:cashOpeningSummary(p.storeId,businessDate),sync})}
+  p=route(path,'/api/cash-opening/lines/:lineId/check');if(p&&req.method==='POST'){const row=db.prepare(`SELECT o.store_id FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Caisse d’ouverture introuvable.'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req),result=checkCashOpeningLine({lineId:p.lineId,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''});return json(req,res,result.issues?.length?409:200,result)}
+  p=route(path,'/api/stores/:storeId/cash-opening/open');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return json(req,res,200,markCashOpeningOpened({storeId:p.storeId,businessDate:url.searchParams.get('date')||todayISO(),user}))}
 
   if(path==='/api/inventory/config'&&req.method==='GET')return json(req,res,200,inventoryConfig());
   if(path==='/api/inventory/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateInventoryPolicy({user,recountThreshold:b.recountThreshold,incidentThreshold:b.incidentThreshold}))}
