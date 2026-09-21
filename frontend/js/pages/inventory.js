@@ -93,13 +93,13 @@ function hiddenValue(label='Masqué'){return`<span class="inventory-hidden" titl
 function lineRow(l){
  const view=inventoryLinePresentation(l,countingPolicy()),variance=view.variance,varianceClass=variance==null||Number(variance)===0?'':'inventory-variance';
  const action=l.status==='TO_COUNT'?countForm(l,false):l.status==='RECOUNT'?countForm(l,true):(Number(l.final_variance)!==0&&!l.reason_code?explainForm(l):status('Compté','ok'));
- const theoretical=view.blind?hiddenValue():`<strong>${view.theoretical}</strong>`;
- const count1=view.blind?hiddenValue(view.blind==='RECOUNT'?'1er comptage masqué':'—'):`${view.count1??'—'}<div class="small muted">${view.count1By?esc(view.count1By):''}</div>`;
- const varianceHtml=view.blind?hiddenValue():`${variance??'—'}`;
- const finalHtml=view.blind?(l.status==='RECOUNT'?hiddenValue('À recompter'):'—'):`${view.final??'—'}${l.requires_recount?'<div class="small danger-text">Recomptage obligatoire</div>':''}`;
+ const u=unitOf(l),theoretical=view.blind?hiddenValue():`<strong>${qtyWithUnit(view.theoretical,u)}</strong>`;
+ const count1=view.blind?hiddenValue(view.blind==='RECOUNT'?'1er comptage masqué':'—'):`${qtyWithUnit(view.count1,u)}<div class="small muted">${view.count1By?esc(view.count1By):''}</div>`;
+ const varianceHtml=view.blind?hiddenValue():qtyWithUnit(variance,u);
+ const finalHtml=view.blind?(l.status==='RECOUNT'?hiddenValue('À recompter'):'—'):`${qtyWithUnit(view.final,u)}${l.requires_recount?'<div class="small danger-text">Recomptage obligatoire</div>':''}`;
  const reasonHtml=view.showReason?`${esc(reasonLabel(l.reason_code))}${l.note?`<div class="small muted">${esc(l.note)}</div>`:''}`:hiddenValue();
  return`<tr class="inventory-line-row ${view.blind?'inventory-line-blind':''}"><td data-label="Article"><strong>${esc(l.product_name)}</strong><div class="small muted">${esc(l.ean)}${l.product_number?' · '+esc(l.product_number):''}</div></td><td data-label="Théorique">${theoretical}</td><td data-label="1er comptage">${count1}</td><td data-label="Écart" class="${varianceClass}">${varianceHtml}</td><td data-label="Recomptage / final">${finalHtml}</td><td data-label="Motif">${reasonHtml}</td><td data-label="Action">${action}</td></tr>`}
-function countForm(l,recount){return`<div class="inventory-count-form"><input data-count-qty="${l.id}" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Quantité"><button class="btn ${recount?'brand':'soft'}" data-count-line="${l.id}" data-recount="${recount?'1':'0'}">${recount?'Valider recomptage':'Valider'}</button></div>`}
+function countForm(l,recount){const u=unitOf(l);return`<div class="inventory-count-form"><input data-count-qty="${l.id}" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Quantité${u?' ('+esc(u)+')':''}"><button class="btn ${recount?'brand':'soft'}" data-count-line="${l.id}" data-recount="${recount?'1':'0'}">${recount?'Valider recomptage':'Valider'}</button></div>`}
 function explainForm(l){return`<div class="inventory-count-form"><select data-explain-reason="${l.id}"><option value="">Expliquer l’écart</option>${cfg.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select><button class="btn soft" data-explain-line="${l.id}">Valider motif</button></div>`}
 
 function bindInventory(){
