@@ -27,6 +27,8 @@ jobs:
         run: |
           node backend/tests/business-pulse.mjs
           node backend/tests/v207-sales-mapping-studio.mjs
+      - name: Truthful stockout KPI
+        run: node backend/tests/v2202-truthful-stockout.mjs
       - name: Safety
         run: |
           grep -q "salesStoreIdentifiers" backend/services/d365-sales-mapping.mjs

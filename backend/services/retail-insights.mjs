@@ -31,7 +31,7 @@ export function normalizeRetailInsights(input={}){
    marginValue,marginRate,target,achievementRate:target?pct(netSales,target):null,
    comparison,changeVsComparison:comparison?pct(netSales-comparison,comparison):null,
    lossValue,lossRate:lossValue!=null&&netSales>0?pct(lossValue,netSales):null,
-   outOfStockCount:Math.max(0,n(input.outOfStockCount)),availabilityRate:nullable(input.availabilityRate)==null?null:round2(input.availabilityRate)
+   outOfStockCount:nullable(input.outOfStockCount)==null?null:Math.max(0,n(input.outOfStockCount)),availabilityRate:nullable(input.availabilityRate)==null?null:round2(input.availabilityRate)
   },
   breakdowns:{
    departments:normalizeBreakdown(input.departments),
