@@ -159,6 +159,7 @@ async function api(req,res,url){
 
   p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET'){
     requireStore(user,p.storeId);
+    if(!url.searchParams.has('type'))return json(req,res,200,listReceiptsForStore(p.storeId));
     const documentType=(url.searchParams.get('type')||'PO').toUpperCase();
     return json(req,res,200,listReceiptsForStore(p.storeId,{documentType}))
   }
