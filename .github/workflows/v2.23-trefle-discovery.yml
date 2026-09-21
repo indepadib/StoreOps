@@ -27,6 +27,7 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
           done
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&extra=cross-company%3Dtrue" -o /tmp/sales.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&filter=store%20ne%20%27FRP0001%27&extra=cross-company%3Dtrue" -o /tmp/sales-other.json
           for entity in RetailStore RetailStoreTableBiEntity RetailChannel RetailChannelTableBiEntity DimAttributeRetailStore; do
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=20&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
           done
@@ -42,10 +43,14 @@ jobs:
           }
           const sales=JSON.parse(fs.readFileSync('/tmp/sales.json','utf8'));
           console.log('\nSALES SAMPLE',JSON.stringify(sales,null,2));
+          const other=JSON.parse(fs.readFileSync('/tmp/sales-other.json','utf8'));
+          const compactSales=(other.rows||[]).map(r=>({store:r.store,Channel:r.Channel,InventLocationId:r.InventLocationId,terminalId:r.terminalId,transactionId:r.transactionId,businessDate:r.businessDate,dataAreaId:r.dataAreaId}));
+          console.log('\nOTHER STORE SALES',JSON.stringify(compactSales,null,2));
           for(const entity of ['RetailStore','RetailStoreTableBiEntity','RetailChannel','RetailChannelTableBiEntity','DimAttributeRetailStore']){
             const file='/tmp/probe-'+entity+'.json';
             if(!fs.existsSync(file))continue;
             const data=JSON.parse(fs.readFileSync(file,'utf8')),rows=data.rows||[];
+            console.log('\nRAW PROBE',entity,JSON.stringify({ok:data.ok,code:data.code,error:data.error,message:data.message,rowCount:data.rowCount,filter:data.filter},null,2));
             const compact=rows.map(row=>{
               const hit={};
               for(const [k,v] of Object.entries(row||{})){
