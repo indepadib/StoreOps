@@ -20,11 +20,11 @@ assert.ok(vf.body.items.some(x=>x.type==='OUT'&&x.priority==='P1'));
 const forbidden=await get('/api/stores/trefle/stock-signals','u-vf');
 assert.equal(forbidden.status,403);
 
-// Non-pilot stores do not receive invented warehouse fallbacks.
+// Trèfle is the second confirmed pilot and uses its own warehouse mapping.
 const tr=await get('/api/stores/trefle/stock-signals','u-tr');
 assert.equal(tr.status,200);
 assert.equal(tr.body.source,'SIMULATED');
-assert.equal(tr.body.warehouse,null);
-assert.equal(tr.body.items.length,0);
+assert.equal(tr.body.warehouse,'FRP0002');
+assert(Array.isArray(tr.body.items));
 
 console.log('Stock signals explicit mapping API: OK');
