@@ -21,7 +21,7 @@ jobs:
             start=$(date +%s)
             code=$(curl -sS -o /tmp/pulse.json -w "%{http_code}" "$PREVIEW_URL/api/stores/val-fleuri/business-pulse?force=1" || true)
             end=$(date +%s)
-            if [ "$code" = "200" ]; then echo "Pulse seconds: $((end-start))"; break; fi
+            if [ "$code" = "200" ]; then echo "Pulse seconds: $((end-start))"; echo "$((end-start))" >/tmp/pulse-seconds; break; fi
             echo "Attempt $i: HTTP $code"
             sleep 5
           done
@@ -34,6 +34,7 @@ jobs:
           const fs=require('fs');
           const p=JSON.parse(fs.readFileSync('/tmp/pulse.json','utf8'));
           const s=JSON.parse(fs.readFileSync('/tmp/stockouts.json','utf8'));
+          const pulseSeconds=Number(fs.readFileSync('/tmp/pulse-seconds','utf8').trim());
           const safe={
             pulseStatus:p.status,
             pulseStock:p.stock,
@@ -42,12 +43,14 @@ jobs:
             stockoutCount:s.summary?.outOfStock ?? null,
             stockoutMethod:s.summary?.ruptureMethod ?? null,
             soldProducts30d:s.summary?.salesWindowProducts ?? null,
-            stockSource:s.source
+            stockSource:s.source,
+            pulseSeconds
           };
           console.log(JSON.stringify(safe,null,2));
           if(p.status!=='READY')process.exit(2);
-          if(p.stock?.ruptureReady===true)process.exit(3);
+          if(!Number.isFinite(pulseSeconds)||pulseSeconds>15)process.exit(3);
           if(s.status!=='READY')process.exit(4);
           if(s.summary?.ruptureMethod!=='SALES_30D_ZERO_STOCK')process.exit(5);
           if(!Number.isFinite(Number(s.summary?.outOfStock)))process.exit(6);
+          if(p.stock?.ruptureReady===true&&Number(p.snapshot?.kpis?.outOfStockCount)!==Number(s.summary?.outOfStock))process.exit(7);
           NODE
