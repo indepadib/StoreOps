@@ -1,5 +1,6 @@
 import { db,uid,audit,todayISO } from '../db.mjs';
 import { createIncident,addAction,incidentById } from './incidents.mjs';
+import { calculateLossValuation,LOSS_VALUATION_VERSION } from './loss-valuation.mjs';
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS loss_policies(
@@ -48,6 +49,17 @@ ensureColumn('loss_records','unit_cost_value','REAL NULL');
 ensureColumn('loss_records','total_cost_value','REAL NULL');
 ensureColumn('loss_records','cost_source','TEXT NULL');
 ensureColumn('loss_records','cost_state','TEXT NULL');
+ensureColumn('loss_records','retail_price_unit','TEXT NULL');
+ensureColumn('loss_records','retail_price_quantity','REAL NULL');
+ensureColumn('loss_records','retail_equivalent_qty','REAL NULL');
+ensureColumn('loss_records','retail_conversion_factor','REAL NULL');
+ensureColumn('loss_records','retail_valuation_state','TEXT NULL');
+ensureColumn('loss_records','cost_unit','TEXT NULL');
+ensureColumn('loss_records','cost_basis_quantity','REAL NULL');
+ensureColumn('loss_records','cost_equivalent_qty','REAL NULL');
+ensureColumn('loss_records','cost_conversion_factor','REAL NULL');
+ensureColumn('loss_records','cost_valuation_state','TEXT NULL');
+ensureColumn('loss_records','valuation_version','TEXT NULL');
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_loss_source_idempotency ON loss_records(source_type,source_id) WHERE source_id IS NOT NULL;`);
 db.prepare(`INSERT OR IGNORE INTO loss_policies(id,evidence_threshold_dh,approval_threshold_dh) VALUES('default',100,500)`).run();
 
@@ -89,17 +101,41 @@ export function createLossRecord({storeId,businessDate=todayISO(),user,product,r
  if(!validReason(reasonCode))throw Object.assign(new Error('Motif de perte invalide.'),{status:400});
  const qty=Number(quantity);if(!Number.isFinite(qty)||qty<=0)throw Object.assign(new Error('Quantité de perte invalide.'),{status:400});
  if(!product?.ean||!product?.name)throw Object.assign(new Error('Article invalide.'),{status:400});
- const price=product?.price==null?null:Number(product.price),total=Number.isFinite(price)?round(price*qty):null,unitCost=product?.unitCost==null?null:Number(product.unitCost),totalCost=Number.isFinite(unitCost)?round(unitCost*qty):null,policy=lossPolicy();
+ const valuation=calculateLossValuation({quantity:qty,unit,product}),price=valuation.retail.amount,total=valuation.retail.total,unitCost=valuation.cost.amount,totalCost=valuation.cost.total,policy=lossPolicy();
  const requiresEvidence=total==null||total>=Number(policy.evidence_threshold_dh),requiresApproval=total==null||total>=Number(policy.approval_threshold_dh),status=requiresApproval?'APPROVAL_REQUIRED':'READY_TO_POST',id=uid('loss');
- db.prepare(`INSERT INTO loss_records(id,store_id,business_date,ean,product_number,product_name,category,reason_code,source_type,source_id,quantity,unit,unit_retail_value,total_retail_value,unit_cost_value,total_cost_value,cost_source,cost_state,requires_evidence,evidence_satisfied,evidence_source_type,evidence_source_id,status,note,created_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,storeId,businessDate,product.ean,product.productNumber||null,product.name,product.category||null,reasonCode,sourceType||'MANUAL',sourceId||null,qty,unit||'pièce',Number.isFinite(price)?price:null,total,Number.isFinite(unitCost)?unitCost:null,totalCost,product?.costSource||null,product?.costState||'UNAVAILABLE',requiresEvidence?1:0,evidenceAlreadySatisfied?1:0,evidenceSourceType||null,evidenceSourceId||null,status,note||null,user.id);
+ db.prepare(`INSERT INTO loss_records(
+  id,store_id,business_date,ean,product_number,product_name,category,reason_code,source_type,source_id,quantity,unit,
+  unit_retail_value,total_retail_value,retail_price_unit,retail_price_quantity,retail_equivalent_qty,retail_conversion_factor,retail_valuation_state,
+  unit_cost_value,total_cost_value,cost_unit,cost_basis_quantity,cost_equivalent_qty,cost_conversion_factor,cost_valuation_state,cost_source,cost_state,valuation_version,
+  requires_evidence,evidence_satisfied,evidence_source_type,evidence_source_id,status,note,created_by
+ ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+  id,storeId,businessDate,product.ean,product.productNumber||null,product.name,product.category||null,reasonCode,sourceType||'MANUAL',sourceId||null,qty,unit||'pièce',
+  price,total,valuation.retail.unit,valuation.retail.basisQuantity,valuation.retail.equivalentQuantity,valuation.retail.conversionFactor,valuation.retail.state,
+  unitCost,totalCost,valuation.cost.unit,valuation.cost.basisQuantity,valuation.cost.equivalentQuantity,valuation.cost.conversionFactor,valuation.cost.state,product?.costSource||null,product?.costState||'UNAVAILABLE',valuation.version,
+  requiresEvidence?1:0,evidenceAlreadySatisfied?1:0,evidenceSourceType||null,evidenceSourceId||null,status,note||null,user.id
+ );
  if(requiresEvidence&&!evidenceAlreadySatisfied){
   const inc=createIncident({storeId,user,title:`Perte à documenter · ${product.name}`,description:`${qty} ${unit} · ${LOSS_REASONS.find(x=>x.code===reasonCode)?.label||reasonCode}${total==null?'':` · valeur vente estimée ${total} DH`}`,category:'LOSS',criticality:requiresApproval?'HIGH':'MEDIUM',blockingLevel:'STORE_CLOSING',sourceType:'LOSS_RECORD',sourceId:id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});
   addAction({incidentId:inc.id,user,title:'Joindre la preuve et documenter la sortie de stock',note:note||'',assignedTo:user.role==='store_manager'?user.id:null});
   db.prepare(`UPDATE loss_records SET incident_id=? WHERE id=?`).run(inc.id,id);
  }
- audit({storeId,businessDate,userId:user.id,action:'LOSS_RECORDED',entityType:'LOSS_RECORD',entityId:id,details:{ean:product.ean,reasonCode,quantity:qty,unit,totalRetailValue:total,totalCostValue:totalCost,costSource:product?.costSource||null,costState:product?.costState||'UNAVAILABLE',requiresEvidence,requiresApproval,sourceType,sourceId,evidenceAlreadySatisfied,evidenceSourceType,evidenceSourceId}});
+ audit({storeId,businessDate,userId:user.id,action:'LOSS_RECORDED',entityType:'LOSS_RECORD',entityId:id,details:{ean:product.ean,reasonCode,quantity:qty,unit,totalRetailValue:total,totalCostValue:totalCost,retailUnit:valuation.retail.unit,retailPriceQuantity:valuation.retail.basisQuantity,retailConversionFactor:valuation.retail.conversionFactor,retailValuationState:valuation.retail.state,costUnit:valuation.cost.unit,costConversionFactor:valuation.cost.conversionFactor,costValuationState:valuation.cost.state,costSource:product?.costSource||null,costState:product?.costState||'UNAVAILABLE',valuationVersion:valuation.version,requiresEvidence,requiresApproval,sourceType,sourceId,evidenceAlreadySatisfied,evidenceSourceType,evidenceSourceId}});
  return lossRecord(id);
 }
+export function revalueLossRecord({id,product,user=null}={}){
+ const row=db.prepare(`SELECT * FROM loss_records WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});
+ const valuation=calculateLossValuation({quantity:row.quantity,unit:row.unit,product});
+ db.prepare(`UPDATE loss_records SET
+  unit_retail_value=?,total_retail_value=?,retail_price_unit=?,retail_price_quantity=?,retail_equivalent_qty=?,retail_conversion_factor=?,retail_valuation_state=?,
+  unit_cost_value=?,total_cost_value=?,cost_unit=?,cost_basis_quantity=?,cost_equivalent_qty=?,cost_conversion_factor=?,cost_valuation_state=?,cost_source=?,cost_state=?,valuation_version=?
+  WHERE id=?`).run(
+  valuation.retail.amount,valuation.retail.total,valuation.retail.unit,valuation.retail.basisQuantity,valuation.retail.equivalentQuantity,valuation.retail.conversionFactor,valuation.retail.state,
+  valuation.cost.amount,valuation.cost.total,valuation.cost.unit,valuation.cost.basisQuantity,valuation.cost.equivalentQuantity,valuation.cost.conversionFactor,valuation.cost.state,product?.costSource||null,product?.costState||'UNAVAILABLE',valuation.version,id
+ );
+ audit({storeId:row.store_id,businessDate:row.business_date,userId:user?.id||null,action:'LOSS_REVALUED',entityType:'LOSS_RECORD',entityId:id,details:{valuationVersion:valuation.version,retail:valuation.retail,cost:valuation.cost}});
+ return lossRecord(id)
+}
+
 export function approveLossRecord({id,user}){
  if(user.role!=='ops_director')throw Object.assign(new Error('Validation de perte réservée au Directeur d’exploitation.'),{status:403});
  const row=db.prepare(`SELECT * FROM loss_records WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Perte introuvable.'),{status:404});
