@@ -2,7 +2,7 @@ import { api,health,isShowcase } from './api.js';
 import { app,currentStore,isDirector,isPlatformAdmin,isQualityAudit,accessProfileLabel } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 
-const RELEASE_BUILD='2230';
+const RELEASE_BUILD='2231';
 const RELEASE_MODULES=new Map([['./pages/commercial.js','./pages/commercial.js?v=2240'],['./pages/receipts.js','./pages/receipts.js?v=2240'],['./pages/manager-home.js','./pages/manager-home.js?v=2240'],['./pages/manager-scan.js','./pages/manager-scan.js?v=2240'],['./pages/manager-hubs.js','./pages/manager-hubs.js?v=2240'],['./pages/inventory.js','./pages/inventory.js?v=2240'],['./pages/losses.js','./pages/losses.js?v=2240'],['./pages/dlc.js','./pages/dlc.js?v=2240'],['./pages/quality.js','./pages/quality.js?v=2240']]);
 const moduleCache=new Map();
 function lazy(path){path=RELEASE_MODULES.get(path)||path;if(!moduleCache.has(path))moduleCache.set(path,import(path));return moduleCache.get(path)}
