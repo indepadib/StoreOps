@@ -8,8 +8,8 @@ const docCount=t=>(receiptCache[t]||[]).length;
 
 export async function renderReceipts(){
  const [poResult,toResult,readinessResult]=await Promise.allSettled([
-  api(`/api/stores/${app.storeId}/receipts?type=PO`),
-  api(`/api/stores/${app.storeId}/receipts?type=TO`),
+  api(`/api/stores/${app.storeId}/receipts/po`),
+  api(`/api/stores/${app.storeId}/receipts/to`),
   api(`/api/stores/${app.storeId}/receipts/readiness`)
  ]);
  receiptCache.PO=poResult.status==='fulfilled'?(poResult.value||[]):[];
