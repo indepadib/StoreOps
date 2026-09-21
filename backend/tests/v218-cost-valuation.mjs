@@ -108,7 +108,7 @@ const todayUi=readFileSync(path.join(root,'frontend/js/pages/today.js'),'utf8');
 const adminUi=readFileSync(path.join(root,'frontend/js/admin-cost-mapping.js'),'utf8');
 const inventoryUi=readFileSync(path.join(root,'frontend/js/pages/inventory.js'),'utf8');
 assert.match(lossesUi,/Valeur au coût/);
-assert.match(lossesUi,/Coût non disponible/);
+assert.match(lossesUi,/Coût non valorisé/);
 assert.match(lossesUi,/Exporter la démarque en Excel/);
 assert.doesNotMatch(lossesUi,/Confirmer l’import ERP/);
 assert.match(todayUi,/au coût/);

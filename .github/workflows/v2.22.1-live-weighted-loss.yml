@@ -47,6 +47,15 @@ jobs:
               -o /tmp/product.json
             echo "PRODUCT CONTEXT"
             cat /tmp/product.json
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=5&filter=ItemNumber%20eq%20%27HS-003577%27"               -o /tmp/released.json
+            echo "RELEASED PRODUCT COST CANDIDATES"
+            node - <<'NODE'
+            const fs=require('fs');
+            const p=JSON.parse(fs.readFileSync('/tmp/released.json','utf8'));
+            const rows=p.rows||p.value||[];
+            const selected=rows.map(row=>Object.fromEntries(Object.entries(row||{}).filter(([k,v])=>/cost|unit|price|invent|standard|average|purchase|item/i.test(k)&&v!==null&&v!=='')));
+            console.log(JSON.stringify({ok:p.ok,rowCount:p.rowCount,selected},null,2));
+            NODE
           fi
 
           curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST \
