@@ -1,5 +1,6 @@
 import{api}from'../api.js';import{app,canManage,canManageQuality}from'../state.js';import{$,status,esc,toast}from'../ui.js';
 let profiles=new Map(),documentType='PO';
+const SYNC_LABELS={PO:'PO Dynamics synchronisés',TO:'TO Dynamics synchronisés'};
 export async function renderReceipts(){
  const [rowsResult,readinessResult]=await Promise.allSettled([
   api(`/api/stores/${app.storeId}/receipts?type=${documentType}`),
@@ -12,7 +13,7 @@ export async function renderReceipts(){
  const sourceBanner=rowsResult.status==='rejected'
   ?`<div class="banner ban-danger"><strong>Le cache Réception n’a pas pu être chargé.</strong><div class="small" style="margin-top:4px">${esc(rowsResult.reason?.message||'Backend Réception indisponible.')}</div></div>`
   :health?.state==='LIVE'
-   ?`<div class="banner ban-ok"><strong>${documentType==='TO'?'TO':'PO'} Dynamics synchronisés</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · dernière lecture D365 réussie${lastSyncLabel?` ${lastSyncLabel}`:''} · ${docCount} ${docLabel} ouvert(s) détecté(s). ${rows.length?`${rows.length} ${docLabel} affiché(s) depuis le cache StoreOps.`:`Aucun ${docLabel} ouvert à afficher.`}</div></div>`
+   ?`<div class="banner ban-ok"><strong>${SYNC_LABELS[documentType]||SYNC_LABELS.PO}</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · dernière lecture D365 réussie${lastSyncLabel?` ${lastSyncLabel}`:''} · ${docCount} ${docLabel} ouvert(s) détecté(s). ${rows.length?`${rows.length} ${docLabel} affiché(s) depuis le cache StoreOps.`:`Aucun ${docLabel} ouvert à afficher.`}</div></div>`
    :health?.state==='DEGRADED'
     ?`<div class="banner ban-warn"><strong>${documentType==='TO'?'TO':'PO'} Dynamics à vérifier</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · ${esc(health.lastErrorMessage||health.reason||'la dernière synchronisation n’est pas fiable')}. ${rows.length?`${rows.length} ${docLabel} du dernier cache restent visibles${lastSyncLabel?` · dernière lecture réussie ${lastSyncLabel}`:''}.`:`Aucun ${docLabel} fiable en cache.`}</div></div>`
     :readiness?.enabled
