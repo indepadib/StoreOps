@@ -2,6 +2,7 @@ import { db,audit,todayISO } from '../db.mjs';
 import { listLossRecords,lossSummary,LOSS_REASONS } from './loss.mjs';
 import { inventorySession,INVENTORY_REASON_CODES } from './inventory.mjs';
 import { excelWorkbook } from './excel-workbook.mjs';
+import { LOSS_VALUATION_VERSION } from './loss-valuation.mjs';
 
 const reason=(list,code)=>list.find(x=>x.code===code)?.label||code||'';
 const n=v=>v===null||v===undefined||v===''?null:Number(v);
@@ -15,16 +16,20 @@ export function buildLossExcel({storeId,businessDate=todayISO(),user}){
  if(!rows.length)throw Object.assign(new Error('Aucune démarque à exporter pour cette journée.'),{status:409,code:'LOSS_EXCEL_EMPTY'});
  const summary=lossSummary(storeId,businessDate),workbook=excelWorkbook({sheets:[
   {name:'Synthese',headers:['Indicateur','Valeur'],widths:[210,150],rows:[
-   [txt('Date'),txt(businessDate)],[txt('Magasin'),txt(storeName(storeId))],[txt('Lignes'),num(rows.length)],[txt('Quantité totale'),num(summary.totalQty)],
-   [txt('Valeur totale au coût (DH)'),num(summary.costValue)],[txt('Couverture coût (%)'),num(summary.costCoverage)],[txt('Valeur totale prix vente (DH)'),num(summary.retailValue)],
-   [txt('Lignes coût non disponible'),num(summary.costUnvaluedRecords)]
+   [txt('Date'),txt(businessDate)],[txt('Magasin'),txt(storeName(storeId))],[txt('Lignes'),num(rows.length)],
+   [txt('Valeur totale au coût (DH)'),num(summary.costValue)],[txt('Couverture coût (%)'),num(summary.costCoverage)],[txt('Valeur totale prix vente (DH)'),num(summary.retailValue)],[txt('Couverture prix vente (%)'),num(summary.retailCoverage)],
+   [txt('Lignes coût non valorisé'),num(summary.costUnvaluedRecords)],[txt('Lignes prix vente non valorisé'),num(summary.retailUnvaluedRecords)],
+   [txt('Règle de valorisation'),txt('Conversion explicite unité démarque → unité coût / unité prix. Aucune multiplication brute entre g et DH/kg.')]
   ]},
-  {name:'Demarque',headers:['Date','Magasin','EAN','Code article','Libellé','Catégorie','Motif','Quantité','Unité','Coût unitaire','Valeur au coût','Prix vente unitaire','Valeur prix vente','Statut','Preuve','Validation Direction','Commentaire','Source'],widths:[85,100,115,105,210,120,150,75,70,95,95,105,105,120,100,125,240,110],rows:rows.map(x=>[
-   txt(x.business_date),txt(storeName(x.store_id)),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(reason(LOSS_REASONS,x.reason_code)),num(x.quantity),txt(x.unit),
-   num(x.unit_cost_value),num(x.total_cost_value),num(x.unit_retail_value),num(x.total_retail_value),txt(x.status),
-   txt(x.requires_evidence?(x.evidence_satisfied?'OK':'REQUISE'):'NON REQUISE'),txt(x.approved_at?'APPROUVÉE':x.status==='APPROVAL_REQUIRED'?'À VALIDER':'NON REQUISE'),
-   txt(x.note),txt(x.source_type)
-  ])}
+  {name:'Demarque',headers:['Date','Magasin','EAN','Code article','Libellé','Catégorie','Motif','Quantité démarquée','Unité démarque','Qté équivalente coût','Unité coût','Coût par unité coût (DH)','Valeur au coût (DH)','État valorisation coût','Qté équivalente vente','Unité prix vente','Qté de prix vente','Prix de vente de référence (DH)','Valeur prix vente (DH)','État valorisation vente','Statut','Preuve','Validation Direction','Commentaire','Source'],widths:[85,100,115,105,210,120,150,90,80,95,80,110,105,110,100,90,90,120,110,115,120,100,125,240,110],rows:rows.map(x=>{
+   const trusted=x.valuation_version===LOSS_VALUATION_VERSION;
+   return[
+    txt(x.business_date),txt(storeName(x.store_id)),txt(x.ean),txt(x.product_number),txt(x.product_name),txt(x.category),txt(reason(LOSS_REASONS,x.reason_code)),num(x.quantity),txt(x.unit),
+    trusted?num(x.cost_equivalent_qty):num(null),txt(trusted?x.cost_unit:''),trusted?num(x.unit_cost_value):num(null),trusted?num(x.total_cost_value):num(null),txt(trusted?(x.cost_valuation_state||''):'LEGACY_NON_FIABILISÉE'),
+    trusted?num(x.retail_equivalent_qty):num(null),txt(trusted?x.retail_price_unit:''),trusted?num(x.retail_price_quantity):num(null),trusted?num(x.unit_retail_value):num(null),trusted?num(x.total_retail_value):num(null),txt(trusted?(x.retail_valuation_state||''):'LEGACY_NON_FIABILISÉE'),
+    txt(x.status),txt(x.requires_evidence?(x.evidence_satisfied?'OK':'REQUISE'):'NON REQUISE'),txt(x.approved_at?'APPROUVÉE':x.status==='APPROVAL_REQUIRED'?'À VALIDER':'NON REQUISE'),txt(x.note),txt(x.source_type)
+   ]
+  })}
  ]});
  const fileName=`demarque_${safeFile(storeId)}_${businessDate}.xls`;
  audit({storeId,businessDate,userId:user?.id||null,action:'LOSS_EXCEL_EXPORTED',entityType:'LOSS_EXPORT',entityId:fileName,details:{rowCount:rows.length,costCoverage:summary.costCoverage}});
