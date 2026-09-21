@@ -76,4 +76,7 @@ jobs:
           console.log(JSON.stringify(result,null,2));
           if(!result.hasUnitColumns)process.exit(2);
           if(result.has54000)process.exit(3);
+          if(result.melonFound&&Number(result.product?.cost)!==0.01)process.exit(4);
+          if(result.melonFound&&String(result.product?.costUnit||'').toLowerCase()!=='g')process.exit(5);
+          if(result.melonFound&&result.product?.costState!=='READY')process.exit(6);
           NODE

@@ -97,7 +97,7 @@ function excelExportPanel(items=[]){
  if(!canManage())return'';
  return`<div class="loss-closing-card">
   <div class="row"><div><strong>Export Excel démarque</strong><div class="small muted">${items.length} ligne(s) du jour · coût et prix de vente séparés · aucun posting D365.</div></div>${status(items.length?'Prêt':'Vide',items.length?'ok':'neutral')}</div>
-  <div class="banner ban-info" style="margin-top:10px"><strong>Valorisation par unité réelle</strong><span>Ex. 6 000 g vendus à 9 DH/kg = 6 kg × 9 = 54 DH. Le classeur affiche les unités et facteurs de conversion. Les valeurs non prouvées restent vides.</span></div>
+  <div class="banner ban-info" style="margin-top:10px"><strong>Valorisation par unité réelle</strong><span>Ex. 6 000 g vendus à 5,50 DH/kg = 6 kg × 5,50 = 33 DH. Le classeur affiche les unités et facteurs de conversion. Les valeurs non prouvées restent vides.</span></div>
   <div class="row" style="margin-top:12px"><button class="btn brand" id="exportLossExcelBtn" ${items.length?'':'disabled'}>Exporter la démarque en Excel</button><span class="small muted">Téléchargement uniquement · aucune écriture ERP.</span></div>
  </div>`
 }

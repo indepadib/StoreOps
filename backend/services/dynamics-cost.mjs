@@ -2,6 +2,7 @@ import { config } from '../config.mjs';
 import { odataGet } from './dynamics.mjs';
 import { effectiveD365CostMapping,d365CostMappingSettings } from './d365-cost-mapping.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
+import { ensureD365CostAutoConnected } from './d365-cost-autoconnect.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{if(v===null||v===undefined||v==='')return null;const n=Number(v);return Number.isFinite(n)&&n>=0?n:null};
@@ -16,7 +17,8 @@ export function costIntegrationConfig(storeId=null){
  return{state:live?'LIVE':persisted?.state||'UNMAPPED',ready:config.dynamics.mode==='live'&&!!live,entity:live?.entity||persisted?.entity||null,fields:live?.fields||persisted?.fields||null,warehouseId:settings?.storeWarehouseId||null,validatedAt:persisted?.validatedAt||null}
 }
 export async function getProductCost(storeId,productNumber,{businessDate=null}={}){
- const sku=clean(productNumber),cfg=costIntegrationConfig(storeId);if(!sku)return{status:'UNAVAILABLE',reason:'PRODUCT_NOT_MAPPED',unitCost:null};
+ const sku=clean(productNumber);let cfg=costIntegrationConfig(storeId);if(!sku)return{status:'UNAVAILABLE',reason:'PRODUCT_NOT_MAPPED',unitCost:null};
+ if(!cfg.ready){await ensureD365CostAutoConnected(sku);cfg=costIntegrationConfig(storeId)}
  if(!cfg.ready)return{status:'UNAVAILABLE',reason:cfg.state==='UNMAPPED'?'COST_MAPPING_UNMAPPED':'COST_MAPPING_NOT_LIVE',state:cfg.state,unitCost:null};
  const f=cfg.fields,filters=[`${f.item} eq '${esc(sku)}'`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
  if(f.warehouse&&cfg.warehouseId)filters.push(`${f.warehouse} eq '${esc(cfg.warehouseId)}'`);

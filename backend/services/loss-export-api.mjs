@@ -16,7 +16,7 @@ function requireNetwork(user){if(!isNetworkDirector(user))throw Object.assign(ne
 function requirePlatformAdmin(user){if(!isPlatformAdmin(user))throw Object.assign(new Error('Modification du template Closing Pack réservée à un Administrateur StoreOps.'),{status:403,code:'PLATFORM_ADMIN_REQUIRED'})}
 
 async function refreshLegacyValuations({storeId,businessDate,user}){
- const rows=listLossRecords(storeId,businessDate,'ALL').filter(x=>x.status!=='CANCELLED'&&x.valuation_version!==LOSS_VALUATION_VERSION);
+ const rows=listLossRecords(storeId,businessDate,'ALL').filter(x=>x.status!=='CANCELLED'&&(x.valuation_version!==LOSS_VALUATION_VERSION||x.retail_valuation_state!=='READY'||x.cost_valuation_state!=='READY'));
  const outcomes=[];
  for(let i=0;i<rows.length;i+=4){
   const batch=rows.slice(i,i+4);
