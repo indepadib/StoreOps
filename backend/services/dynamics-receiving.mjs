@@ -128,6 +128,8 @@ export function receivingIntegrationConfig(storeId=null){
   fields:{
    purchaseOrder:c.purchaseOrderField,
    vendor:c.vendorField,
+   vendorName:c.vendorNameField,
+   creationDate:c.creationDateField,
    headerDate:c.headerDateField,
    headerStatus:c.headerStatusField,
    headerWarehouse:c.headerWarehouseField,
@@ -147,7 +149,9 @@ export function receivingIntegrationConfig(storeId=null){
 }
 
 function syncTop(){return Math.max(50,Math.min(2000,Number(process.env.D365_PO_SYNC_TOP)||750))}
-function headerEnrichmentLimit(){return Math.max(0,Math.min(50,Number(process.env.D365_PO_HEADER_ENRICH_LIMIT)||30))}
+function headerEnrichmentLimit(){return Math.max(0,Math.min(500,Number(process.env.D365_PO_HEADER_ENRICH_LIMIT)||200))}
+function oneMonthAgoISO(reference=todayISO()){const d=new Date(`${dateOnly(reference)||todayISO()}T00:00:00Z`);d.setUTCMonth(d.getUTCMonth()-1);return d.toISOString().slice(0,10)}
+function openPoStatus(value){const s=clean(value).toUpperCase();return !/(CANCEL|CANCELED|CANCELLED|INVOICE|RECEIVED|CLOSED|FINALIZED)/.test(s)}
 function syncTimeoutMs(){return Math.max(4000,Math.min(20000,Number(process.env.D365_PO_SYNC_TIMEOUT_MS)||12000))}
 function withSyncTimeout(promise){const ms=syncTimeoutMs();return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error(`Synchronisation PO interrompue après ${ms} ms pour protéger StoreOps.`),{status:503,code:'D365_RECEIVING_SYNC_TIMEOUT',details:{timeoutMs:ms}})),ms))])}
 
@@ -181,13 +185,9 @@ async function purchaseOrderHeaders(poNumbers){
  const c=receiving(),limit=headerEnrichmentLimit();
  if(!poNumbers.length||limit===0)return{value:[],rowCount:0,pages:0,truncated:false,skipped:limit===0};
  if(!c.headerEntity)return{value:[],rowCount:0,pages:0,truncated:false,skipped:true,error:{code:'D365_RECEIVING_HEADER_MAPPING_REQUIRED',message:'D365_PO_HEADER_ENTITY non configuré.'}};
- const batch=poNumbers.slice(0,limit);
- try{
-  const payload=await odataGet(c.headerEntity,{filter:withCompany(orFilter(c.purchaseOrderField,batch)),top:Math.max(50,batch.length),extra:extraCompany()}),rows=Array.isArray(payload?.value)?payload.value:[];
-  return{value:rows,rowCount:rows.length,pages:1,truncated:poNumbers.length>limit,skipped:false,error:null};
- }catch(error){
-  return{value:[],rowCount:0,pages:0,truncated:poNumbers.length>limit,skipped:true,error:{code:error?.code||'D365_RECEIVING_HEADER_ENRICH_FAILED',message:error?.message||String(error)}};
- }
+ const batch=poNumbers.slice(0,limit),parts=chunks(batch,20),settled=await Promise.allSettled(parts.map(part=>odataGet(c.headerEntity,{filter:withCompany(orFilter(c.purchaseOrderField,part)),top:Math.max(50,part.length),extra:extraCompany()})));
+ const rows=[],errors=[];for(const r of settled){if(r.status==='fulfilled')rows.push(...(Array.isArray(r.value?.value)?r.value.value:[]));else errors.push({code:r.reason?.code||'D365_RECEIVING_HEADER_ENRICH_FAILED',message:r.reason?.message||String(r.reason)})}
+ return{value:rows,rowCount:rows.length,pages:parts.length,truncated:poNumbers.length>limit||errors.length>0,skipped:false,error:errors.length?{code:'D365_RECEIVING_HEADER_PARTIAL',message:`${errors.length} lot(s) d’en-têtes PO n’ont pas pu être lus.`,errors}:null};
 }
 
 export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO()}={}){
@@ -197,22 +197,27 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
  const startedAt=Date.now(),linePayload=await purchaseOrderLinesForWarehouse(warehouseId),lines=linePayload.value||[];
  const poNumbers=unique(lines.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),headerPayload=await purchaseOrderHeaders(poNumbers),headers=headerPayload.value||[];
  const headerByPo=new Map(headers.map(row=>[clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber'])),row]));
+ const cutoff=oneMonthAgoISO(todayISO());let hiddenOld=0,hiddenClosed=0;
  const items=poNumbers.map(poNumber=>{
   const poLines=lines.filter(row=>clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber']))===poNumber),header=headerByPo.get(poNumber)||{};
   const dates=poLines.map(row=>dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))).filter(Boolean).sort();
   const eta=dateOnly(field(header,c.headerDateField,['RequestedDeliveryDate','ConfirmedDeliveryDate']))||dates[0]||businessDate;
   const sourceStatus=clean(field(header,c.headerStatusField,['PurchaseOrderStatus']))||'Open';
-  const vendorAccount=clean(field(header,c.vendorField,['OrderVendorAccountNumber','InvoiceVendorAccountNumber']))||'Fournisseur';
+  const vendorAccount=clean(field(header,c.vendorField,['OrderVendorAccountNumber','InvoiceVendorAccountNumber']))||null;
+  const vendorName=clean(field(header,c.vendorNameField,['PurchaseOrderName','VendorName','OrderVendorName']))||vendorAccount||'Fournisseur';
+  const createdDate=dateOnly(field(header,c.creationDateField,['AccountingDate','CreatedDateTime','PurchaseOrderCreationDate']))||null;
+  if(!openPoStatus(sourceStatus)){hiddenClosed++;return null}
+  if(createdDate&&createdDate<cutoff){hiddenOld++;return null}
   return{
-   poNumber,vendor:vendorAccount,vendorAccount,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
+   poNumber,vendor:vendorName,vendorName,vendorAccount,createdDate,creationDateSource:createdDate?(c.creationDateField||'AccountingDate'):null,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:poLines.map(row=>{
     const productNumber=clean(field(row,c.productField,['ProductNumber','ItemNumber'])),ean=clean(field(row,c.barcodeField,['Barcode'])),category=clean(field(row,c.categoryField,['ProcurementProductCategoryName']))||'Autre';
     return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,receivedQty:finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']))??0,remainingQty:remainingFor(row,c),unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
    })
   };
- });
+ }).filter(Boolean);
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
 }
 
 
@@ -287,6 +292,8 @@ export function ensureReceivingStorage(){
  ensureColumn('receipts','document_type',"TEXT NOT NULL DEFAULT 'PO'");
  ensureColumn('receipts','source_origin','TEXT NULL');
  ensureColumn('receipts','source_destination','TEXT NULL');
+ ensureColumn('receipts','source_created_date','TEXT NULL');
+ ensureColumn('receipts','source_vendor_account','TEXT NULL');
  ensureColumn('receipt_lines','product_number','TEXT NULL');
  ensureColumn('receipt_lines','source_line_number','TEXT NULL');
  ensureColumn('receipt_lines','remaining_qty','REAL NULL');
@@ -308,10 +315,10 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
   if(receipt&&receipt.store_id!==storeId)continue;
   if(!receipt){
    const id=uid('receipt');
-   db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'PO',?,?)`).run(id,storeId,po.poNumber,po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId);
+   db.prepare(`INSERT INTO receipts(id,store_id,po_number,vendor,eta,status,source,source_status,source_warehouse_id,source_updated_at,document_type,source_origin,source_destination,source_created_date,source_vendor_account) VALUES(?,?,?,?,?,'EXPECTED','D365',?,?,CURRENT_TIMESTAMP,'PO',?,?,?,?)`).run(id,storeId,po.poNumber,po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId,po.createdDate||null,po.vendorAccount||null);
    receipt=db.prepare(`SELECT * FROM receipts WHERE id=?`).get(id);created++;
   }else{
-   db.prepare(`UPDATE receipts SET vendor=?,eta=?,source='D365',source_status=?,source_warehouse_id=?,source_updated_at=CURRENT_TIMESTAMP,document_type='PO',source_origin=?,source_destination=?,status=CASE WHEN status='POSTED' THEN status ELSE 'EXPECTED' END WHERE id=?`).run(po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId,receipt.id);updated++;
+   db.prepare(`UPDATE receipts SET vendor=?,eta=?,source='D365',source_status=?,source_warehouse_id=?,source_updated_at=CURRENT_TIMESTAMP,document_type='PO',source_origin=?,source_destination=?,source_created_date=?,source_vendor_account=?,status=CASE WHEN status='POSTED' THEN status ELSE 'EXPECTED' END WHERE id=?`).run(po.vendor,po.eta,po.sourceStatus,po.warehouseId,po.vendorAccount||po.vendor,po.warehouseId,po.createdDate||null,po.vendorAccount||null,receipt.id);updated++;
   }
   if(authoritative)db.prepare(`UPDATE receipt_lines SET source_active=0 WHERE receipt_id=? AND source_line_number IS NOT NULL`).run(receipt.id);
   for(const line of po.lines){
@@ -355,9 +362,12 @@ export async function syncExpectedTransferOrdersFromDynamics(storeId,{businessDa
 
 export function listReceiptsForStore(storeId,{documentType='PO'}={}){
  ensureReceivingStorage();
- const type=clean(documentType).toUpperCase(),whereType=type==='ALL'?'':' AND document_type=?',args=type==='ALL'?[storeId]:[storeId,type];
- const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=?${whereType} AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL)) ORDER BY eta,po_number`).all(...args);
- return receipts.map(r=>({...r,lines:db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id)}));
+ const type=clean(documentType).toUpperCase(),whereType=type==='ALL'?'':' AND document_type=?',args=type==='ALL'?[storeId]:[storeId,type],cutoff=oneMonthAgoISO(todayISO());
+ const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=?${whereType}
+  AND (document_type<>'PO' OR source<>'D365' OR COALESCE(source_created_date,eta)>=?)
+  AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL))
+  ORDER BY CASE WHEN document_type='PO' THEN COALESCE(source_created_date,eta) ELSE eta END DESC,po_number DESC`).all(...args,cutoff);
+ return receipts.map(r=>{const lines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id);return{...r,line_count:lines.length,remaining_total:lines.reduce((s,x)=>s+Number(x.remaining_qty??x.ordered_qty??0),0),lines}});
 }
 
 export function receivingStoreReadiness(storeId){return receivingStateForStore(storeId)}
