@@ -165,6 +165,8 @@ async function api(req,res,url){
     const documentType=(url.searchParams.get('type')||'PO').toUpperCase();
     return json(req,res,200,listReceiptsForStore(p.storeId,{documentType}))
   }
+  p=route(path,'/api/stores/:storeId/receipts/po/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await syncExpectedReceiptsFromDynamics(p.storeId,{businessDate});return json(req,res,200,{sync,items:listReceiptsForStore(p.storeId,{documentType:'PO'})})}
+  p=route(path,'/api/stores/:storeId/receipts/to/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),sync=await syncExpectedTransferOrdersFromDynamics(p.storeId,{businessDate});return json(req,res,200,{sync,items:listReceiptsForStore(p.storeId,{documentType:'TO'})})}
   p=route(path,'/api/stores/:storeId/receipts/readiness');if(p&&req.method==='GET'){requireStore(user,p.storeId);return json(req,res,200,receivingIntegrationConfig(p.storeId))}
   p=route(path,'/api/stores/:storeId/receipts/sync');if(p&&req.method==='POST'){
     requireStore(user,p.storeId);ensureManage(user,p.storeId);
