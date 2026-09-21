@@ -6,6 +6,8 @@ import { storeAssortmentLookupReadiness,previewStoreAssortmentsFromDynamics,sync
 import { listProductAssortmentCatalog,getStoreAssortmentAssignments,saveStoreAssortmentAssignments } from './assortment-admin.mjs';
 import { buildItemAssistant } from './item-assistant.mjs';
 import { canAccessStore } from './permissions.mjs';
+import { resolveAssortmentProfile,applyAssortmentProfile } from './assortment-profiles.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
@@ -32,7 +34,20 @@ export async function handleMerchandisingApi({req,url,user}){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:{items:listProductAssortmentCatalog(),readiness:productAssortmentReadiness()}}
  }
- let p=route(path,'/api/admin/stores/:storeId/assortments/dynamics-preview');
+ let p=route(path,'/api/admin/stores/:storeId/assortments/profile');
+ if(p&&req.method==='GET'){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');
+  const settings=storeOperationalSettings(p.storeId),profileCode=settings.assortmentProfile||null;
+  return{status:200,data:{storeId:p.storeId,profileCode,profileSource:settings.assortmentProfileSource||'UNMAPPED',resolution:resolveAssortmentProfile(profileCode),assignments:getStoreAssortmentAssignments(p.storeId)}}
+ }
+ p=route(path,'/api/admin/stores/:storeId/assortments/apply-profile');
+ if(p&&req.method==='POST'){
+  if(!director(user))return forbidden('Réservé à la Direction StoreOps');
+  const settings=storeOperationalSettings(p.storeId),b=await body(req),profileCode=b.profileCode||settings.assortmentProfile;
+  if(!profileCode)return{status:409,data:{error:'Aucun profil assortiment configuré pour ce magasin.',code:'ASSORTMENT_PROFILE_UNCONFIGURED'}};
+  return{status:200,data:applyAssortmentProfile({storeId:p.storeId,profileCode,user})}
+ }
+ p=route(path,'/api/admin/stores/:storeId/assortments/dynamics-preview');
  if(p&&req.method==='GET'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:await previewStoreAssortmentsFromDynamics(p.storeId)}
