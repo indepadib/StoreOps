@@ -47,7 +47,7 @@ export async function handleMerchandisingApi({req,url,user}){
   if(!profileCode)return{status:409,data:{error:'Aucun profil assortiment configuré pour ce magasin.',code:'ASSORTMENT_PROFILE_UNCONFIGURED'}};
   return{status:200,data:applyAssortmentProfile({storeId:p.storeId,profileCode,user})}
  }
- let p=route(path,'/api/admin/stores/:storeId/assortments/dynamics-preview');
+ p=route(path,'/api/admin/stores/:storeId/assortments/dynamics-preview');
  if(p&&req.method==='GET'){
   if(!director(user))return forbidden('Réservé à la Direction StoreOps');
   return{status:200,data:await previewStoreAssortmentsFromDynamics(p.storeId)}
