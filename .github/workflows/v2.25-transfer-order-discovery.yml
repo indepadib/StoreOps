@@ -31,6 +31,10 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=10&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
           done
 
+          for warehouse in FRP0001 FRP0002; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=TransferOrderHeaders&top=100&filter=ReceivingWarehouseId%20eq%20%27$warehouse%27&extra=cross-company%3Dtrue"               -o "/tmp/to-headers-$warehouse.json" || true
+          done
+
           node - <<'NODE'
           const fs=require('fs');
           const out={};
@@ -54,6 +58,20 @@ jobs:
               rows:rows.slice(0,5)
             },null,2));
           }
+          const activeByWarehouse={};
+          for(const wh of ['FRP0001','FRP0002']){
+            const p=JSON.parse(fs.readFileSync('/tmp/to-headers-'+wh+'.json','utf8'));
+            const rows=p.rows||p.value||[];
+            activeByWarehouse[wh]=rows.filter(r=>String(r.TransferOrderStatus||'').toUpperCase()!=='RECEIVED').map(r=>({
+              transferOrderNumber:r.TransferOrderNumber,
+              status:r.TransferOrderStatus,
+              from:r.ShippingWarehouseId,
+              to:r.ReceivingWarehouseId,
+              requestedReceiptDate:r.RequestedReceiptDate,
+              requestedShippingDate:r.RequestedShippingDate
+            }));
+          }
+          console.log('\nACTIVE TO BY WAREHOUSE\n'+JSON.stringify(activeByWarehouse,null,2));
           const all=Object.values(out).flat();
           if(!all.some(x=>/transfer/i.test(String(x.publicEntityName||'')+' '+String(x.publicCollectionName||''))))process.exit(2);
           NODE
