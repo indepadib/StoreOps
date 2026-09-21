@@ -8,6 +8,7 @@ const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDi
 const qty=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:3});
 const requestStatus={REQUESTED:'En attente Direction',APPROVED:'Approuvée',SENT:'Envoyée',PARTIAL_RECEIVED:'Partiellement reçue',RECEIVED:'Reçue',REJECTED:'Refusée',CANCELLED:'Annulée'};
 const dateLabel=v=>{if(!v)return'—';try{return new Intl.DateTimeFormat('fr-FR',{day:'2-digit',month:'short',year:'numeric'}).format(new Date(`${String(v).slice(0,10)}T00:00:00`))}catch{return String(v)}};
+function priceSourceLabel(v){return({BASE_PRICE:'Prix fiche Dynamics',TRADE_AGREEMENT:'Accord tarifaire actif',PROMOTION:'Promotion active'}[v]||'Prix Dynamics')}
 
 function assortmentPresentation(a={}){
  if(a.status==='ASSORTED')return{label:'Dans l’assortiment',tone:'ok',detail:'Cet article fait partie du référentiel actif de ce magasin.'};
@@ -70,7 +71,7 @@ function resultHtml(c){
  return `<div class="manager-scan-result">
    <section class="manager-item-hero">
     <div class="manager-item-top"><div><span class="manager-eyebrow">${esc(c.item.productNumber||c.ean)} · ${esc(c.item.unit||'')}</span><h2>${esc(c.item.name)}</h2>${taxonomy?`<p>${esc(taxonomy)}</p>`:''}</div><span class="manager-state ${av.tone}">${esc(av.label)}</span></div>
-    <div class="manager-item-price"><div><span>Prix attendu</span><strong>${money(c.pricing?.expectedUnitPrice)}</strong>${c.pricing?.basePrice!=null&&Number(c.pricing.basePrice)!==Number(c.pricing.expectedUnitPrice)?`<small>Prix fiche ${money(c.pricing.basePrice)}</small>`:''}<button class="manager-price-history-trigger" data-price-history>Historique de prix <span>›</span></button></div>${c.pricing?.promoLabel?`<div class="manager-promo-pill"><span>Promo active</span><strong>${esc(c.pricing.promoLabel)}</strong></div>`:'<div class="manager-promo-empty">Aucune promo active détectée</div>'}</div>
+    <div class="manager-item-price"><div><span>Prix attendu</span><strong>${money(c.pricing?.expectedUnitPrice)}</strong><small>${esc(priceSourceLabel(c.pricing?.effectivePriceSource))}</small>${c.pricing?.tradeAgreement?`<small>Accord ${esc(c.pricing.tradeAgreement.priceGroup||'Retail')} · ${money(c.pricing.tradeAgreement.unitPrice)}${c.pricing.tradeAgreement.validTo?` · jusqu’au ${dateLabel(c.pricing.tradeAgreement.validTo)}`:''}</small>`:c.pricing?.basePrice!=null&&Number(c.pricing.basePrice)!==Number(c.pricing.expectedUnitPrice)?`<small>Prix fiche ${money(c.pricing.basePrice)}</small>`:''}<button class="manager-price-history-trigger" data-price-history>Historique de prix <span>›</span></button></div>${c.pricing?.promoLabel?`<div class="manager-promo-pill"><span>Promo active</span><strong>${esc(c.pricing.promoLabel)}</strong></div>`:'<div class="manager-promo-empty">Aucune promo active détectée</div>'}</div>
    </section>
    <div id="managerPriceHistory"></div>
    <section class="manager-assortment-line ${ap.tone}"><div><strong>${esc(ap.label)}</strong><small>${esc(ap.detail)}</small></div></section>
