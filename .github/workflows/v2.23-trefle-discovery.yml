@@ -28,8 +28,8 @@ jobs:
           done
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&extra=cross-company%3Dtrue" -o /tmp/sales.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&filter=store%20ne%20%27FRP0001%27&extra=cross-company%3Dtrue" -o /tmp/sales-other.json
-          for entity in RetailStore RetailStoreTableBiEntity RetailChannel RetailChannelTableBiEntity DimAttributeRetailStore; do
-            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=20&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
+          for entity in RetailStores RetailStoreTableBiEntities RetailChannels RetailChannelTableBiEntities DimAttributeRetailStores; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=200&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
           done
 
           node - <<'NODE'
@@ -48,7 +48,7 @@ jobs:
           const other=JSON.parse(fs.readFileSync('/tmp/sales-other.json','utf8'));
           const compactSales=(other.rows||[]).map(r=>({store:r.store,Channel:r.Channel,InventLocationId:r.InventLocationId,terminalId:r.terminalId,transactionId:r.transactionId,businessDate:r.businessDate,dataAreaId:r.dataAreaId}));
           console.log('\nOTHER STORE SALES',JSON.stringify(compactSales,null,2));
-          for(const entity of ['RetailStore','RetailStoreTableBiEntity','RetailChannel','RetailChannelTableBiEntity','DimAttributeRetailStore']){
+          for(const entity of ['RetailStores','RetailStoreTableBiEntities','RetailChannels','RetailChannelTableBiEntities','DimAttributeRetailStores']){
             const file='/tmp/probe-'+entity+'.json';
             if(!fs.existsSync(file))continue;
             const data=JSON.parse(fs.readFileSync(file,'utf8')),rows=data.rows||[];
@@ -56,7 +56,7 @@ jobs:
             const compact=rows.map(row=>{
               const hit={};
               for(const [k,v] of Object.entries(row||{})){
-                if(/store|channel|name|warehouse|location|operating|organization|number|id/i.test(k)&&v!==''&&v!==null)hit[k]=v;
+                if(/store|channel|name|warehouse|location|operating|organization|number|id|description/i.test(k)&&v!==''&&v!==null)hit[k]=v;
               }
               return hit;
             });
