@@ -1,0 +1,42 @@
+name: V2.23 Trèfle D365 Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover:
+    if: github.head_ref == 'storeops-v2.23-trefle-business-pulse'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Discover store/channel entities and sales identifiers
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ]; then break; fi
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for q in store retail channel; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
+          done
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&extra=cross-company%3Dtrue" -o /tmp/sales.json
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const pickName=x=>x?.PublicEntityName||x?.PublicCollectionName||x?.Name||x?.EntityName||x?.DataEntityName||null;
+          for(const q of ['store','retail','channel']){
+            const data=JSON.parse(fs.readFileSync('/tmp/entities-'+q+'.json','utf8'));
+            const rows=Array.isArray(data)?data:Array.isArray(data?.value)?data.value:[];
+            const names=[...new Set(rows.map(pickName).filter(Boolean))].slice(0,100);
+            console.log('\nENTITY SEARCH',q,JSON.stringify(names,null,2));
+          }
+          const sales=JSON.parse(fs.readFileSync('/tmp/sales.json','utf8'));
+          console.log('\nSALES SAMPLE',JSON.stringify(sales,null,2));
+          NODE
