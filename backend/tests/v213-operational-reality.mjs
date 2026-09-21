@@ -62,7 +62,10 @@ assert.match(pricing,/previousDays\(day,2\)/,'trade-agreement reader must catch 
 assert.match(pricing,/deltaActionType:'PRICE_CHANGE'/,'trade-agreement rows must materialize as price changes');
 
 assert.match(server,/syncExpectedReceiptsFromDynamics/,'PO sync service must be imported into the active router');
-assert.match(server,/receipts'\);if\(p&&req\.method==='GET'\)\{\s*requireStore\(user,p\.storeId\);\s*return json\(req,res,200,listReceiptsForStore\(p\.storeId\)\)/,'GET receipts must stay cache-first and never block on Dynamics');
+assert(server.includes("p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET')"),'typed receipts GET route must exist');
+const receiptGet=server.slice(server.indexOf("p=route(path,'/api/stores/:storeId/receipts');if(p&&req.method==='GET')"),server.indexOf("p=route(path,'/api/stores/:storeId/receipts/readiness')"));
+assert.match(receiptGet,/listReceiptsForStore/,'GET receipts must read the StoreOps cache');
+assert.doesNotMatch(receiptGet,/syncExpectedReceiptsFromDynamics|syncExpectedTransferOrdersFromDynamics/,'GET receipts must never block on Dynamics sync');
 assert.match(server,/receipts\/readiness/,'receiving readiness route missing');
 assert.match(server,/receipts\/sync/,'explicit PO refresh route missing');
 assert.match(receipts,/Synchroniser D365/,'PO page must expose a visible explicit refresh');
