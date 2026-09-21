@@ -27,7 +27,7 @@ globalThis.fetch=async(input)=>{
   {dataAreaId:'5001',PurchaseOrderNumber:'PO-CLOSED',LineNumber:1,ProductNumber:'HS-003',LineDescription:'Déjà reçu',Barcode:'611100000003',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:4,ReceivedPurchaseQuantity:4,RemainingPurchaseQuantity:0,PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-09T12:00:00Z',ReceivingWarehouseId:'FRP0001'}
  ]});
  if(url.includes('/data/PurchaseOrderHeadersV2'))return Response.json({value:[
-  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',OrderVendorAccountNumber:'VEND-01',PurchaseOrderStatus:'OpenOrder',RequestedDeliveryDate:'2026-09-10T12:00:00Z',DefaultReceivingWarehouseId:'FRP0001'}
+  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',OrderVendorAccountNumber:'VEND-01',PurchaseOrderName:'Fournisseur Test Maroc',AccountingDate:'2026-09-05T12:00:00Z',PurchaseOrderStatus:'OpenOrder',RequestedDeliveryDate:'2026-09-10T12:00:00Z',DefaultReceivingWarehouseId:'FRP0001'}
  ]});
  if(url.includes('/data/TransferOrderHeaders'))return Response.json({value:[
   {dataAreaId:'5001',TransferOrderNumber:'TO-100',TransferOrderStatus:'Created',ShippingWarehouseId:'LVE Lakhya',ReceivingWarehouseId:'FRP0001',RequestedReceiptDate:'2026-09-11T12:00:00Z'},
@@ -50,7 +50,9 @@ assert.equal(snapshot.mode,'LIVE');
 assert.equal(snapshot.warehouseId,'FRP0001');
 assert.equal(snapshot.items.length,1);
 assert.equal(snapshot.items[0].poNumber,'PO-100');
-assert.equal(snapshot.items[0].vendor,'VEND-01');
+assert.equal(snapshot.items[0].vendor,'Fournisseur Test Maroc');
+assert.equal(snapshot.items[0].vendorAccount,'VEND-01');
+assert.equal(snapshot.items[0].createdDate,'2026-09-05');
 assert.equal(snapshot.items[0].lines.length,2);
 assert.equal(snapshot.items[0].lines[0].remainingQty,8);
 assert.equal(snapshot.items[0].lines[0].temperatureRequired,1);
@@ -63,7 +65,9 @@ assert.equal(sync.lineCreated,2);
 const receipt=db.prepare(`SELECT * FROM receipts WHERE po_number='PO-100'`).get();
 assert.equal(receipt.source,'D365');
 assert.equal(receipt.source_warehouse_id,'FRP0001');
-assert.equal(receipt.vendor,'VEND-01');
+assert.equal(receipt.vendor,'Fournisseur Test Maroc');
+assert.equal(receipt.source_vendor_account,'VEND-01');
+assert.equal(receipt.source_created_date,'2026-09-05');
 const lines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? ORDER BY source_line_number`).all(receipt.id);
 assert.equal(lines.length,2);
 assert.equal(lines[0].product_number,'HS-001');
