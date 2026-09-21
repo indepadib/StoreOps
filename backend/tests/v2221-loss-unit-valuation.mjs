@@ -4,6 +4,8 @@ process.env.STOREOPS_DB='/tmp/storeops-v2221-loss-units.db';
 const {convertQuantity,valueByBasis}=await import('../services/unit-conversion.mjs');
 const {calculateLossValuation,LOSS_VALUATION_VERSION}=await import('../services/loss-valuation.mjs');
 const {db}=await import('../db.mjs');
+const user=db.prepare(`SELECT * FROM users WHERE role='ops_director' ORDER BY id LIMIT 1`).get()||db.prepare(`SELECT * FROM users ORDER BY id LIMIT 1`).get();
+assert(user,'test user required');
 const {createLossRecord,lossSummary}=await import('../services/loss.mjs');
 const {buildLossExcel}=await import('../services/operations-excel.mjs');
 
@@ -24,7 +26,7 @@ assert.equal(valuation.cost.total,36);
 
 db.prepare(`DELETE FROM loss_records`).run();
 const row=createLossRecord({
- storeId:'val-fleuri',businessDate:'2026-09-21',user:{id:'u-admin',role:'ops_director'},
+ storeId:'val-fleuri',businessDate:'2026-09-21',user,
  product:{ean:'TEST-MELON',productNumber:'MELON-1',name:'Melon jaune',category:'F&L',price:9,retailUnit:'kg',retailPriceQuantity:1,unitCost:0.006,costUnit:'g',costBasisQuantity:1,costSource:'D365/ReleasedProductsV2',costState:'READY'},
  reasonCode:'DAMAGED',quantity:6000,unit:'g',note:'test pondéré'
 });
@@ -42,7 +44,7 @@ assert.equal(summary.costValue,36);
 assert.equal(summary.retailCoverage,100);
 assert.equal(summary.costCoverage,100);
 
-const excel=buildLossExcel({storeId:'val-fleuri',businessDate:'2026-09-21',user:{id:'u-admin'}});
+const excel=buildLossExcel({storeId:'val-fleuri',businessDate:'2026-09-21',user});
 assert.match(excel.file.content,/Quantité démarquée/);
 assert.match(excel.file.content,/Unité prix vente/);
 assert.match(excel.file.content,/Qté équivalente vente/);
