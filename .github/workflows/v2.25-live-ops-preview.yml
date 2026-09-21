@@ -42,7 +42,8 @@ jobs:
           console.log('EXPECTED='+Number(line.expected_float||0));
           NODE
           source /tmp/cash.env
-          code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/cash-opening/lines/$LINE_ID/check"             --data "{"cashierName":"Test V2.25","declaredFloat":$EXPECTED,"posOk":true,"tpeOk":true,"printerOk":true,"shiftOpened":true,"note":"preview smoke"}"             -o /tmp/cash-check.json -w "%{http_code}")
+          node -e "require('fs').writeFileSync('/tmp/cash-payload.json',JSON.stringify({cashierName:'Test V2.25',declaredFloat:Number(process.env.EXPECTED||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true,note:'preview smoke'}))" EXPECTED="$EXPECTED"
+          code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/cash-opening/lines/$LINE_ID/check" --data-binary @/tmp/cash-payload.json -o /tmp/cash-check.json -w "%{http_code}")
           cat /tmp/cash-check.json
           test "$code" = "200"
 
@@ -83,10 +84,28 @@ jobs:
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts?type=TO" -o /tmp/to.json
           node - <<'NODE'
           const fs=require('fs'),po=JSON.parse(fs.readFileSync('/tmp/po.json','utf8')),to=JSON.parse(fs.readFileSync('/tmp/to.json','utf8'));
-          console.log(JSON.stringify({po:po.length,to:to.length,poTypes:[...new Set(po.map(x=>x.document_type))],toTypes:[...new Set(to.map(x=>x.document_type))]},null,2));
+          const now=new Date('2026-09-21T12:00:00Z'),cutoff=new Date(now);cutoff.setUTCMonth(cutoff.getUTCMonth()-1);
+          console.log(JSON.stringify({po:po.length,to:to.length,poTypes:[...new Set(po.map(x=>x.document_type))],toTypes:[...new Set(to.map(x=>x.document_type))],poSample:po.slice(0,3).map(x=>({number:x.po_number,vendor:x.vendor,vendorAccount:x.source_vendor_account,created:x.source_created_date,warehouse:x.source_warehouse_id,lines:x.line_count}))},null,2));
           if(!Array.isArray(po)||!Array.isArray(to))process.exit(2);
           if(po.some(x=>(x.document_type||'PO')!=='PO'))process.exit(3);
           if(to.some(x=>x.document_type!=='TO'))process.exit(4);
+          if(po.some(x=>x.source_created_date&&new Date(x.source_created_date+'T12:00:00Z')<cutoff))process.exit(5);
+          if(po.some(x=>!x.vendor||!Number.isFinite(Number(x.line_count))))process.exit(6);
+          NODE
+
+      - name: Stock anomaly payload stays compact
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/stock-signals" -o /tmp/stock.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/stock.json','utf8')),s=d.summary||{};
+          console.log(JSON.stringify({total:s.total,preview:s.previewItems,hidden:s.hiddenItems,negative:s.negative,negativePreview:s.negativePreview,outOfStock:s.outOfStock,outOfStockPreview:s.outOfStockPreview},null,2));
+          if(!Array.isArray(d.items))process.exit(2);
+          if(Number(s.previewItems||0)!==d.items.length)process.exit(3);
+          if(Number(s.previewItems||0)>53)process.exit(4);
+          if(Number(s.total||0)<d.items.length)process.exit(5);
           NODE
 
       - name: Inventory route and no-write guard
