@@ -103,7 +103,8 @@ function countForm(l,recount){const u=unitOf(l);return`<div class="inventory-cou
 function explainForm(l){return`<div class="inventory-count-form"><select data-explain-reason="${l.id}"><option value="">Expliquer l’écart</option>${cfg.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select><button class="btn soft" data-explain-line="${l.id}">Valider motif</button></div>`}
 
 function bindInventory(){
- $('#invQuickEan')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();$('#invQuickQty')?.focus()}});
+ $('#invQuickEan')?.addEventListener('input',()=>{quickProduct=null;const h=$('#invQuickProduct');if(h)h.textContent='Identification article…';const l=$('#invQuickQtyLabel');if(l)l.textContent='2 · Quantité physique'});
+ $('#invQuickEan')?.addEventListener('keydown',async e=>{if(e.key==='Enter'){e.preventDefault();try{await prepareQuickProduct();$('#invQuickQty')?.focus()}catch(err){toast(err.message)}}});
  $('#invQuickQty')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();quickCount()}});
  $('#invQuickRecountQty')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();quickCount()}});
  $('#invQuickCount')?.addEventListener('click',quickCount);
@@ -118,12 +119,23 @@ function bindInventory(){
  document.querySelectorAll('[data-finalize-inventory]').forEach(b=>b.addEventListener('click',()=>finalize(b.dataset.finalizeInventory,b)));
  document.querySelectorAll('[data-export-inventory]').forEach(b=>b.addEventListener('click',()=>exportInventory(b.dataset.exportInventory,b)));
 }
+async function prepareQuickProduct(){
+ const ean=$('#invQuickEan')?.value.trim();if(!ean)throw new Error('Scanne ou saisis l’EAN.');
+ if(quickProduct?.ean===ean)return quickProduct;
+ const host=$('#invQuickProduct'),label=$('#invQuickQtyLabel');if(host)host.textContent='Identification Dynamics…';
+ quickProduct=await api(`/api/stores/${app.storeId}/products/${encodeURIComponent(ean)}`);
+ const u=unitOf(quickProduct);
+ if(host)host.innerHTML=`<strong>${esc(quickProduct.name||'Article')}</strong>${quickProduct.productNumber?` · ${esc(quickProduct.productNumber)}`:''}${u?` · unité de stock <strong>${esc(u)}</strong>`:' · unité de stock non renseignée'}`;
+ if(label)label.textContent=`2 · Quantité physique${u?` (${u})`:''}`;
+ return quickProduct
+}
 async function quickCount(){
  const btn=$('#invQuickCount');if(btn?.disabled)return;
  try{
   const forced=btn?.dataset?.ean||'',ean=forced||$('#invQuickEan')?.value.trim(),qtyInput=$('#invQuickRecountQty')||$('#invQuickQty'),raw=qtyInput?.value;
   if(!ean)throw new Error('Scanne ou saisis l’EAN.');
-  if(raw==null||String(raw).trim()==='')throw new Error('Saisis la quantité physique comptée.');
+  if(!forced)await prepareQuickProduct();
+  if(raw==null||String(raw).trim()==='')throw new Error(`Saisis la quantité physique comptée${!forced&&unitOf(quickProduct)?` en ${unitOf(quickProduct)}`:''}.`);
   const quantity=Number(raw);if(!Number.isFinite(quantity)||quantity<0)throw new Error('Quantité invalide.');
   btn.disabled=true;btn.textContent=forced?'Validation du recomptage…':'Enregistrement…';
   const result=await api(`/api/stores/${app.storeId}/inventory/express/count`,{method:'POST',body:JSON.stringify({ean,quantity})});
