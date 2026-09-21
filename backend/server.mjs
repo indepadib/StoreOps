@@ -123,6 +123,7 @@ async function api(req,res,url){
   p=route(path,'/api/cash/:closingId/close');if(p&&req.method==='POST'){const closing=cashClosingById(p.closingId);if(!closing)return json(req,res,404,{error:'Clôture caisse introuvable'});requireStore(user,closing.store_id);ensureManage(user,closing.store_id);return json(req,res,200,markCashClosingClosed({closingId:p.closingId,user}))}
 
   p=route(path,'/api/products/:ean');if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
+  p=route(path,'/api/stores/:storeId/products/:ean');if(p&&req.method==='GET'){requireStore(user,p.storeId);const product=await getStoreProductByEan(p.storeId,p.ean);return product?json(req,res,200,product):json(req,res,404,{error:'Article introuvable Dynamics'})}
   if(path==='/api/quality-profiles'&&req.method==='GET')return json(req,res,200,listQualityProfiles());
   p=route(path,'/api/quality-profiles/:category');if(p){if(req.method==='GET')return json(req,res,200,qualityProfileFor(p.category));if(req.method==='PUT'||req.method==='PATCH'){ensureDirector(user);return json(req,res,200,updateQualityProfile({category:p.category,user,payload:await body(req)}))}}
   if(path==='/api/sla-policies'&&req.method==='GET'){ensureDirector(user);return json(req,res,200,listSlaPolicies())}
