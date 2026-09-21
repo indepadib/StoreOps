@@ -27,6 +27,9 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
           done
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=RetailTransactionSalesTransBIEntities&top=20&extra=cross-company%3Dtrue" -o /tmp/sales.json
+          for entity in RetailStore RetailStoreTableBiEntity RetailChannel RetailChannelTableBiEntity DimAttributeRetailStore; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=20&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
+          done
 
           node - <<'NODE'
           const fs=require('fs');
@@ -39,4 +42,19 @@ jobs:
           }
           const sales=JSON.parse(fs.readFileSync('/tmp/sales.json','utf8'));
           console.log('\nSALES SAMPLE',JSON.stringify(sales,null,2));
+          for(const entity of ['RetailStore','RetailStoreTableBiEntity','RetailChannel','RetailChannelTableBiEntity','DimAttributeRetailStore']){
+            const file='/tmp/probe-'+entity+'.json';
+            if(!fs.existsSync(file))continue;
+            const data=JSON.parse(fs.readFileSync(file,'utf8')),rows=data.rows||[];
+            const compact=rows.map(row=>{
+              const hit={};
+              for(const [k,v] of Object.entries(row||{})){
+                if(/store|channel|name|warehouse|location|operating|organization|number|id/i.test(k)&&v!==''&&v!==null)hit[k]=v;
+              }
+              return hit;
+            });
+            const trefle=compact.filter(row=>/tr[eè]fle|trefle/i.test(JSON.stringify(row)));
+            console.log('\nPROBE',entity,'TREFLE',JSON.stringify(trefle,null,2));
+            console.log('PROBE',entity,'ROWS',JSON.stringify(compact,null,2));
+          }
           NODE
