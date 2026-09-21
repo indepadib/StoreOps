@@ -14,8 +14,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Trèfle identity contract
-        run: node backend/tests/v223-trefle-business-pulse.mjs
+      - name: Dual-pilot identity contracts
+        run: |
+          node backend/tests/v223-trefle-business-pulse.mjs
+          node backend/tests/v223-dual-pilot.mjs
       - name: Validate D365 identity and live Business Pulse
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
