@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+process.env.STOREOPS_DB='/tmp/storeops-v223-trefle.db';
+const {storeOperationalSettings}=await import('../services/store-settings.mjs');
+const {salesStoreIdentifiers}=await import('../services/d365-sales-mapping.mjs');
+const {salesIntegrationConfig}=await import('../services/dynamics-sales.mjs');
+
+const s=storeOperationalSettings('trefle');
+assert.equal(s.storeWarehouseId,'FRP0002');
+assert.equal(s.d365.storeNumber,'FRP0002');
+assert.equal(s.d365.retailChannelId,'10002');
+assert.equal(s.d365.operatingUnitNumber,'00000064');
+assert.equal(s.d365.legalEntityId,'5001');
+assert.equal(s.d365.source,'CONFIRMED_PILOT');
+const ids=salesStoreIdentifiers('trefle','store');
+assert.deepEqual(ids[0],{kind:'STORE_NUMBER',value:'FRP0002'});
+assert(ids.some(x=>x.kind==='RETAIL_CHANNEL'&&x.value==='10002'));
+assert(ids.some(x=>x.kind==='WAREHOUSE'&&x.value==='FRP0002'));
+assert(ids.some(x=>x.kind==='OPERATING_UNIT'&&x.value==='00000064'));
+const cfg=salesIntegrationConfig('trefle');
+assert.equal(cfg.retailId,'10002');
+assert.equal(cfg.retailIdSource,'STORE_SETTINGS');
+console.log('V2.23 Trèfle D365 identity contract: OK');
