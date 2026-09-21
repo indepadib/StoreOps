@@ -79,6 +79,15 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
 
+async function inventoryUnitForProductNumber(productNumber){
+  const sku=clean(productNumber);if(!sku||config.dynamics.mode!=='live')return null;
+  const entity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',filters=[`ItemNumber eq '${escapeOData(sku)}'`];
+  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+  try{
+    const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select:[ 'ItemNumber','InventoryUnitSymbol',config.dynamics.dataAreaId?config.dynamics.dataAreaField:'' ].filter(Boolean).join(','),pageSize:10,maxRows:10,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+    return clean(fetched.value?.[0]?.InventoryUnitSymbol)||null
+  }catch{return null}
+}
 function safeError(error){return{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}
 
 export async function getStoreProductByEan(storeId,ean){
@@ -91,11 +100,13 @@ export async function getStoreProductByEan(storeId,ean){
   }
   if(!product){product=cachedProductByEan(ean);identityFallback=!!product;if(!product)return null}
 
-  let stock=null,stockError=null;
-  try{stock=await getStoreStockByProductNumber(storeId,product.productNumber)}catch(error){stockError=safeError(error)}
+  let stock=null,stockError=null,inventoryUnit=null;
+  const [stockResult,unitResult]=await Promise.allSettled([getStoreStockByProductNumber(storeId,product.productNumber),inventoryUnitForProductNumber(product.productNumber)]);
+  if(stockResult.status==='fulfilled')stock=stockResult.value;else stockError=safeError(stockResult.reason);
+  if(unitResult.status==='fulfilled')inventoryUnit=unitResult.value||null;
 
-  if(stockError){return {...product,source:identityFallback?(product.source||'STOREOPS_CACHE'):(product.source||'D365'),identityFallback,identityError,warehouseId:mappedWarehouseForStore(storeId),stock:null,availableStock:null,reservedStock:null,orderedStock:null,availableOrderedStock:null,reservedOrderedStock:null,onOrderStock:null,totalAvailableStock:null,stockRowCount:null,stockPages:null,stockSource:'D365_UNAVAILABLE',stockUnavailable:true,stockError,batches:[],stockComplete:false}}
-  if(!stockLive())return {...product,identityFallback,identityError,warehouseId:stock?.warehouseId||mappedWarehouseForStore(storeId),stockSource:stock?.source||'SIMULATED_D365',batches:[],stockComplete:false};
-  if(stock?.mappingRequired)return {...product,identityFallback,identityError,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
-  return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
+  if(stockError){return {...product,inventoryUnit,source:identityFallback?(product.source||'STOREOPS_CACHE'):(product.source||'D365'),identityFallback,identityError,warehouseId:mappedWarehouseForStore(storeId),stock:null,availableStock:null,reservedStock:null,orderedStock:null,availableOrderedStock:null,reservedOrderedStock:null,onOrderStock:null,totalAvailableStock:null,stockRowCount:null,stockPages:null,stockSource:'D365_UNAVAILABLE',stockUnavailable:true,stockError,batches:[],stockComplete:false}}
+  if(!stockLive())return {...product,inventoryUnit:inventoryUnit||product.unit||null,identityFallback,identityError,warehouseId:stock?.warehouseId||mappedWarehouseForStore(storeId),stockSource:stock?.source||'SIMULATED_D365',batches:[],stockComplete:false};
+  if(stock?.mappingRequired)return {...product,inventoryUnit,identityFallback,identityError,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
+  return {...product,inventoryUnit,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
 }
