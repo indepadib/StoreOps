@@ -23,7 +23,7 @@ function requireManage(user,storeId){if(!canManageStore(user,storeId))throw Obje
 function requireDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 
 function finitePrice(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)&&n>=0?n:null}
-async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
+export async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
  const product=await getStoreProductByEan(storeId,String(ean||'').trim());
  if(!product)return null;
  if(!product.productNumber)return product;
@@ -33,15 +33,25 @@ async function getStoreCommerceProduct(storeId,ean,businessDate=todayISO()){
  ]);
  const pricing=pricingResult.status==='fulfilled'?pricingResult.value:null,cost=costResult.status==='fulfilled'?costResult.value:null;
  const effective=finitePrice(pricing?.effectiveUnitPrice),base=finitePrice(pricing?.basePrice?.price),fallback=finitePrice(product.price),price=effective??base??fallback;
+ const activePromoUnit=(pricing?.promotions?.items||[]).find(x=>x?.activeForRequestedContext&&x?.itemLine?.unit)?.itemLine?.unit||null;
+ const retailUnit=activePromoUnit||pricing?.basePrice?.unit||product.unit||null;
+ const retailPriceQuantity=finitePrice(pricing?.basePrice?.priceQuantity)??1;
  return{
   ...product,
   price:price??null,
   basePrice:base??null,
   effectivePrice:effective??null,
+  retailUnit,
+  retailPriceQuantity,
   pricingSources:pricing?.sources||null,
   promotionCount:Number(pricing?.promotions?.activeCount||0),
   pricingError:pricingResult.status==='rejected'?{code:pricingResult.reason?.code||'D365_PRICING_UNAVAILABLE',message:pricingResult.reason?.message||'Prix Dynamics indisponible'}:null,
   unitCost:cost?.unitCost??null,
+  costUnit:cost?.unit||null,
+  costBasisQuantity:1,
+  costRawValue:cost?.rawCost??null,
+  costRawQuantity:cost?.costQuantity??null,
+  costUnitSource:cost?.unitSource||null,
   costCurrency:cost?.currency||null,
   costSource:cost?.source||null,
   costState:cost?.status||'UNAVAILABLE',

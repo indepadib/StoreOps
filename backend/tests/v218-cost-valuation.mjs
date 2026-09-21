@@ -16,7 +16,7 @@ globalThis.fetch=async url=>{
  const u=String(url);
  if(u.includes('login.microsoftonline.com'))return new Response(JSON.stringify({access_token:'token',expires_in:3600}),{status:200,headers:{'content-type':'application/json'}});
  if(u.includes('/data/CustomCostEntity'))return new Response(JSON.stringify({value:[
-  {dataAreaId:'5001',SKU:'HS-COST',Amount:120,StartDate:'2026-01-01T00:00:00Z',Currency:'MAD',CostQty:10,Rec:'1'}
+  {dataAreaId:'5001',SKU:'HS-COST',Amount:120,StartDate:'2026-01-01T00:00:00Z',Currency:'MAD',CostQty:10,Unit:'pièce',Rec:'1'}
  ]}),{status:200,headers:{'content-type':'application/json'}});
  throw new Error('Unexpected URL '+u)
 };
@@ -37,12 +37,12 @@ const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get()||db.prepar
 assert(actor,'admin required');assert(manager,'manager required');
 db.prepare(`DELETE FROM d365_cost_mapping_settings`).run();
 
-const mapping={entity:'CustomCostEntity',fields:{item:'SKU',cost:'Amount',validFrom:'StartDate',validTo:'',currency:'Currency',warehouse:'',site:'',unit:'',quantity:'CostQty',recordId:'Rec'}};
+const mapping={entity:'CustomCostEntity',fields:{item:'SKU',cost:'Amount',validFrom:'StartDate',validTo:'',currency:'Currency',warehouse:'',site:'',unit:'Unit',quantity:'CostQty',recordId:'Rec'}};
 let saved=saveD365CostMappingDraft({actor,input:mapping});
 assert.equal(saved.state,'DRAFT');
 assert.throws(()=>activateD365CostMapping({actor}),e=>e.code==='D365_COST_MAPPING_NOT_VALIDATED');
 
-const smoke=evaluateD365CostSmokeRows({rows:[{SKU:'HS-COST',Amount:120,StartDate:'2026-01-01T00:00:00Z',Currency:'MAD',CostQty:10}],mapping,productNumber:'HS-COST'});
+const smoke=evaluateD365CostSmokeRows({rows:[{SKU:'HS-COST',Amount:120,StartDate:'2026-01-01T00:00:00Z',Currency:'MAD',CostQty:10,Unit:'pièce'}],mapping,productNumber:'HS-COST'});
 assert.equal(smoke.status,'PASSED');
 assert.equal(smoke.matchingRows,1);
 
@@ -57,11 +57,12 @@ const cost=await getProductCost('val-fleuri','HS-COST',{businessDate:'2026-09-20
 assert.equal(cost.status,'READY');
 assert.equal(cost.unitCost,12);
 assert.equal(cost.currency,'MAD');
+assert.equal(cost.unit,'pièce');
 assert.match(cost.source,/CustomCostEntity/);
 
 const loss=createLossRecord({
  storeId:'val-fleuri',businessDate:'2026-09-20',user:manager,
- product:{ean:'6110000000218',productNumber:'HS-COST',name:'Article coût test',category:'Test',price:20,unitCost:cost.unitCost,costSource:cost.source,costState:cost.status},
+ product:{ean:'6110000000218',productNumber:'HS-COST',name:'Article coût test',category:'Test',price:20,retailUnit:'pièce',retailPriceQuantity:1,unitCost:cost.unitCost,costUnit:cost.unit,costBasisQuantity:1,costSource:cost.source,costState:cost.status},
  reasonCode:'BREAKAGE',quantity:3,unit:'pièce',note:'V2.18 test'
 });
 assert.equal(loss.unit_retail_value,20);
@@ -107,7 +108,7 @@ const todayUi=readFileSync(path.join(root,'frontend/js/pages/today.js'),'utf8');
 const adminUi=readFileSync(path.join(root,'frontend/js/admin-cost-mapping.js'),'utf8');
 const inventoryUi=readFileSync(path.join(root,'frontend/js/pages/inventory.js'),'utf8');
 assert.match(lossesUi,/Valeur au coût/);
-assert.match(lossesUi,/Coût non disponible/);
+assert.match(lossesUi,/Coût non valorisé/);
 assert.match(lossesUi,/Exporter la démarque en Excel/);
 assert.doesNotMatch(lossesUi,/Confirmer l’import ERP/);
 assert.match(todayUi,/au coût/);

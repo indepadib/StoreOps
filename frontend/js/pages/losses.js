@@ -5,6 +5,11 @@ import { $,esc,status,fmtMoney,toast } from '../ui.js';
 const LABEL={READY_TO_POST:'Prête à exporter',APPROVAL_REQUIRED:'Validation Direction',APPROVED:'Approuvée · exportable',POSTED:'Traitée',CANCELLED:'Annulée'};
 const TYPE={READY_TO_POST:'warn',APPROVAL_REQUIRED:'danger',APPROVED:'warn',POSTED:'ok',CANCELLED:'neutral'};
 let cfg=null,quickProduct=null,quickReason=null;
+const UNIT_UI={G:'g',GR:'g',GRAMME:'g',GRAMMES:'g',KG:'kg',KGS:'kg',KILOGRAMME:'kg',KILOGRAMMES:'kg',L:'L',LT:'L',LITRE:'L',LITRES:'L',PC:'pièce',PCS:'pièce',PIECE:'pièce',PIECES:'pièce',EA:'pièce'};
+function uiUnit(v){const k=String(v||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'');return UNIT_UI[k]||String(v||'').trim()||null}
+function basisLabel(amount,unit,qty=1){if(amount==null)return null;const q=Number(qty||1);return `${fmtMoney(amount)}${unit?` / ${q!==1?`${q} `:''}${esc(uiUnit(unit)||unit)}`:''}`}
+function preferLossUnit(product){const wanted=uiUnit(product?.costUnit||product?.unit||product?.retailUnit),select=$('#lossUnit');if(!wanted||!select)return;const option=[...select.options].find(o=>uiUnit(o.value)===wanted);if(option)select.value=option.value}
+
 
 export async function renderLosses(){
   const [config,data]=await Promise.all([api('/api/loss/config'),api(`/api/stores/${app.storeId}/losses`)]);cfg=config;quickProduct=null;quickReason=null;
@@ -58,8 +63,10 @@ function renderProductPreview(product,error=''){
  if(!product){el.className='loss-product-preview';el.innerHTML='<span>Le produit apparaîtra ici après le scan.</span>';return}
  el.className='loss-product-preview ready';
  const price=product.effectivePrice??product.price??product.basePrice;
- const cost=product.unitCost==null?null:Number(product.unitCost),costLabel=cost==null?`Coût ${product.costReason==='COST_MAPPING_UNMAPPED'?'à connecter':'non disponible'}`:`Coût ${fmtMoney(cost)}`;
- el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · ${esc(product.productNumber)}`:''}</span></div><div><b>${price==null?'Prix non disponible':fmtMoney(price)}</b><span>${esc(costLabel)} · ${product.stock==null?'Stock non disponible':`Stock ${Number(product.stock)}`}</span></div>`;
+ const priceLabel=price==null?'Prix non disponible':basisLabel(price,product.retailUnit,product.retailPriceQuantity||1);
+ const cost=product.unitCost==null?null:Number(product.unitCost),costLabel=cost==null?`Coût ${product.costReason==='COST_MAPPING_UNMAPPED'?'à connecter':'non disponible'}`:`Coût ${basisLabel(cost,product.costUnit,product.costBasisQuantity||1)}`;
+ el.innerHTML=`<div><strong>${esc(product.name||'Article')}</strong><span>EAN ${esc(product.ean||$('#lossEan')?.value||'—')}${product.productNumber?` · ${esc(product.productNumber)}`:''}</span></div><div><b>${priceLabel}</b><span>${costLabel} · ${product.stock==null?'Stock non disponible':`Stock ${Number(product.stock)} ${esc(uiUnit(product.costUnit||product.unit)||'')}`}</span></div>`;
+ preferLossUnit(product);
 }
 async function lookupProduct(){
  const ean=$('#lossEan')?.value.trim();if(!ean){renderProductPreview(null);return null}
@@ -90,7 +97,7 @@ function excelExportPanel(items=[]){
  if(!canManage())return'';
  return`<div class="loss-closing-card">
   <div class="row"><div><strong>Export Excel démarque</strong><div class="small muted">${items.length} ligne(s) du jour · coût et prix de vente séparés · aucun posting D365.</div></div>${status(items.length?'Prêt':'Vide',items.length?'ok':'neutral')}</div>
-  <div class="banner ban-info" style="margin-top:10px"><strong>Fichier opérationnel</strong><span>Le classeur contient une synthèse et le détail de la démarque. Les coûts indisponibles restent vides et identifiables au lieu d’être inventés.</span></div>
+  <div class="banner ban-info" style="margin-top:10px"><strong>Valorisation par unité réelle</strong><span>Ex. 6 000 g vendus à 5,50 DH/kg = 6 kg × 5,50 = 33 DH. Le classeur affiche les unités et facteurs de conversion. Les valeurs non prouvées restent vides.</span></div>
   <div class="row" style="margin-top:12px"><button class="btn brand" id="exportLossExcelBtn" ${items.length?'':'disabled'}>Exporter la démarque en Excel</button><span class="small muted">Téléchargement uniquement · aucune écriture ERP.</span></div>
  </div>`
 }
@@ -101,7 +108,9 @@ function lossCard(x){
  const source=x.source_type==='DLC_TREATMENT'?'<span class="loss-flag">Créée depuis DLC</span>':'';
  const approval=x.status==='APPROVAL_REQUIRED'?'<span class="loss-flag danger">Direction requise</span>':x.approved_by_name?`<span class="loss-flag">Approuvée · ${esc(x.approved_by_name)}</span>`:'';
  const posting=x.status==='POSTED'&&x.posted_method?`<span class="loss-flag">${x.posted_method==='FILE_IMPORT'?'Import fichier':'API'}${x.posted_reference?` · ${esc(x.posted_reference)}`:''}</span>`:'';
- return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b></span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_cost_value==null?'Coût non disponible':`${fmtMoney(x.total_cost_value)} au coût`}</span><span class="muted">${x.total_retail_value==null?'Prix vente indisponible':`${fmtMoney(x.total_retail_value)} prix vente`}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
+ const retailEq=x.retail_equivalent_qty!=null&&x.retail_price_unit?` · ${Number(x.retail_equivalent_qty)} ${esc(uiUnit(x.retail_price_unit)||x.retail_price_unit)} vente`:'';
+ const costEq=x.cost_equivalent_qty!=null&&x.cost_unit?` · ${Number(x.cost_equivalent_qty)} ${esc(uiUnit(x.cost_unit)||x.cost_unit)} coût`:'';
+ return`<article class="loss-row ${x.status==='POSTED'?'done':''}"><div class="loss-main"><div class="row"><div><strong>${esc(x.product_name)}</strong><div class="small muted">EAN ${esc(x.ean)} · ${esc(x.category||'Autre')}</div></div>${status(LABEL[x.status]||x.status,TYPE[x.status]||'neutral')}</div><div class="loss-meta"><span><b>${Number(x.quantity)} ${esc(x.unit)}</b>${retailEq}${costEq}</span><span>${esc(cfg?.reasons.find(r=>r.code===x.reason_code)?.label||x.reason_code)}</span><span>${x.total_cost_value==null?'Coût non valorisé':`${fmtMoney(x.total_cost_value)} au coût`}</span><span class="muted">${x.total_retail_value==null?'Prix vente non valorisé':`${fmtMoney(x.total_retail_value)} prix vente`}</span></div>${x.note?`<div class="small loss-note">${esc(x.note)}</div>`:''}<div class="loss-flags">${source}${evidence}${approval}${posting}</div></div><div class="loss-actions">${x.incident_id&&x.incident?.status!=='RESOLVED'?`<button class="btn soft" data-open-incident="${x.incident_id}">Traiter preuve</button>`:''}${isDirector()&&x.status==='APPROVAL_REQUIRED'?`<button class="btn soft" data-approve-loss="${x.id}">Approuver</button>`:''}</div></article>`;
 }
 function downloadFile(file){const blob=new Blob([file.content],{type:file.mimeType||'application/vnd.ms-excel;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=file.fileName||'demarque.xls';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function bind(){
@@ -112,6 +121,6 @@ function bind(){
  $('#lossQty')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();saveQuickLoss()}});
  $('#createLossBtn')?.addEventListener('click',saveQuickLoss);
  document.querySelectorAll('[data-approve-loss]').forEach(b=>b.onclick=async()=>{try{await api(`/api/losses/${b.dataset.approveLoss}/approve`,{method:'POST'});toast('Perte approuvée par la Direction.');renderLosses()}catch(e){toast(e.message)}});
- const excel=$('#exportLossExcelBtn');if(excel)excel.onclick=async()=>{try{excel.disabled=true;excel.textContent='Préparation Excel…';const result=await api(`/api/stores/${app.storeId}/losses/export-excel`,{method:'POST'});downloadFile(result.file);toast('Export Excel démarque généré · aucune écriture D365.')}catch(e){toast(e.message)}finally{excel.disabled=false;excel.textContent='Exporter la démarque en Excel'}};
+ const excel=$('#exportLossExcelBtn');if(excel)excel.onclick=async()=>{try{excel.disabled=true;excel.textContent='Préparation Excel…';const result=await api(`/api/stores/${app.storeId}/losses/export-excel`,{method:'POST'});downloadFile(result.file);toast(result.revaluation?.revalued?`Export généré · ${result.revaluation.revalued} ancienne(s) ligne(s) revalorisée(s).`:'Export Excel démarque généré · aucune écriture D365.')}catch(e){toast(e.message)}finally{excel.disabled=false;excel.textContent='Exporter la démarque en Excel'}};
  const save=$('#saveLossPolicyBtn');if(save)save.onclick=async()=>{try{await api('/api/loss/policy',{method:'PUT',body:JSON.stringify({evidenceThreshold:Number($('#lossEvidenceThreshold').value),approvalThreshold:Number($('#lossApprovalThreshold').value)})});toast('Politique démarque mise à jour.');renderLosses()}catch(e){toast(e.message)}};
 }

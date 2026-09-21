@@ -6,7 +6,7 @@ const {lossRecord,createLossRecord,ensureLossPostable,approveLossRecord,markLoss
 function ok(v,m){if(!v)throw new Error(m)}
 const PNG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=';
 const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get(),director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
-const today=new Date().toISOString().slice(0,10),product={ean:'3017620422003',name:'Nutella 750g',productNumber:'NUT750',category:'Épicerie',price:64.90};
+const today=new Date().toISOString().slice(0,10),product={ean:'3017620422003',name:'Nutella 750g',productNumber:'NUT750',category:'Épicerie',price:64.90,retailUnit:'pièce',retailPriceQuantity:1};
 
 let dlc=createDlcRecord({storeId:'val-fleuri',user:manager,product,expiryDate:today,quantity:2,unit:'pièce',department:'Crémerie / PLS',family:'Lait frais',lotRef:'AUTO-LOSS-1'});
 let treated=addDlcTreatment({id:dlc.id,user:manager,actionType:'DESTROY',quantity:2,note:'DLC détruite',dataUrl:PNG,fileName:'pv-destruction.png',caption:'PV destruction'});
