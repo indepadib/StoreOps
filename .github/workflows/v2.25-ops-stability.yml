@@ -21,6 +21,8 @@ jobs:
           node --check backend/services/access-management.mjs
           node --check backend/services/inventory.mjs
           node --check backend/services/dynamics-receiving.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/manager-inbox-batch.mjs
           node --check backend/server.mjs
           node --check frontend/js/api.js
           node --check frontend/js/pages/cash-opening.js
@@ -73,7 +75,10 @@ jobs:
           grep -q "D365_WRITE_DISABLED" backend/server.mjs
           grep -q "RELEASE_BUILD='2250'" frontend/js/app.js
           grep -q "v2.25.0" frontend/index.html
-          grep -q "PO · Commandes d’achat" frontend/js/pages/receipts.js
+          grep -q "PO · Commandes" frontend/js/pages/receipts.js
+          grep -q "data-open-receipt" frontend/js/pages/receipts.js
+          grep -q "source_created_date" backend/services/dynamics-receiving.mjs
+          grep -q "stock-negative-summary" backend/services/manager-inbox-batch.mjs
           grep -q "TO · Transferts" frontend/js/pages/receipts.js
           grep -q "QUALITY_AUDIT" backend/services/access-management.mjs
           grep -q "CASH_OPENING_LINE_STALE" backend/services/opening-api.mjs
