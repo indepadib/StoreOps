@@ -42,7 +42,7 @@ jobs:
           console.log('EXPECTED='+Number(line.expected_float||0));
           NODE
           source /tmp/cash.env
-          node -e "require('fs').writeFileSync('/tmp/cash-payload.json',JSON.stringify({cashierName:'Test V2.25',declaredFloat:Number(process.env.EXPECTED||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true,note:'preview smoke'}))" EXPECTED="$EXPECTED"
+          EXPECTED="$EXPECTED" node -e "require('fs').writeFileSync('/tmp/cash-payload.json',JSON.stringify({cashierName:'Test V2.25',declaredFloat:Number(process.env.EXPECTED||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true,note:'preview smoke'}))"
           code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/cash-opening/lines/$LINE_ID/check" --data-binary @/tmp/cash-payload.json -o /tmp/cash-check.json -w "%{http_code}")
           cat /tmp/cash-check.json
           test "$code" = "200"
