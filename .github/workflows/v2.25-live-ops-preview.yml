@@ -89,6 +89,8 @@ jobs:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/val-fleuri/receipts/po/sync" --data '{}' -o /tmp/po-sync.json
+          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/val-fleuri/receipts/to/sync" --data '{}' -o /tmp/to-sync.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/po" -o /tmp/po.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/to" -o /tmp/to.json
           node - <<'NODE'
