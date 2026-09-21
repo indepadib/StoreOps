@@ -353,7 +353,7 @@ export async function syncExpectedTransferOrdersFromDynamics(storeId,{businessDa
  return{...snapshot,synced:true,partial:!authoritative,authoritative,created,updated,lineCreated,lineUpdated,readiness:transferReceivingStateForStore(storeId)}
 }
 
-export function listReceiptsForStore(storeId,{documentType='ALL'}={}){
+export function listReceiptsForStore(storeId,{documentType='PO'}={}){
  ensureReceivingStorage();
  const type=clean(documentType).toUpperCase(),whereType=type==='ALL'?'':' AND document_type=?',args=type==='ALL'?[storeId]:[storeId,type];
  const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=?${whereType} AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL)) ORDER BY eta,po_number`).all(...args);
