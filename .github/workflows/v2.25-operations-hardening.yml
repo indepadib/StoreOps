@@ -1,0 +1,79 @@
+name: V2.25 Operations Hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  operations-hardening:
+    if: github.head_ref == 'storeops-v2.25-operations-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/opening-controls-api.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/services/access-management.mjs
+          node --check backend/services/inventory.mjs
+          node --check backend/services/dynamics.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/api.js
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/inventory.js
+
+      - name: V2.25 contract
+        run: node backend/tests/v225-operations-hardening.mjs
+
+      - name: Quality network regression
+        run: node backend/tests/quality-audit-access.mjs
+
+      - name: Inventory privacy regression
+        run: node backend/tests/inventory-privacy.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v225-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v225-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v225-api.log 2>&1 &
+          echo $! > /tmp/storeops-v225-api.pid
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health > /tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v225-api.log
+          exit 1
+
+      - name: Cash opening API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
+      - name: Staffing API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+
+      - name: Safety guards
+        run: |
+          grep -q "D365_WRITE_DISABLED" backend/server.mjs
+          ! grep -q "v=2150" frontend/js/app.js
+          grep -q "RELEASE_BUILD='2250'" frontend/js/app.js
+          grep -q "PO · Centrale / LVE Lakhyayta" frontend/js/pages/receipts.js
+          grep -q "TO · Direct fournisseur / inter-magasin" frontend/js/pages/receipts.js
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v225-api.pid ]; then kill "$(cat /tmp/storeops-v225-api.pid)" || true; fi
