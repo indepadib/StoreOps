@@ -1,5 +1,5 @@
 name: V2.21.1 Fast Pulse Preview
-# preview-env-refresh: stock-live
+# preview-env-refresh: stock-live-final
 
 on:
   pull_request:
