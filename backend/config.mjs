@@ -109,6 +109,8 @@ export const config = {
       lineEntity: process.env.D365_PO_LINE_ENTITY || 'PurchaseOrderLinesV2',
       purchaseOrderField: process.env.D365_PO_NUMBER_FIELD || 'PurchaseOrderNumber',
       vendorField: process.env.D365_PO_VENDOR_FIELD || 'OrderVendorAccountNumber',
+      vendorNameField: process.env.D365_PO_VENDOR_NAME_FIELD || 'PurchaseOrderName',
+      creationDateField: process.env.D365_PO_CREATION_DATE_FIELD || 'AccountingDate',
       headerDateField: process.env.D365_PO_HEADER_DATE_FIELD || 'RequestedDeliveryDate',
       headerStatusField: process.env.D365_PO_STATUS_FIELD || 'PurchaseOrderStatus',
       headerWarehouseField: process.env.D365_PO_HEADER_WAREHOUSE_FIELD || 'DefaultReceivingWarehouseId',
