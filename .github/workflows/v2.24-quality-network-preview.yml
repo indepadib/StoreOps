@@ -1,0 +1,53 @@
+name: V2.24 Quality Network Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-network:
+    if: github.head_ref == 'storeops-v2.24-quality-audit-inventory'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate quality-network rights and modern UI
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ] && grep -q '"version":"2.24.0"' /tmp/health.json; then break; fi
+            sleep 5
+          done
+          test "$code" = "200"
+          grep -q '"version":"2.24.0"' /tmp/health.json
+
+          curl -sS -H "x-demo-user: u-quality-audit" "$PREVIEW_URL/api/session" -o /tmp/session.json
+          curl -sS -H "x-demo-user: u-quality-audit" "$PREVIEW_URL/api/stores" -o /tmp/stores.json
+          curl -sS "$PREVIEW_URL/" -o /tmp/index.html
+
+          q_vf=$(curl -sS -o /tmp/q-vf.json -w "%{http_code}" -H "x-demo-user: u-quality-audit" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/stores/val-fleuri/quality"             --data '{"ean":"INVALID-QUALITY-PROBE","context":"Contrôle ponctuel","deliveredQty":1,"acceptedQty":1,"rejectedQty":0,"packagingStatus":"NA","appearanceStatus":"NA"}')
+          q_tr=$(curl -sS -o /tmp/q-tr.json -w "%{http_code}" -H "x-demo-user: u-quality-audit" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/stores/trefle/quality"             --data '{"ean":"INVALID-QUALITY-PROBE","context":"Contrôle ponctuel","deliveredQty":1,"acceptedQty":1,"rejectedQty":0,"packagingStatus":"NA","appearanceStatus":"NA"}')
+          d_vf=$(curl -sS -o /tmp/d-vf.json -w "%{http_code}" -H "x-demo-user: u-quality-audit" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/stores/val-fleuri/dlc"             --data '{"ean":"INVALID-DLC-PROBE","expiryDate":"2026-09-30","quantity":1,"unit":"pièce","expiryType":"DLC"}')
+          d_tr=$(curl -sS -o /tmp/d-tr.json -w "%{http_code}" -H "x-demo-user: u-quality-audit" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/stores/trefle/dlc"             --data '{"ean":"INVALID-DLC-PROBE","expiryDate":"2026-09-30","quantity":1,"unit":"pièce","expiryType":"DLC"}')
+          inv=$(curl -sS -o /tmp/inv.json -w "%{http_code}" -H "x-demo-user: u-quality-audit" -H "content-type: application/json" -X POST             "$PREVIEW_URL/api/stores/val-fleuri/inventory"             --data '{"type":"CYCLE","zone":"Probe","comment":"permission probe"}')
+
+          Q_VF="$q_vf" Q_TR="$q_tr" D_VF="$d_vf" D_TR="$d_tr" INV="$inv" node - <<'NODE'
+          const fs=require('fs');
+          const session=JSON.parse(fs.readFileSync('/tmp/session.json','utf8'));
+          const stores=JSON.parse(fs.readFileSync('/tmp/stores.json','utf8'));
+          const codes={qVf:process.env.Q_VF,qTr:process.env.Q_TR,dVf:process.env.D_VF,dTr:process.env.D_TR,inventory:process.env.INV};
+          console.log(JSON.stringify({session:session.user,stores:stores.map(x=>({id:x.id,name:x.name})),codes},null,2));
+          if(session.user?.permissions_profile!=='quality_audit')process.exit(2);
+          if(!/amine/i.test(String(session.user?.name||'')))process.exit(3);
+          for(const id of ['val-fleuri','trefle'])if(!stores.some(x=>x.id===id))process.exit(4);
+          // Invalid EAN must reach business validation (400), not permission denial (403).
+          if(codes.qVf!=='400'||codes.qTr!=='400'||codes.dVf!=='400'||codes.dTr!=='400')process.exit(5);
+          // Inventory remains outside the quality-network perimeter.
+          if(codes.inventory!=='403')process.exit(6);
+          NODE
+
+          grep -q 'id="qualityAuditNav"' /tmp/index.html
+          grep -q 'v2.24.0' /tmp/index.html

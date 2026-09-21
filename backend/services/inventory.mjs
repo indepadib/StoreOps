@@ -68,8 +68,8 @@ function hydrateLine(row){return row?{...row,count1_by_name:userName(row.count1_
 function hydrateSession(row){
  if(!row)return null;
  const lines=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? ORDER BY product_name`).all(row.id).map(hydrateLine);
- const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),absVariance=varianceLines.reduce((s,x)=>s+Math.abs(Number(x.final_variance)),0);
- return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance}};
+ const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),unexplained=varianceLines.filter(x=>!x.reason_code).length,absVariance=varianceLines.reduce((s,x)=>s+Math.abs(Number(x.final_variance)),0);
+ return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,unexplained,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance}};
 }
 export function inventorySession(id){return hydrateSession(db.prepare(`SELECT * FROM inventory_sessions WHERE id=?`).get(id))}
 export function listInventorySessions(storeId,status='ALL'){
@@ -117,19 +117,27 @@ export function countInventoryLine({lineId,user,quantity,reasonCode=null,note=''
  if(recount){
    if(!line.requires_recount)throw Object.assign(new Error('Cette ligne ne nécessite pas de recomptage.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),finalReason=reasonCode||line.reason_code||null;
-   if(variance!==0&&!finalReason)throw Object.assign(new Error('Un motif est obligatoire pour tout écart final.'),{status:409});
    db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,user.id,qty,variance,finalReason,note||line.note||null,lineId);
    audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,reasonCode:reasonCode||line.reason_code||null}});
  }else{
    if(line.count1_qty!=null)throw Object.assign(new Error('Le premier comptage existe déjà. Utilise le recomptage si nécessaire.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),needs=Math.abs(variance)>=Number(policy.recount_qty_threshold);
-   if(!needs&&variance!==0&&!reasonCode)throw Object.assign(new Error('Un motif est obligatoire pour tout écart.'),{status:409});
    db.prepare(`UPDATE inventory_lines SET count1_qty=?,count1_by=?,count1_at=CURRENT_TIMESTAMP,variance1=?,requires_recount=?,final_qty=?,final_variance=?,reason_code=?,note=?,status=? WHERE id=?`).run(qty,user.id,variance,needs?1:0,needs?null:qty,needs?null:variance,reasonCode||null,note||null,needs?'RECOUNT':'COUNTED',lineId);
    audit({storeId:line.store_id,userId:user.id,action:needs?'INVENTORY_RECOUNT_REQUIRED':'INVENTORY_COUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,requiresRecount:needs,reasonCode}});
  }
  db.prepare(`UPDATE inventory_sessions SET status=CASE WHEN status='COUNTING' THEN 'REVIEW' ELSE status END WHERE id=?`).run(line.session_id);
  return inventorySession(line.session_id);
 }
+export function explainInventoryLine({lineId,user,reasonCode,note=''}) {
+ const line=db.prepare(`SELECT l.*,s.store_id,s.status session_status FROM inventory_lines l JOIN inventory_sessions s ON s.id=l.session_id WHERE l.id=?`).get(lineId);if(!line)throw Object.assign(new Error('Ligne d’inventaire introuvable.'),{status:404});
+ if(!['COUNTING','REVIEW'].includes(line.session_status))throw Object.assign(new Error('Cet inventaire n’est plus modifiable.'),{status:409});
+ if(line.status!=='COUNTED'||line.final_variance==null||Number(line.final_variance)===0)throw Object.assign(new Error('Cette ligne n’a pas d’écart final à expliquer.'),{status:409});
+ if(!reasonCode||!validReason(reasonCode))throw Object.assign(new Error('Choisis un motif valide pour expliquer l’écart.'),{status:400});
+ db.prepare(`UPDATE inventory_lines SET reason_code=?,note=? WHERE id=?`).run(reasonCode,note||line.note||null,lineId);
+ audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_VARIANCE_EXPLAINED',entityType:'INVENTORY_LINE',entityId:lineId,details:{variance:Number(line.final_variance),reasonCode,note}});
+ return inventorySession(line.session_id)
+}
+
 export function expressInventoryCount({storeId,user,product,quantity,reasonCode=null,note=''}) {
  const session=getOrCreateExpressInventory({storeId,user});
  let line=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(session.id,product.ean);
@@ -142,8 +150,8 @@ export function expressInventoryCount({storeId,user,product,quantity,reasonCode=
  return{
   session:updated,
   line:current,
-  step:current?.status==='RECOUNT'?'RECOUNT_REQUIRED':'COUNTED',
-  nextAction:current?.status==='RECOUNT'?'RECOUNT':'SCAN_NEXT'
+  step:current?.status==='RECOUNT'?'RECOUNT_REQUIRED':(Number(current?.final_variance)!==0&&!current?.reason_code?'REASON_REQUIRED':'COUNTED'),
+  nextAction:current?.status==='RECOUNT'?'RECOUNT':(Number(current?.final_variance)!==0&&!current?.reason_code?'EXPLAIN':'SCAN_NEXT')
  };
 }
 export function finalizeInventorySession({sessionId,user}){

@@ -7,7 +7,7 @@ process.env.STOREOPS_DB='/tmp/storeops-v217-demo-ready.db';
 process.env.STOREOPS_MEDIA_DIR='/tmp/storeops-v217-demo-media';
 
 const {db}=await import('../db.mjs');
-const {getOrCreateExpressInventory,activeExpressInventory,expressInventoryCount,finalizeInventorySession}=await import('../services/inventory.mjs');
+const {getOrCreateExpressInventory,activeExpressInventory,expressInventoryCount,explainInventoryLine,finalizeInventorySession}=await import('../services/inventory.mjs');
 
 const manager=db.prepare(`SELECT * FROM users WHERE id='u-vf'`).get();
 assert(manager,'Val Fleuri manager must exist');
@@ -38,11 +38,24 @@ assert.equal(result.line.status,'RECOUNT');
 result=expressInventoryCount({
  storeId:'val-fleuri',user:manager,
  product:{ean:'9990000000028',productNumber:'EXP-2',name:'Article express écart',category:'Test',stock:10},
- quantity:9,reasonCode:'COUNT_ERROR'
+ quantity:9
 });
-assert.equal(result.step,'COUNTED');
+assert.equal(result.step,'REASON_REQUIRED');
 assert.equal(result.line.final_variance,-1);
 assert.equal(result.session.metrics.pending,0);
+assert.equal(result.session.metrics.unexplained,1);
+let explained=explainInventoryLine({lineId:result.line.id,user:manager,reasonCode:'COUNT_ERROR',note:'Recomptage confirmé'});
+assert.equal(explained.metrics.unexplained,0);
+
+result=expressInventoryCount({
+ storeId:'val-fleuri',user:manager,
+ product:{ean:'9990000000035',productNumber:'EXP-3',name:'Article petit écart',category:'Test',stock:8},
+ quantity:7
+});
+assert.equal(result.step,'REASON_REQUIRED','small variance must be discovered before reason is requested');
+assert.equal(result.line.reason_code,null);
+explained=explainInventoryLine({lineId:result.line.id,user:manager,reasonCode:'SHRINK'});
+assert.equal(explained.metrics.unexplained,0);
 
 const done=finalizeInventorySession({sessionId:session.id,user:manager});
 assert.equal(done.session.status,'READY_TO_POST');
@@ -61,6 +74,9 @@ const mockApi=readFileSync(path.join(root,'frontend/js/mock-api.js'),'utf8');
 assert.match(server,/\/inventory\/express\/count/);
 assert.match(inventoryUi,/INVENTAIRE EXPRESS/);
 assert.match(inventoryUi,/Valider & article suivant/);
+assert.match(inventoryUi,/ÉCART À EXPLIQUER/);
+assert.match(inventoryUi,/\/inventory\/lines\/\$\{lineId\}\/explain/);
+assert.doesNotMatch(inventoryUi,/Motif si vous anticipez un écart/);
 assert.match(inventoryUi,/Terminer l’inventaire/);
 assert.match(lossUi,/DÉMARQUE EXPRESS/);
 assert.match(lossUi,/data-loss-reason/);

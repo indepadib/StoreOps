@@ -10,6 +10,9 @@ export function canAccessStore(user, storeId){
 export function canManageQuality(user, storeId){
   return !!user && (user.role==='ops_director' || isQualityAudit(user) || (user.role==='store_manager' && user.store_id===storeId));
 }
+export function canManageDlc(user, storeId){
+  return !!user && (user.role==='ops_director' || isQualityAudit(user) || (user.role==='store_manager' && user.store_id===storeId));
+}
 export function canManageStore(user, storeId){
   return !!user && (user.role==='ops_director' || (user.role==='store_manager' && user.store_id===storeId));
 }
