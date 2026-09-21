@@ -36,11 +36,18 @@ const PRICE_ROLES={
  recordId:['recordid','recid','record']
 };
 
+const ROLE_EXACT_PRIORITY={
+ channel:['store','storeid','retailchannelid','retailchannel','channelid','terminalstore','channel']
+};
 function infer(rows,roles){
  const keys=unique((rows||[]).flatMap(r=>Object.keys(r||{})));
  const fields={};
  for(const [role,patterns] of Object.entries(roles)){
-  const ranked=keys.map(key=>({key,score:keyScore(key,patterns)})).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+  const priority=ROLE_EXACT_PRIORITY[role]||[];
+  const ranked=keys.map(key=>{
+   const lower=clean(key).toLowerCase(),idx=priority.indexOf(lower),bonus=idx>=0?(priority.length-idx)*20:0;
+   return{key,score:keyScore(key,patterns)+bonus}
+  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
   fields[role]={candidate:ranked[0]?.key||null,confidence:ranked[0]?.score>=6?'HIGH':ranked[0]?.score>=3?'MEDIUM':ranked[0]?.score>0?'LOW':'NONE',alternatives:ranked.slice(1,4)};
  }
  return{keys,fields};
