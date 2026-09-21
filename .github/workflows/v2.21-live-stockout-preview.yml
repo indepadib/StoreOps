@@ -24,15 +24,32 @@ jobs:
             sleep 5
           done
           test "$code" = "200"
+          curl -sS "$PREVIEW_URL/api/admin/integrations/d365-sales-mapping" -o /tmp/mapping.json
           node - <<'NODE'
           const fs=require('fs');
           const p=JSON.parse(fs.readFileSync('/tmp/pulse.json','utf8'));
+          const m=JSON.parse(fs.readFileSync('/tmp/mapping.json','utf8'));
+          const mapping=m.mapping||m.data?.mapping||m;
           const safe={
             status:p.status,
             businessDate:p.businessDate,
             source:p.source,
             stock:p.stock,
-            outOfStockCount:p.snapshot?.kpis?.outOfStockCount ?? null
+            outOfStockCount:p.snapshot?.kpis?.outOfStockCount ?? null,
+            salesMapping:mapping?{
+              state:mapping.state,
+              entity:mapping.entity,
+              fields:mapping.fields,
+              salesSign:mapping.salesSign,
+              quantitySign:mapping.quantitySign,
+              smoke:mapping.smoke?{
+                status:mapping.smoke.status,
+                rowCount:mapping.smoke.rowCount,
+                uniqueTickets:mapping.smoke.uniqueTickets,
+                presence:mapping.smoke.presence,
+                metrics:mapping.smoke.metrics
+              }:null
+            }:null
           };
           console.log(JSON.stringify(safe,null,2));
           if(p.status!=='READY')process.exit(2);
