@@ -24,7 +24,7 @@ assert.equal(captured.options.body,JSON.stringify({profileCode:'QUALITY_AUDIT',n
 
 // Production legacy Amine account must migrate from u-tr store-manager to network Quality.
 const {db}=await import('../db.mjs');
-db.prepare(`UPDATE users SET name='Amine Chibani',role='store_manager',store_id='trefle',permissions_profile=NULL WHERE id='u-tr'`).run();
+db.prepare(`UPDATE users SET name='Amine Chibani',role='store_manager',store_id='trefle' WHERE id='u-tr'`).run();
 const access=await import('../services/access-management.mjs');
 const permissions=await import('../services/permissions.mjs');
 const amine=db.prepare(`SELECT * FROM users WHERE id='u-tr'`).get();
