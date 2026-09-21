@@ -49,7 +49,7 @@ function pulseCompact(p,loading=false){
   return `<section class="today-pulse today-pulse-hero muted"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Les ventes ne sont pas encore connectées.</h3></div></div><p>StoreOps n’invente aucun chiffre. Les opérations terrain restent disponibles.</p></section>`
  }
  const k=p.snapshot.kpis||{},change=k.changeVsComparison;
- return `<section class="today-pulse today-pulse-hero"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Votre magasin aujourd’hui</h3></div><button class="today-text-link" data-manager-go="managerPerformance">Voir le détail</button></div><div class="today-pulse-grid today-pulse-grid-4"><div><span>CA</span><strong>${money(k.netSales)}</strong><small>${change==null?'Aujourd’hui':`${pct(change)} vs D-7`}</small></div><div><span>Tickets</span><strong>${number(k.tickets)}</strong><small>${number(k.units)} article${Number(k.units||0)>1?'s':''}</small></div><div><span>Panier</span><strong>${money(k.averageBasket)}</strong><small>${k.marginRate==null?'Marge non connectée':`Marge ${pct(k.marginRate)}`}</small></div><div><span>Ruptures</span><strong>${number(k.outOfStockCount)}</strong><small>${p.stock?.ruptureReady?'Vendus 30j · stock 0':'Ventes / stock à vérifier'}</small></div></div></section>`;
+ return `<section class="today-pulse today-pulse-hero"><div class="today-section-head"><div><span class="today-kicker">BUSINESS PULSE</span><h3>Votre magasin aujourd’hui</h3></div><button class="today-text-link" data-manager-go="managerPerformance">Voir le détail</button></div><div class="today-pulse-grid today-pulse-grid-4"><div><span>CA</span><strong>${money(k.netSales)}</strong><small>${change==null?'Aujourd’hui':`${pct(change)} vs D-7`}</small></div><div><span>Tickets</span><strong>${number(k.tickets)}</strong><small>${number(k.units)} article${Number(k.units||0)>1?'s':''}</small></div><div><span>Panier</span><strong>${money(k.averageBasket)}</strong><small>${k.marginRate==null?'Marge non connectée':`Marge ${pct(k.marginRate)}`}</small></div><div><span>Ruptures</span><strong>${p.stock?.rupturePending&&!p.stock?.ruptureReady?'…':number(k.outOfStockCount)}</strong><small>${p.stock?.ruptureReady?'Vendus 30j · stock 0':p.stock?.rupturePending?'Calcul en arrière-plan…':'Ventes / stock à vérifier'}</small></div></div></section>`;
 }
 function priorityCard(item,index,phase){
  if(!item)return'';
@@ -113,6 +113,19 @@ export async function renderManagerHome(){
  if(fast)renderState({fast,inbox:null,pulse:null,pulseLoading:true,detailsLoading:true});
  else{try{inbox=await loadManagerInbox();syncManagerNav(inbox);detailsLoading=false;renderState({fast:null,inbox,pulse:null,pulseLoading:true,detailsLoading:false})}catch{return}}
  const redraw=()=>{if(app.storeId===storeId&&app.page==='today')renderState({fast,inbox,pulse,pulseLoading,detailsLoading})};
+ const hydrateRuptures=()=>{
+  if(!pulse||pulse.status!=='READY'||!pulse.snapshot)return;
+  if(!pulse.stock?.ruptureReady){pulse={...pulse,stock:{...(pulse.stock||{}),rupturePending:true}};redraw()}
+  void api(`/api/stores/${storeId}/business-pulse/stockouts`).then(data=>{
+   if(app.storeId!==storeId||app.page!=='today'||!pulse?.snapshot)return;
+   const ready=data?.status==='READY',count=ready?Number(data?.summary?.outOfStock):null;
+   pulse={...pulse,stock:{...(pulse.stock||{}),source:data?.source||pulse.stock?.source||null,ruptureReady:ready,rupturePending:false,ruptureMethod:data?.summary?.ruptureMethod||pulse.stock?.ruptureMethod||null,salesWindowDays:data?.summary?.salesWindowDays||30,salesWindowProducts:data?.summary?.salesWindowProducts??pulse.stock?.salesWindowProducts??null,cache:data?.cache||null},snapshot:{...pulse.snapshot,kpis:{...(pulse.snapshot.kpis||{}),outOfStockCount:count}}};
+   redraw();
+  }).catch(()=>{
+   if(app.storeId!==storeId||app.page!=='today'||!pulse)return;
+   pulse={...pulse,stock:{...(pulse.stock||{}),ruptureReady:false,rupturePending:false}};redraw();
+  })
+ };
  scheduleCommercialLiveRefresh(storeId,{delayMs:220,minIntervalMs:300000,onUpdated:async()=>{
   if(app.storeId!==storeId||app.page!=='today')return;
   try{
@@ -124,13 +137,13 @@ export async function renderManagerHome(){
   const enriched=await (inbox?Promise.resolve(inbox):api(`/api/stores/${storeId}/manager-inbox-batch`).catch(()=>loadManagerInbox()));
   if(app.storeId!==storeId)return;
   inbox=enriched;syncManagerNav(inbox);detailsLoading=false;
-  if(enriched?.businessPulse){pulse=await tryAutoConnectPulse(storeId,enriched.businessPulse);pulseLoading=false;redraw();return}
+  if(enriched?.businessPulse){pulse=await tryAutoConnectPulse(storeId,enriched.businessPulse);pulseLoading=false;redraw();hydrateRuptures();return}
   redraw();
   try{pulse=await api(`/api/stores/${storeId}/business-pulse`);pulse=await tryAutoConnectPulse(storeId,pulse)}catch{pulse=null}
-  pulseLoading=false;redraw();
+  pulseLoading=false;redraw();hydrateRuptures();
  }catch{
   detailsLoading=false;
   try{pulse=await api(`/api/stores/${storeId}/business-pulse`);pulse=await tryAutoConnectPulse(storeId,pulse)}catch{pulse=null}
-  pulseLoading=false;redraw();
+  pulseLoading=false;redraw();hydrateRuptures();
  }
 }
