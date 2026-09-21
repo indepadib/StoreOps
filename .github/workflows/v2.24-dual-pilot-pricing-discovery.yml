@@ -32,6 +32,8 @@ jobs:
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/trade.json || true
 
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/entities?q=SalesPrice"             -o /tmp/entities.json
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franprix%27"             -o /tmp/trade-franprix.json || true
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franp%20VF%27"             -o /tmp/trade-vf.json || true
 
           node - <<'NODE'
           const fs=require('fs');
@@ -48,10 +50,13 @@ jobs:
           const tradeRows=(trade.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')));
           const entityRows=Array.isArray(entities)?entities:Array.isArray(entities.value)?entities.value:[];
           const entityNames=entityRows.map(x=>x.PublicCollectionName||x.PublicEntityName||x.Name||x.EntityName).filter(Boolean);
+          const tf=read('/tmp/trade-franprix.json'),tv=read('/tmp/trade-vf.json');
+          const compact=p=>({ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,rows:(p.rows||[]).slice(0,10).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|product|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')))});
           console.log(JSON.stringify({
             groups,
             base:{ok:base.ok,rowCount:base.rowCount,rows:baseRows},
             trade:{ok:trade.ok,rowCount:trade.rowCount,error:trade.error||trade.message||null,rows:tradeRows},
+            tradeByGroup:{Franprix:compact(tf),FranpVF:compact(tv)},
             salesPriceEntities:entityNames
           },null,2));
           if(!groups['10001'].length)process.exit(2);
