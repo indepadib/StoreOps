@@ -89,8 +89,8 @@ jobs:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
-          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts?type=PO" -o /tmp/po.json
-          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts?type=TO" -o /tmp/to.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/po" -o /tmp/po.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/to" -o /tmp/to.json
           node - <<'NODE'
           const fs=require('fs'),po=JSON.parse(fs.readFileSync('/tmp/po.json','utf8')),to=JSON.parse(fs.readFileSync('/tmp/to.json','utf8'));
           const now=new Date('2026-09-21T12:00:00Z'),cutoff=new Date(now);cutoff.setUTCMonth(cutoff.getUTCMonth()-1);
