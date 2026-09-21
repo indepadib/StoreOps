@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS inventory_lines(
 CREATE INDEX IF NOT EXISTS ix_inventory_session_store ON inventory_sessions(store_id,status,business_date);
 CREATE INDEX IF NOT EXISTS ix_inventory_lines_session ON inventory_lines(session_id,status);
 `);
+const inventoryLineColumns=db.prepare(`PRAGMA table_info(inventory_lines)`).all();if(!inventoryLineColumns.some(x=>x.name==='unit'))db.exec(`ALTER TABLE inventory_lines ADD COLUMN unit TEXT NULL`);
 db.prepare(`INSERT OR IGNORE INTO inventory_policies(id,recount_qty_threshold,incident_qty_threshold) VALUES('default',2,5)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -103,8 +104,9 @@ export function addInventoryLine({sessionId,user,product}){
  if(!Number.isFinite(stock))throw Object.assign(new Error('Stock théorique Dynamics indisponible pour cet article. Le mapping stock doit être configuré avant comptage.'),{status:503,code:'D365_STOCK_MAPPING_REQUIRED'});
  const existing=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(sessionId,product.ean);if(existing)return hydrateLine(existing);
  const id=uid('invl');
- db.prepare(`INSERT INTO inventory_lines(id,session_id,ean,product_number,product_name,category,theoretical_qty) VALUES(?,?,?,?,?,?,?)`).run(id,sessionId,product.ean,product.productNumber||null,product.name,product.category||null,stock);
- audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_LINE_ADDED',entityType:'INVENTORY_LINE',entityId:id,details:{sessionId,ean:product.ean,theoreticalQty:stock}});
+ const unit=String(product.inventoryUnit||product.unit||'').trim()||null;
+ db.prepare(`INSERT INTO inventory_lines(id,session_id,ean,product_number,product_name,category,theoretical_qty,unit) VALUES(?,?,?,?,?,?,?,?)`).run(id,sessionId,product.ean,product.productNumber||null,product.name,product.category||null,stock,unit);
+ audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_LINE_ADDED',entityType:'INVENTORY_LINE',entityId:id,details:{sessionId,ean:product.ean,theoreticalQty:stock,unit}});
  return hydrateLine(db.prepare(`SELECT * FROM inventory_lines WHERE id=?`).get(id));
 }
 function validReason(code){return !code||INVENTORY_REASON_CODES.some(x=>x.code===code)}
