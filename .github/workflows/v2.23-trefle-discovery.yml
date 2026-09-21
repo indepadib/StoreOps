@@ -10,6 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Trèfle identity contract
+        run: node backend/tests/v223-trefle-business-pulse.mjs
       - name: Validate D365 identity and live Business Pulse
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
@@ -29,14 +35,20 @@ jobs:
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/stores/trefle/business-pulse?force=1"             -o /tmp/pulse.json
           pulse_end=$(date +%s)
 
+          stock_start=$(date +%s)
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/stores/trefle/business-pulse/stockouts?force=1"             -o /tmp/stockouts.json
+          stock_end=$(date +%s)
+
           node - <<'NODE'
           const fs=require('fs');
           const store=JSON.parse(fs.readFileSync('/tmp/store.json','utf8'));
           const pulse=JSON.parse(fs.readFileSync('/tmp/pulse.json','utf8'));
+          const stock=JSON.parse(fs.readFileSync('/tmp/stockouts.json','utf8'));
           const row=(store.rows||[])[0]||null;
           console.log(JSON.stringify({
             d365Store:row&&{name:row.Name,storeNumber:row.StoreNumber,retailChannelId:row.RetailChannelId,warehouse:row.InventLocation,operatingUnitNumber:row.OperatingUnitNumber,legalEntity:row.dataAreaId},
-            pulse:{status:pulse.status,businessDate:pulse.businessDate,source:pulse.source,integration:pulse.integration,ca:pulse.snapshot?.kpis?.netSales??null,tickets:pulse.snapshot?.kpis?.tickets??null,basket:pulse.snapshot?.kpis?.averageBasket??null,rows:pulse.diagnostics?.rows??null}
+            pulse:{status:pulse.status,businessDate:pulse.businessDate,source:pulse.source,integration:pulse.integration,ca:pulse.snapshot?.kpis?.netSales??null,tickets:pulse.snapshot?.kpis?.tickets??null,basket:pulse.snapshot?.kpis?.averageBasket??null,rows:pulse.diagnostics?.rows??null},
+            stockouts:{status:stock.status,count:stock.summary?.outOfStock??null,method:stock.summary?.ruptureMethod??null,soldProducts30d:stock.summary?.salesWindowProducts??null,source:stock.source}
           },null,2));
           if(!row||!/trefle/i.test(String(row.Name||'')))process.exit(2);
           if(row.StoreNumber!=='FRP0002'||row.RetailChannelId!=='10002'||row.InventLocation!=='FRP0002'||row.OperatingUnitNumber!=='00000064')process.exit(3);
@@ -44,5 +56,9 @@ jobs:
           if(pulse.integration?.retailId!=='10002')process.exit(5);
           if(!Number.isFinite(Number(pulse.snapshot?.kpis?.netSales)))process.exit(6);
           if(!Number.isFinite(Number(pulse.snapshot?.kpis?.tickets)))process.exit(7);
+          if(stock.status!=='READY')process.exit(8);
+          if(stock.summary?.ruptureMethod!=='SALES_30D_ZERO_STOCK')process.exit(9);
+          if(!Number.isFinite(Number(stock.summary?.outOfStock)))process.exit(10);
           NODE
           echo "Pulse seconds: $((pulse_end-pulse_start))"
+          echo "Stockout seconds: $((stock_end-stock_start))"
