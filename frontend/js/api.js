@@ -56,7 +56,9 @@ export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
   const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  let body=options.body;
+  if(body&&typeof body==='object'&&Object.getPrototypeOf(body)===Object.prototype)body=JSON.stringify(body);
+  try{r=await fetch(url,{...options,body,headers})}catch(error){const offline=typeof navigator!=='undefined'&&navigator.onLine===false;const e=new Error(offline?'Connexion internet indisponible. StoreOps ne peut pas joindre le backend pour cette action.':`Impossible de joindre l'API StoreOps. Vérifie la connexion réseau. URL : ${url}`);e.code=offline?'API_OFFLINE':'API_UNREACHABLE';e.cause=error;throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
