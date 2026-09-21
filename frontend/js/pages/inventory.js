@@ -49,7 +49,7 @@ function quickPanel(express){
   if(recount)return`<section class="card inventory-express inventory-express-recount">
     <div class="inventory-express-head"><div><span class="manager-eyebrow">INVENTAIRE EXPRESS</span><h2>Recompter ${esc(recount.product_name)}</h2><p>Un écart important a été détecté. Recomptez physiquement sans consulter le stock système.</p></div><span class="pill">EAN ${esc(recount.ean)}</span></div>
     <div class="inventory-express-grid">
-      <label><span>Quantité recomptée</span><input id="invQuickRecountQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label>
+      <label><span>Quantité recomptée${unitOf(recount)?` (${esc(unitOf(recount))})`:``}</span><input id="invQuickRecountQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label>
     </div>
     <button class="btn brand inventory-primary-cta" id="invQuickCount" data-ean="${esc(recount.ean)}">Valider le recomptage</button>
     <div class="inventory-express-progress"><span>${metrics.counted}/${metrics.lines} article(s) compté(s)</span><span>${metrics.recounts} recomptage(s) en attente</span></div>
@@ -57,7 +57,7 @@ function quickPanel(express){
 
   if(explain)return`<section class="card inventory-express inventory-express-recount">
     <div class="inventory-express-head"><div><span class="manager-eyebrow">ÉCART À EXPLIQUER</span><h2>${esc(explain.product_name)}</h2><p>Le comptage est terminé. StoreOps révèle maintenant l’écart : choisis simplement sa cause.</p></div><span class="pill">${Number(explain.final_variance)>0?'+':''}${explain.final_variance}</span></div>
-    <div class="inventory-session-kpis"><div><span>Théorique</span><strong>${explain.theoretical_qty}</strong></div><div><span>Compté</span><strong>${explain.final_qty}</strong></div><div><span>Écart</span><strong>${explain.final_variance}</strong></div></div>
+    <div class="inventory-session-kpis"><div><span>Théorique</span><strong>${qtyWithUnit(explain.theoretical_qty,unitOf(explain))}</strong></div><div><span>Compté</span><strong>${qtyWithUnit(explain.final_qty,unitOf(explain))}</strong></div><div><span>Écart</span><strong>${qtyWithUnit(explain.final_variance,unitOf(explain))}</strong></div></div>
     <div class="inventory-express-grid" style="margin-top:12px"><label><span>Motif de l’écart *</span><select id="invQuickReasonExplain"><option value="">Choisir le motif</option>${cfg.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></label><label><span>Commentaire</span><input id="invQuickReasonNote" placeholder="Précision facultative"></label></div>
     <button class="btn brand inventory-primary-cta" id="invQuickExplain" data-line="${esc(explain.id)}">Valider le motif & continuer</button>
   </section>`;
@@ -65,8 +65,8 @@ function quickPanel(express){
   return`<section class="card inventory-express">
     <div class="inventory-express-head"><div><span class="manager-eyebrow">INVENTAIRE EXPRESS</span><h2>Scanner, compter, continuer.</h2><p>Pas de session à préparer : StoreOps crée automatiquement l’inventaire terrain et masque le stock théorique.</p></div>${express?status('En cours','ok'):'<span class="pill">Prêt à scanner</span>'}</div>
     <div class="inventory-express-grid inventory-express-scan">
-      <label class="inventory-ean-field"><span>1 · Scanner l’article</span><input id="invQuickEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir l’EAN"></label>
-      <label><span>2 · Quantité physique</span><input id="invQuickQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label>
+      <label class="inventory-ean-field"><span>1 · Scanner l’article</span><input id="invQuickEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir l’EAN"><small id="invQuickProduct" class="muted">L’article et son unité de stock seront identifiés avant le comptage.</small></label>
+      <label><span id="invQuickQtyLabel">2 · Quantité physique</span><input id="invQuickQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label>
     </div>
     <button class="btn brand inventory-primary-cta" id="invQuickCount">Valider & article suivant</button>
     <div class="inventory-express-progress"><span>${express?`${metrics.counted}/${metrics.lines} article(s) finalisé(s)`:'Le premier scan démarre automatiquement la session.'}</span>${express&&metrics.lines&&metrics.pending===0&&!metrics.unexplained?`<button class="btn soft" id="invQuickFinish" data-session="${esc(express.id)}">Terminer l’inventaire</button>`:''}</div>
