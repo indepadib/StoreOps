@@ -40,6 +40,8 @@ jobs:
             const rows=Array.isArray(data)?data:Array.isArray(data?.value)?data.value:[];
             const names=[...new Set(rows.map(pickName).filter(Boolean))].slice(0,100);
             console.log('\nENTITY SEARCH',q,JSON.stringify(names,null,2));
+            const targetMeta=rows.filter(x=>/RetailStore|RetailChannel|DimAttributeRetailStore/i.test(JSON.stringify(x)));
+            console.log('\nENTITY META',q,JSON.stringify(targetMeta,null,2));
           }
           const sales=JSON.parse(fs.readFileSync('/tmp/sales.json','utf8'));
           console.log('\nSALES SAMPLE',JSON.stringify(sales,null,2));
