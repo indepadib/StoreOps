@@ -1,0 +1,46 @@
+name: V2.25 Transfer Order Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover-to:
+    if: github.head_ref == 'storeops-v2.25-receiving-po-to'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Discover D365 transfer entities
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for q in Transfer InventTransfer Transit; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/entities?q=$q"               -o "/tmp/entities-$q.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const out={};
+          for(const q of ['Transfer','InventTransfer','Transit']){
+            const d=JSON.parse(fs.readFileSync('/tmp/entities-'+q+'.json','utf8'));
+            const rows=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
+            out[q]=rows.map(x=>({
+              publicEntityName:x.PublicEntityName||x.Name||x.EntityName||null,
+              publicCollectionName:x.PublicCollectionName||null,
+              label:x.Label||x.EntityLabel||null,
+              category:x.Category||null
+            })).filter(x=>x.publicEntityName||x.publicCollectionName);
+          }
+          console.log(JSON.stringify(out,null,2));
+          const all=Object.values(out).flat();
+          if(!all.some(x=>/transfer/i.test(String(x.publicEntityName||'')+' '+String(x.publicCollectionName||''))))process.exit(2);
+          NODE
