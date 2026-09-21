@@ -3,7 +3,7 @@ import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inventory-privacy.js';
 
-let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null,stockFocus=null,stockFocusLoading=false;
+let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null;
 const countingPolicy=()=>({...DEFAULT_INVENTORY_COUNTING_POLICY,...(cfg?.countingPolicy||{})});
 const reasonLabel=code=>cfg?.reasons?.find(x=>x.code===code)?.label||code||'—';
 const sessionLabel=x=>({CYCLE:'Inventaire tournant',TARGETED:'Inventaire ciblé',FULL:'Inventaire complet'}[x]||x);
@@ -26,13 +26,12 @@ export async function renderInventory(){
     </div>`;
   let body='';
   if(!canManage())body='<div class="banner ban-info"><strong>Lecture seule.</strong><span>Le comptage est réservé au Responsable magasin et à la Direction.</span></div>';
-  else if(inventoryView==='COUNT')body=`${quickPanel(express)}<div id="inventoryStockFocus" style="margin-top:12px"></div><div class="banner ban-info" style="margin-top:12px"><strong>Comptage aveugle</strong><span>Le stock théorique reste masqué jusqu’au comptage afin d’éviter d’influencer la quantité saisie. En cas d’écart, StoreOps demande automatiquement un recomptage puis le motif.</span></div>`;
+  else if(inventoryView==='COUNT')body=`${quickPanel(express)}<div class="banner ban-info" style="margin-top:12px"><strong>Comptage aveugle</strong><span>Le stock théorique reste masqué jusqu’au comptage afin d’éviter d’influencer la quantité saisie. En cas d’écart, StoreOps demande automatiquement un recomptage puis le motif.</span></div>`;
   else if(inventoryView==='SESSIONS')body=`${createPanel()}<div class="network-section-title"><div><strong>Inventaires en cours</strong><span>Inventaire complet, tournant ou zone ciblée.</span></div><span class="pill">${active.length}</span></div><div class="inventory-session-list">${active.length?active.map(sessionCard).join(''):'<div class="card empty">Aucun inventaire avancé en cours.</div>'}</div>`;
   else body=`${isDirector()?policyCard():conceptCard()}<div class="network-section-title"><div><strong>Historique & exports</strong><span>Sessions validées, prêtes à exporter ou déjà traitées.</span></div><span class="pill">${history.length}</span></div><div class="inventory-session-list">${history.length?history.map(sessionCard).join(''):'<div class="card empty">Aucune session terminée.</div>'}</div>`;
   $('#inventoryContent').innerHTML=`${tabs}${overview}${body}`;
   bindInventory();
   document.querySelectorAll('[data-inventory-view]').forEach(b=>b.addEventListener('click',()=>{inventoryView=b.dataset.inventoryView;renderInventory()}));
-  if(inventoryView==='COUNT')void hydrateStockFocus();
   setTimeout(()=>{let prefill='';try{prefill=sessionStorage.getItem('storeops_express_prefill_ean')||'';sessionStorage.removeItem('storeops_express_prefill_ean')}catch{}const ean=$('#invQuickEan');if(ean&&prefill){ean.value=prefill;$('#invQuickQty')?.focus?.()}else{const target=$('#invQuickReasonExplain')||$('#invQuickRecountQty')||ean;target?.focus?.()}},80);
 }
 
