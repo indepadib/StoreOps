@@ -8,8 +8,11 @@ const ttlMs=()=>Math.max(15,Math.min(600,Number(process.env.STOREOPS_BUSINESS_PU
 const round2=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
 
 async function stockSummary(storeId,businessDate){
- try{const s=await getStockSignals(storeId,{businessDate}),assortmentReady=!!s.summary?.assortmentReady;return{source:s.source||null,outOfStockCount:assortmentReady?Number(s.summary?.outOfStock||0):null,negativeStockCount:Number(s.summary?.negative||0),residualOutsideAssortment:assortmentReady?Number(s.summary?.residualOutsideAssortment||0):null,assortmentReady,assortmentState:s.summary?.assortmentState||null};}
- catch(error){return{source:null,outOfStockCount:null,negativeStockCount:null,residualOutsideAssortment:null,assortmentReady:false,error:error.message};}
+ try{
+  const s=await getStockSignals(storeId,{businessDate}),assortmentReady=!!s.summary?.assortmentReady,ruptureReady=!!s.summary?.ruptureReady;
+  return{source:s.source||null,outOfStockCount:ruptureReady?Number(s.summary?.outOfStock||0):null,negativeStockCount:Number(s.summary?.negative||0),residualOutsideAssortment:assortmentReady?Number(s.summary?.residualOutsideAssortment||0):null,ruptureReady,ruptureMethod:s.summary?.ruptureMethod||null,salesWindowDays:s.summary?.salesWindowDays||null,salesWindowProducts:s.summary?.salesWindowProducts??null,assortmentReady,assortmentState:s.summary?.assortmentState||null};
+ }
+ catch(error){return{source:null,outOfStockCount:null,negativeStockCount:null,residualOutsideAssortment:null,ruptureReady:false,ruptureMethod:null,salesWindowDays:null,assortmentReady:false,error:error.message};}
 }
 
 async function computeBusinessPulse(storeId,businessDate){
