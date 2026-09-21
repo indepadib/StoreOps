@@ -1,37 +1,81 @@
 import{api}from'../api.js';import{app,canManage,canManageQuality}from'../state.js';import{$,status,esc,toast}from'../ui.js';
-let profiles=new Map(),documentType='PO';
-const SYNC_LABELS={PO:'PO Dynamics synchronisés',TO:'TO Dynamics synchronisés'};
+let profiles=new Map(),documentType='PO',selectedReceiptId=null,readiness=null;
+const receiptCache={PO:[],TO:[]};
+const dt=v=>v?new Date(String(v).slice(0,10)+'T12:00:00Z').toLocaleDateString('fr-FR'):'—';
+const currentRows=()=>receiptCache[documentType]||[];
+const currentReceipt=()=>currentRows().find(x=>x.id===selectedReceiptId)||null;
+const docCount=t=>(receiptCache[t]||[]).length;
+
 export async function renderReceipts(){
- const [rowsResult,readinessResult]=await Promise.allSettled([
-  api(`/api/stores/${app.storeId}/receipts?type=${documentType}`),
+ const [poResult,toResult,readinessResult]=await Promise.allSettled([
+  api(`/api/stores/${app.storeId}/receipts?type=PO`),
+  api(`/api/stores/${app.storeId}/receipts?type=TO`),
   api(`/api/stores/${app.storeId}/receipts/readiness`)
  ]);
- const rows=rowsResult.status==='fulfilled'?(rowsResult.value||[]):[],readiness=readinessResult.status==='fulfilled'?readinessResult.value:null,ro=!(canManage()||canManageQuality());
- const cats=[...new Set(rows.flatMap(r=>r.lines||[]).map(l=>l.category||'Autre'))],pairs=await Promise.all(cats.map(async cat=>[cat,await api(`/api/quality-profiles/${encodeURIComponent(cat)}`).catch(()=>null)]));profiles=new Map(pairs);
- const health=(documentType==='TO'?readiness?.transferStores?.[app.storeId]:readiness?.stores?.[app.storeId])||null,live=health?.state==='LIVE',warehouse=health?.warehouseId||readiness?.storeWarehouses?.[app.storeId]||rows.find(r=>r.source_warehouse_id)?.source_warehouse_id||null;
- const syncDates=rows.map(r=>r.source_updated_at).filter(Boolean).sort(),cacheLastSync=syncDates.at(-1)||null,lastSuccess=health?.lastSuccessAt||cacheLastSync,lastSyncLabel=lastSuccess?new Date(String(lastSuccess).replace(' ','T')+'Z').toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):null,docCount=Number((documentType==='TO'?health?.lastToCount:health?.lastPoCount)??rows.length),docLabel=documentType;
- const sourceBanner=rowsResult.status==='rejected'
-  ?`<div class="banner ban-danger"><strong>Le cache Réception n’a pas pu être chargé.</strong><div class="small" style="margin-top:4px">${esc(rowsResult.reason?.message||'Backend Réception indisponible.')}</div></div>`
-  :health?.state==='LIVE'
-   ?`<div class="banner ban-ok"><strong>${SYNC_LABELS[documentType]||SYNC_LABELS.PO}</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · dernière lecture D365 réussie${lastSyncLabel?` ${lastSyncLabel}`:''} · ${docCount} ${docLabel} ouvert(s) détecté(s). ${rows.length?`${rows.length} ${docLabel} affiché(s) depuis le cache StoreOps.`:`Aucun ${docLabel} ouvert à afficher.`}</div></div>`
-   :health?.state==='DEGRADED'
-    ?`<div class="banner ban-warn"><strong>${documentType==='TO'?'TO':'PO'} Dynamics à vérifier</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · ${esc(health.lastErrorMessage||health.reason||'la dernière synchronisation n’est pas fiable')}. ${rows.length?`${rows.length} ${docLabel} du dernier cache restent visibles${lastSyncLabel?` · dernière lecture réussie ${lastSyncLabel}`:''}.`:`Aucun ${docLabel} fiable en cache.`}</div></div>`
-    :readiness?.enabled
-     ?`<div class="banner ban-info"><strong>Connexion ${documentType==='TO'?'TO':'PO'} Dynamics à valider</strong><div class="small" style="margin-top:4px">Warehouse ${esc(warehouse||'à confirmer')} · aucune lecture D365 réussie n’a encore confirmé ce flux. Lancez “Synchroniser D365”.</div></div>`
-     :`<div class="banner ban-danger"><strong>Lecture ${documentType==='TO'?'TO':'PO'} Dynamics non activée.</strong><div class="small" style="margin-top:4px">Le module Réception est prêt, mais le connecteur D365 Receiving n’est pas LIVE.</div></div>`;
- const emptyState=rowsResult.status==='rejected'
-   ?`<div class="empty">Synchronisation ${docLabel} en erreur — aucune conclusion métier n’est affichée.</div>`
-   :health?.state==='LIVE'
-    ?`<div class="empty">Synchronisation réussie : aucun ${docLabel} ouvert pour ce magasin.</div>`
-    :readiness?.enabled
-     ?`<div class="empty">Aucun ${docLabel} confirmé. Lancez “Synchroniser D365” pour valider la connexion.</div>`
-     :`<div class="empty">Aucun ${docLabel} ouvert trouvé pour ce magasin.</div>`;
- $('#receiptsContent').innerHTML=`<div class="receipt-doc-tabs"><button class="btn ${documentType==='PO'?'brand':'ghost'}" data-receipt-type="PO">PO · Commandes d’achat</button><button class="btn ${documentType==='TO'?'brand':'ghost'}" data-receipt-type="TO">TO · Transferts</button></div><div class="small muted" style="margin:8px 0 12px">${documentType==='PO'?'Commandes d’achat attendues selon le flux D365.':'Transferts D365 à destination du magasin · origine warehouse / magasin affichée sur chaque document.'}</div>${ro?'<div class="role-lock">Lecture seule : contrôle et validation réservés au Responsable magasin et au Directeur d’Exploitation.</div>':''}<div class="row" style="margin:14px 0 10px"><div><strong>${documentType==='PO'?'PO attendus':'TO à recevoir'}</strong><div class="small muted">L’écran affiche immédiatement le dernier cache fiable. La synchronisation D365 se lance uniquement à votre demande.</div></div>${canManage()?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner}<div class="stack" style="margin-top:14px">${rows.map(r=>receipt(r,ro)).join('')||emptyState}</div>`;
- bindReceiptControls();
- document.querySelectorAll('[data-receipt-type]').forEach(b=>b.addEventListener('click',()=>{documentType=b.dataset.receiptType;renderReceipts()}));
- $('#syncReceiptsBtn')?.addEventListener('click',syncReceipts)
+ receiptCache.PO=poResult.status==='fulfilled'?(poResult.value||[]):[];
+ receiptCache.TO=toResult.status==='fulfilled'?(toResult.value||[]):[];
+ readiness=readinessResult.status==='fulfilled'?readinessResult.value:null;
+ if(selectedReceiptId&&!currentReceipt())selectedReceiptId=null;
+ await drawReceipts({
+  poError:poResult.status==='rejected'?poResult.reason:null,
+  toError:toResult.status==='rejected'?toResult.reason:null
+ });
 }
-function receipt(r,ro){const controlled=(r.lines||[]).filter(l=>l.quality_control_id).length,d365=r.source==='D365',type=r.document_type||documentType,origin=r.source_origin||r.vendor;return `<div class="card"><div class="row"><div><strong>${esc(type)} ${esc(r.po_number)} · ${esc(origin)}</strong><div class="small muted">Prévue ${esc(r.eta)} · ${r.lines.length} ligne(s) · ${controlled}/${r.lines.length} contrôlée(s)${d365?' · D365':''}</div></div>${status(r.status==='POSTED'?'Réceptionnée':controlled===r.lines.length?'Prête à réceptionner':'À contrôler',r.status==='POSTED'?'ok':controlled===r.lines.length?'ok':'warn')}</div><div class="stack" style="margin-top:12px">${r.lines.map(l=>line(r,l,ro)).join('')}</div>${!ro&&r.status!=='POSTED'?(d365?`<div class="banner ban-info" style="margin-top:12px"><strong>Contrôles StoreOps disponibles</strong><div class="small" style="margin-top:4px">Le posting de réception dans Dynamics reste volontairement désactivé jusqu'à validation du mapping F&O.</div></div>`:`<button class="btn brand wide" data-post-receipt="${esc(r.po_number)}" style="margin-top:12px" ${controlled!==r.lines.length?'disabled':''}>${controlled===r.lines.length?'Confirmer la réception système':'Contrôler toutes les lignes avant réception'}</button>`):''}</div>`}
+
+async function drawReceipts(errors={}){
+ const rows=currentRows(),selected=currentReceipt(),ro=!(canManage()||canManageQuality());
+ if(selected){
+  const cats=[...new Set((selected.lines||[]).map(l=>l.category||'Autre'))];
+  const pairs=await Promise.all(cats.map(async cat=>[cat,await api(`/api/quality-profiles/${encodeURIComponent(cat)}`).catch(()=>null)]));
+  profiles=new Map(pairs);
+ }else profiles=new Map();
+ const health=(documentType==='TO'?readiness?.transferStores?.[app.storeId]:readiness?.stores?.[app.storeId])||null;
+ const warehouse=health?.warehouseId||readiness?.storeWarehouses?.[app.storeId]||null,lastSuccess=health?.lastSuccessAt||rows.map(r=>r.source_updated_at).filter(Boolean).sort().at(-1)||null;
+ const lastSyncLabel=lastSuccess?new Date(String(lastSuccess).replace(' ','T')+'Z').toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):null;
+ const error=documentType==='PO'?errors.poError:errors.toError;
+ const sourceBanner=error
+  ?`<div class="banner ban-danger"><strong>Cache ${documentType} indisponible</strong><span>${esc(error.message||'Backend Réception indisponible.')}</span></div>`
+  :health?.state==='DEGRADED'
+   ?`<div class="banner ban-warn"><strong>${documentType} Dynamics à vérifier</strong><span>${esc(health.lastErrorMessage||health.reason||'Dernière synchronisation non fiable')}. Le dernier cache reste visible.</span></div>`
+   :health?.state==='LIVE'
+    ?`<div class="banner ban-ok"><strong>${documentType} Dynamics à jour</strong><span>Warehouse ${esc(warehouse||'—')}${lastSyncLabel?` · synchronisé ${lastSyncLabel}`:''}.</span></div>`
+    :'';
+ const tabs=`<div class="receipt-doc-tabs">
+   <button class="btn ${documentType==='PO'?'brand':'ghost'}" data-receipt-type="PO"><span>PO · Commandes</span><span class="pill">${docCount('PO')}</span></button>
+   <button class="btn ${documentType==='TO'?'brand':'ghost'}" data-receipt-type="TO"><span>TO · Transferts</span><span class="pill">${docCount('TO')}</span></button>
+  </div>`;
+ const help=documentType==='PO'
+   ?'Commandes PO ouvertes du dernier mois uniquement · fournisseur, date PO, entrepôt et livraison visibles avant ouverture.'
+   :'Transferts TO ouverts à destination du magasin · origine et destination visibles avant ouverture.';
+ const body=selected?receiptDetail(selected,ro):documentList(rows,error);
+ $('#receiptsContent').innerHTML=`${tabs}<div class="small muted" style="margin:8px 0 12px">${help}</div>${ro?'<div class="role-lock">Lecture seule : contrôle réservé au Responsable magasin, à la Qualité réseau et à la Direction.</div>':''}<div class="row" style="margin:14px 0 10px"><div><strong>${selected?`${documentType} ${esc(selected.po_number)}`:`${documentType==='PO'?'Commandes à réceptionner':'Transferts à réceptionner'}`}</strong><div class="small muted">${selected?'Détail du document et contrôle article par article.':'Choisis un document pour afficher ses articles. Aucun détail lourd n’est chargé visuellement tant que tu ne l’ouvres pas.'}</div></div>${canManage()&&!selected?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner}${body}`;
+ bindReceiptControls();
+ document.querySelectorAll('[data-receipt-type]').forEach(b=>b.addEventListener('click',async()=>{documentType=b.dataset.receiptType;selectedReceiptId=null;await drawReceipts()}));
+ document.querySelectorAll('[data-open-receipt]').forEach(b=>b.addEventListener('click',async()=>{selectedReceiptId=b.dataset.openReceipt;await drawReceipts()}));
+ $('#receiptBack')?.addEventListener('click',async()=>{selectedReceiptId=null;await drawReceipts()});
+ $('#syncReceiptsBtn')?.addEventListener('click',syncReceipts);
+}
+
+function documentList(rows,error){
+ if(error)return'<div class="empty">Impossible de charger les documents. Le dernier cache n’est pas exploitable.</div>';
+ if(!rows.length)return`<div class="empty">Aucun ${documentType} ouvert à afficher.</div>`;
+ return`<div class="receipt-document-list">${rows.map(documentRow).join('')}</div>`
+}
+function documentRow(r){
+ const type=r.document_type||documentType,controlled=(r.lines||[]).filter(l=>l.quality_control_id).length,lineCount=Number(r.line_count??r.lines?.length??0);
+ const created=r.source_created_date||null,origin=type==='PO'?(r.vendor||r.source_origin||'Fournisseur'):(r.source_origin||r.vendor||'Origine D365');
+ const secondary=type==='PO'
+  ?`${r.source_vendor_account?`Compte ${esc(r.source_vendor_account)} · `:''}Créé le ${dt(created||r.eta)} · Livraison ${dt(r.eta)} · Réception ${esc(r.source_warehouse_id||'—')}`
+  :`Origine ${esc(origin)} · Destination ${esc(r.source_destination||r.source_warehouse_id||'—')} · Réception prévue ${dt(r.eta)}`;
+ return`<button class="card receipt-document-row" data-open-receipt="${esc(r.id)}"><div class="row"><div><span class="manager-eyebrow">${esc(type)}</span><h3 style="margin:3px 0">${esc(r.po_number)}</h3><strong>${esc(origin)}</strong><div class="small muted" style="margin-top:4px">${secondary}</div></div><div style="text-align:right"><span class="pill">${lineCount} ligne${lineCount>1?'s':''}</span><div class="small muted" style="margin-top:6px">${controlled}/${lineCount} contrôlée(s)</div><div style="margin-top:8px">›</div></div></div></button>`
+}
+function receiptDetail(r,ro){
+ const controlled=(r.lines||[]).filter(l=>l.quality_control_id).length,d365=r.source==='D365',type=r.document_type||documentType,origin=type==='PO'?(r.vendor||r.source_origin):(r.source_origin||r.vendor);
+ const meta=type==='PO'
+  ?`Fournisseur ${esc(r.vendor||'—')}${r.source_vendor_account?` · ${esc(r.source_vendor_account)}`:''} · Créé le ${dt(r.source_created_date||r.eta)} · Livraison ${dt(r.eta)} · Entrepôt ${esc(r.source_warehouse_id||'—')}`
+  :`Origine ${esc(r.source_origin||origin||'—')} · Destination ${esc(r.source_destination||r.source_warehouse_id||'—')} · Réception ${dt(r.eta)}`;
+ return`<div style="margin:12px 0"><button class="btn ghost" id="receiptBack">← Retour aux ${type}</button></div><div class="card"><div class="row"><div><strong>${esc(type)} ${esc(r.po_number)} · ${esc(origin||'—')}</strong><div class="small muted">${meta} · ${r.lines.length} ligne(s) · ${controlled}/${r.lines.length} contrôlée(s)${d365?' · D365':''}</div></div>${status(r.status==='POSTED'?'Réceptionnée':controlled===r.lines.length?'Prête à réceptionner':'À contrôler',r.status==='POSTED'?'ok':controlled===r.lines.length?'ok':'warn')}</div><div class="stack" style="margin-top:12px">${r.lines.map(l=>line(r,l,ro)).join('')}</div>${!ro&&r.status!=='POSTED'&&d365?`<div class="banner ban-info" style="margin-top:12px"><strong>Contrôle StoreOps uniquement</strong><div class="small" style="margin-top:4px">Le posting de réception dans Dynamics reste désactivé. Les contrôles qualité et quantités sont enregistrés dans StoreOps.</div></div>`:''}</div>`
+}
 function req(flag){return flag?' *':''}
 function qualityDescription(p,cat){if(!p)return`Profil qualité ${esc(cat||'Autre')}`;const rules=[];if(p.temperature_required)rules.push(`température ${p.temp_min} à ${p.temp_max} °C`);if(p.packaging_required)rules.push('conditionnement');if(p.appearance_required)rules.push('aspect / fraîcheur');if(p.expiry_required)rules.push('DLC/DDM');if(p.lot_required)rules.push('lot');return `${esc(p.label||cat||'Profil qualité')} · ${rules.length?rules.join(' · '):'contrôle standard'}`}
 function line(r,l,ro){const done=!!l.quality_control_id,p=profiles.get(l.category||'Autre')||null,tempLabel=p?.temperature_required?`Température * (${p.temp_min} à ${p.temp_max} °C)`:'Température (optionnel)',cat=l.category||'Autre';return `<div class="receipt-line"><div class="row"><div><h4>${esc(l.product_name)}</h4><div class="small muted">${esc(l.ean&&l.ean!==l.product_number?`EAN ${l.ean}`:`SKU ${l.product_number||l.ean}`)} · ${esc(cat)} · commandé ${l.ordered_qty}${l.remaining_qty!=null?` · reste ${l.remaining_qty}`:''}</div></div>${done?status('Contrôlé','ok'):status('À contrôler','warn')}</div>${!ro&&!done?`<div class="quality-form" data-quality-line="${l.id}" data-category="${esc(cat)}"><div class="banner ban-info"><strong>${qualityDescription(p,cat)}</strong><div class="small" style="margin-top:4px">Les champs marqués * sont obligatoires pour cette famille. Les tolérances sont revalidées côté serveur.</div></div><div class="form-grid" style="margin-top:10px"><div class="field"><label>Livré *</label><input id="del_${l.id}" data-qty-delivered="${l.id}" type="number" min="0" step="0.001" value="${l.ordered_qty}"></div><div class="field"><label>Accepté *</label><input id="acc_${l.id}" data-qty-accepted="${l.id}" type="number" min="0" step="0.001" value="${l.ordered_qty}"></div><div class="field"><label>Refusé *</label><input id="rej_${l.id}" data-qty-rejected="${l.id}" type="number" min="0" step="0.001" value="0"></div><div class="field"><label>${tempLabel}</label><input id="temp_${l.id}" data-temp-input="${l.id}" type="number" step="0.1" ${p?.temperature_required?'required':''}><div class="small muted" id="tempHint_${l.id}">${p?.temperature_required?'Saisir la température mesurée à réception.':'À renseigner si pertinent.'}</div></div><div class="field"><label>Conditionnement${req(p?.packaging_required)}</label><select id="pack_${l.id}"><option value="OK">Conforme</option><option value="NOK">Non conforme</option><option value="NA" ${p?.packaging_required?'':'selected'}>N/A</option></select></div><div class="field"><label>Aspect / fraîcheur${req(p?.appearance_required)}</label><select id="app_${l.id}"><option value="OK">Conforme</option><option value="NOK">Non conforme</option><option value="NA" ${p?.appearance_required?'':'selected'}>N/A</option></select></div><div class="field"><label>DLC / DDM${req(p?.expiry_required)}</label><input id="exp_${l.id}" type="date" ${p?.expiry_required?'required':''}></div><div class="field"><label>Lot${req(p?.lot_required)}</label><input id="lot_${l.id}" ${p?.lot_required?'required':''}></div><div class="field full"><div class="small muted" id="qtyHint_${l.id}">Accepté + refusé = livré.</div></div><div class="field full"><label>Commentaire</label><textarea id="com_${l.id}" rows="2" placeholder="Anomalie, réserve fournisseur, motif de refus…"></textarea></div></div><button class="btn soft wide" data-control-line="${l.id}" data-po="${esc(r.po_number)}" data-category="${esc(cat)}">Valider le contrôle article</button></div>`:done?`<div class="small muted" style="margin-top:7px">Livré ${l.delivered_qty} · Accepté ${l.accepted_qty} · Refusé ${l.rejected_qty}</div>`:''}</div>`}
