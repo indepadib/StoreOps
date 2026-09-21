@@ -15,6 +15,8 @@ function bearer(req){
 function userByClaimsReadOnly(claims){
  const oid=claims?.oid||claims?.sub||null;
  const email=String(claims?.preferred_username||claims?.email||claims?.upn||'').trim().toLowerCase();
+ const qualityAliases=new Set([process.env.STOREOPS_QUALITY_AUDIT_EMAIL,process.env.STOREOPS_QUALITY_AUDIT_MICROSOFT_EMAIL,...String(process.env.STOREOPS_QUALITY_AUDIT_ALIASES||'').split(/[;,]/)].map(x=>String(x||'').trim().toLowerCase()).filter(Boolean));
+ if(email&&qualityAliases.has(email)){const quality=db.prepare(`SELECT * FROM users WHERE id='u-quality-audit' AND active=1`).get();if(quality)return quality}
  let user=oid?db.prepare(`SELECT * FROM users WHERE entra_oid=? AND active=1`).get(oid):null;
  if(!user&&email)user=db.prepare(`SELECT * FROM users WHERE active=1 AND (lower(email)=? OR lower(dynamics_email)=?)`).get(email,email);
  return user||null;
