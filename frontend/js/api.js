@@ -56,7 +56,8 @@ export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
   const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const body=options.body!=null&&typeof options.body==='object'&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;
+  try{r=await fetch(url,{...options,body,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
