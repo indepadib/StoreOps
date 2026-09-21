@@ -1,0 +1,70 @@
+name: V2.22 Live Assortment Profile Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  live-profile:
+    if: github.head_ref == 'storeops-v2.22-assortment-profiles'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for preview and validate Val Fleuri assortment profile
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ]; then break; fi
+            echo "Attempt $i: HTTP $code"
+            sleep 5
+          done
+          test "$code" = "200"
+
+          sync_code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST             -o /tmp/sync.json -w "%{http_code}"             "$PREVIEW_URL/api/merchandising/product-assortments/sync"             --data '{}')
+          echo "Sync HTTP: $sync_code"
+          cat /tmp/sync.json
+          test "$sync_code" = "200"
+
+          profile_code=$(curl -sS -H "x-demo-user: u-admin"             -o /tmp/profile.json -w "%{http_code}"             "$PREVIEW_URL/api/admin/stores/val-fleuri/assortments/profile")
+          echo "Profile HTTP: $profile_code"
+          cat /tmp/profile.json
+          test "$profile_code" = "200"
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const sync=JSON.parse(fs.readFileSync('/tmp/sync.json','utf8'));
+          const p=JSON.parse(fs.readFileSync('/tmp/profile.json','utf8'));
+          const r=p.resolution||{};
+          const names=(r.resolved||[]).map(x=>String(x.assortmentName||''));
+          const required=[
+            'Franprix - Dépannage',
+            'Franprix - Complémentaire',
+            'Franprix - Complémentaire +',
+            'FPXMPX - Dépannage',
+            'FPXMPX - Complémentaire',
+            'FPXMPX - Complémentaire +'
+          ];
+          console.log(JSON.stringify({
+            syncRows:sync.rows,
+            syncAssortments:(sync.assortments||[]).length,
+            profileApplications:sync.profileApplications,
+            profileCode:p.profileCode,
+            profileSource:p.profileSource,
+            resolutionStatus:r.status,
+            resolved:names,
+            missing:r.missing||[],
+            assignmentCount:p.assignments?.items?.length||0
+          },null,2));
+          if(p.profileCode!=='COMPLEMENTAIRE_PLUS')process.exit(2);
+          if(r.status!=='READY'||r.safeToPersist!==true)process.exit(3);
+          if((r.required||[]).length!==6||(r.missing||[]).length!==0)process.exit(4);
+          for(const name of required)if(!names.some(x=>x.toUpperCase()===name.toUpperCase()))process.exit(5);
+          if(names.some(x=>/^MONOPRIX\b/i.test(x)))process.exit(6);
+          if((p.assignments?.items||[]).length<6)process.exit(7);
+          const app=(sync.profileApplications||[]).find(x=>x.storeId==='val-fleuri');
+          if(!app||app.status!=='APPLIED')process.exit(8);
+          NODE
