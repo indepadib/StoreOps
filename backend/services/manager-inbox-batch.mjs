@@ -1,9 +1,10 @@
+import { config } from '../config.mjs';
 import { db,todayISO } from '../db.mjs';
 import { getManagerHomeFast } from './manager-home-fast.mjs';
 import { listCommercialControls } from './commercial.mjs';
 import { listInventorySessions } from './inventory.mjs';
 import { listIncidents } from './incidents.mjs';
-import { peekStockSignals } from './stock-signals.mjs';
+import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
 import { getBusinessPulse } from './business-pulse.mjs';
 
 const n=v=>Number(v||0);
@@ -23,7 +24,7 @@ function maintenanceSummary(alerts){const rows=alerts.filter(x=>String(x.categor
 
 async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  const fast=getManagerHomeFast(storeId,businessDate,{force}),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
- const stockData=peekStockSignals(storeId,{businessDate,allowStale:true})||{source:'PENDING',items:[],summary:{outOfStock:null,ruptureReady:false}};
+ const stockData=config.dynamics.mode==='live'?(peekStockSignals(storeId,{businessDate,allowStale:true})||{source:'PENDING',items:[],summary:{outOfStock:null,ruptureReady:false}}):await getStockSignals(storeId,{businessDate,force});
  const businessPulse=await getBusinessPulse(storeId,businessDate,{force});
  const commercialRows=listCommercialControls(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows};
  const receiptsRaw=receiptRows(storeId),receipts=summarizeReceipts(receiptsRaw,businessDate);
