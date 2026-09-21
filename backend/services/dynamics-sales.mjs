@@ -134,13 +134,21 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
  for(const identifier of identifiers){
   for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
    for(const mode of [...new Set(dateModes)]){
-    const filters=[storeFilter,dateRangeFilter(c.fields.date,start,end,mode)];
-    if(c.fields.net)filters.push(`${c.fields.net} ${c.sign<0?'lt':'gt'} 0`);
-    if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
     try{
-     const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
+     const chunkDays=Math.max(3,Math.min(10,Number(process.env.STOREOPS_SALES_ACTIVITY_CHUNK_DAYS)||5)),chunks=[];
+     for(let chunkStart=start;chunkStart<=end;chunkStart=nextDate(chunkStart,chunkDays)){
+      const chunkEndCandidate=nextDate(chunkStart,chunkDays-1),chunkEnd=chunkEndCandidate>end?end:chunkEndCandidate;
+      chunks.push({start:chunkStart,end:chunkEnd});
+     }
+     const chunkResults=await Promise.all(chunks.map(async chunk=>{
+      const filters=[storeFilter,dateRangeFilter(c.fields.date,chunk.start,chunk.end,mode)];
+      if(c.fields.net)filters.push(`${c.fields.net} ${c.sign<0?'lt':'gt'} 0`);
+      if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+      return odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
+     }));
+     const rows=chunkResults.flatMap(x=>x.value||[]),rowCount=chunkResults.reduce((s,x)=>s+Number(x.rowCount||0),0),pages=chunkResults.reduce((s,x)=>s+Number(x.pages||0),0),truncated=chunkResults.some(x=>x.truncated)||rowCount>c.maxRows;
      const byProduct=new Map();
-     for(const row of fetched.value||[]){
+     for(const row of rows){
       const productNumber=clean(row[c.fields.product]);if(!productNumber)continue;
       const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;
       const current=byProduct.get(productNumber)||{productNumber,name:productNumber,saleRows:0,salesValue:0};
@@ -148,8 +156,8 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
       byProduct.set(productNumber,current);
      }
      const products=[...byProduct.values()].map(x=>({...x,salesValue:round2(x.salesValue)})).sort((a,b)=>b.salesValue-a.salesValue||a.productNumber.localeCompare(b.productNumber));
-     const result={status:fetched.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,windowDays,startDay:start,endDay:end,products,rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,config:{storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode}};
-     if((fetched.value||[]).length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});return result}
+     const result={status:truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,windowDays,startDay:start,endDay:end,products,rowCount,pages,truncated,chunkDays,chunks:chunks.length,config:{storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode}};
+     if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});return result}
      firstEmpty=firstEmpty||result;
     }catch(error){lastError=error}
    }
