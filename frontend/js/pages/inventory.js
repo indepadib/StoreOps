@@ -3,7 +3,7 @@ import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inventory-privacy.js';
 
-let cfg=null,data=null;
+let cfg=null,data=null,inventoryView='COUNT';
 const countingPolicy=()=>({...DEFAULT_INVENTORY_COUNTING_POLICY,...(cfg?.countingPolicy||{})});
 const reasonLabel=code=>cfg?.reasons?.find(x=>x.code===code)?.label||code||'—';
 const sessionLabel=x=>({CYCLE:'Inventaire tournant',TARGETED:'Inventaire ciblé',FULL:'Inventaire complet'}[x]||x);
@@ -16,27 +16,22 @@ const activeExpress=items=>(items||[]).find(x=>isExpress(x)&&['COUNTING','REVIEW
 
 export async function renderInventory(){
   [cfg,data]=await Promise.all([api('/api/inventory/config'),api(`/api/stores/${app.storeId}/inventory?status=ALL`)]);
-  const s=data.summary||{},items=data.items||[],express=activeExpress(items),policy=countingPolicy();
-  $('#inventoryContent').innerHTML=`
-    ${canManage()?quickPanel(express):'<div class="banner ban-info"><strong>Lecture seule.</strong><span>Le comptage est réservé au Responsable magasin et à la Direction.</span></div>'}
-    <div class="inventory-overview">
+  const s=data.summary||{},items=data.items||[],express=activeExpress(items),policy=countingPolicy(),active=items.filter(x=>['COUNTING','REVIEW'].includes(x.status)&&!isExpress(x)),history=items.filter(x=>['READY_TO_POST','POSTED','CANCELLED'].includes(x.status));
+  const tabs=`<div class="card" style="margin-bottom:14px"><div class="row"><div><strong>Inventaire & comptage</strong><div class="small muted">Une seule étape à la fois : compter → traiter les écarts → exporter.</div></div><div class="row"><button class="btn ${inventoryView==='COUNT'?'brand':'soft'}" data-inventory-view="COUNT">Compter maintenant</button><button class="btn ${inventoryView==='SESSIONS'?'brand':'soft'}" data-inventory-view="SESSIONS">Inventaires en cours</button><button class="btn ${inventoryView==='HISTORY'?'brand':'soft'}" data-inventory-view="HISTORY">Historique & export</button></div></div></div>`;
+  const overview=`<div class="inventory-overview">
       ${miniKpi('Ouverts',s.openSessions||0)}
       ${miniKpi('À recompter',s.pendingRecounts||0,s.pendingRecounts?'warn':'')}
       ${miniKpi('Écarts',s.varianceLines||0,s.varianceLines?'warn':'')}
       ${miniKpi('Prêts export',s.readyToPost||0)}
-    </div>
-    <details class="card inventory-advanced" ${items.some(x=>x.status==='READY_TO_POST')?'open':''}>
-      <summary><div><strong>Détails & inventaires avancés</strong><span>Sessions, inventaire complet, politique et export Excel.</span></div><b>⌄</b></summary>
-      <div class="inventory-advanced-body">
-        ${policy.blindFirstCount?'<div class="banner ban-info"><strong>Comptage aveugle actif</strong><span>Le stock théorique Dynamics reste masqué pendant le comptage pour éviter le biais.</span></div>':''}
-        <div class="grid g2" style="margin-top:12px">${isDirector()?policyCard():conceptCard()}<div class="card"><div class="label">Écart absolu ouvert</div><div class="kpi">${s.absoluteVarianceQty||0}</div><div class="small muted">unités cumulées sur les sessions ouvertes</div></div></div>
-        ${canManage()?createPanel():''}
-        <div class="network-section-title"><div><strong>Sessions d’inventaire</strong><span>Traçabilité complète des comptages, écarts et validations.</span></div><span class="pill">${items.length}</span></div>
-        <div class="inventory-session-list">${items.length?items.map(sessionCard).join(''):'<div class="card empty">Aucun inventaire enregistré.</div>'}</div>
-      </div>
-    </details>
-  `;
+    </div>`;
+  let body='';
+  if(!canManage())body='<div class="banner ban-info"><strong>Lecture seule.</strong><span>Le comptage est réservé au Responsable magasin et à la Direction.</span></div>';
+  else if(inventoryView==='COUNT')body=`${quickPanel(express)}<div class="banner ban-info" style="margin-top:12px"><strong>Comptage aveugle</strong><span>Le stock théorique reste masqué jusqu’au comptage afin d’éviter d’influencer la quantité saisie. En cas d’écart, StoreOps demande automatiquement un recomptage puis le motif.</span></div>`;
+  else if(inventoryView==='SESSIONS')body=`${createPanel()}<div class="network-section-title"><div><strong>Inventaires en cours</strong><span>Inventaire complet, tournant ou zone ciblée.</span></div><span class="pill">${active.length}</span></div><div class="inventory-session-list">${active.length?active.map(sessionCard).join(''):'<div class="card empty">Aucun inventaire avancé en cours.</div>'}</div>`;
+  else body=`${isDirector()?policyCard():conceptCard()}<div class="network-section-title"><div><strong>Historique & exports</strong><span>Sessions validées, prêtes à exporter ou déjà traitées.</span></div><span class="pill">${history.length}</span></div><div class="inventory-session-list">${history.length?history.map(sessionCard).join(''):'<div class="card empty">Aucune session terminée.</div>'}</div>`;
+  $('#inventoryContent').innerHTML=`${tabs}${overview}${body}`;
   bindInventory();
+  document.querySelectorAll('[data-inventory-view]').forEach(b=>b.addEventListener('click',()=>{inventoryView=b.dataset.inventoryView;renderInventory()}));
   setTimeout(()=>{let prefill='';try{prefill=sessionStorage.getItem('storeops_express_prefill_ean')||'';sessionStorage.removeItem('storeops_express_prefill_ean')}catch{}const ean=$('#invQuickEan');if(ean&&prefill){ean.value=prefill;$('#invQuickQty')?.focus?.()}else{const target=$('#invQuickReasonExplain')||$('#invQuickRecountQty')||ean;target?.focus?.()}},80);
 }
 
