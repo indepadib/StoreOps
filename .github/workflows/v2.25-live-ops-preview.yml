@@ -61,18 +61,27 @@ jobs:
           if(typeof m!=='object')process.exit(3);
           NODE
 
-      - name: Amine quality network account
+      - name: Amine quality network account and access-save JSON
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/admin/access/accounts?all=1" -o /tmp/accounts.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/accounts.json','utf8')),a=(d.items||[]).find(x=>x.id==='u-tr');
+          if(!a)process.exit(2);
+          fs.writeFileSync('/tmp/amine-payload.json',JSON.stringify({name:'Amine Chibani',email:a.email||'amine.chibani@storeops.test',profileCode:'QUALITY_AUDIT',storeId:null,linkedEmployeeId:a.linkedEmployeeId||null,identityProvider:a.identityProvider||'ENTRA',identitySubject:a.identitySubject||null,note:'V2.25 preview quality network test'}));
+          NODE
+          code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X PUT "$PREVIEW_URL/api/admin/access/accounts/u-tr" --data-binary @/tmp/amine-payload.json -o /tmp/access-save.json -w "%{http_code}")
+          cat /tmp/access-save.json
+          test "$code" = "200"
           curl -sS -H "x-demo-user: u-tr" "$PREVIEW_URL/api/session" -o /tmp/session.json
           curl -sS -H "x-demo-user: u-tr" "$PREVIEW_URL/api/stores" -o /tmp/stores.json
           node - <<'NODE'
           const fs=require('fs'),s=JSON.parse(fs.readFileSync('/tmp/session.json','utf8')),stores=JSON.parse(fs.readFileSync('/tmp/stores.json','utf8'));
           console.log(JSON.stringify({user:s.user&&{id:s.user.id,name:s.user.name,role:s.user.role,profile:s.user.permissions_profile},stores:(stores||[]).map(x=>x.id)},null,2));
-          if(s.user?.id!=='u-tr'||s.user?.permissions_profile!=='quality_audit')process.exit(2);
-          if(!(stores||[]).some(x=>x.id==='val-fleuri')||!(stores||[]).some(x=>x.id==='trefle'))process.exit(3);
+          if(s.user?.id!=='u-tr'||s.user?.permissions_profile!=='quality_audit')process.exit(3);
+          if(!(stores||[]).some(x=>x.id==='val-fleuri')||!(stores||[]).some(x=>x.id==='trefle'))process.exit(4);
           NODE
 
       - name: PO and TO routes are distinct
