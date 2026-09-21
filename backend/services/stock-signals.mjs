@@ -73,7 +73,12 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const filters=[`${warehouseField} eq '${esc(warehouse)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   const select=[productField,availableField,physicalField,nameField,eanField,warehouseField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
-  const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize||config.dynamics.odataPageSize,maxRows:c.maxRows||config.dynamics.odataMaxRows});
+  const stockPromise=odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize||config.dynamics.odataPageSize,maxRows:c.maxRows||config.dynamics.odataMaxRows});
+  const salesPromise=readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30});
+  const [stockResult,salesResult]=await Promise.allSettled([stockPromise,salesPromise]);
+  if(stockResult.status==='rejected')throw stockResult.reason;
+  const fetched=stockResult.value;
+  const salesActivity=salesResult.status==='fulfilled'?salesResult.value:{status:'UNAVAILABLE',products:[],error:{code:salesResult.reason?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:salesResult.reason?.message||String(salesResult.reason||'')}};
   const aggregated=aggregateRows(fetched.value,{productField,availableField,physicalField,nameField,eanField});
   const maxAgeHours=assortmentMaxAgeHours(),index=assortmentIndex(storeId,{businessDate,maxAgeHours});
   const classified=aggregated.map(x=>({product:x,classification:classifyAvailability({storeId,productNumber:x.productNumber,availableQty:x.availableQty,businessDate,index,maxAgeHours})}));
@@ -82,8 +87,6 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const residual=allSignals.filter(x=>x.type==='OUTSIDE_ASSORTMENT');
   const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
   const stockByProduct=new Map(aggregated.map(x=>[clean(x.productNumber),x]));
-  let salesActivity=null;
-  try{salesActivity=await readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30})}catch(error){salesActivity={status:'UNAVAILABLE',products:[],error:{code:error?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:error?.message||String(error)}}}
   const ruptureReady=salesActivity?.status==='READY'&&!fetched.truncated;
   const maxOut=Math.max(1,Number(c.maxOutOfStock)||100);
   const out=ruptureReady?(salesActivity.products||[]).map(sale=>{
