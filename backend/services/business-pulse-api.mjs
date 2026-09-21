@@ -5,6 +5,7 @@ import { getManagerHomeFast } from './manager-home-fast.mjs';
 import { getManagerInboxBatch } from './manager-inbox-batch.mjs';
 import { handleRuntimeBootstrapApi } from './runtime-bootstrap-api.mjs';
 import { ensureD365SalesAutoConnected,clearD365SalesAutoConnectCache } from './d365-sales-autoconnect.mjs';
+import { getStockSignals } from './stock-signals.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
 const forbidden=()=>({status:403,data:{error:'Accès interdit à ce magasin.'}});
@@ -22,6 +23,13 @@ export async function handleBusinessPulseApi({req,url,user}){
  if(p&&req.method==='GET'){
   if(!canAccessStore(user,p.storeId))return forbidden();
   return{status:200,data:await getManagerInboxBatch(p.storeId,url.searchParams.get('date')||todayISO(),{force})};
+ }
+ p=route(url.pathname,'/api/stores/:storeId/business-pulse/stockouts');
+ if(p&&req.method==='GET'){
+  if(!canAccessStore(user,p.storeId))return forbidden();
+  const businessDate=url.searchParams.get('date')||todayISO();
+  const data=await getStockSignals(p.storeId,{businessDate,force});
+  return{status:200,data:{status:data?.summary?.ruptureReady?'READY':'UNAVAILABLE',storeId:p.storeId,businessDate,checkedAt:data.checkedAt||null,source:data.source||null,summary:data.summary||{},cache:data.cache||null}};
  }
  p=route(url.pathname,'/api/stores/:storeId/business-pulse');
  if(p&&req.method==='GET'){

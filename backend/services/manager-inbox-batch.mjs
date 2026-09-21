@@ -1,9 +1,10 @@
+import { config } from '../config.mjs';
 import { db,todayISO } from '../db.mjs';
 import { getManagerHomeFast } from './manager-home-fast.mjs';
 import { listCommercialControls } from './commercial.mjs';
 import { listInventorySessions } from './inventory.mjs';
 import { listIncidents } from './incidents.mjs';
-import { getStockSignals } from './stock-signals.mjs';
+import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
 import { getBusinessPulse } from './business-pulse.mjs';
 
 const n=v=>Number(v||0);
@@ -23,7 +24,8 @@ function maintenanceSummary(alerts){const rows=alerts.filter(x=>String(x.categor
 
 async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  const fast=getManagerHomeFast(storeId,businessDate,{force}),dashboard=fast.dashboard,staff=fast.staff,cold=fast.cold,cashOpen=fast.cashOpen,loss=fast.loss;
- const [stockData,businessPulse]=await Promise.all([getStockSignals(storeId,{businessDate,force}),getBusinessPulse(storeId,businessDate,{force})]);
+ const stockData=config.dynamics.mode==='live'?(peekStockSignals(storeId,{businessDate,allowStale:true})||{source:'PENDING',items:[],summary:{outOfStock:null,ruptureReady:false}}):await getStockSignals(storeId,{businessDate,force});
+ const businessPulse=await getBusinessPulse(storeId,businessDate,{force});
  const commercialRows=listCommercialControls(storeId,businessDate),commercial={summary:dashboard.commercial||{},items:commercialRows};
  const receiptsRaw=receiptRows(storeId),receipts=summarizeReceipts(receiptsRaw,businessDate);
  const inventoryData={summary:dashboard.inventory||{},items:listInventorySessions(storeId,'ALL')};
@@ -47,7 +49,7 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  if((dashboard.day?.opening_status||'NOT_STARTED')!=='OPENED'&&!items.some(x=>x.category==='OPENING'||x.blocking))items.push(action({id:'opening-flow',category:'OPENING',severity:'NORMAL',title:'Continuer le parcours d’ouverture',detail:`${dashboard.opening?.done||0}/${dashboard.opening?.total||0} étapes validées`,page:'opening',priority:'P2'}));
 
  const sorted=items.sort((a,b)=>(priorityRank[a.priority]??9)-(priorityRank[b.priority]??9)||String(a.title).localeCompare(String(b.title))),critical=sorted.filter(x=>x.severity==='CRITICAL').length,blocking=sorted.filter(x=>x.blocking).length,p0=sorted.filter(x=>x.priority==='P0').length,p1=sorted.filter(x=>x.priority==='P1').length,alertCritical=alerts.filter(x=>x.criticality==='CRITICAL').length;
- const externalCalls=(stockData.source?.startsWith('D365/')?1:0)+(businessPulse?.integration?.mode==='LIVE'?2:0);
+ const externalCalls=(businessPulse?.integration?.mode==='LIVE'?2:0);
  return{status:'READY',source:'STOREOPS_BATCH',generatedAt:new Date().toISOString(),dashboard,commercial,receiptRows:receiptsRaw,inventoryData,lossData:{summary:loss,items:[]},incidentData,staff,cold,cashOpen,receipts,quality,maintenance,stockSignals,stockData,businessPulse,items:sorted,alerts,summary:{total:sorted.length,critical,blocking,p0,p1,alerts:alerts.length,alertCritical},diagnostics:{httpFanout:0,externalCalls,commercialReadOnly:true,pulseBundled:true,singleFlight:true,cache:'MISS'}}
 }
 

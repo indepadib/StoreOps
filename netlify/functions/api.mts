@@ -118,7 +118,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.21.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.21.1',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -132,7 +132,7 @@ async function lightSession(request:Request){
 async function handleLightRoute(request:Request,runtime:DbRuntime){
   if(request.method!=='GET')return null;
   const url=new URL(request.url),path=url.pathname;
-  if(path!=='/api/bootstrap'&&path!=='/api/session'&&path!=='/api/stores'&&!/^\/api\/stores\/[^/]+\/(manager-home-fast|manager-inbox-batch|business-pulse)$/.test(path))return null;
+  if(path!=='/api/bootstrap'&&path!=='/api/session'&&path!=='/api/stores'&&!/^\/api\/stores\/[^/]+\/(manager-home-fast|manager-inbox-batch|business-pulse|business-pulse\/stockouts)$/.test(path))return null;
   const session=await lightSession(request);if(!session)return null;
   const user=session.user;
   if(path==='/api/bootstrap'){
@@ -148,7 +148,7 @@ async function handleLightRoute(request:Request,runtime:DbRuntime){
     const stores=runtime.dbModule.db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter((s:any)=>canAccessStore(user,s.id));
     return Response.json(stores,{headers:{'X-StoreOps-Fast-Path':'stores'}})
   }
-  const match=path.match(/^\/api\/stores\/([^/]+)\/(manager-home-fast|manager-inbox-batch|business-pulse)$/);
+  const match=path.match(/^\/api\/stores\/([^/]+)\/(manager-home-fast|manager-inbox-batch|business-pulse|business-pulse\/stockouts)$/);
   if(match){
     const storeId=decodeURIComponent(match[1]),resource=match[2];
     if(!canAccessStore(user,storeId))return Response.json({error:'Accès interdit à ce magasin.'},{status:403});
@@ -160,6 +160,11 @@ async function handleLightRoute(request:Request,runtime:DbRuntime){
     if(resource==='manager-inbox-batch'){
       const {getManagerInboxBatch}=await import('../../backend/services/manager-inbox-batch.mjs');
       return Response.json(await getManagerInboxBatch(storeId,businessDate,{force}),{headers:{'X-StoreOps-Fast-Path':'manager-inbox'}})
+    }
+    if(resource==='business-pulse/stockouts'){
+      const {getStockSignals}=await import('../../backend/services/stock-signals.mjs');
+      const data=await getStockSignals(storeId,{businessDate,force});
+      return Response.json({status:data?.summary?.ruptureReady?'READY':'UNAVAILABLE',storeId,businessDate,checkedAt:data.checkedAt||null,source:data.source||null,summary:data.summary||{},cache:data.cache||null},{headers:{'X-StoreOps-Fast-Path':'business-pulse-stockouts'}})
     }
     const {getBusinessPulse,clearBusinessPulseCache}=await import('../../backend/services/business-pulse.mjs');
     let pulse=await getBusinessPulse(storeId,businessDate,{force});

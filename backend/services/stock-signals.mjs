@@ -11,7 +11,7 @@ const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const validField=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
 const esc=v=>String(v).replaceAll("'","''");
 const assortmentMaxAgeHours=()=>Math.max(1,Math.min(24*30,Number(process.env.STOREOPS_ASSORTMENT_MAX_AGE_HOURS)||36));
-const stockSignalsCacheSeconds=()=>Math.max(5,Math.min(300,Number(process.env.STOREOPS_STOCK_SIGNALS_CACHE_SECONDS)||45));
+const stockSignalsCacheSeconds=()=>Math.max(30,Math.min(3600,Number(process.env.STOREOPS_STOCK_SIGNALS_CACHE_SECONDS)||900));
 const signalCache=new Map();
 const signalInflight=new Map();
 
@@ -73,7 +73,12 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const filters=[`${warehouseField} eq '${esc(warehouse)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   const select=[productField,availableField,physicalField,nameField,eanField,warehouseField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
-  const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize||config.dynamics.odataPageSize,maxRows:c.maxRows||config.dynamics.odataMaxRows});
+  const stockPromise=odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize||config.dynamics.odataPageSize,maxRows:c.maxRows||config.dynamics.odataMaxRows});
+  const salesPromise=readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30});
+  const [stockResult,salesResult]=await Promise.allSettled([stockPromise,salesPromise]);
+  if(stockResult.status==='rejected')throw stockResult.reason;
+  const fetched=stockResult.value;
+  const salesActivity=salesResult.status==='fulfilled'?salesResult.value:{status:'UNAVAILABLE',products:[],error:{code:salesResult.reason?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:salesResult.reason?.message||String(salesResult.reason||'')}};
   const aggregated=aggregateRows(fetched.value,{productField,availableField,physicalField,nameField,eanField});
   const maxAgeHours=assortmentMaxAgeHours(),index=assortmentIndex(storeId,{businessDate,maxAgeHours});
   const classified=aggregated.map(x=>({product:x,classification:classifyAvailability({storeId,productNumber:x.productNumber,availableQty:x.availableQty,businessDate,index,maxAgeHours})}));
@@ -82,8 +87,6 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const residual=allSignals.filter(x=>x.type==='OUTSIDE_ASSORTMENT');
   const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
   const stockByProduct=new Map(aggregated.map(x=>[clean(x.productNumber),x]));
-  let salesActivity=null;
-  try{salesActivity=await readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30})}catch(error){salesActivity={status:'UNAVAILABLE',products:[],error:{code:error?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:error?.message||String(error)}}}
   const ruptureReady=salesActivity?.status==='READY'&&!fetched.truncated;
   const maxOut=Math.max(1,Number(c.maxOutOfStock)||100);
   const out=ruptureReady?(salesActivity.products||[]).map(sale=>{
@@ -93,6 +96,14 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   }).filter(Boolean).slice(0,maxOut):[];
   const items=[...negative,...out,...residual];
   return {source:`D365/${entity}`,storeId,warehouse,checkedAt:new Date().toISOString(),entity,items,summary:{total:items.length,negative:negative.length,outOfStock:ruptureReady?out.length:null,ruptureReady,ruptureMethod:'SALES_30D_ZERO_STOCK',salesWindowDays:30,salesWindowStatus:salesActivity?.status||'UNAVAILABLE',salesWindowProducts:(salesActivity?.products||[]).length,salesWindowRows:salesActivity?.rowCount??null,salesWindowTruncated:!!salesActivity?.truncated,residualOutsideAssortment:residual.length,assortmentUnknownZero:unknownZero,assortmentReady:index.status==='READY',assortmentState:index.status,assortmentModel:index.model||'SNAPSHOT',assortmentMaxAgeHours:maxAgeHours,assortmentSyncedAt:index.syncedAt||null,activeAssortments:index.assortments?.length||0,aggregatedProducts:aggregated.length,rowsRead:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated}}
+}
+
+export function peekStockSignals(storeId,{businessDate=null,allowStale=true}={}){
+  const key=`${clean(storeId)}|${clean(businessDate)||'today'}`,cached=signalCache.get(key);
+  if(!cached)return null;
+  const fresh=Date.now()<cached.expiresAt;
+  if(!fresh&&!allowStale)return null;
+  return {...cached.value,cache:{status:fresh?'HIT':'STALE',ttlSeconds:stockSignalsCacheSeconds()}};
 }
 
 export async function getStockSignals(storeId,{businessDate=null,force=false}={}){
