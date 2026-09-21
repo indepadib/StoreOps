@@ -92,7 +92,7 @@ x=await call('GET','/api/stores/val-fleuri/incidents?status=OPEN','u-vf');
 const stockIncident=x.data.items?.find(i=>i.source_type==='INVENTORY_LINE'&&i.source_id===milkLineId);
 ok(x.r.status===200&&stockIncident&&stockIncident.category==='STOCK'&&Number(stockIncident.requires_evidence)===1,'inventory stock incident escalation failed');
 x=await call('POST',`/api/inventory/${inventoryId}/post`,'u-vf',{});
-ok(x.r.status===200&&x.data.dynamics?.simulated===true&&x.data.session?.status==='POSTED','inventory simulated posting failed');
+ok(x.r.status===409&&x.data.code==='D365_WRITE_DISABLED','inventory posting must remain disabled');
 
 x=await call('PUT','/api/inventory/policy','u-vf',{recountThreshold:3,incidentThreshold:6});
 ok(x.r.status===403,'store manager must not change inventory policy');
