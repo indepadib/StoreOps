@@ -18,6 +18,7 @@ jobs:
         run: |
           node --check backend/services/assortment-category-mapping.mjs
           node --check backend/services/assortment-admin.mjs
+          node --check backend/services/assortment-profiles.mjs
           node --check backend/services/dynamics-product-assortment.mjs
           node --check backend/services/store-settings.mjs
           node --check backend/services/store-settings-api.mjs
@@ -26,6 +27,8 @@ jobs:
           node --check frontend/js/admin-studio-stores.js
       - name: Product assortment and supply contract
         run: node backend/tests/v182-assortment-and-supply.mjs
+      - name: V2.22 deterministic assortment profiles
+        run: node backend/tests/v222-assortment-profiles.mjs
       - name: Existing assortment safety
         run: |
           STOREOPS_DB=/tmp/storeops-v180-merch-ci.db node backend/tests/v180-store-merchandising.mjs
@@ -33,6 +36,8 @@ jobs:
       - name: Resolver and deployment bridge safety
         run: |
           grep -q "assortment-resolver.mjs" backend/services/merchandising-api.mjs
+          grep -q "COMPLEMENTAIRE_PLUS" backend/services/assortment-profiles.mjs
+          grep -q "assortments/apply-profile" backend/services/merchandising-api.mjs
           grep -q "ProductCategoryHierarchyName" backend/services/dynamics-product-assortment.mjs
           grep -q "NETWORK_DEFAULT" backend/services/store-settings.mjs
           grep -q "api/admin/assortments/catalog" frontend/js/admin-studio-stores.js
