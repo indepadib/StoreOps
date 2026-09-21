@@ -27,6 +27,7 @@ import { handleWorkforceApi } from './services/workforce-api.mjs';
 import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
 import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
+import { handleOpeningApi } from './services/opening-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -80,6 +81,7 @@ async function api(req,res,url){
   if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
+  const openingResponse=await handleOpeningApi({req,url,user});if(openingResponse)return json(req,res,openingResponse.status,openingResponse.data);
   const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);
   const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);
   const workforceResponse=await handleWorkforceApi({req,url,user});if(workforceResponse)return json(req,res,workforceResponse.status,workforceResponse.data);
