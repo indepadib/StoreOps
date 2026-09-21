@@ -57,17 +57,29 @@ jobs:
             "$PREVIEW_URL/api/stores/val-fleuri/losses/export-excel?date=2026-09-21" \
             --data '{}' -o /tmp/export.json
 
+          if [ "${FOUND:-0}" = "1" ]; then
+            curl -sS -H "x-demo-user: u-admin" \
+              "$PREVIEW_URL/api/stores/val-fleuri/products/$EAN?date=2026-09-21" \
+              -o /tmp/product-after.json
+            curl -sS -H "x-demo-user: u-admin" \
+              "$PREVIEW_URL/api/stores/val-fleuri/losses?date=2026-09-21" \
+              -o /tmp/losses-after.json
+          fi
+
           node - <<'NODE'
           const fs=require('fs');
           const losses=JSON.parse(fs.readFileSync('/tmp/losses.json','utf8'));
           const exp=JSON.parse(fs.readFileSync('/tmp/export.json','utf8'));
           const melon=(losses.items||[]).find(x=>/melon/i.test(String(x.product_name||'')))||null;
-          const product=fs.existsSync('/tmp/product.json')?JSON.parse(fs.readFileSync('/tmp/product.json','utf8')):null;
+          const product=fs.existsSync('/tmp/product-after.json')?JSON.parse(fs.readFileSync('/tmp/product-after.json','utf8')):(fs.existsSync('/tmp/product.json')?JSON.parse(fs.readFileSync('/tmp/product.json','utf8')):null);
+          const after=fs.existsSync('/tmp/losses-after.json')?JSON.parse(fs.readFileSync('/tmp/losses-after.json','utf8')):losses;
+          const melonAfter=(after.items||[]).find(x=>/melon/i.test(String(x.product_name||'')))||null;
           const xml=String(exp.file?.content||'');
           const result={
             melonFound:!!melon,
             before:melon&&{qty:melon.quantity,unit:melon.unit,retail:melon.total_retail_value,cost:melon.total_cost_value,valuationVersion:melon.valuation_version},
             product:product&&{name:product.name,productNumber:product.productNumber,retailPrice:product.price,retailUnit:product.retailUnit,retailPriceQuantity:product.retailPriceQuantity,cost:product.unitCost,costUnit:product.costUnit,costSource:product.costSource,costState:product.costState},
+            after:melonAfter&&{qty:melonAfter.quantity,unit:melonAfter.unit,retail:melonAfter.total_retail_value,cost:melonAfter.total_cost_value,status:melonAfter.status,requiresEvidence:melonAfter.requires_evidence,incidentStatus:melonAfter.incident?.status||null},
             revaluation:exp.revaluation,
             summary:exp.summary,
             has54000:xml.includes('>54000<'),
@@ -79,4 +91,9 @@ jobs:
           if(result.melonFound&&Number(result.product?.cost)!==0.01)process.exit(4);
           if(result.melonFound&&String(result.product?.costUnit||'').toLowerCase()!=='g')process.exit(5);
           if(result.melonFound&&result.product?.costState!=='READY')process.exit(6);
+          if(result.melonFound&&Number(result.after?.cost)!==20)process.exit(7);
+          if(result.melonFound&&Number(result.after?.retail)!==11)process.exit(8);
+          if(result.melonFound&&result.after?.status!=='READY_TO_POST')process.exit(9);
+          if(result.melonFound&&Number(result.after?.requiresEvidence)!==0)process.exit(10);
+          if(result.melonFound&&result.after?.incidentStatus&&result.after.incidentStatus!=='RESOLVED')process.exit(11);
           NODE

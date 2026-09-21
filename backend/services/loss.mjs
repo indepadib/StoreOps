@@ -144,7 +144,13 @@ export function revalueLossRecord({id,product,user=null}={}){
  );
  if(row.incident_id){
   const reason=LOSS_REASONS.find(x=>x.code===row.reason_code)?.label||row.reason_code,valueText=reference.value==null?'':` · ${reference.basis==='COST'?'valeur coût':'valeur vente'} estimée ${reference.value} DH`;
-  db.prepare(`UPDATE incidents SET description=? WHERE id=?`).run(`${row.quantity} ${row.unit} · ${reason}${valueText}`,row.incident_id)
+  db.prepare(`UPDATE incidents SET description=? WHERE id=?`).run(`${row.quantity} ${row.unit} · ${reason}${valueText}`,row.incident_id);
+  const autoIncident=db.prepare(`SELECT * FROM incidents WHERE id=? AND source_type='LOSS_RECORD' AND source_id=?`).get(row.incident_id,row.id);
+  if(autoIncident&&autoIncident.status==='OPEN'&&!requiresEvidence){
+   const actorId=user?.id||row.created_by||autoIncident.created_by;
+   db.prepare(`UPDATE incident_actions SET status='DONE',completion_note=?,completed_by=?,completed_at=CURRENT_TIMESTAMP WHERE incident_id=? AND status='OPEN'`).run('Clôturé automatiquement après revalorisation unité/coût.',actorId,row.incident_id);
+   db.prepare(`UPDATE incidents SET status='RESOLVED',requires_evidence=0,resolution_note=?,resolved_by=?,resolved_at=CURRENT_TIMESTAMP WHERE id=?`).run('Revalorisation unité/coût : la preuve n’est plus requise après correction de la valeur de démarque.',actorId,row.incident_id);
+  }
  }
  audit({storeId:row.store_id,businessDate:row.business_date,userId:user?.id||null,action:'LOSS_REVALUED',entityType:'LOSS_RECORD',entityId:id,details:{valuationVersion:valuation.version,retail:valuation.retail,cost:valuation.cost,policyValue:reference.value,policyValueBasis:reference.basis,requiresEvidence,requiresApproval,statusBefore:row.status,statusAfter:nextStatus}});
  return lossRecord(id)

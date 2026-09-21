@@ -59,7 +59,7 @@ assert.equal(legacy.retailValue,0);
 assert.equal(legacy.costValue,0);
 assert.equal(legacy.retailCoverage,0);
 assert.equal(legacy.costCoverage,0);
-const legacyExcel=buildLossExcel({storeId:'val-fleuri',businessDate:'2026-09-21',user});
+const legacyExcel=buildLossExcel({storeId:'val-fleuri',businessDate:'2026-09-21',user:null});
 assert.match(legacyExcel.file.content,/LEGACY_NON_FIABILISÉE/);
 assert.doesNotMatch(legacyExcel.file.content,/>54000</);
 
