@@ -10,6 +10,7 @@ async function body(req){let raw='';for await(const c of req)raw+=c;try{return r
 const forbidden=(message='Accès interdit')=>({status:403,data:{error:message}});
 function director(user){if(user?.role!=='ops_director')throw Object.assign(new Error('Réservé à la Direction.'),{status:403})}
 function storeForCashLine(id){return db.prepare(`SELECT o.store_id FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE l.id=?`).get(id)?.store_id||null}
+function cashLineForStoreTill(storeId,businessDate,tillCode){return db.prepare(`SELECT l.* FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE o.store_id=? AND o.business_date=? AND l.till_code=?`).get(storeId,businessDate,String(tillCode||''))||null}
 function storeForStaffLine(id){return db.prepare(`SELECT d.store_id FROM staffing_lines l JOIN staffing_days d ON d.id=l.staffing_day_id WHERE l.id=?`).get(id)?.store_id||null}
 
 async function loadStaffing(storeId,businessDate,{force=false}={}){
@@ -70,6 +71,17 @@ export async function handleReadinessApi({req,url,user}){
   if(!canAccessStore(user,p.storeId))return forbidden('Accès interdit à ce magasin.');
   if(!canManageStore(user,p.storeId))return forbidden('Préparation caisses réservée au Responsable magasin ou à la Direction.');
   const businessDate=url.searchParams.get('date')||todayISO();return{status:200,data:await loadCashOpening(p.storeId,businessDate,{force:true})}
+ }
+ p=route(path,'/api/stores/:storeId/cash-opening/tills/:tillCode/check');
+ if(p&&req.method==='POST'){
+  if(!canAccessStore(user,p.storeId))return forbidden('Accès interdit à ce magasin.');
+  if(!canManageStore(user,p.storeId))return forbidden('Préparation caisses réservée au Responsable magasin ou à la Direction.');
+  const businessDate=url.searchParams.get('date')||todayISO();
+  let line=cashLineForStoreTill(p.storeId,businessDate,p.tillCode);
+  if(!line){await loadCashOpening(p.storeId,businessDate,{force:true});line=cashLineForStoreTill(p.storeId,businessDate,p.tillCode)}
+  if(!line)return{status:404,data:{error:'Caisse introuvable après resynchronisation.',code:'CASH_OPENING_TILL_NOT_FOUND'}};
+  const b=await body(req),result=checkCashOpeningLine({lineId:line.id,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''});
+  return{status:result.issues?.length?409:200,data:result}
  }
  p=route(path,'/api/cash-opening/lines/:lineId/check');
  if(p&&req.method==='POST'){
