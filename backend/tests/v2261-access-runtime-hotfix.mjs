@@ -17,7 +17,9 @@ db.prepare(`INSERT OR REPLACE INTO users(id,name,email,entra_oid,role,store_id,a
 VALUES('u-amine-hotfix','Amine Chibani','amine.hotfix@example.invalid',NULL,'store_manager','trefle',1,NULL)`).run();
 await import('../services/access-management.mjs');
 const amine=db.prepare(`SELECT role,store_id,permissions_profile FROM users WHERE id='u-amine-hotfix'`).get();
-assert.deepEqual(amine,{role:'employee',store_id:null,permissions_profile:'quality_audit'});
+assert.equal(amine.role,'employee');
+assert.equal(amine.store_id,null);
+assert.equal(amine.permissions_profile,'quality_audit');
 
 const {canAccessStore,canManageDlc,canManageQuality,canManageStore}=await import('../services/permissions.mjs');
 const quality={id:'u-amine-hotfix',role:amine.role,store_id:amine.store_id,permissions_profile:amine.permissions_profile};
