@@ -82,7 +82,7 @@ export async function renderManagerMore(){
     <div class="manager-more-grid">
       ${navCard('commercial','Prix & promotions','Scan prix, changements du jour et promotions.')}
       ${navCard('inventory','Comptage express','Scanner librement un article, compter, puis passer au suivant.','Terrain · scan libre','data-inventory-mode="COUNT"')}
-      ${navCard('inventory','Faire un inventaire','Créer ou reprendre une session complète, tournante ou ciblée.','Session · périmètre dédié','data-inventory-mode="SESSIONS"')}
+      ${navCard('inventory','Faire un inventaire','Créer ou reprendre une session complète, tournante ou ciblée.','Session · périmètre dédié','data-inventory-mode="NEW"')}
       ${navCard('receipts','Réception','Contrôle qualité article par article.')}
       ${navCard('dlc','DLC / DDM','Contrôle article et alertes DLC.')}
       ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
