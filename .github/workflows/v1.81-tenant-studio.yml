@@ -51,10 +51,8 @@ jobs:
             echo "::error::Tenant Studio must be lazy-loaded, not eagerly booted from index.html"
             exit 1
           fi
-          grep -q "storeops-shell-v1.81.0" frontend/sw.js
-          grep -q "'/admin-studio-tenant.css'" frontend/sw.js
-          grep -q "'/js/tenant-branding.js'" frontend/sw.js
-          grep -q "'/js/admin-studio-tenant.js'" frontend/sw.js
+          grep -q "registration.unregister" frontend/sw.js
+          ! grep -q "addEventListener('fetch'" frontend/sw.js
       - name: Safety contract
         run: |
           grep -q "isPlatformAdmin(user)" backend/services/tenant-profile-api.mjs
