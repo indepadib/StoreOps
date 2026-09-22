@@ -1,7 +1,7 @@
 import { config } from '../config.mjs';
 import { getProductByEan,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
-import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
+import { rememberProductIdentity,cachedProductByEan,cachedProductByProductNumber,noteProductIdentityFailure } from './product-cache.mjs';
 
 // Pilot fallback only. Other stores must be explicitly mapped in configuration.
 export const STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
@@ -74,6 +74,26 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
   if(fetched.truncated)throw Object.assign(new Error(`Stock ${mappingType.toLowerCase()} incomplet pour ${productNumber}: limite OData atteinte.`),{status:409,code:'D365_STOCK_TRUNCATED',details:{warehouseId,productNumber,rowCount:fetched.rowCount,maxRows:config.dynamics.stock.maxRows,mappingType}});
   const rows=fetched.value||[],sum=field=>rows.reduce((s,r)=>s+n(r[field]),0);
   return {warehouseId,dataAreaId:rows[0]?.[config.dynamics.dataAreaField]||rows[0]?.dataAreaId||config.dynamics.dataAreaId||null,rowCount:rows.length,pages:fetched.pages,complete:true,onHandQuantity:sum(fields.onHand),availableOnHandQuantity:sum(fields.availableOnHand),reservedOnHandQuantity:sum('ReservedOnHandQuantity'),orderedQuantity:sum('OrderedQuantity'),availableOrderedQuantity:sum('AvailableOrderedQuantity'),reservedOrderedQuantity:sum('ReservedOrderedQuantity'),onOrderQuantity:sum('OnOrderQuantity'),totalAvailableQuantity:sum('TotalAvailableQuantity'),batches:aggregateDimensionRows(rows,fields),source:`D365/${entity}`,mappingType}
+}
+
+export async function listStoreStockSnapshot(storeId){
+ const warehouseId=mappedWarehouseForStore(storeId);if(!warehouseId)throw Object.assign(new Error(`Warehouse Dynamics non mappé pour le magasin ${storeId}.`),{status:503,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'});
+ if(!stockLive())return{status:'UNAVAILABLE',complete:false,source:'SIMULATED_D365',storeId,warehouse:warehouseId,items:[],rowsRead:0,checkedAt:new Date().toISOString()};
+ const fields=stockFields(),entity=stockEntity(),filters=[`${fields.warehouse} eq '${escapeOData(warehouseId)}'`];
+ if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+ const select=[fields.item,fields.warehouse,fields.onHand,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize||config.dynamics.odataPageSize,maxRows:config.dynamics.stock.maxRows||config.dynamics.odataMaxRows});
+ if(fetched.truncated)throw Object.assign(new Error('Snapshot stock magasin tronqué : impossible de créer un inventaire complet fiable.'),{status:409,code:'D365_FULL_INVENTORY_STOCK_TRUNCATED',details:{storeId,warehouseId,rowCount:fetched.rowCount,maxRows:config.dynamics.stock.maxRows||config.dynamics.odataMaxRows}});
+ const byProduct=new Map();
+ for(const row of fetched.value||[]){
+  const sku=clean(row?.[fields.item]);if(!sku)continue;
+  const current=byProduct.get(sku)||0;byProduct.set(sku,current+n(row?.[fields.onHand]))
+ }
+ const items=[...byProduct.entries()].filter(([,qty])=>Number(qty)!==0).map(([productNumber,stock])=>{
+  const cached=cachedProductByProductNumber(productNumber);
+  return{productNumber,stock,ean:cached?.ean||null,name:cached?.name||productNumber,category:cached?.category||null,inventoryUnit:cached?.inventoryUnit||cached?.unit||null}
+ }).sort((a,b)=>String(a.name).localeCompare(String(b.name),'fr'));
+ return{status:'READY',complete:true,source:`D365/${entity}`,storeId,warehouse:warehouseId,items,rowsRead:fetched.rowCount,pages:fetched.pages,checkedAt:new Date().toISOString()}
 }
 
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
