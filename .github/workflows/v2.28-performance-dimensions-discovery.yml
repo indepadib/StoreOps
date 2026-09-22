@@ -35,6 +35,14 @@ jobs:
             "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=10&filter=ItemNumber%20eq%20%27HS-006585%27&extra=cross-company%3Dtrue" \
             -o /tmp/product-probe.json
 
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ProductCategoryAssignments&top=20&filter=ProductNumber%20eq%20%27HS-006585%27&extra=cross-company%3Dtrue" \
+            -o /tmp/target-assignment.json
+
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ProcurementProductCategories&top=1000&filter=CategoryHierarchyName%20eq%20%27H%26S%20Procurement%20Category%20Hierarchy%27&extra=cross-company%3Dtrue" \
+            -o /tmp/hierarchy.json
+
           for store in val-fleuri trefle; do
             curl -sS -H "x-demo-user: u-admin" \
               "$PREVIEW_URL/api/stores/$store/business-pulse?force=1" \
@@ -47,6 +55,12 @@ jobs:
           console.log('ASSIGNMENTS PROBE',JSON.stringify(compact('/tmp/assignments-probe.json',/product|item|category|hierarchy|name|id|rec/i),null,2));
           console.log('CATEGORIES PROBE',JSON.stringify(compact('/tmp/categories-probe.json',/category|parent|hierarchy|name|level|path|code|id|rec/i),null,2));
           console.log('PRODUCT PROBE',JSON.stringify(compact('/tmp/product-probe.json',/item|product|name|search|display|description|unit|category|price/i),null,2));
+          const ta=JSON.parse(fs.readFileSync('/tmp/target-assignment.json','utf8')),h=JSON.parse(fs.readFileSync('/tmp/hierarchy.json','utf8'));
+          const target=(ta.rows||[]).find(r=>String(r.ProductCategoryHierarchyName||'').includes('Procurement'))||(ta.rows||[])[0]||null;
+          const byName=new Map((h.rows||[]).map(r=>[String(r.CategoryName||''),r]));
+          const chain=[];let name=target?.ProductCategoryName||null,guard=0;
+          while(name&&guard++<12){const row=byName.get(String(name));chain.unshift({name:String(name),code:row?.CategoryCode??null,parent:row?.ParentCategoryName??null});name=row?.ParentCategoryName||null}
+          console.log('TARGET TAXONOMY CHAIN',JSON.stringify({target,chain,hierarchyRows:h.rowCount},null,2));
           for(const store of ['val-fleuri','trefle']){
             const p=JSON.parse(fs.readFileSync('/tmp/pulse-'+store+'.json','utf8'));
             const b=p.snapshot?.breakdowns||{};
