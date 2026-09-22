@@ -59,7 +59,7 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
  return{
   storeId,businessDate:ctx.businessDate,ean:ctx.ean,
   item:{productNumber:p.productNumber,name:p.name,category:p.category,unit:p.unit,source:p.source||null,identityFallback:!!p.identityFallback,cacheSyncedAt:p.cacheSyncedAt||null},
-  pricing:{basePrice:ctx.basePrice?.price??null,expectedUnitPrice:ctx.expectedUnitPrice,promoLabel:ctx.promoLabel,promotionError:ctx.promotionError||null,priceGroup:ctx.priceGroup,priceGroups:ctx.priceGroups||[ctx.priceGroup].filter(Boolean),priceGroupContext:ctx.priceGroupContext||null,available:!ctx.integrationErrors?.pricing},
+  pricing:{basePrice:ctx.basePrice?.price??null,expectedUnitPrice:ctx.expectedUnitPrice,pricingBasis:ctx.pricingBasis||null,tradeAgreements:ctx.tradeAgreements||null,promoLabel:ctx.promoLabel,promotionError:ctx.promotionError||null,priceGroup:ctx.priceGroup,priceGroups:ctx.priceGroups||[ctx.priceGroup].filter(Boolean),priceGroupContext:ctx.priceGroupContext||null,available:!ctx.integrationErrors?.pricing},
   storeStock:{warehouseId:p.warehouseId??null,physicalStock:finiteOrNull(p.stock),availableStock:available,reservedStock:finiteOrNull(p.reservedStock),incomingStock:finiteOrNull(p.onOrderStock),totalAvailableStock:finiteOrNull(p.totalAvailableStock),source:p.stockSource??null,mappingRequired:!!p.stockMappingRequired,unavailable:!!p.stockUnavailable,error:p.stockError||null,batches:p.batches||[]},
   supplyStock:supply,
   merchandising:{assortment:membership,assortmentModel:index.model||'SNAPSHOT',assortmentState:index.status,assortmentSyncedAt:index.syncedAt||null,assortmentMaxAgeHours:age,taxonomy},
