@@ -39,14 +39,35 @@ function lineCard(x,locked){const ready=x.status==='READY',tpe=tpeLabel(x.tpe_mo
     ${check(x,'pos_ok','POS opérationnel',locked)}${check(x,'tpe_ok',`${tpe} opérationnel`,locked)}${check(x,'printer_ok','Imprimante ticket',locked)}${check(x,'shift_opened','Shift Dynamics ouvert',locked)}
   </div>
   <div class="field"><label>Note</label><input data-co-note="${x.id}" value="${esc(x.note||'')}" placeholder="Anomalie / correction / remplacement" ${locked?'disabled':''}></div>
-  <div class="cash-open-footer"><span class="small muted">${x.checked_by_name?`Contrôlé par ${esc(x.checked_by_name)}`:'Non contrôlé'}</span>${canManage()&&!locked?`<button class="btn ${ready?'soft':'brand'}" data-check-cash-opening="${x.id}">${ready?'Recontrôler':'Contrôler la caisse'}</button>`:''}</div>
+  <div class="cash-open-footer"><span class="small muted">${x.checked_by_name?`Contrôlé par ${esc(x.checked_by_name)}`:'Non contrôlé'}</span>${canManage()&&!locked?`<button class="btn ${ready?'soft':'brand'}" data-check-cash-opening="${x.id}" data-till-code="${esc(x.till_code)}">${ready?'Recontrôler':'Contrôler la caisse'}</button>`:''}</div>
  </article>`}
 function check(x,key,text,locked){return`<label class="cash-open-check"><input type="checkbox" data-co-check="${x.id}:${key}" ${Number(x[key])===1?'checked':''} ${locked?'disabled':''}><span>${esc(text)}</span></label>`}
 function policyPanel(p){return`<details class="card" style="margin-top:14px"><summary><strong>Politique réseau · fonds de caisse</strong> · Direction</summary><div class="form-grid" style="margin-top:12px"><div class="field"><label>Tolérance d’écart (DH)</label><input id="cashOpeningTolerance" type="number" min="0" max="10" step="0.01" value="${Number(p?.float_tolerance_dh||0)}"></div></div><button class="btn soft" id="saveCashOpeningPolicyBtn">Enregistrer</button></details>`}
 function val(id,key){return document.querySelector(`[data-co-${key}="${id}"]`)?.value}
 function checked(id,key){return !!document.querySelector(`[data-co-check="${id}:${key}"]`)?.checked}
+async function submitCashOpeningCheck({id,tillCode,payload,retry=true}){
+ try{
+  const result=await api(`/api/cash-opening/lines/${id}/check`,{method:'POST',body:payload});
+  toast(result?.issues?.length?'Contrôle enregistré avec anomalie.':'Caisse prête.');
+  await renderCashOpening();return result
+ }catch(e){
+  if(retry&&(e.code==='CASH_OPENING_LINE_STALE'||e.status===404)){
+   const synced=await api(`/api/stores/${app.storeId}/cash-opening/sync`,{method:'POST'});
+   const replacement=synced?.opening?.lines?.find(x=>String(x.till_code)===String(tillCode));
+   if(!replacement){toast('La caisse a changé dans Dynamics. La liste a été actualisée.');await renderCashOpening();return null}
+   const result=await submitCashOpeningCheck({id:replacement.id,tillCode,payload,retry:false});
+   if(result)toast('Caisse resynchronisée avec Dynamics et contrôle enregistré.');
+   return result
+  }
+  throw e
+ }
+}
 function bind(){
  $('#syncCashOpeningBtn')?.addEventListener('click',async()=>{try{await api(`/api/stores/${app.storeId}/cash-opening/sync`,{method:'POST'});toast('Préparation caisses resynchronisée avec Dynamics.');renderCashOpening()}catch(e){toast(e.message)}});
- document.querySelectorAll('[data-check-cash-opening]').forEach(b=>b.addEventListener('click',async()=>{try{const id=b.dataset.checkCashOpening,payload={cashierName:val(id,'cashier'),declaredFloat:Number(val(id,'float')),posOk:checked(id,'pos_ok'),tpeOk:checked(id,'tpe_ok'),printerOk:checked(id,'printer_ok'),shiftOpened:checked(id,'shift_opened'),note:val(id,'note')||''};await api(`/api/cash-opening/lines/${id}/check`,{method:'POST',body:payload});toast('Caisse prête.');renderCashOpening()}catch(e){if(e.code==='CASH_OPENING_LINE_STALE'||e.status===404){try{await api(`/api/stores/${app.storeId}/cash-opening/sync`,{method:'POST'});toast('Préparation caisses actualisée. Recontrôle la caisse.')}catch{};return renderCashOpening()}toast(Array.isArray(e.details)&&e.details.length?e.details.join(' · '):e.message);renderCashOpening()}}));
+ document.querySelectorAll('[data-check-cash-opening]').forEach(b=>b.addEventListener('click',async()=>{
+  const id=b.dataset.checkCashOpening,tillCode=b.dataset.tillCode,payload={cashierName:val(id,'cashier'),declaredFloat:Number(val(id,'float')),posOk:checked(id,'pos_ok'),tpeOk:checked(id,'tpe_ok'),printerOk:checked(id,'printer_ok'),shiftOpened:checked(id,'shift_opened'),note:val(id,'note')||''};
+  b.disabled=true;
+  try{await submitCashOpeningCheck({id,tillCode,payload})}catch(e){toast(Array.isArray(e.details)&&e.details.length?e.details.join(' · '):e.message);await renderCashOpening()}finally{if(document.body.contains(b))b.disabled=false}
+ }));
  $('#saveCashOpeningPolicyBtn')?.addEventListener('click',async()=>{try{await api('/api/cash-opening/policy',{method:'PUT',body:{floatTolerance:Number($('#cashOpeningTolerance').value)}});toast('Tolérance fonds de caisse mise à jour.');renderCashOpening()}catch(e){toast(e.message)}});
 }
