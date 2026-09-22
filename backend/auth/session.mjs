@@ -9,7 +9,7 @@ function bearer(req){
   return h.startsWith('Bearer ')?h.slice(7).trim():null;
 }
 
-function userByClaims(claims){
+export function userByClaims(claims){
   const oid=claims.oid||claims.sub||null;
   const email=(claims.preferred_username||claims.email||claims.upn||'').toLowerCase();
   let user=oid?db.prepare(`SELECT * FROM users WHERE entra_oid=? AND active=1`).get(oid):null;
