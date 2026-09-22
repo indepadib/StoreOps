@@ -1,0 +1,74 @@
+name: V2.24.3 Hard Recovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  hard-recovery:
+    if: github.head_ref == 'storeops-v2.24.3-hard-recovery'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check frontend/js/boot-classic.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/pages/inventory.js
+          node --check backend/services/pilot-profile.mjs
+          node --check backend/services/readiness-api.mjs
+          node --check backend/services/inventory.mjs
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/operations-excel.mjs
+
+      - name: Hard recovery contract
+        run: node backend/tests/v2243-hard-recovery.mjs
+
+      - name: Quality network contract
+        run: node backend/tests/quality-audit-access.mjs
+
+      - name: Inventory privacy and express flow
+        run: |
+          node backend/tests/inventory-privacy.mjs
+          node backend/tests/v217-demo-ready-inventory-loss.mjs
+
+      - name: Start StoreOps API
+        run: |
+          AUTH_MODE=demo D365_MODE=simulated STOREOPS_DB=/tmp/storeops-v2243-api.db STOREOPS_MEDIA_DIR=/tmp/storeops-v2243-media PORT=8787 node backend/server.mjs >/tmp/storeops-v2243.log 2>&1 &
+          echo $! >/tmp/storeops-v2243.pid
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/api/health
+
+      - name: Cash opening routes
+        run: |
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/cash-opening-api.mjs
+          STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/v2243-cash-stable-api.mjs
+
+      - name: Staffing routes
+        run: STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/staffing-api.mjs
+
+      - name: Access management routes
+        run: STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/v180-access-management.mjs
+
+      - name: Critical static guards
+        run: |
+          grep -q "storeops-legacy-runtime-cleaned-'+BUILD" frontend/js/boot-classic.js
+          grep -q "registration.unregister" frontend/sw.js
+          grep -q "cash-opening/tills/:tillCode/check" backend/services/readiness-api.mjs
+          grep -q "D365_INVENTORY_WRITE_DISABLED" backend/server.mjs
+          grep -q "absoluteVarianceByUnit" backend/services/inventory.mjs
+          grep -q "QUALITY_AUDIT" frontend/js/admin-studio-access.js
+          ! grep -q "\$('#nav button\[data-page\].*\.forEach" frontend/js/app.js
+
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/storeops-v2243.log || true
