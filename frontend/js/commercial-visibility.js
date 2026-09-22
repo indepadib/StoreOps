@@ -1,0 +1,31 @@
+import {api} from './api.js';
+import {esc,status} from './ui.js';
+
+let mountedStore=null,loading=false,data=null,view='promotions';
+const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2})+' DH';
+function mech(m){if(!m)return'—';if(m.mechanic==='PERCENT_OFF')return '-'+Number(m.discountPercent||0)+'%';if(m.mechanic==='AMOUNT_OFF')return '-'+money(m.discountAmount);if(m.mechanic==='FIXED_PRICE')return 'Prix '+money(m.dealPrice);if(m.mechanic==='DEAL_PRICE')return 'Lot '+money(m.dealPrice);if(m.mechanic==='LEAST_EXPENSIVE')return (m.requiredQuantity||'')+' article(s) · moins cher';return esc(m.mechanic||m.type||'Promo')}
+function promoBody(p){
+ if(p?.error)return '<div class="banner ban-danger"><strong>Promotions indisponibles</strong><span>'+esc(p.error.message||'Lecture D365 impossible.')+'</span></div>';
+ const rows=p?.promotions||[];if(!rows.length)return '<div class="empty">Aucune promotion active ou à venir pour ce magasin.</div>';
+ let html='<div class="grid g4"><div class="card"><div class="label">Actives</div><div class="kpi">'+Number(p.summary?.active||0)+'</div></div><div class="card"><div class="label">À venir</div><div class="kpi">'+Number(p.summary?.upcoming||0)+'</div></div><div class="card"><div class="label">Offres</div><div class="kpi">'+Number(p.summary?.total||0)+'</div></div><div class="card"><div class="label">Articles</div><div class="kpi">'+Number(p.summary?.items||0)+'</div></div></div><div style="display:grid;gap:10px;margin-top:12px">';
+ for(const x of rows){html+='<details class="card" '+(x.status==='ACTIVE'?'open':'')+'><summary><div class="row" style="width:100%"><div><strong>'+esc(x.name||x.offerId)+'</strong><div class="small muted">'+esc(x.offerId)+' · '+esc((x.priceGroups||[]).join(', ')||'Tous groupes')+' · '+esc(x.validFrom||'—')+' → '+esc(x.validTo||'—')+'</div></div>'+status(x.status==='ACTIVE'?'Active':'À venir',x.status==='ACTIVE'?'ok':'warn')+'</div></summary><div style="display:grid;gap:7px;margin-top:10px">';for(const i of x.items||[]){html+='<div style="border-top:1px solid var(--line);padding-top:8px"><div class="row"><div><strong>'+esc(i.productName||i.productNumber)+'</strong><div class="small muted">'+esc(i.productNumber||'—')+(i.ean?' · EAN '+esc(i.ean):'')+(i.unit?' · '+esc(i.unit):'')+'</div></div><div class="small"><strong>'+mech(i.mechanic)+'</strong></div></div></div>'}html+=(x.items||[]).length?'':'<div class="empty compact">Aucune ligne article lisible.</div>';html+='</div></details>'}
+ return html+'</div>';
+}
+function tradeBody(t){
+ if(t?.error)return '<div class="banner ban-danger"><strong>Trade Agreements indisponibles</strong><span>'+esc(t.error.message||'Lecture D365 impossible.')+'</span></div>';
+ const rows=t?.items||[];if(!rows.length)return '<div class="empty">Aucun Trade Agreement actif applicable à ce magasin.</div>';
+ let html='<div class="row"><div><strong>'+Number(rows.length).toLocaleString('fr-FR')+' accord(s) actif(s)</strong><div class="small muted">Groupes : '+esc((t.priceGroups||[]).join(', ')||'—')+' · Warehouse '+esc(t.warehouseId||'—')+'</div></div>'+status(t.summary?.truncated?'Liste tronquée':'Complet',t.summary?.truncated?'warn':'ok')+'</div><div style="display:grid;gap:8px;margin-top:12px">';
+ for(const x of rows){html+='<div class="card"><div class="row"><div><strong>'+esc(x.productName||x.productNumber)+'</strong><div class="small muted">'+esc(x.productNumber||'—')+(x.ean?' · EAN '+esc(x.ean):'')+' · groupe '+esc(x.priceGroup||'Tous')+'</div></div><div><strong>'+money(x.price)+'</strong><div class="small muted">'+esc(x.priceQuantity||1)+' '+esc(x.unit||'unité')+'</div></div></div><div class="small muted" style="margin-top:6px">Valide '+esc(x.validFrom||'sans début')+' → '+esc(x.validTo||'sans fin')+(x.warehouse?' · '+esc(x.warehouse):'')+'</div></div>'}
+ return html+'</div>';
+}
+function body(){return view==='trade'?tradeBody(data?.tradeAgreements):promoBody(data?.promotions)}
+function render(){
+ const root=document.getElementById('commercialPricingVisibility');if(!root)return;
+ const p=data?.promotions,t=data?.tradeAgreements;
+ root.innerHTML='<section class="card" style="margin-top:14px"><div class="row"><div><div class="label">VISIBILITÉ COMMERCIALE D365</div><h3>Promotions & Trade Agreements</h3><div class="small muted">Toutes les offres applicables au magasin et les articles concernés.</div></div>'+(loading?status('Chargement…','neutral'):data?status('LIVE D365','ok'):status('À charger','neutral'))+'</div><div class="row" style="justify-content:flex-start;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btn '+(view==='promotions'?'brand':'soft')+'" id="pricingPromos">Promotions'+(p?' · '+Number(p.summary?.active||0)+' active(s)':'')+'</button><button class="btn '+(view==='trade'?'brand':'soft')+'" id="pricingTrade">Trade Agreements'+(t?' · '+Number(t.summary?.active||0):'')+'</button><button class="btn ghost" id="pricingRefresh">Actualiser</button></div><div id="pricingVisibilityBody" style="margin-top:12px">'+(loading?'<div class="empty">Lecture Dynamics en cours…</div>':data?body():'<div class="banner ban-info"><strong>Vue détaillée disponible</strong><span>Choisissez Promotions ou Trade Agreements pour charger la visibilité D365.</span></div>')+'</div></section>';
+ root.querySelector('#pricingPromos')?.addEventListener('click',()=>{view='promotions';load()});
+ root.querySelector('#pricingTrade')?.addEventListener('click',()=>{view='trade';load()});
+ root.querySelector('#pricingRefresh')?.addEventListener('click',()=>load(true));
+}
+async function load(force=false){if(loading)return;if(data&&!force){render();return}loading=true;render();try{data=await api('/api/stores/'+encodeURIComponent(mountedStore)+'/commercial/visibility')}catch(e){data={promotions:{promotions:[],summary:{},error:{message:e.message}},tradeAgreements:{items:[],summary:{},error:{message:e.message}}}}finally{loading=false;render()}}
+export function mountCommercialVisibility(storeId){if(mountedStore!==storeId){mountedStore=storeId;data=null;view='promotions'}render()}
