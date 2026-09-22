@@ -23,12 +23,17 @@ jobs:
           done
           test "$code" = "200"
 
-          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST \
-            "$PREVIEW_URL/api/merchandising/taxonomy/sync" --data '{}' -o /tmp/taxonomy-sync.json
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ProductCategoryAssignments&top=5&extra=cross-company%3Dtrue" \
+            -o /tmp/assignments-probe.json
 
           curl -sS -H "x-demo-user: u-admin" \
-            "$PREVIEW_URL/api/stores/val-fleuri/assortment?productNumber=HS-006585" \
-            -o /tmp/taxonomy-product.json
+            "$PREVIEW_URL/api/dynamics/probe?entity=ProcurementProductCategories&top=20&extra=cross-company%3Dtrue" \
+            -o /tmp/categories-probe.json
+
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=10&filter=ItemNumber%20eq%20%27HS-006585%27&extra=cross-company%3Dtrue" \
+            -o /tmp/product-probe.json
 
           for store in val-fleuri trefle; do
             curl -sS -H "x-demo-user: u-admin" \
@@ -38,8 +43,10 @@ jobs:
 
           node - <<'NODE'
           const fs=require('fs');
-          console.log('TAXONOMY SYNC',JSON.stringify(JSON.parse(fs.readFileSync('/tmp/taxonomy-sync.json','utf8')),null,2));
-          console.log('TAXONOMY PRODUCT',JSON.stringify(JSON.parse(fs.readFileSync('/tmp/taxonomy-product.json','utf8')),null,2));
+          const compact=(p,regex)=>{const x=JSON.parse(fs.readFileSync(p,'utf8'));return{ok:x.ok,rowCount:x.rowCount,error:x.error||x.message||null,rows:(x.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>regex.test(k)&&v!==null&&v!=='')))}};          
+          console.log('ASSIGNMENTS PROBE',JSON.stringify(compact('/tmp/assignments-probe.json',/product|item|category|hierarchy|name|id|rec/i),null,2));
+          console.log('CATEGORIES PROBE',JSON.stringify(compact('/tmp/categories-probe.json',/category|parent|hierarchy|name|level|path|code|id|rec/i),null,2));
+          console.log('PRODUCT PROBE',JSON.stringify(compact('/tmp/product-probe.json',/item|product|name|search|display|description|unit|category|price/i),null,2));
           for(const store of ['val-fleuri','trefle']){
             const p=JSON.parse(fs.readFileSync('/tmp/pulse-'+store+'.json','utf8'));
             const b=p.snapshot?.breakdowns||{};
