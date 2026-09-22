@@ -2,6 +2,7 @@ import{api}from'../api.js';
 import{refreshCommercialLive,scheduleCommercialLiveRefresh}from'../commercial-live-refresh.js';
 import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
+import{mountCommercialVisibility}from'../commercial-visibility.js';
 
 let cfg=null,data=null,scanCtx=null,priceChecks=[];
 const autoSyncAttempted=new Set();
@@ -41,9 +42,11 @@ export async function renderCommercial(){
      ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
    </div>
    <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucune action prix/promo dans le snapshot du jour. Vous pouvez scanner un article ou rafraîchir Dynamics.</div>'}</div>
+   <div id="commercialPricingVisibility"></div>
    ${isDirector()?policyCard():''}
  `;
  bindCommercial();
+ mountCommercialVisibility(app.storeId);
  const autoKey=`${app.storeId}:${new Date().toISOString().slice(0,10)}`;
  if(canManage()&&!commercialError&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
   autoSyncAttempted.add(autoKey);
