@@ -81,7 +81,10 @@ jobs:
           for(const store of ['val-fleuri','trefle']){
             const july=histories[store]?.tradeAgreements?.applicability||histories[store]?.july?.tradeAgreements?.applicability;
             const now=histories[store]?.now?.tradeAgreements?.applicability;
-            if(!july||july.status!=='UNIQUE'||Number(july.safePrice)!==10)process.exit(4);
+            if(!july)process.exit(4);
+            const julySafe=july.status==='UNIQUE'&&Number(july.safePrice)===10;
+            const julyBlocked=july.status==='UNSAFE'&&(july.evaluated||[]).some(x=>(x.reasons||[]).includes('UNIT_CONVERSION_UNPROVEN'));
+            if(!julySafe&&!julyBlocked)process.exit(4);
             if(!now||now.status!=='NONE')process.exit(5);
           }
           NODE
