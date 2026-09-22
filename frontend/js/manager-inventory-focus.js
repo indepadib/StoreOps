@@ -62,7 +62,7 @@ export function polishManagerInventory(){
   const content=document.querySelector('#inventoryContent');if(!content)return;
   const sessions=[...content.querySelectorAll('.inventory-session')];
   let focusId='';try{focusId=sessionStorage.getItem(FOCUS_INVENTORY_KEY)||''}catch{}
-  const focused=focusId?sessions.find(s=>s.querySelector('h3')?.textContent?.trim()===focusId)||null:null;
+  const focused=focusId?sessions.find(s=>s.dataset.inventorySessionId===focusId)||null:null;
   const editableCandidates=sessions.filter(s=>s.querySelector('[data-count-line], [data-inv-ean], [data-finalize-inventory]'));
   const editable=focused||(editableCandidates.length===1?editableCandidates[0]:null);
   sessions.forEach(s=>setVisible(s,!focused||s===focused));
