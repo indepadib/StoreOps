@@ -40,8 +40,8 @@ assert.match(auth,/apiCall\('\/api\/bootstrap'\)/,'auth entry must preload one b
 assert.match(auth,/developmentOnly\|\|storeSelect\?\.options\?\.length>0/,'development-only startup must not wait for a store');
 assert.match(api,/function bootResponse/,'API client must reuse bootstrap payload');
 assert.match(api,/STOREOPS_BOOT_HEALTH_CONSUMED/,'app health call must reuse authentication healthcheck once');
-assert.match(boot,/storeops-legacy-runtime-cleaned-v1/,'legacy browser cleanup must be one-time, not per release');
-assert.doesNotMatch(boot,/storeops-runtime-cleaned-build/,'per-release cache cleanup must stay removed');
+assert.match(boot,/storeops-legacy-runtime-cleaned-'\+BUILD/,'legacy browser cleanup must be scoped to the current build');
+assert.doesNotMatch(boot,/storeops-legacy-runtime-cleaned-v1/,'a fixed cleanup key must never return because it can strand stale bundles');
 assert.match(hubs,/manager-inbox-batch/,'manager hubs must use the bundled manager inbox fast path');
 assert.match(hubs,/inboxFlight/,'manager hubs must deduplicate simultaneous inbox requests');
 assert.match(hubs,/const d=inbox\.dashboard\|\|\{\}/,'manager journey must reuse the dashboard already bundled in the inbox payload');
