@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 process.env.STOREOPS_DB=`/tmp/storeops-v251-access-${process.pid}.db`;
 
 const {db}=await import('../db.mjs');
+const userCols=db.prepare(`PRAGMA table_info(users)`).all();
+if(!userCols.some(x=>x.name==='permissions_profile'))db.exec(`ALTER TABLE users ADD COLUMN permissions_profile TEXT NULL`);
 db.prepare(`UPDATE users SET name='Amine Chibani',role='store_manager',store_id='trefle',permissions_profile=NULL,active=1 WHERE id='u-tr'`).run();
 await import('../services/pilot-profile.mjs');
 const amine=db.prepare(`SELECT role,store_id,permissions_profile,active FROM users WHERE id='u-tr'`).get();
@@ -63,7 +65,8 @@ const staffing=readFileSync(new URL('../../frontend/js/pages/staffing.js',import
 const headers=readFileSync(new URL('../../frontend/_headers',import.meta.url),'utf8');
 
 assert.match(app,/document\.querySelectorAll\('#nav button\[data-page\]/);
-assert.doesNotMatch(app,/\$\('#nav button\[data-page\][^\n]*\.forEach/);
+assert.doesNotMatch(app,/\$\([^)]*\)\.forEach/,'$() returns one element and must never be used with forEach');
+assert.match(app,/\$\$\('\.page'\)\.forEach/);
 assert.match(index,/id="controllingNav"/);
 assert.match(index,/id="executiveNav"/);
 assert.match(index,/v=2251/);
