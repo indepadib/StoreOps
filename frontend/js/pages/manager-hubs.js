@@ -25,7 +25,7 @@ async function loadManagerInbox(){
   inboxFlight={storeId,promise};return promise
 }
 
-const navCard=(page,title,detail,meta='')=>`<button class="manager-hub-card" data-manager-go="${page}"><div><strong>${esc(title)}</strong><p>${esc(detail)}</p>${meta?`<small>${esc(meta)}</small>`:''}</div><span>›</span></button>`;
+const navCard=(page,title,detail,meta='',attrs='')=>`<button class="manager-hub-card" data-manager-go="${page}" ${attrs}><div><strong>${esc(title)}</strong><p>${esc(detail)}</p>${meta?`<small>${esc(meta)}</small>`:''}</div><span>›</span></button>`;
 
 function actionCard(i){
   const kind=actionKind(i),pclass=i.priority==='P0'?'priority-p0':i.priority==='P1'?'priority-p1':'';
@@ -81,7 +81,8 @@ export async function renderManagerMore(){
     <div class="manager-hub-head"><span class="manager-eyebrow">Plus</span><h2>Tous les outils</h2><p>Accès direct aux modules quand vous ne passez pas par la file « À valider ».</p></div>
     <div class="manager-more-grid">
       ${navCard('commercial','Prix & promotions','Scan prix, changements du jour et promotions.')}
-      ${navCard('inventory','Inventaire express','Scanner → compter → continuer, avec recomptage automatique si nécessaire.','Terrain · 3 gestes')}
+      ${navCard('inventory','Comptage express','Scanner librement un article, compter, puis passer au suivant.','Terrain · scan libre','data-inventory-mode="COUNT"')}
+      ${navCard('inventory','Faire un inventaire','Créer ou reprendre une session complète, tournante ou ciblée.','Session · périmètre dédié','data-inventory-mode="SESSIONS"')}
       ${navCard('receipts','Réception','Contrôle qualité article par article.')}
       ${navCard('dlc','DLC / DDM','Contrôle article et alertes DLC.')}
       ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
