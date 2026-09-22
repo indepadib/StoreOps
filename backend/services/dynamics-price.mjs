@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { odataGet,odataGetAll,resolveStorePriceGroups } from './dynamics.mjs';
 import { effectiveD365PriceHistoryMapping } from './d365-price-history-mapping.mjs';
+import { storeOperationalSettings } from './store-settings.mjs';
 
 export const SALES_PRICE_ENTITY='SalesPriceAgreements';
 export const BASE_PRICE_ENTITY='ReleasedProductsV2';
@@ -116,6 +117,45 @@ export async function getSalesPriceAgreementsByItem(productNumber){
 function clean(v){return String(v??'').trim()}
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function stableFingerprint(parts=[]){return parts.map(v=>String(v??'')).join('|')}
+
+function openBoundary(v){const d=dateOnly(v);return !d||d==='1900-01-01'||d==='1900-01-02'}
+function normalizeUnit(v){return clean(v).toUpperCase().replace(/\s+/g,'')}
+function positiveOr(v,fallback=1){const n=Number(v);return Number.isFinite(n)&&n>0?n:fallback}
+export function resolveApplicableTradeAgreements({rows=[],businessDate=null,priceGroups=[],warehouseId=null,quantity=1,baseUnit=null,basePriceQuantity=1}={}){
+ const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),groups=[...new Set((priceGroups||[]).map(clean).filter(Boolean))],qty=positiveOr(quantity,1),baseQty=positiveOr(basePriceQuantity,1),baseU=normalizeUnit(baseUnit),wh=clean(warehouseId);
+ const evaluated=(Array.isArray(rows)?rows:[]).map((row,index)=>{
+  const price=Number(row?.Price),from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate),group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),warehouse=clean(row?.PriceWarehouseId),site=clean(row?.PriceSiteId),fromQty=Number(row?.FromQuantity),toQty=Number(row?.ToQuantity),agreementQty=positiveOr(row?.SalesPriceQuantity,1),unit=clean(row?.QuantityUnitySymbol),unitNorm=normalizeUnit(unit),reasons=[];
+  const dateEligible=(openBoundary(from)||day>=from)&&(openBoundary(to)||day<=to);if(!dateEligible)reasons.push('DATE');
+  const groupEligible=!group||!groups.length||groups.includes(group);if(!groupEligible)reasons.push('PRICE_GROUP');
+  const customerEligible=!customer;if(!customerEligible)reasons.push('CUSTOMER_CONTEXT');
+  const warehouseEligible=!warehouse||(!!wh&&warehouse===wh);if(!warehouseEligible)reasons.push('WAREHOUSE');
+  const siteEligible=!site;if(!siteEligible)reasons.push('SITE_CONTEXT');
+  const quantityEligible=(!Number.isFinite(fromQty)||fromQty<=0||qty>=fromQty)&&(!Number.isFinite(toQty)||toQty<=0||qty<=toQty);if(!quantityEligible)reasons.push('QUANTITY');
+  const scopeEligible=groupEligible&&customerEligible&&warehouseEligible&&siteEligible;
+  const eligible=scopeEligible&&dateEligible&&quantityEligible&&Number.isFinite(price)&&price>=0;
+  const unitCompatible=!baseU||!unitNorm||baseU===unitNorm;if(eligible&&!unitCompatible)reasons.push('UNIT_CONVERSION_UNPROVEN');
+  const normalizedPrice=eligible&&unitCompatible?Number((price/agreementQty*baseQty).toFixed(6)):null;
+  return{index,row,recordId:row?.RecordId??null,price:Number.isFinite(price)?price:null,normalizedPrice,unit:unit||null,priceQuantity:agreementQty,group:group||null,warehouse:warehouse||null,from,to,scopeEligible,dateEligible,quantityEligible,unitCompatible,eligible,safeForEffectivePrice:eligible&&unitCompatible,reasons};
+ });
+ const eligible=evaluated.filter(x=>x.eligible),safe=eligible.filter(x=>x.safeForEffectivePrice),signatures=[...new Set(safe.map(x=>[String(x.normalizedPrice),normalizeUnit(x.unit),String(x.priceQuantity)].join('|')))];
+ let status='NONE',selected=null,safePrice=null;
+ if(eligible.length&&!safe.length)status='UNSAFE';
+ else if(safe.length&&signatures.length===1){
+  status='UNIQUE';
+  selected=[...safe].sort((a,b)=>String(b.from||'').localeCompare(String(a.from||''))||String(b.recordId??'').localeCompare(String(a.recordId??'')))[0];
+  safePrice=selected.normalizedPrice;
+ }else if(safe.length)status='AMBIGUOUS';
+ return{status,businessDate:day,priceGroups:groups,warehouseId:wh||null,quantity:qty,baseUnit:clean(baseUnit)||null,basePriceQuantity:baseQty,rowCount:evaluated.length,scopeRelevantCount:evaluated.filter(x=>x.scopeEligible).length,eligibleCount:eligible.length,safeCount:safe.length,safePrice,selected,evaluated,reason:status==='UNIQUE'?'Un accord tarifaire magasin non ambigu est applicable.':status==='AMBIGUOUS'?'Plusieurs accords tarifaires compatibles donnent des prix différents ; aucun prix n’est imposé par StoreOps.':status==='UNSAFE'?'Un accord est applicable mais son unité n’est pas comparable de façon prouvée au prix de base.':'Aucun accord tarifaire applicable à ce magasin et cette date.'}
+}
+export async function getStoreSalesPriceContext(productNumber,{storeId=null,businessDate=null,quantity=1,priceGroups=[]}={}){
+ const payload=await getSalesPriceAgreementsByItem(productNumber),base=payload?.basePrice?.row||null;
+ let groupContext=null;try{groupContext=storeId?await resolveStorePriceGroups(storeId):null}catch{}
+ const groups=[...new Set([...(priceGroups||[]),...(groupContext?.groups||[])].map(clean).filter(Boolean))];
+ const store=storeId?storeOperationalSettings(storeId):null,warehouseId=clean(store?.storeWarehouseId)||null;
+ const applicability=resolveApplicableTradeAgreements({rows:payload.rows||[],businessDate,priceGroups:groups,warehouseId,quantity,baseUnit:base?.SalesUnitSymbol||null,basePriceQuantity:base?.SalesPriceQuantity??1});
+ return{...payload,priceGroups:groups,priceGroupContext:groupContext,storeWarehouseId:warehouseId,applicability}
+}
+
 function previousDays(day,count=2){const out=[];const d=new Date(`${day}T12:00:00Z`);for(let i=0;i<=count;i++){const x=new Date(d);x.setUTCDate(x.getUTCDate()-i);out.push(x.toISOString().slice(0,10))}return out}
 function orFilter(field,values=[]){const rows=[...new Set((values||[]).map(clean).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 async function dateScopedRows(entity,{dateField,day,filterParts=[],select='',pageSize=200,maxRows=4000}={}){

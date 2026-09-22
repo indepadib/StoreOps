@@ -2,8 +2,8 @@ import { api,health,isShowcase } from './api.js';
 import { app,currentStore,isDirector,isPlatformAdmin,isQualityAudit,accessProfileLabel } from './state.js';
 import { $, $$,toast,roleLabel } from './ui.js';
 
-const RELEASE_BUILD='2251';
-const RELEASE_MODULES=new Map([['./pages/commercial.js','./pages/commercial.js?v=2251'],['./pages/receipts.js','./pages/receipts.js?v=2251'],['./pages/manager-home.js','./pages/manager-home.js?v=2251'],['./pages/manager-scan.js','./pages/manager-scan.js?v=2251'],['./pages/manager-hubs.js','./pages/manager-hubs.js?v=2251'],['./pages/inventory.js','./pages/inventory.js?v=2251'],['./pages/losses.js','./pages/losses.js?v=2251'],['./pages/dlc.js','./pages/dlc.js?v=2251'],['./pages/quality.js','./pages/quality.js?v=2251'],['./pages/staffing.js','./pages/staffing.js?v=2251'],['./pages/cash-opening.js','./pages/cash-opening.js?v=2251']]);
+const RELEASE_BUILD='2260';
+const RELEASE_MODULES=new Map([['./pages/commercial.js','./pages/commercial.js?v=2260'],['./pages/receipts.js','./pages/receipts.js?v=2260'],['./pages/manager-home.js','./pages/manager-home.js?v=2260'],['./pages/manager-scan.js','./pages/manager-scan.js?v=2260'],['./pages/manager-hubs.js','./pages/manager-hubs.js?v=2260'],['./pages/inventory.js','./pages/inventory.js?v=2260'],['./pages/losses.js','./pages/losses.js?v=2260'],['./pages/dlc.js','./pages/dlc.js?v=2260'],['./pages/quality.js','./pages/quality.js?v=2260'],['./pages/staffing.js','./pages/staffing.js?v=2260'],['./pages/cash-opening.js','./pages/cash-opening.js?v=2260']]);
 const moduleCache=new Map();
 function lazy(path){path=RELEASE_MODULES.get(path)||path;if(!moduleCache.has(path))moduleCache.set(path,import(path));return moduleCache.get(path)}
 async function invoke(path,name,...args){const mod=await lazy(path),fn=mod?.[name];if(typeof fn!=='function')throw new Error(`Module StoreOps incomplet : ${path}#${name}`);return fn(...args)}
