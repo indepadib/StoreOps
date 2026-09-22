@@ -13,6 +13,18 @@ function ensureColumn(table,column,definition){
 
 ensureColumn('users','dynamics_email','TEXT NULL');
 ensureColumn('users','permissions_profile','TEXT NULL');
+ensureColumn('users','identity_provider','TEXT NULL');
+ensureColumn('users','identity_subject','TEXT NULL');
+ensureColumn('users','updated_at','TEXT NULL');
+
+// Legacy pilot cleanup: Amine Chibani is a network Quality & Audit user, not a store read-only account.
+const legacyAmine=db.prepare(`SELECT id,name,permissions_profile FROM users WHERE id='u-tr'`).get();
+if(legacyAmine){
+ const normalized=String(legacyAmine.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+ if(normalized.includes('amine')&&normalized.includes('chibani')&&legacyAmine.permissions_profile!=='quality_audit'){
+  db.prepare(`UPDATE users SET role='employee',store_id=NULL,permissions_profile='quality_audit',active=1,updated_at=CURRENT_TIMESTAMP WHERE id='u-tr'`).run()
+ }
+}
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS store_terminals(
