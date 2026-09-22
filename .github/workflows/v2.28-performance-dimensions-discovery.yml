@@ -23,8 +23,17 @@ jobs:
           done
           test "$code" = "200"
 
+          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST \
+            "$PREVIEW_URL/api/merchandising/taxonomy/sync" --data '{}' -o /tmp/taxonomy-sync.json
+
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/stores/val-fleuri/assortment?productNumber=HS-006585" \
+            -o /tmp/taxonomy-product.json
+
           for store in val-fleuri trefle; do
-            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/business-pulse?force=1"               -o "/tmp/pulse-$store.json"
+            curl -sS -H "x-demo-user: u-admin" \
+              "$PREVIEW_URL/api/stores/$store/business-pulse?force=1" \
+              -o "/tmp/pulse-$store.json"
           done
 
           node - <<'NODE'
