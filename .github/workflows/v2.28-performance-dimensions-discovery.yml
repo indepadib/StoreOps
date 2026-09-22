@@ -1,0 +1,46 @@
+name: V2.28 Performance Dimensions Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discovery:
+    if: github.head_ref == 'storeops-v2.28-performance-dimensions'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect live Business Pulse dimensions
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for store in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/business-pulse?force=1"               -o "/tmp/pulse-$store.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          for(const store of ['val-fleuri','trefle']){
+            const p=JSON.parse(fs.readFileSync('/tmp/pulse-'+store+'.json','utf8'));
+            const b=p.snapshot?.breakdowns||{};
+            const safe={
+              store,
+              status:p.status,
+              departments:(b.departments||[]).slice(0,12),
+              categories:(b.categories||[]).slice(0,12),
+              products:(b.products||[]).slice(0,12),
+              hourly:(b.hourly||[]).slice(0,24)
+            };
+            console.log(JSON.stringify(safe,null,2));
+            if(p.status!=='READY')process.exit(2);
+          }
+          NODE
