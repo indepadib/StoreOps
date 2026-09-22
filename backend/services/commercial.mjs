@@ -1,5 +1,7 @@
 import { db,uid,audit,todayISO } from '../db.mjs';
 
+function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(x=>x.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
+
 db.exec(`
 CREATE TABLE IF NOT EXISTS commercial_policies(
  id TEXT PRIMARY KEY,
@@ -47,6 +49,10 @@ CREATE TABLE IF NOT EXISTS commercial_source_state(
 );
 CREATE INDEX IF NOT EXISTS ix_commercial_source_state_store ON commercial_source_state(store_id,last_seen_at);
 `);
+ensureColumn('commercial_source_state','last_expected_price','REAL NULL');
+ensureColumn('commercial_source_state','last_product_name','TEXT NULL');
+ensureColumn('commercial_source_state','last_ean','TEXT NULL');
+ensureColumn('commercial_source_state','last_product_number','TEXT NULL');
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -89,13 +95,19 @@ function shortHash(value){
  let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)
 }
 function materializeCommercialDeltas(storeId,businessDate,changes=[]){
- const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`),history=db.prepare(`SELECT action_type,ean,product_number,expected_price,old_price,promo_label,signage_action FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1`);
- const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,first_seen_at,last_seen_at,last_changed_at,last_action_business_date) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date)`);
+ const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`),history=db.prepare(`SELECT action_type,ean,product_number,product_name,expected_price,old_price,promo_label,signage_action,business_date FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1`),productHistory=db.prepare(`SELECT ean,product_name,expected_price,business_date FROM commercial_controls WHERE store_id=? AND product_number=? AND business_date<? AND expected_price IS NOT NULL ORDER BY business_date DESC,created_at DESC LIMIT 1`);
+ const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,first_seen_at,last_seen_at,last_changed_at,last_action_business_date,last_expected_price,last_product_name,last_ean,last_product_number) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?,?,?,?,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date),last_expected_price=excluded.last_expected_price,last_product_name=COALESCE(NULLIF(excluded.last_product_name,''),commercial_source_state.last_product_name),last_ean=COALESCE(NULLIF(excluded.last_ean,''),commercial_source_state.last_ean),last_product_number=COALESCE(NULLIF(excluded.last_product_number,''),commercial_source_state.last_product_number)`);
  for(const original of Array.isArray(changes)?changes:[]){
   let c={...original};const d365=c.source==='D365_RETAIL_PRICING',stableKey=stableKeyFor(c),fingerprint=fingerprintFor(c);
   if(!d365||!stableKey){out.push(c);continue}
-  const previous=get.get(storeId,stableKey),historical=!previous?history.get(storeId,`${stableKey}-%`):null,changed=!!previous&&previous.fingerprint!==fingerprint;
+  const previous=get.get(storeId,stableKey),historical=history.get(storeId,`${stableKey}-%`),productHistorical=c.productNumber?productHistory.get(storeId,c.productNumber,businessDate):null,changed=!!previous&&previous.fingerprint!==fingerprint;
   const historicalFingerprint=historical?fingerprintFor({productNumber:historical.product_number,ean:historical.ean,expectedPrice:historical.expected_price,oldPrice:historical.old_price,promoLabel:historical.promo_label,signageAction:historical.signage_action}):null,changedFromHistory=!!historical&&historicalFingerprint!==fingerprint;
+  const priorPrice=[previous?.last_expected_price,historical?.expected_price,productHistorical?.expected_price].map(Number).find(Number.isFinite);
+  if(c.oldPrice==null&&Number.isFinite(priorPrice)&&Number(c.expectedPrice)!==priorPrice)c.oldPrice=priorPrice;
+  if((!c.productName||c.productName===c.productNumber)&&previous?.last_product_name)c.productName=previous.last_product_name;
+  if((!c.productName||c.productName===c.productNumber)&&historical?.product_name)c.productName=historical.product_name;
+  if((!c.ean||String(c.ean).startsWith('ITEM:'))&&previous?.last_ean&&!String(previous.last_ean).startsWith('ITEM:'))c.ean=previous.last_ean;
+  if((!c.ean||String(c.ean).startsWith('ITEM:'))&&historical?.ean&&!String(historical.ean).startsWith('ITEM:'))c.ean=historical.ean;
   const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen);
   let actionDate=null;
   if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen)){
@@ -104,7 +116,7 @@ function materializeCommercialDeltas(storeId,businessDate,changes=[]){
     actionDate=businessDate
   }else if(c.actionType!=='VERIFY')actionDate=businessDate;
   if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
-  upsert.run(storeId,stableKey,fingerprint,actionDate);
+  upsert.run(storeId,stableKey,fingerprint,actionDate,c.expectedPrice??null,c.productName||null,c.ean||null,c.productNumber||null);
   out.push(c)
  }
  return out
@@ -152,6 +164,7 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
   const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
+  if(!info.changes)db.prepare(`UPDATE commercial_controls SET ean=CASE WHEN ean LIKE 'ITEM:%' AND ? NOT LIKE 'ITEM:%' THEN ? ELSE ean END,product_name=CASE WHEN (product_name=product_number OR product_name='') AND ?<>'' THEN ? ELSE product_name END,category=COALESCE(category,?),old_price=COALESCE(old_price,?),expected_price=COALESCE(?,expected_price),promo_label=COALESCE(?,promo_label) WHERE store_id=? AND business_date=? AND source_key=?`).run(String(c.ean),String(c.ean),String(c.productName||''),String(c.productName||''),c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,storeId,businessDate,String(c.sourceKey));
   inserted+=Number(info.changes||0);
  }
  return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
