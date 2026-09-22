@@ -1,0 +1,41 @@
+name: V2.27 Inventory Hardening
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  inventory-hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/inventory.mjs
+          node --check backend/services/operations-excel.mjs
+          node --check frontend/js/pages/inventory.js
+      - name: Unit-aware inventory contract
+        run: node backend/tests/v227-inventory-unit-aware.mjs
+      - name: Operational regressions contract
+        run: node backend/tests/v227-operations-regressions.mjs
+      - name: Existing blind inventory contract
+        run: node backend/tests/inventory-privacy.mjs
+      - name: Existing express inventory contract
+        run: node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Existing quality access contract
+        run: node backend/tests/quality-audit-access.mjs
+      - name: Safety guards
+        run: |
+          grep -q "inventoryControlQuantity" backend/services/inventory.mjs
+          grep -q "controlVarianceByUnit" backend/services/inventory.mjs
+          grep -q "Unité contrôle" backend/services/operations-excel.mjs
+          grep -q "quality_audit" backend/services/access-management.mjs
+          grep -q "CASH_OPENING_LINE_STALE" frontend/js/pages/cash-opening.js
+          grep -q 'data-receipt-type="PO"' frontend/js/pages/receipts.js
+          grep -q 'data-receipt-type="TO"' frontend/js/pages/receipts.js

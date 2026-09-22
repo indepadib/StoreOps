@@ -14,7 +14,7 @@ ensureColumn('users','updated_at','TEXT NULL');
 
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity_provider_subject ON users(identity_provider,identity_subject) WHERE identity_provider IS NOT NULL AND identity_subject IS NOT NULL;`);
 
-function migrateLegacyQualityPilotAccount(){
+export function migrateLegacyQualityPilotAccount(){
  const row=db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users WHERE id='u-tr'`).get();
  if(!row)return;
  const name=String(row.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
