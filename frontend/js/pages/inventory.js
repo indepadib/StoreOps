@@ -6,7 +6,7 @@ import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inven
 const INVENTORY_ENTRY_KEY='storeops_inventory_entry_mode';
 const FOCUS_INVENTORY_KEY='storeops_focus_inventory_session';
 let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null;
-function applyInventoryEntryIntent(){try{const focus=sessionStorage.getItem(FOCUS_INVENTORY_KEY),requested=sessionStorage.getItem(INVENTORY_ENTRY_KEY);if(focus)inventoryView='SESSIONS';else if(['COUNT','SESSIONS','HISTORY'].includes(requested))inventoryView=requested;if(requested)sessionStorage.removeItem(INVENTORY_ENTRY_KEY)}catch{}}
+function applyInventoryEntryIntent(){try{const focus=sessionStorage.getItem(FOCUS_INVENTORY_KEY),requested=sessionStorage.getItem(INVENTORY_ENTRY_KEY);if(focus)inventoryView='SESSIONS';else if(requested==='NEW')inventoryView='SESSIONS';else if(['COUNT','SESSIONS','HISTORY'].includes(requested))inventoryView=requested;if(requested)sessionStorage.removeItem(INVENTORY_ENTRY_KEY)}catch{}}
 const countingPolicy=()=>({...DEFAULT_INVENTORY_COUNTING_POLICY,...(cfg?.countingPolicy||{})});
 const reasonLabel=code=>cfg?.reasons?.find(x=>x.code===code)?.label||code||'—';
 const sessionLabel=x=>({CYCLE:'Inventaire tournant',TARGETED:'Inventaire ciblé',FULL:'Inventaire complet'}[x]||x);
