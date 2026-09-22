@@ -35,6 +35,11 @@ jobs:
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franprix%27"             -o /tmp/trade-franprix.json || true
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franp%20VF%27"             -o /tmp/trade-vf.json || true
 
+          day=$(date -u +%F)
+          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=store eq 'FRP0002' and businessDate eq $day"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/trefle-sales-sample.json
+          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=store eq 'FRP0002' and businessDate eq $day and (netAmountInclTax lt -10000 or netAmountInclTax gt 10000)"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/trefle-sales-outliers.json
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/stores/trefle/business-pulse?date=$day&force=1"             -o /tmp/trefle-pulse.json
+
           node - <<'NODE'
           const fs=require('fs');
           const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
@@ -51,13 +56,18 @@ jobs:
           const entityRows=Array.isArray(entities)?entities:Array.isArray(entities.value)?entities.value:[];
           const entityNames=entityRows.map(x=>x.PublicCollectionName||x.PublicEntityName||x.Name||x.EntityName).filter(Boolean);
           const tf=read('/tmp/trade-franprix.json'),tv=read('/tmp/trade-vf.json');
+          const salesSample=read('/tmp/trefle-sales-sample.json'),salesOutliers=read('/tmp/trefle-sales-outliers.json'),pulse=read('/tmp/trefle-pulse.json');
           const compact=p=>({ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,rows:(p.rows||[]).slice(0,10).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|product|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')))});
+          const salesCompact=p=>({ok:p.ok,rowCount:p.rowCount,rows:(p.rows||[]).map(r=>({transactionId:r.transactionId,itemId:r.itemId,qty:r.qty,netAmountInclTax:r.netAmountInclTax,grossAmount:r.grossAmount,totalDiscountAmount:r.totalDiscountAmount,price:r.price,store:r.store,businessDate:r.businessDate}))});
           console.log(JSON.stringify({
             groups,
             base:{ok:base.ok,rowCount:base.rowCount,rows:baseRows},
             trade:{ok:trade.ok,rowCount:trade.rowCount,error:trade.error||trade.message||null,rows:tradeRows},
             tradeByGroup:{Franprix:compact(tf),FranpVF:compact(tv)},
-            salesPriceEntities:entityNames
+            salesPriceEntities:entityNames,
+            trefleSalesSample:salesCompact(salesSample),
+            trefleSalesOutliers:salesCompact(salesOutliers),
+            treflePulse:{status:pulse.status,businessDate:pulse.businessDate,ca:pulse.snapshot?.kpis?.netSales??null,tickets:pulse.snapshot?.kpis?.tickets??null,basket:pulse.snapshot?.kpis?.averageBasket??null,rows:pulse.diagnostics?.rows??null}
           },null,2));
           if(!groups['10001'].length)process.exit(2);
           if(!groups['10002'].length)process.exit(3);
