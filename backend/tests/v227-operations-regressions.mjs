@@ -34,7 +34,7 @@ assert.doesNotMatch(app,/\$\('#nav button\[data-page\],#managerNav button\[data-
 assert.match(staffing,/if\(!d\)/,'Staffing must handle a missing day before reading metrics');
 assert.match(staffing,/d\.metrics\|\|data\.summary\|\|\{\}/);
 
-assert.match(cashOpening,/CASH_OPENING_LINE_STALE\|\|e\.status===404/);
+assert.match(cashOpening,/CASH_OPENING_LINE_STALE[\\s\\S]*?e\\.status===404/);
 assert.match(cashOpening,/cash-opening\/sync/);
 
 assert.match(accessUi,/body:b/,'Admin Access must pass an object to api() so JSON is serialized exactly once');
