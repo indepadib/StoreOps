@@ -43,4 +43,4 @@ jobs:
           grep -q "findStoreOpsUserFromEntraClaims" backend/auth/session-readonly.mjs
           grep -q "data-till-code" frontend/js/pages/cash-opening.js
           grep -q "v=2251" frontend/index.html
-          ! grep -q "\$('#nav button\[data-page\].*\.forEach" frontend/js/app.js
+          ! grep -Fq "$('#nav button[data-page]" frontend/js/app.js
