@@ -1,7 +1,7 @@
-import { loadEnhancements } from './enhancements-entry.js?v=2250';
+import { loadEnhancements } from './enhancements-entry.js?v=2251';
 
-const BUILD='2250';
-const BUILD_LABEL='2.25.0';
+const BUILD='2251';
+const BUILD_LABEL='2.25.1';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
 function markStarted(){document.body.dataset.storeopsBooted='1';window.dispatchEvent(new Event('storeops:booted'))}
