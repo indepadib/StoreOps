@@ -1,5 +1,6 @@
 const MANAGER=()=>document.body.classList.contains('manager-mode');
 const inventoryPage=()=>document.querySelector('#inventoryPage.page.active');
+const FOCUS_INVENTORY_KEY='storeops_focus_inventory_session';
 
 function ensureStyles(){
   if(document.querySelector('#managerInventoryFocusStyles'))return;
@@ -60,11 +61,18 @@ export function polishManagerInventory(){
   ensureStyles();
   const content=document.querySelector('#inventoryContent');if(!content)return;
   const sessions=[...content.querySelectorAll('.inventory-session')];
-  const editable=sessions.find(s=>s.querySelector('[data-count-line], [data-inv-ean], [data-finalize-inventory]'))||sessions[0]||null;
-  sessions.forEach(s=>setVisible(s,s===editable));
+  let focusId='';try{focusId=sessionStorage.getItem(FOCUS_INVENTORY_KEY)||''}catch{}
+  const focused=focusId?sessions.find(s=>s.querySelector('h3')?.textContent?.trim()===focusId)||null:null;
+  const editableCandidates=sessions.filter(s=>s.querySelector('[data-count-line], [data-inv-ean], [data-finalize-inventory]'));
+  const editable=focused||(editableCandidates.length===1?editableCandidates[0]:null);
+  sessions.forEach(s=>setVisible(s,!focused||s===focused));
 
   const guide=ensureGuideHost(content);
   if(!editable){
+    if(sessions.length>1){
+      guide.innerHTML='<span class="manager-eyebrow">Inventaires en cours</span><h3>Choisis la session à poursuivre</h3><p>Chaque inventaire garde son propre périmètre et ses propres articles. StoreOps ne force plus automatiquement la première session ouverte.</p>';
+      return;
+    }
     guide.innerHTML='<span class="manager-eyebrow">Inventaire guidé</span><h3>Commence par lancer un inventaire</h3><p>Choisis le périmètre, puis scanne le premier article.</p>';
     focusSoon('#invZone');
     return;
