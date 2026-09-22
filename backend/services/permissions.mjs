@@ -1,10 +1,11 @@
 export function isQualityAudit(user){return !!user&&user.permissions_profile==='quality_audit'}
 export function isPlatformAdmin(user){return !!user&&(user.permissions_profile==='platform_admin'||user.id==='u-admin')}
 export function isDevelopment(user){return !!user&&user.permissions_profile==='development'}
+export function isManagementControl(user){return !!user&&user.permissions_profile==='management_control'}
 export function canAccessDevelopment(user){return isPlatformAdmin(user)||isDevelopment(user)}
 export function canAccessStore(user, storeId){
   if(!user) return false;
-  if(user.role==='ops_director'||isQualityAudit(user)) return true;
+  if(user.role==='ops_director'||isQualityAudit(user)||isManagementControl(user)) return true;
   return user.store_id===storeId;
 }
 export function canManageQuality(user, storeId){
