@@ -12,12 +12,12 @@ function bearer(req){
  const h=header(req,'authorization');
  return h.startsWith('Bearer ')?h.slice(7).trim():null;
 }
-function userByClaimsReadOnly(claims){
- const oid=claims?.oid||claims?.sub||null;
- const email=String(claims?.preferred_username||claims?.email||claims?.upn||'').trim().toLowerCase();
- let user=oid?db.prepare(`SELECT * FROM users WHERE entra_oid=? AND active=1`).get(oid):null;
- if(!user&&email)user=db.prepare(`SELECT * FROM users WHERE active=1 AND (lower(email)=? OR lower(dynamics_email)=?)`).get(email,email);
- return user||null;
+function claimIdentity(claims){return{oid:claims?.oid||claims?.sub||null,email:String(claims?.preferred_username||claims?.email||claims?.upn||'').trim().toLowerCase()}}
+function findUserByClaimsReadOnly(claims,{activeOnly=true}={}){
+ const {oid,email}=claimIdentity(claims),active=activeOnly?' AND active=1':'';
+ let user=oid?db.prepare(`SELECT * FROM users WHERE (entra_oid=? OR (identity_provider='ENTRA' AND identity_subject=?))${active}`).get(oid,oid):null;
+ if(!user&&email)user=db.prepare(`SELECT * FROM users WHERE (lower(email)=? OR lower(dynamics_email)=?)${active}`).get(email,email);
+ return user||null
 }
 
 export function supportsReadOnlySession(){return config.authMode==='entra'||config.authMode==='demo'}
@@ -33,7 +33,7 @@ export async function readOnlySessionFromRequest(req){
  const token=bearer(req);
  if(!token)throw Object.assign(new Error('Authentification requise'),{status:401});
  const claims=await verifyEntraToken(token);
- const user=userByClaimsReadOnly(claims);
- if(!user)throw Object.assign(new Error('Compte authentifié mais non autorisé ou désactivé dans StoreOps'),{status:403,code:'USER_NOT_PROVISIONED'});
+ const user=findUserByClaimsReadOnly(claims,{activeOnly:true});
+ if(!user){const existing=findUserByClaimsReadOnly(claims,{activeOnly:false});if(existing&&!existing.active)throw Object.assign(new Error('Compte StoreOps désactivé.'),{status:403,code:'USER_DEACTIVATED'});throw Object.assign(new Error('Compte Microsoft authentifié mais non provisionné dans StoreOps.'),{status:403,code:'USER_NOT_PROVISIONED'})}
  return{user,claims,mode:'entra'}
 }
