@@ -22,7 +22,7 @@ assert.equal(enhancementBuild,authBuild,'deferred modules must share the auth ca
 assert.equal(buildDefault,authBuild,'Netlify build default must share the runtime cache key');
 assert.equal(bootLabel,authLabel,'classic boot and auth release labels must match');
 assert.match(auth,new RegExp(`enhancements-entry\\.js\\?v=${authBuild}`),'deferred enhancement entry must share the release cache key');
-assert.match(boot,/storeops-legacy-runtime-cleaned-v1/,'legacy cleanup key must remain stable so it is not rerun for every release');
+assert.match(boot,/storeops-legacy-runtime-cleaned-'\+BUILD/,'legacy cleanup key must follow the release build so stale bundles cannot survive upgrades');
 assert.match(build,/tenant-branding\.js/,'tenant branding must remain in early published runtime');
 assert.match(build,/boot-rescue\.js/,'boot rescue must remain in early published runtime');
 assert.match(build,/auth-entry\.js/,'auth entry must remain in early published runtime');
