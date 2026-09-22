@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 process.env.STOREOPS_DB=`/tmp/storeops-v251-access-${process.pid}.db`;
 
 const {db}=await import('../db.mjs');
+db.prepare(`UPDATE users SET name='Amine Chibani',role='store_manager',store_id='trefle',permissions_profile=NULL,active=1 WHERE id='u-tr'`).run();
 await import('../services/pilot-profile.mjs');
+const amine=db.prepare(`SELECT role,store_id,permissions_profile,active FROM users WHERE id='u-tr'`).get();
+assert.equal(amine.role,'employee');
+assert.equal(amine.store_id,null);
+assert.equal(amine.permissions_profile,'quality_audit');
+assert.equal(Number(amine.active),1);
 const {findStoreOpsUserFromEntraClaims}=await import('../auth/identity.mjs');
 const {accessProfiles}=await import('../services/access-management.mjs');
 const {canAccessStore,canManageStore,canManageQuality,canManageDlc,isControlling,isExecutive}=await import('../services/permissions.mjs');
@@ -26,6 +32,7 @@ assert.equal(linked.identity_subject,'oid-v251');
 const controller={id:'ctrl',role:'employee',store_id:null,permissions_profile:'controlling'};
 const executive={id:'exec',role:'employee',store_id:null,permissions_profile:'executive'};
 const quality={id:'qa',role:'employee',store_id:null,permissions_profile:'quality_audit'};
+const amineUser={id:'u-tr',role:amine.role,store_id:amine.store_id,permissions_profile:amine.permissions_profile};
 for(const user of [controller,executive,quality]){
  assert.equal(canAccessStore(user,'val-fleuri'),true);
  assert.equal(canAccessStore(user,'trefle'),true);
@@ -38,6 +45,11 @@ assert.equal(canManageQuality(quality,'val-fleuri'),true);
 assert.equal(canManageQuality(quality,'trefle'),true);
 assert.equal(canManageDlc(quality,'val-fleuri'),true);
 assert.equal(canManageStore(quality,'val-fleuri'),false);
+assert.equal(canManageQuality(amineUser,'val-fleuri'),true);
+assert.equal(canManageQuality(amineUser,'trefle'),true);
+assert.equal(canManageDlc(amineUser,'val-fleuri'),true);
+assert.equal(canManageDlc(amineUser,'trefle'),true);
+assert.equal(canManageStore(amineUser,'trefle'),false);
 
 const profiles=accessProfiles().map(x=>x.code);
 for(const code of ['QUALITY_AUDIT','CONTROLLING','EXECUTIVE'])assert(profiles.includes(code),code);
