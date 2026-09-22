@@ -211,7 +211,7 @@ export async function getProductIdentityByNumber(productNumber,{force=false}={})
     const x=Object.values(PRODUCTS).find(p=>String(p.productNumber||'')===item)||null;
     return x?{productNumber:item,name:x.name||item,ean:x.ean||null,unit:x.unit||null,category:x.category||null,source:'SIMULATED_D365'}:null
   }
-  const company=d.dataAreaId?${d.dataAreaField} eq '${escapeOData(d.dataAreaId)}':null;
+  const company=d.dataAreaId?`${d.dataAreaField} eq '${escapeOData(d.dataAreaId)}'`:null;
   const productFilter=[${d.productNumberField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
   const barcodeFilter=[${d.barcodeProductField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
   const inventoryUnitField=d.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
