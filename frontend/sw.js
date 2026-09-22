@@ -19,7 +19,10 @@ self.addEventListener('activate',event=>{
   }catch{}
   try{await self.registration.unregister()}catch{}
   const clientsList=await self.clients.matchAll({type:'window',includeUncontrolled:true}).catch(()=>[]);
-  for(const client of clientsList){try{client.postMessage({type:'STOREOPS_SW_REMOVED',reloadRecommended:true})}catch{}}
+  for(const client of clientsList){
+   try{client.postMessage({type:'STOREOPS_SW_REMOVED',reloadRecommended:true})}catch{}
+   try{await client.navigate(client.url)}catch{}
+  }
  })())
 });
 self.addEventListener('fetch',()=>{});
