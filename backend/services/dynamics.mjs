@@ -9,6 +9,7 @@ const PRODUCTS = {
 
 let tokenCache={token:null,expiresAt:0};
 const priceGroupCache=new Map();
+const productIdentityCache=new Map();
 const now=()=>new Date().toISOString();
 function escapeOData(v){ return String(v).replaceAll("'","''"); }
 export function isD365ReadLive(domain){return config.dynamics.mode==='live'&&config.dynamics.read?.[domain]==='live'}
@@ -198,6 +199,48 @@ export async function getProductByEan(ean){
   }catch(e){
     return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
   }
+}
+
+
+export async function getProductIdentityByNumber(productNumber,{force=false}={}){
+  const item=String(productNumber||'').trim();if(!item)return null;
+  const cached=productIdentityCache.get(item);
+  if(!force&&cached&&Date.now()<cached.expiresAt)return cached.value;
+  const d=config.dynamics;
+  if(!isD365ReadLive('product')){
+    const x=Object.values(PRODUCTS).find(p=>String(p.productNumber||'')===item)||null;
+    return x?{productNumber:item,name:x.name||item,ean:x.ean||null,unit:x.unit||null,category:x.category||null,source:'SIMULATED_D365'}:null
+  }
+  const company=d.dataAreaId?${d.dataAreaField} eq '${escapeOData(d.dataAreaId)}':null;
+  const productFilter=[${d.productNumberField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
+  const barcodeFilter=[${d.barcodeProductField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
+  const inventoryUnitField=d.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
+  const productPromise=d.productEntity?odataGet(d.productEntity,{filter:productFilter,select:[d.productNumberField,d.productNameField,inventoryUnitField].filter(Boolean).join(','),top:1,extra:d.dataAreaId?'cross-company=true':''}):Promise.resolve({value:[]});
+  const barcodePromise=d.barcodeEntity?odataGet(d.barcodeEntity,{filter:barcodeFilter,select:[d.barcodeProductField,d.barcodeField,d.barcodeDescriptionField,d.barcodeUnitField].filter(Boolean).join(','),top:20,extra:d.dataAreaId?'cross-company=true':''}):Promise.resolve({value:[]});
+  const [pr,br]=await Promise.allSettled([productPromise,barcodePromise]);
+  const product=pr.status==='fulfilled'?(pr.value?.value?.[0]||null):null,barcodes=br.status==='fulfilled'?(br.value?.value||[]):[];
+  const primary=barcodes.find(x=>String(x?.[d.barcodeField]||'').trim())||barcodes[0]||null;
+  const value={
+    productNumber:item,
+    name:String(product?.[d.productNameField]||primary?.[d.barcodeDescriptionField]||item).trim()||item,
+    ean:primary?String(primary?.[d.barcodeField]||'').trim()||null:null,
+    barcodes:[...new Set(barcodes.map(x=>String(x?.[d.barcodeField]||'').trim()).filter(Boolean))],
+    unit:String(product?.[inventoryUnitField]||primary?.[d.barcodeUnitField]||'').trim()||null,
+    category:product?.Category||primary?.Category||null,
+    source:'D365',
+    enrichment:{product:pr.status==='fulfilled'?'READY':'ERROR',barcode:br.status==='fulfilled'?'READY':'ERROR'}
+  };
+  productIdentityCache.set(item,{value,expiresAt:Date.now()+10*60*1000});return value
+}
+
+export async function getProductIdentitiesByNumbers(productNumbers,{force=false,concurrency=6}={}){
+  const items=[...new Set((productNumbers||[]).map(x=>String(x||'').trim()).filter(Boolean))],out=new Map();
+  for(let i=0;i<items.length;i+=Math.max(1,Number(concurrency)||6)){
+    const batch=items.slice(i,i+Math.max(1,Number(concurrency)||6));
+    const rows=await Promise.all(batch.map(item=>getProductIdentityByNumber(item,{force}).catch(()=>null)));
+    rows.forEach((row,index)=>{if(row)out.set(batch[index],row)})
+  }
+  return out
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}
