@@ -1,0 +1,84 @@
+name: V2.27 Commercial Visibility & Access
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  v227:
+    if: github.head_ref == 'storeops-v2.27-commercial-visibility-access'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/dynamics-promotion.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/access-management.mjs
+          node --check backend/auth/session.mjs
+          node --check frontend/js/commercial-visibility.js
+          node --check frontend/js/pages/commercial.js
+
+      - name: V2.27 contracts
+        run: |
+          node backend/tests/v227-commercial-enrichment.mjs
+          node backend/tests/v227-access-first-login.mjs
+          node backend/tests/v180-access-management.mjs
+          node backend/tests/commercial-lifecycle.mjs
+
+      - name: Wait for exact Netlify preview
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          ok=0
+          for i in $(seq 1 90); do
+            curl -sS "$PREVIEW_URL/api/health" -o /tmp/health.json || true
+            version=$(node -e "try{const x=require('/tmp/health.json');process.stdout.write(String(x.version||''))}catch{}")
+            echo "Attempt $i · version=$version"
+            if [ "$version" = "2.27.0" ]; then ok=1; break; fi
+            sleep 5
+          done
+          test "$ok" = "1"
+
+      - name: Live dual-pilot commercial visibility
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          for store in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$store/commercial/sync" --data '{}' -o "/tmp/sync-$store.json"
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/commercial" -o "/tmp/commercial-$store.json"
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/commercial/visibility" -o "/tmp/visibility-$store.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          for(const store of ['val-fleuri','trefle']){
+            const commercial=JSON.parse(fs.readFileSync('/tmp/commercial-'+store+'.json','utf8'));
+            const v=JSON.parse(fs.readFileSync('/tmp/visibility-'+store+'.json','utf8'));
+            if(!Array.isArray(commercial.items))throw new Error(store+' commercial items missing');
+            if(!Array.isArray(v.promotions?.promotions))throw new Error(store+' promotions list missing');
+            if(!Array.isArray(v.tradeAgreements?.items))throw new Error(store+' trade agreements list missing');
+            if(v.promotions?.mode!=='LIVE')throw new Error(store+' promotions not LIVE');
+            if(v.tradeAgreements?.mode!=='LIVE')throw new Error(store+' trade agreements not LIVE');
+            const bad=commercial.items.filter(x=>x.product_number&&x.product_name===x.product_number&&String(x.ean||'').startsWith('ITEM:'));
+            console.log(JSON.stringify({
+              store,
+              controls:commercial.items.length,
+              incompleteCards:bad.slice(0,10).map(x=>({product:x.product_number,name:x.product_name,ean:x.ean,old:x.old_price,next:x.expected_price})),
+              promotions:v.promotions.summary,
+              promotionPriceGroups:v.promotions.priceGroups,
+              trade:v.tradeAgreements.summary,
+              tradePriceGroups:v.tradeAgreements.priceGroups
+            },null,2));
+            if(bad.length)throw new Error(store+' still has '+bad.length+' incomplete price card(s)');
+          }
+          NODE
