@@ -57,7 +57,13 @@ export async function api(path,options={}){
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
   const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
   const body=options.body!=null&&typeof options.body==='object'&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;
-  try{r=await fetch(url,{...options,body,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const method=String(options.method||'GET').toUpperCase(),attempts=method==='GET'?2:1;
+  let lastNetworkError=null;
+  for(let attempt=1;attempt<=attempts;attempt++){
+    try{r=await fetch(url,{...options,body,headers,cache:method==='GET'?'no-store':options.cache});lastNetworkError=null;break}
+    catch(err){lastNetworkError=err;if(attempt<attempts&&navigator.onLine!==false)await new Promise(resolve=>setTimeout(resolve,450))}
+  }
+  if(lastNetworkError){const offline=navigator.onLine===false,e=new Error(offline?`Connexion internet perdue. Reconnecte le terminal puis réessaie.`:`Impossible de joindre temporairement l'API StoreOps. La lecture a été retentée automatiquement. URL : ${url}`);e.code=offline?'API_OFFLINE':'API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
