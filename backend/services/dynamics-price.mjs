@@ -265,21 +265,21 @@ export async function listStoreTradeAgreements(storeId,{businessDate=null,limit=
  const select=fields?[...new Set([fields.item,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(','):AGREEMENT_SELECT_FIELDS.join(',');
  const payload=await odataGetAll(entity,{filter,select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:Math.max(250,Math.min(5000,Number(limit)||1200))});
  const raw=fields?(payload.value||[]).map(row=>canonicalHistoryRow(row,fields)):(payload.value||[]);
- const active=raw.filter(row=>{
-  const from=dateOnly(row.PriceApplicableFromDate),to=dateOnly(row.PriceApplicableToDate),group=clean(row.PriceCustomerGroupCode),customer=clean(row.CustomerAccountNumber),warehouse=clean(row.PriceWarehouseId),site=clean(row.PriceSiteId);
-  return(openBoundary(from)||day>=from)&&(openBoundary(to)||day<=to)&&(!group||priceGroups.includes(group))&&!customer&&(!warehouse||warehouse===warehouseId)&&!site
+ const visible=raw.filter(row=>{
+  const group=clean(row.PriceCustomerGroupCode),customer=clean(row.CustomerAccountNumber),site=clean(row.PriceSiteId);
+  return(!group||priceGroups.includes(group))&&!customer&&!site
  });
- const identities=await getProductIdentitiesByNumbers(active.map(x=>x.ItemNumber||x.ProductNumber).filter(Boolean)).catch(()=>new Map());
- const items=active.map(row=>{
-  const productNumber=clean(row.ItemNumber||row.ProductNumber),id=identities.get(productNumber);
+ const identities=await getProductIdentitiesByNumbers(visible.map(x=>x.ItemNumber||x.ProductNumber).filter(Boolean)).catch(()=>new Map());
+ const items=visible.map(row=>{
+  const productNumber=clean(row.ItemNumber||row.ProductNumber),id=identities.get(productNumber),from=dateOnly(row.PriceApplicableFromDate),to=dateOnly(row.PriceApplicableToDate),rowWarehouse=clean(row.PriceWarehouseId),dateStatus=(!openBoundary(from)&&day<from)?'UPCOMING':(!openBoundary(to)&&day>to)?'EXPIRED':'ACTIVE',warehouseEligible=!rowWarehouse||rowWarehouse===warehouseId,status=dateStatus==='ACTIVE'&&!warehouseEligible?'OTHER_WAREHOUSE':dateStatus;
   return{
    recordId:row.RecordId??null,productNumber,productName:id?.name||productNumber,ean:id?.ean||null,
    price:Number.isFinite(Number(row.Price))?Number(row.Price):null,currency:clean(row.PriceCurrencyCode)||'MAD',
    unit:clean(row.QuantityUnitySymbol)||null,priceQuantity:positiveOr(row.SalesPriceQuantity,1),
-   priceGroup:clean(row.PriceCustomerGroupCode)||null,warehouse:clean(row.PriceWarehouseId)||null,
-   validFrom:dateOnly(row.PriceApplicableFromDate),validTo:dateOnly(row.PriceApplicableToDate),
+   priceGroup:clean(row.PriceCustomerGroupCode)||null,warehouse:rowWarehouse||null,
+   validFrom:from,validTo:to,status,applicableNow:status==='ACTIVE'&&warehouseEligible,
    fromQuantity:Number.isFinite(Number(row.FromQuantity))?Number(row.FromQuantity):null,toQuantity:Number.isFinite(Number(row.ToQuantity))?Number(row.ToQuantity):null
   }
- });
- return{mode:'LIVE',storeId,businessDate:day,entity,priceGroups,priceGroupContext,warehouseId,items,summary:{total:items.length,active:items.length,truncated:!!payload.truncated,rowCount:payload.rowCount,pages:payload.pages}}
+ }).sort((a,b)=>Number(b.applicableNow)-Number(a.applicableNow)||String(b.validFrom||'').localeCompare(String(a.validFrom||'')));
+ return{mode:'LIVE',storeId,businessDate:day,entity,priceGroups,priceGroupContext,warehouseId,items,summary:{total:items.length,active:items.filter(x=>x.applicableNow).length,upcoming:items.filter(x=>x.status==='UPCOMING').length,expired:items.filter(x=>x.status==='EXPIRED').length,otherWarehouse:items.filter(x=>x.status==='OTHER_WAREHOUSE').length,truncated:!!payload.truncated,rowCount:payload.rowCount,pages:payload.pages}}
 }
