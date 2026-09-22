@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# V2.26 production release recovery — force a verified PR/Netlify build path.
 set -eu
 if [ -n "${STOREOPS_API_BASE:-}" ]; then MODE="api"; else MODE="showcase"; fi
 export STOREOPS_RUNTIME_MODE="$MODE"
