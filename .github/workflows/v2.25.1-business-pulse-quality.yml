@@ -1,0 +1,57 @@
+name: V2.25.1 Business Pulse Quality
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pulse-quality:
+    if: github.head_ref == 'storeops-v2.25.1-business-pulse-quality'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit contract
+        run: node backend/tests/v2251-business-pulse-quality.mjs
+      - name: Validate both pilots on live D365 preview
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for store in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/business-pulse?date=2026-09-22&force=1"               -o "/tmp/$store.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=s=>JSON.parse(fs.readFileSync('/tmp/'+s+'.json','utf8'));
+          const vf=read('val-fleuri'),tr=read('trefle');
+          const safe=p=>({
+            status:p.status,
+            ca:p.snapshot?.kpis?.netSales??null,
+            tickets:p.snapshot?.kpis?.tickets??null,
+            units:p.snapshot?.kpis?.units??null,
+            basket:p.snapshot?.kpis?.averageBasket??null,
+            dataQuality:p.diagnostics?.dataQuality??null
+          });
+          console.log(JSON.stringify({valFleuri:safe(vf),trefle:safe(tr)},null,2));
+          if(vf.status!=='READY'||tr.status!=='READY')process.exit(2);
+          if(!Number.isFinite(Number(tr.snapshot?.kpis?.netSales)))process.exit(3);
+          if(Number(tr.snapshot?.kpis?.netSales)<=0||Number(tr.snapshot?.kpis?.netSales)>=1000000)process.exit(4);
+          if(Number(tr.snapshot?.kpis?.averageBasket)<=0||Number(tr.snapshot?.kpis?.averageBasket)>=10000)process.exit(5);
+          if(Number(tr.snapshot?.kpis?.units)<=0)process.exit(6);
+          if(Number(tr.diagnostics?.dataQuality?.excludedRows||0)<1)process.exit(7);
+          if(Number(tr.diagnostics?.dataQuality?.excludedSalesValue||0)<1000000000)process.exit(8);
+          if(Number(vf.snapshot?.kpis?.netSales)<=0||Number(vf.snapshot?.kpis?.netSales)>=1000000)process.exit(9);
+          NODE
