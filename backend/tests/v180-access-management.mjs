@@ -10,6 +10,9 @@ assert.equal(isPlatformAdmin(admin),true);
 assert.equal(isPlatformAdmin(director),false);
 assert.ok(accessProfiles().some(x=>x.code==='STORE_MANAGER'));
 assert.ok(accessProfiles().some(x=>x.code==='PLATFORM_ADMIN'));
+assert.ok(accessProfiles().some(x=>x.code==='QUALITY_AUDIT'));
+assert.ok(accessProfiles().some(x=>x.code==='CONTROLLING'));
+assert.ok(accessProfiles().some(x=>x.code==='EXECUTIVE'));
 
 const employee=createEmployee({storeId:'val-fleuri',user:admin,employeeCode:'ACC-001',firstName:'Sara',lastName:'Test',roleCode:'FLOOR',contractType:'CDI',contractStart:'2026-09-01',email:'sara.test@oneretail.ma'});
 const account=createAccessAccount({actor:admin,name:'Sara Test',emailAddress:'sara.test@oneretail.ma',profileCode:'STORE_USER',storeId:'val-fleuri',linkedEmployeeId:employee.id,identityProvider:'ENTRA'});
