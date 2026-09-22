@@ -53,6 +53,29 @@ const opsMicrosoftEmail=String(process.env.STOREOPS_OPS_DIRECTOR_D365_EMAIL||pro
 const adminMicrosoftEmail=String(process.env.STOREOPS_ADMIN_MICROSOFT_EMAIL||process.env.STOREOPS_ADMIN_D365_EMAIL||'').trim().toLowerCase();
 const qualityAuditEmail=String(process.env.STOREOPS_QUALITY_AUDIT_EMAIL||'').trim().toLowerCase();
 const qualityAuditMicrosoftEmail=String(process.env.STOREOPS_QUALITY_AUDIT_MICROSOFT_EMAIL||'').trim().toLowerCase();
+
+function claimCanonicalQualityIdentity(){
+  const identities=[...new Set([qualityAuditEmail,qualityAuditMicrosoftEmail].filter(Boolean))];
+  if(!identities.length)return;
+  const placeholders=identities.map(()=>'?').join(',');
+  const collisions=db.prepare(`SELECT id,email,dynamics_email,entra_oid FROM users
+    WHERE id<>? AND (
+      lower(COALESCE(email,'')) IN (${placeholders})
+      OR lower(COALESCE(dynamics_email,'')) IN (${placeholders})
+    )`).all(QUALITY_AUDIT_ID,...identities,...identities);
+  const target=db.prepare(`SELECT entra_oid FROM users WHERE id=?`).get(QUALITY_AUDIT_ID);
+  const transferableOid=target?.entra_oid?null:(collisions.map(x=>x.entra_oid).find(Boolean)||null);
+  for(const row of collisions){
+    const mail=String(row.email||'').toLowerCase(),dyn=String(row.dynamics_email||'').toLowerCase();
+    db.prepare(`UPDATE users SET email=?,dynamics_email=?,entra_oid=NULL WHERE id=?`).run(
+      identities.includes(mail)?null:row.email,
+      identities.includes(dyn)?null:row.dynamics_email,
+      row.id
+    );
+  }
+  if(transferableOid)db.prepare(`UPDATE users SET entra_oid=? WHERE id=? AND entra_oid IS NULL`).run(transferableOid,QUALITY_AUDIT_ID);
+}
+claimCanonicalQualityIdentity();
 if(appEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(appEmail,PILOT_MANAGER_ID);
 if(dynamicsEmail)db.prepare(`UPDATE users SET dynamics_email=? WHERE id=?`).run(dynamicsEmail,PILOT_MANAGER_ID);
 if(opsEmail)db.prepare(`UPDATE users SET email=? WHERE id=?`).run(opsEmail,OPS_DIRECTOR_ID);
