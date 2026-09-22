@@ -77,8 +77,9 @@ function createPanel(){return`<div class="card inventory-create" style="margin-t
 
 function sessionCard(inv){
  const editable=canManage()&&['COUNTING','REVIEW'].includes(inv.status),ready=inv.status==='READY_TO_POST',pending=Number(inv.metrics?.pending||0),unexplained=Number(inv.metrics?.unexplained||0),blocking=pending+unexplained,pct=inv.metrics?.lines?Math.round((Number(inv.metrics.counted||0)/Number(inv.metrics.lines))*100):0;
- return`<article class="card inventory-session ${ready?'inventory-ready':''}">
-   <div class="row"><div><div class="small muted">${isExpress(inv)?'Inventaire express':sessionLabel(inv.inventory_type)} · ${esc(inv.zone||'Périmètre non précisé')}</div><h3>${esc(inv.id)}</h3><div class="small muted">Créé par ${esc(inv.created_by_name||'—')} · ${dt(inv.created_at)}</div></div>${status(sessionStatus(inv.status),statusKind(inv.status))}</div>
+ const title=isExpress(inv)?'Comptage express':`${sessionLabel(inv.inventory_type)}${inv.zone?` · ${inv.zone}`:''}`;
+ return`<article class="card inventory-session ${ready?'inventory-ready':''}" data-inventory-session-id="${esc(inv.id)}">
+   <div class="row"><div><div class="small muted">${isExpress(inv)?'Scan libre':esc(inv.zone||'Périmètre magasin')}</div><h3>${esc(title)}</h3><div class="small muted">ID ${esc(inv.id)} · Créé par ${esc(inv.created_by_name||'—')} · ${dt(inv.created_at)}</div></div>${status(sessionStatus(inv.status),statusKind(inv.status))}</div>
    <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Écart abs.</span><strong>${inv.metrics.absoluteVarianceQty}</strong></div></div>
    ${editable&&inv.metrics.lines?`<div class="small muted inventory-progress-line">Progression ${pct}% · ${pending} à compter · ${unexplained} écart(s) à expliquer</div>`:''}
    ${editable&&!isExpress(inv)?addLinePanel(inv):''}
