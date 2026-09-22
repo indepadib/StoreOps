@@ -27,7 +27,9 @@ migrateLegacyQualityPilotAccount();
 const PROFILE_DEFS=Object.freeze({
  PLATFORM_ADMIN:{code:'PLATFORM_ADMIN',label:'Administrateur StoreOps',description:'Configuration complète du tenant, accès, intégrations et réseau.',role:'ops_director',permissionsProfile:'platform_admin',scope:'NETWORK',sensitive:true},
  OPS_DIRECTOR:{code:'OPS_DIRECTOR',label:'Direction d’exploitation',description:'Pilotage de tous les magasins et opérations réseau.',role:'ops_director',permissionsProfile:null,scope:'NETWORK',sensitive:true},
- QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Gestion réseau des contrôles qualité, DLC/DDM et contrôles qualité en réception, sans droits opérationnels généraux ni posting ERP.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:false},
+ QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Tous magasins · création/modification DLC/DDM · contrôles qualité · qualité réception · aucun posting ERP.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:false},
+ CONTROLLING:{code:'CONTROLLING',label:'Contrôle de gestion',description:'Lecture réseau des prix/promos, réceptions, coûts, démarque et inventaires. Aucun droit opérationnel.',role:'employee',permissionsProfile:'controlling',scope:'NETWORK',sensitive:false},
+ EXECUTIVE:{code:'EXECUTIVE',label:'Dirigeant / Finance',description:'Cockpit réseau haut niveau pour DG, DGA, Finance et Direction générale. Lecture seule.',role:'employee',permissionsProfile:'executive',scope:'NETWORK',sensitive:false},
  DEVELOPMENT:{code:'DEVELOPMENT',label:'Développement réseau',description:'Sourcing de locaux, négociation, contrats, travaux et ouvertures.',role:'employee',permissionsProfile:'development',scope:'NETWORK',sensitive:false},
  STORE_MANAGER:{code:'STORE_MANAGER',label:'Responsable magasin',description:'Pilotage opérationnel complet de son magasin uniquement.',role:'store_manager',permissionsProfile:null,scope:'STORE',sensitive:false},
  STORE_USER:{code:'STORE_USER',label:'Utilisateur magasin',description:'Accès terrain à son magasin sans droits de Responsable.',role:'employee',permissionsProfile:'store_user',scope:'STORE',sensitive:false}
@@ -42,6 +44,8 @@ function profileFromUser(row){
  if(row.permissions_profile==='platform_admin'||row.id==='u-admin')return PROFILE_DEFS.PLATFORM_ADMIN;
  if(row.role==='ops_director')return PROFILE_DEFS.OPS_DIRECTOR;
  if(row.permissions_profile==='quality_audit')return PROFILE_DEFS.QUALITY_AUDIT;
+ if(row.permissions_profile==='controlling')return PROFILE_DEFS.CONTROLLING;
+ if(row.permissions_profile==='executive')return PROFILE_DEFS.EXECUTIVE;
  if(row.permissions_profile==='development')return PROFILE_DEFS.DEVELOPMENT;
  if(row.role==='store_manager')return PROFILE_DEFS.STORE_MANAGER;
  return PROFILE_DEFS.STORE_USER
@@ -71,7 +75,7 @@ function normalizeProvider(v){const p=String(v||'ENTRA').toUpperCase();if(!['ENT
 function countActivePlatformAdmins(){return Number(db.prepare(`SELECT COUNT(*) n FROM users WHERE active=1 AND (permissions_profile='platform_admin' OR id='u-admin')`).get()?.n||0)}
 function auditAccess(actor,target,action,details={}){const storeId=target.store_id||actor?.store_id||db.prepare(`SELECT id FROM stores WHERE active=1 ORDER BY name LIMIT 1`).get()?.id;if(storeId)audit({storeId,userId:actor?.id||null,action,entityType:'USER_ACCESS',entityId:target.id,details})}
 
-export function accessIntegrationStatus(){return{authMode:config.authMode,providers:[{code:'ENTRA',label:'Microsoft Entra ID',runtimeSupported:config.authMode==='entra',provisioning:'Email/UPN ou Object ID'},{code:'EXTERNAL',label:'Autre fournisseur OIDC / SSO',runtimeSupported:false,provisioning:'Contrat prêt, adapter à connecter'}]}}
+export function accessIntegrationStatus(){return{authMode:config.authMode,automaticLinking:true,providers:[{code:'ENTRA',label:'Microsoft Entra ID',runtimeSupported:config.authMode==='entra',provisioning:'Email/UPN → Object ID lié automatiquement au premier login'},{code:'EXTERNAL',label:'Autre fournisseur OIDC / SSO',runtimeSupported:false,provisioning:'Contrat prêt, adapter à connecter'}]}}
 export function listAccessAccounts({includeInactive=true}={}){return db.prepare(`SELECT * FROM users ${includeInactive?'':`WHERE active=1`} ORDER BY CASE WHEN permissions_profile='platform_admin' THEN 0 WHEN role='ops_director' THEN 1 WHEN role='store_manager' THEN 2 ELSE 3 END,name`).all().map(accountView)}
 export function listAccessEmployees({storeId=null,includeEnded=false}={}){const where=[];const args=[];if(storeId){where.push('e.store_id=?');args.push(storeId)}if(!includeEnded)where.push(`e.status!='ENDED'`);return db.prepare(`SELECT e.*,s.name store_name,u.id linked_user_id,u.active linked_user_active FROM employees e JOIN stores s ON s.id=e.store_id LEFT JOIN users u ON u.linked_employee_id=e.id ${where.length?'WHERE '+where.join(' AND '):''} ORDER BY s.name,e.display_name`).all(...args).map(x=>({...x,linked_user_active:x.linked_user_id?!!x.linked_user_active:null}))}
 
