@@ -64,9 +64,11 @@ jobs:
             curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/commercial" -o "/tmp/commercial-$store.json"
             curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/commercial/visibility" -o "/tmp/visibility-$store.json"
           done
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/items/HS-005032/price-history?days=90" -o /tmp/hs005032-history.json || true
 
           node - <<'NODE'
           const fs=require('fs');
+          const history=(()=>{try{return JSON.parse(fs.readFileSync('/tmp/hs005032-history.json','utf8'))}catch{return null}})();
           for(const store of ['val-fleuri','trefle']){
             const commercial=JSON.parse(fs.readFileSync('/tmp/commercial-'+store+'.json','utf8'));
             const v=JSON.parse(fs.readFileSync('/tmp/visibility-'+store+'.json','utf8'));
@@ -86,5 +88,11 @@ jobs:
               tradePriceGroups:v.tradeAgreements.priceGroups
             },null,2));
             if(bad.length)throw new Error(store+' still has '+bad.length+' incomplete price card(s)');
+            if(store==='val-fleuri'){
+              const target=commercial.items.find(x=>x.product_number==='HS-005032')||null;
+              console.log('HS-005032 CONTROL',JSON.stringify(target&&{name:target.product_name,ean:target.ean,oldPrice:target.old_price,expectedPrice:target.expected_price,status:target.status},null,2));
+              if(target&&(target.product_name==='HS-005032'||String(target.ean||'').startsWith('ITEM:')))throw new Error('HS-005032 identity still incomplete');
+            }
           }
+          console.log('HS-005032 PRICE HISTORY',JSON.stringify(history&&{currentBase:history.currentBase,tradeAgreements:history.tradeAgreements,observedSales:history.observedSales},null,2));
           NODE
