@@ -1,0 +1,34 @@
+name: V2.26 Dual Pilot Pricing
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pricing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/dynamics-promotion.mjs
+          node --check backend/services/price-history.mjs
+          node --check backend/services/price-check.mjs
+          node --check backend/services/item-assistant.mjs
+      - name: V2.26 pricing contract
+        run: node backend/tests/v226-dual-pilot-pricing.mjs
+      - name: Existing channel price group contract
+        run: node backend/tests/v206-channel-price-groups.mjs
+      - name: Existing price history mapping contract
+        run: node backend/tests/v208-price-history-mapping.mjs
+      - name: Safety
+        run: |
+          grep -q "resolveApplicableTradeAgreements" backend/services/dynamics-price.mjs
+          grep -q "storeFilterCandidates" backend/services/price-history.mjs
+          grep -q "TRADE_AGREEMENT" frontend/js/pages/commercial.js
+          ! grep -R "post.*Dynamics" backend/services/dynamics-price.mjs
