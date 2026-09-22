@@ -23,7 +23,7 @@ function hasTable(name){return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE t
 
 export function rememberProductIdentity(product,{liveSource=null,error=null}={}){
  const ean=clean(product?.ean),name=clean(product?.name||product?.productName||product?.productNumber||ean);if(!ean||!name)return null;
- const productNumber=clean(product?.productNumber)||null,category=clean(product?.category)||null,unit=clean(product?.unit)||null,source=clean(product?.source)||'D365';
+ const productNumber=clean(product?.productNumber)||null,category=clean(product?.category)||null,unit=clean(product?.inventoryUnit||product?.unit)||null,source=clean(product?.source)||'D365';
  db.prepare(`INSERT INTO product_identity_cache(ean,product_number,product_name,category,unit,source,last_live_source,last_error_code,last_error_message,synced_at,updated_at)
  VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
  ON CONFLICT(ean) DO UPDATE SET product_number=COALESCE(excluded.product_number,product_identity_cache.product_number),product_name=excluded.product_name,category=COALESCE(excluded.category,product_identity_cache.category),unit=COALESCE(excluded.unit,product_identity_cache.unit),source=excluded.source,last_live_source=COALESCE(excluded.last_live_source,product_identity_cache.last_live_source),last_error_code=excluded.last_error_code,last_error_message=excluded.last_error_message,synced_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP`)
@@ -42,6 +42,13 @@ export function cachedProductByEan(ean){
  const row=db.prepare(`SELECT * FROM product_identity_cache WHERE ean=?`).get(code);
  if(row)return{ean:row.ean,productNumber:row.product_number||null,name:row.product_name,category:row.category||'Autre',unit:row.unit||null,source:'STOREOPS_CACHE',cacheSyncedAt:row.synced_at,identityStale:true,lastLiveSource:row.last_live_source||null,lastErrorCode:row.last_error_code||null,lastErrorMessage:row.last_error_message||null};
  return fromPriceChecks(code)
+}
+
+export function cachedProductByProductNumber(productNumber){
+ const sku=clean(productNumber);if(!sku)return null;
+ const row=db.prepare(`SELECT * FROM product_identity_cache WHERE product_number=? ORDER BY synced_at DESC LIMIT 1`).get(sku);
+ if(!row)return null;
+ return{ean:row.ean,productNumber:row.product_number||sku,name:row.product_name||sku,category:row.category||'Autre',inventoryUnit:row.unit||null,unit:row.unit||null,source:'STOREOPS_CACHE',cacheSyncedAt:row.synced_at,identityStale:true}
 }
 
 export function noteProductIdentityFailure(ean,error){
