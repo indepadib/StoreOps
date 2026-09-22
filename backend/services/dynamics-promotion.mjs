@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { odataGet, resolveStorePriceGroups } from './dynamics.mjs';
+import { odataGet, resolveStorePriceGroups,getProductIdentitiesByNumbers } from './dynamics.mjs';
 import { odataGetAllBySkip } from './dynamics-query.mjs';
 import { getStoreSalesPriceContext } from './dynamics-price.mjs';
 
@@ -217,4 +217,41 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
     conditionalPromotions,
     pricingNote:[promotionError?'Article et prix disponibles ; lecture promotion Dynamics indisponible pour ce scan.':null,trade.status==='AMBIGUOUS'||trade.status==='UNSAFE'?trade.reason:null,conditionalPromotions.length?'Le prix unitaire n’est pas artificiellement recalculé pour les offres Mix & Match. La mécanique du lot reste séparée.':null].filter(Boolean).join(' · ')||null
   };
+}
+
+
+export async function listStoreRetailPromotions(storeId,{businessDate=null,includeUpcoming=true}={}){
+  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
+  const groupContext=await resolveStorePriceGroups(storeId).catch(()=>null),priceGroups=resolvePriceGroups(null,groupContext?.groups||[]);
+  if(!promotionLive())return{mode:'SIMULATED',storeId,businessDate:day,priceGroups,priceGroupContext:groupContext,promotions:[],summary:{total:0,active:0,upcoming:0,items:0,truncated:false}};
+  const groupPayload=await odataGetAllBySkip(entity('retailDiscountPriceGroup',RETAIL_DISCOUNT_PRICE_GROUP_ENTITY),{
+    filter:withCompany(orFilter('PriceGroupId',priceGroups)),extra:extraCompany(),pageSize:250,maxRows:5000
+  });
+  if(groupPayload.truncated)throw Object.assign(new Error('La liste des promotions rattachées aux groupes prix est tronquée.'),{status:503,code:'D365_PROMOTION_VISIBILITY_TRUNCATED'});
+  const groupRows=Array.isArray(groupPayload.value)?groupPayload.value:[],offerIds=[...new Set(groupRows.map(x=>clean(x.OfferId)).filter(Boolean))];
+  if(!offerIds.length)return{mode:'LIVE',storeId,businessDate:day,priceGroups,priceGroupContext:groupContext,promotions:[],summary:{total:0,active:0,upcoming:0,items:0,truncated:false}};
+  const headers=[];
+  for(const batch of chunks(offerIds,20)){
+    const payload=await odataGet(entity('retailDiscount',RETAIL_DISCOUNT_ENTITY),{filter:withCompany(orFilter('OfferId',batch)),top:500,extra:extraCompany()});
+    headers.push(...(Array.isArray(payload?.value)?payload.value:[]))
+  }
+  const visibleHeaders=headers.filter(h=>{const st=promotionStatus(h,day);return st==='ACTIVE'||(includeUpcoming&&st==='UPCOMING')});
+  const visibleIds=[...new Set(visibleHeaders.map(x=>clean(x.OfferId)).filter(Boolean))];
+  const linePayloads=await Promise.all(chunks(visibleIds,6).map(batch=>odataGetAllBySkip(entity('retailDiscountLine',RETAIL_DISCOUNT_LINE_ENTITY),{
+    filter:withCompany(orFilter('OfferId',batch)),extra:extraCompany(),pageSize:250,maxRows:5000
+  })));
+  let truncated=false;const lines=[];
+  for(const payload of linePayloads){truncated=truncated||!!payload?.truncated;lines.push(...(payload?.value||[]))}
+  if(truncated)throw Object.assign(new Error('Le détail articles des promotions est tronqué.'),{status:503,code:'D365_PROMOTION_LINES_TRUNCATED'});
+  const productNumbers=[...new Set(lines.map(x=>clean(x.ItemId)).filter(Boolean))],identities=await getProductIdentitiesByNumbers(productNumbers).catch(()=>new Map());
+  const headerById=new Map(visibleHeaders.map(x=>[clean(x.OfferId),x]));
+  const promotions=visibleIds.map(offerId=>{
+    const header=headerById.get(offerId)||null,offerLines=lines.filter(x=>clean(x.OfferId)===offerId),offerGroups=[...new Set(groupRows.filter(x=>clean(x.OfferId)===offerId).map(x=>clean(x.PriceGroupId)).filter(Boolean))];
+    const items=offerLines.map(line=>{
+      const productNumber=clean(line.ItemId),identity=identities.get(productNumber),mechanic=mechanicFor(header,line,null);
+      return{lineNum:line.LineNum??null,productNumber,productName:identity?.name||clean(line.Name)||productNumber,ean:identity?.ean||null,unit:clean(line.UnitOfMeasureSymbol)||identity?.unit||null,category:clean(line.CategoryName)||null,lineType:clean(line.LineType)||null,mechanic}
+    });
+    return{offerId,name:clean(header?.Name)||offerId,status:promotionStatus(header,day),periodicDiscountType:clean(header?.PeriodicDiscountType)||null,validFrom:dateOnly(header?.ValidFrom),validTo:dateOnly(header?.ValidTo),priceGroups:offerGroups,currencyCode:clean(header?.CurrencyCode)||null,processingStatus:clean(header?.ProcessingStatus)||null,pricingPriorityNumber:header?.PricingPriorityNumber??null,items,itemCount:items.length}
+  }).sort((a,b)=>a.status===b.status?String(a.validTo||'').localeCompare(String(b.validTo||'')):a.status==='ACTIVE'?-1:1);
+  return{mode:'LIVE',storeId,businessDate:day,priceGroups,priceGroupContext:groupContext,promotions,summary:{total:promotions.length,active:promotions.filter(x=>x.status==='ACTIVE').length,upcoming:promotions.filter(x=>x.status==='UPCOMING').length,items:promotions.reduce((s,x)=>s+x.itemCount,0),truncated:false}}
 }
