@@ -33,6 +33,12 @@ jobs:
           node backend/tests/v180-access-management.mjs
           node backend/tests/commercial-lifecycle.mjs
 
+      - name: Exact Netlify frontend build
+        run: |
+          cd frontend
+          ./netlify-build.sh
+          node --check runtime-config.js
+
       - name: Wait for exact Netlify preview
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
