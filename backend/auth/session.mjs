@@ -12,7 +12,7 @@ function bearer(req){
 function claimIdentity(claims){
   return{oid:claims.oid||claims.sub||null,email:String(claims.preferred_username||claims.email||claims.upn||'').trim().toLowerCase()}
 }
-function findUserByClaims(claims,{activeOnly=true}={}){
+export function findUserByClaims(claims,{activeOnly=true}={}){
   const {oid,email}=claimIdentity(claims),active=activeOnly?' AND active=1':'';
   let user=oid?db.prepare(`SELECT * FROM users WHERE (entra_oid=? OR (identity_provider='ENTRA' AND identity_subject=?))${active}`).get(oid,oid):null;
   if(!user&&email)user=db.prepare(`SELECT * FROM users WHERE (lower(email)=? OR lower(dynamics_email)=?)${active}`).get(email,email);
