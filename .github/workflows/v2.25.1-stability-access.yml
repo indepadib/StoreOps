@@ -1,0 +1,46 @@
+name: V2.25.1 Stability & Access
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  stability-access:
+    if: github.head_ref == 'storeops-v2.25.1-stability-access'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/auth/identity.mjs
+          node --check backend/auth/session.mjs
+          node --check backend/auth/session-readonly.mjs
+          node --check backend/services/access-management.mjs
+          node --check backend/services/permissions.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/controlling.js
+          node --check frontend/js/pages/executive.js
+      - name: Access and runtime stability
+        run: node backend/tests/v251-stability-access.mjs
+      - name: Existing access governance
+        run: |
+          node backend/tests/quality-audit-access.mjs
+          node backend/tests/v180-access-management.mjs
+      - name: Static production guards
+        run: |
+          grep -q "registration.unregister" frontend/sw.js
+          grep -q "client.navigate" frontend/sw.js
+          grep -q "Cache-Control: no-store" frontend/_headers
+          grep -q "CONTROLLING" backend/services/access-management.mjs
+          grep -q "EXECUTIVE" backend/services/access-management.mjs
+          grep -q "findStoreOpsUserFromEntraClaims" backend/auth/session-readonly.mjs
+          grep -q "data-till-code" frontend/js/pages/cash-opening.js
+          grep -q "v=2251" frontend/index.html
+          ! grep -q "\$('#nav button\[data-page\].*\.forEach" frontend/js/app.js
