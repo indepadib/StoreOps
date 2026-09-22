@@ -56,6 +56,19 @@ export async function handleOpeningApi({req,url,user}){
   if(!manage(user,p.storeId))return forbidden('Préparation caisse réservée au Responsable magasin ou à la Direction.');
   return{status:200,data:await loadCashOpening(p.storeId,url.searchParams.get('date')||todayISO(),{force:true})}
  }
+ p=route(path,'/api/stores/:storeId/cash-opening/check');
+ if(p&&req.method==='POST'){
+  if(!manage(user,p.storeId))return forbidden('Contrôle caisse réservé au Responsable magasin ou à la Direction.');
+  const businessDate=url.searchParams.get('date')||todayISO(),b=await body(req),tillCode=String(b.tillCode||'').trim();
+  if(!tillCode)return{status:400,data:{error:'Code caisse obligatoire.',code:'CASH_OPENING_TILL_REQUIRED'}};
+  let opening=cashOpening(p.storeId,businessDate),line=opening?.lines?.find(x=>String(x.till_code)===tillCode)||null;
+  if(!line){
+   const loaded=await loadCashOpening(p.storeId,businessDate,{force:true});opening=loaded.opening;line=opening?.lines?.find(x=>String(x.till_code)===tillCode)||null;
+  }
+  if(!line)return{status:404,data:{error:'Caisse introuvable après resynchronisation Dynamics.',code:'CASH_OPENING_TILL_NOT_FOUND'}};
+  const result=checkCashOpeningLine({lineId:line.id,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''});
+  return{status:result.issues?.length?409:200,data:result}
+ }
  p=route(path,'/api/cash-opening/lines/:lineId/check');
  if(p&&req.method==='POST'){
   const row=db.prepare(`SELECT o.store_id FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE l.id=?`).get(p.lineId);
