@@ -260,7 +260,7 @@ export async function listStoreTradeAgreements(storeId,{businessDate=null,limit=
  const priceGroupContext=await resolveStorePriceGroups(storeId).catch(()=>null),priceGroups=[...new Set([...(priceGroupContext?.groups||[]),config.dynamics.storePriceGroups?.[storeId],config.dynamics.defaultPriceGroup||'Franprix'].map(clean).filter(Boolean))];
  const store=storeOperationalSettings(storeId),warehouseId=clean(store?.storeWarehouseId)||null;
  if(!priceLive())return{mode:'SIMULATED',storeId,businessDate:day,entity,priceGroups,priceGroupContext,warehouseId,items:[],summary:{total:0,active:0,truncated:false}};
- const fields=historyMapping?.fields||null,groupField=fields?.priceGroup||'PriceCustomerGroupCode',companyFilter=config.dynamics.dataAreaId?${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}':'';
+ const fields=historyMapping?.fields||null,groupField=fields?.priceGroup||'PriceCustomerGroupCode',companyFilter=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
  const filter=[companyFilter,groupField&&priceGroups.length?orFilter(groupField,priceGroups):''].filter(Boolean).join(' and ');
  const select=fields?[...new Set([fields.item,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(','):AGREEMENT_SELECT_FIELDS.join(',');
  const payload=await odataGetAll(entity,{filter,select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:Math.max(250,Math.min(5000,Number(limit)||1200))});
