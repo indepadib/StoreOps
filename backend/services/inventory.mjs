@@ -59,6 +59,8 @@ CREATE TABLE IF NOT EXISTS inventory_lines(
 CREATE INDEX IF NOT EXISTS ix_inventory_session_store ON inventory_sessions(store_id,status,business_date);
 CREATE INDEX IF NOT EXISTS ix_inventory_lines_session ON inventory_lines(session_id,status);
 `);
+function ensureInventoryLineColumn(column,definition){const cols=db.prepare(`PRAGMA table_info(inventory_lines)`).all();if(!cols.some(x=>x.name===column))db.exec(`ALTER TABLE inventory_lines ADD COLUMN ${column} ${definition}`)}
+ensureInventoryLineColumn('unit','TEXT NULL');
 db.prepare(`INSERT OR IGNORE INTO inventory_policies(id,recount_qty_threshold,incident_qty_threshold) VALUES('default',2,5)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -68,8 +70,8 @@ function hydrateLine(row){return row?{...row,count1_by_name:userName(row.count1_
 function hydrateSession(row){
  if(!row)return null;
  const lines=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? ORDER BY product_name`).all(row.id).map(hydrateLine);
- const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),unexplained=varianceLines.filter(x=>!x.reason_code).length,absVariance=varianceLines.reduce((s,x)=>s+Math.abs(Number(x.final_variance)),0);
- return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,unexplained,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance}};
+ const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),unexplained=varianceLines.filter(x=>!x.reason_code).length,varianceByUnit={};for(const x of varianceLines){const unit=String(x.unit||'unité');varianceByUnit[unit]=(varianceByUnit[unit]||0)+Math.abs(Number(x.final_variance||0))}const unitKeys=Object.keys(varianceByUnit),absVariance=unitKeys.length===1?varianceByUnit[unitKeys[0]]:null;
+ return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,unexplained,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance,absoluteVarianceByUnit:varianceByUnit}};
 }
 export function inventorySession(id){return hydrateSession(db.prepare(`SELECT * FROM inventory_sessions WHERE id=?`).get(id))}
 export function listInventorySessions(storeId,status='ALL'){
@@ -78,7 +80,7 @@ export function listInventorySessions(storeId,status='ALL'){
 }
 export function inventorySummary(storeId){
  const sessions=listInventorySessions(storeId,'ALL'),active=sessions.filter(x=>!['POSTED','CANCELLED'].includes(x.status));
- return{openSessions:active.length,readyToPost:active.filter(x=>x.status==='READY_TO_POST').length,pendingRecounts:active.reduce((s,x)=>s+x.metrics.recounts,0),varianceLines:active.reduce((s,x)=>s+x.metrics.varianceLines,0),absoluteVarianceQty:active.reduce((s,x)=>s+x.metrics.absoluteVarianceQty,0)};
+ const byUnit={};for(const session of active)for(const [unit,value] of Object.entries(session.metrics?.absoluteVarianceByUnit||{}))byUnit[unit]=(byUnit[unit]||0)+Number(value||0);const unitKeys=Object.keys(byUnit);return{openSessions:active.length,readyToPost:active.filter(x=>x.status==='READY_TO_POST').length,pendingRecounts:active.reduce((s,x)=>s+x.metrics.recounts,0),varianceLines:active.reduce((s,x)=>s+x.metrics.varianceLines,0),absoluteVarianceQty:unitKeys.length===1?byUnit[unitKeys[0]]:null,absoluteVarianceByUnit:byUnit};
 }
 export function createInventorySession({storeId,user,type='CYCLE',zone='',comment=''}) {
  if(!['CYCLE','TARGETED','FULL'].includes(type))throw Object.assign(new Error('Type d’inventaire invalide.'),{status:400});
@@ -103,8 +105,9 @@ export function addInventoryLine({sessionId,user,product}){
  if(!Number.isFinite(stock))throw Object.assign(new Error('Stock théorique Dynamics indisponible pour cet article. Le mapping stock doit être configuré avant comptage.'),{status:503,code:'D365_STOCK_MAPPING_REQUIRED'});
  const existing=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(sessionId,product.ean);if(existing)return hydrateLine(existing);
  const id=uid('invl');
- db.prepare(`INSERT INTO inventory_lines(id,session_id,ean,product_number,product_name,category,theoretical_qty) VALUES(?,?,?,?,?,?,?)`).run(id,sessionId,product.ean,product.productNumber||null,product.name,product.category||null,stock);
- audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_LINE_ADDED',entityType:'INVENTORY_LINE',entityId:id,details:{sessionId,ean:product.ean,theoreticalQty:stock}});
+ const unit=String(product.inventoryUnit||product.unit||'unité').trim()||'unité';
+ db.prepare(`INSERT INTO inventory_lines(id,session_id,ean,product_number,product_name,category,theoretical_qty,unit) VALUES(?,?,?,?,?,?,?,?)`).run(id,sessionId,product.ean,product.productNumber||null,product.name,product.category||null,stock,unit);
+ audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_LINE_ADDED',entityType:'INVENTORY_LINE',entityId:id,details:{sessionId,ean:product.ean,theoreticalQty:stock,unit}});
  return hydrateLine(db.prepare(`SELECT * FROM inventory_lines WHERE id=?`).get(id));
 }
 function validReason(code){return !code||INVENTORY_REASON_CODES.some(x=>x.code===code)}
