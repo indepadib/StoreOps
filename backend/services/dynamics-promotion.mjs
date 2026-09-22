@@ -1,7 +1,7 @@
 import { config } from '../config.mjs';
 import { odataGet, resolveStorePriceGroups } from './dynamics.mjs';
 import { odataGetAllBySkip } from './dynamics-query.mjs';
-import { getSalesPriceAgreementsByItem } from './dynamics-price.mjs';
+import { getStoreSalesPriceContext } from './dynamics-price.mjs';
 
 export const RETAIL_DISCOUNT_ENTITY='RetailDiscounts';
 export const RETAIL_DISCOUNT_LINE_ENTITY='RetailDiscountLines';
@@ -184,7 +184,7 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
   if(!item)throw Object.assign(new Error('ItemNumber requis.'),{status:400,code:'D365_PRODUCT_PRICE_ITEM_REQUIRED'});
   const resolvedPriceGroup=resolvePriceGroup(priceGroup);
   const [priceResult,promoResult]=await Promise.allSettled([
-    getSalesPriceAgreementsByItem(item),
+    getStoreSalesPriceContext(item,{storeId,businessDate,quantity:1,priceGroups}),
     getRetailPromotionsByItem(item,{businessDate,priceGroup:resolvedPriceGroup,priceGroups,storeId,productName,productCategory})
   ]);
 
@@ -193,9 +193,10 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
   const priceDiagnostics=priceResult.status==='fulfilled'?priceResult.value:{mode:'ERROR',basePrice:null,rowCount:0,rows:[]};
   const promoDiagnostics=promoResult.status==='fulfilled'?promoResult.value:{mode:'ERROR',productNumber:item,businessDate:dateOnly(businessDate)||new Date().toISOString().slice(0,10),priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},error:promotionError};
 
-  const baseRow=priceDiagnostics.basePrice?.row||null,basePrice=baseRow?Number(baseRow.SalesPrice):null;
+  const baseRow=priceDiagnostics.basePrice?.row||null,basePrice=baseRow?Number(baseRow.SalesPrice):null,trade=priceDiagnostics.applicability||{status:'NONE',safePrice:null};
+  const agreementPrice=trade.status==='UNIQUE'&&Number.isFinite(Number(trade.safePrice))?Number(trade.safePrice):null,pricingReference=agreementPrice??basePrice;
   const activePromotions=(promoDiagnostics.promotions||[]).filter(x=>x.activeForRequestedContext),simplePromotions=activePromotions.filter(x=>x.mechanic.type==='DISCOUNT'),conditionalPromotions=activePromotions.filter(x=>x.mechanic.type==='MIX_AND_MATCH');
-  const simpleEffectivePrices=simplePromotions.map(x=>computeSimpleEffectivePrice(basePrice,x.mechanic)).filter(Number.isFinite),effectiveUnitPrice=chooseEffectiveUnitPrice(basePrice,simpleEffectivePrices);
+  const simpleEffectivePrices=simplePromotions.map(x=>computeSimpleEffectivePrice(pricingReference,x.mechanic)).filter(Number.isFinite),effectiveUnitPrice=chooseEffectiveUnitPrice(pricingReference,simpleEffectivePrices);
   const priceMode=priceDiagnostics.mode||'SIMULATED',promotionMode=promoDiagnostics.mode||'SIMULATED';
   const fullyLive=priceMode==='LIVE'&&promotionMode==='LIVE';
   const partlyLive=priceMode==='LIVE'||promotionMode==='LIVE';
@@ -209,10 +210,11 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
     priceGroups:promoDiagnostics.priceGroups||resolvePriceGroups(resolvedPriceGroup,priceGroups),
     priceGroupContext:promoDiagnostics.priceGroupContext||null,
     basePrice:baseRow?{price:basePrice,unit:baseRow.SalesUnitSymbol||null,priceQuantity:baseRow.SalesPriceQuantity??null,priceDate:baseRow.SalesPriceDate||null,source:baseRow.BaseSalesPriceSource||null}:null,
-    tradeAgreements:{rowCount:priceDiagnostics.rowCount||0,rows:priceDiagnostics.rows||[]},
+    tradeAgreements:{rowCount:priceDiagnostics.rowCount||0,rows:priceDiagnostics.rows||[],applicability:trade,storeWarehouseId:priceDiagnostics.storeWarehouseId||null},
+    pricingBasis:agreementPrice!==null?{type:'TRADE_AGREEMENT',price:agreementPrice,recordId:trade.selected?.recordId??null,priceGroup:trade.selected?.group||null,unit:trade.selected?.unit||baseRow?.SalesUnitSymbol||null}:{type:'BASE_PRICE',price:basePrice,unit:baseRow?.SalesUnitSymbol||null},
     promotions:{rowCount:promoDiagnostics.rowCount||0,activeCount:activePromotions.length,items:promoDiagnostics.promotions||[],coverage:promoDiagnostics.coverage||{directItem:true,category:false},scan:promoDiagnostics.scan||null,warnings:promoDiagnostics.warnings||null,error:promotionError},
     effectiveUnitPrice,
     conditionalPromotions,
-    pricingNote:promotionError?'Article et prix disponibles ; lecture promotion Dynamics indisponible pour ce scan.':conditionalPromotions.length?'Le prix unitaire n’est pas artificiellement recalculé pour les offres Mix & Match. La mécanique du lot reste séparée.':null
+    pricingNote:[promotionError?'Article et prix disponibles ; lecture promotion Dynamics indisponible pour ce scan.':null,trade.status==='AMBIGUOUS'||trade.status==='UNSAFE'?trade.reason:null,conditionalPromotions.length?'Le prix unitaire n’est pas artificiellement recalculé pour les offres Mix & Match. La mécanique du lot reste séparée.':null].filter(Boolean).join(' · ')||null
   };
 }
