@@ -1,4 +1,5 @@
 import { db,uid,audit,todayISO } from '../db.mjs';
+import { normalizeUnit } from './unit-conversion.mjs';
 
 export const INVENTORY_REASON_CODES=[
  {code:'COUNT_ERROR',label:'Erreur de comptage'},
@@ -62,15 +63,36 @@ CREATE INDEX IF NOT EXISTS ix_inventory_lines_session ON inventory_lines(session
 const inventoryLineColumns=db.prepare(`PRAGMA table_info(inventory_lines)`).all();if(!inventoryLineColumns.some(x=>x.name==='unit'))db.exec(`ALTER TABLE inventory_lines ADD COLUMN unit TEXT NULL`);
 db.prepare(`INSERT OR IGNORE INTO inventory_policies(id,recount_qty_threshold,incident_qty_threshold) VALUES('default',2,5)`).run();
 
+const round3=v=>Math.round((Number(v||0)+Number.EPSILON)*1000)/1000;
+const unitKey=v=>String(v||'').trim()||'unité';
+export function inventoryControlQuantity(quantity,unit){
+ const q=Number(quantity),u=normalizeUnit(unit);
+ if(!Number.isFinite(q))return{quantity:null,unit:unitKey(unit),dimension:'UNKNOWN'};
+ if(!u)return{quantity:q,unit:unitKey(unit),dimension:'UNKNOWN'};
+ if(u.dimension==='MASS')return{quantity:round3((q*u.scale)/1000),unit:'kg',dimension:'MASS'};
+ if(u.dimension==='VOLUME')return{quantity:round3((q*u.scale)/1000),unit:'L',dimension:'VOLUME'};
+ if(u.dimension==='COUNT')return{quantity:round3(q),unit:'pièce',dimension:'COUNT'};
+ return{quantity:round3(q),unit:u.label||unitKey(unit),dimension:u.dimension||'OTHER'}
+}
+function addMetric(map,unit,value){const key=unitKey(unit);map[key]=round3(Number(map[key]||0)+Math.abs(Number(value||0)));return map}
+
+
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
 export function inventoryPolicy(){return db.prepare(`SELECT * FROM inventory_policies WHERE id='default'`).get()}
-export function inventoryConfig(){return{types:[{code:'CYCLE',label:'Inventaire tournant'},{code:'TARGETED',label:'Inventaire ciblé'},{code:'FULL',label:'Inventaire complet'}],reasons:INVENTORY_REASON_CODES,policy:inventoryPolicy()}}
-function hydrateLine(row){return row?{...row,count1_by_name:userName(row.count1_by),count2_by_name:userName(row.count2_by),variance_abs:row.final_variance==null?null:Math.abs(Number(row.final_variance))}:null}
+export function inventoryConfig(){return{types:[{code:'CYCLE',label:'Inventaire tournant'},{code:'TARGETED',label:'Inventaire ciblé'},{code:'FULL',label:'Inventaire complet'}],reasons:INVENTORY_REASON_CODES,policy:inventoryPolicy(),thresholdBasis:{MASS:'kg',VOLUME:'L',COUNT:'pièce',OTHER:'unité de stock'}}}
+function hydrateLine(row){
+ if(!row)return null;
+ const raw=row.final_variance??row.variance1,control=raw==null?{quantity:null,unit:inventoryControlQuantity(0,row.unit).unit,dimension:inventoryControlQuantity(0,row.unit).dimension}:inventoryControlQuantity(raw,row.unit);
+ return{...row,count1_by_name:userName(row.count1_by),count2_by_name:userName(row.count2_by),variance_abs:raw==null?null:Math.abs(Number(raw)),variance_control_qty:control.quantity,variance_control_abs:control.quantity==null?null:Math.abs(Number(control.quantity)),variance_control_unit:control.unit,variance_dimension:control.dimension}
+}
 function hydrateSession(row){
  if(!row)return null;
  const lines=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? ORDER BY product_name`).all(row.id).map(hydrateLine);
- const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),unexplained=varianceLines.filter(x=>!x.reason_code).length,absVariance=varianceLines.reduce((s,x)=>s+Math.abs(Number(x.final_variance)),0);
- return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,unexplained,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance}};
+ const pending=lines.filter(x=>x.status!=='COUNTED').length,recounts=lines.filter(x=>x.status==='RECOUNT').length,varianceLines=lines.filter(x=>x.final_variance!=null&&Math.abs(Number(x.final_variance))>0),unexplained=varianceLines.filter(x=>!x.reason_code).length;
+ const varianceByUnit={},controlVarianceByUnit={};
+ for(const line of varianceLines){addMetric(varianceByUnit,line.unit,Number(line.final_variance));addMetric(controlVarianceByUnit,line.variance_control_unit,Number(line.variance_control_qty))}
+ const rawUnits=Object.keys(varianceByUnit),absVariance=rawUnits.length===1?varianceByUnit[rawUnits[0]]:null;
+ return{...row,created_by_name:userName(row.created_by),reviewed_by_name:userName(row.reviewed_by),posted_by_name:userName(row.posted_by),lines,metrics:{lines:lines.length,counted:lines.length-pending,pending,recounts,unexplained,varianceLines:varianceLines.length,absoluteVarianceQty:absVariance,varianceByUnit,controlVarianceByUnit}};
 }
 export function inventorySession(id){return hydrateSession(db.prepare(`SELECT * FROM inventory_sessions WHERE id=?`).get(id))}
 export function listInventorySessions(storeId,status='ALL'){
@@ -79,7 +101,9 @@ export function listInventorySessions(storeId,status='ALL'){
 }
 export function inventorySummary(storeId){
  const sessions=listInventorySessions(storeId,'ALL'),active=sessions.filter(x=>!['POSTED','CANCELLED'].includes(x.status));
- return{openSessions:active.length,readyToPost:active.filter(x=>x.status==='READY_TO_POST').length,pendingRecounts:active.reduce((s,x)=>s+x.metrics.recounts,0),varianceLines:active.reduce((s,x)=>s+x.metrics.varianceLines,0),absoluteVarianceQty:active.reduce((s,x)=>s+x.metrics.absoluteVarianceQty,0)};
+ const varianceByUnit={},controlVarianceByUnit={};
+ for(const session of active){for(const [u,v] of Object.entries(session.metrics.varianceByUnit||{}))addMetric(varianceByUnit,u,v);for(const [u,v] of Object.entries(session.metrics.controlVarianceByUnit||{}))addMetric(controlVarianceByUnit,u,v)}
+ return{openSessions:active.length,readyToPost:active.filter(x=>x.status==='READY_TO_POST').length,pendingRecounts:active.reduce((s,x)=>s+x.metrics.recounts,0),varianceLines:active.reduce((s,x)=>s+x.metrics.varianceLines,0),absoluteVarianceQty:Object.keys(varianceByUnit).length===1?Object.values(varianceByUnit)[0]:null,varianceByUnit,controlVarianceByUnit};
 }
 export function createInventorySession({storeId,user,type='CYCLE',zone='',comment=''}) {
  if(!['CYCLE','TARGETED','FULL'].includes(type))throw Object.assign(new Error('Type d’inventaire invalide.'),{status:400});
@@ -120,12 +144,12 @@ export function countInventoryLine({lineId,user,quantity,reasonCode=null,note=''
    if(!line.requires_recount)throw Object.assign(new Error('Cette ligne ne nécessite pas de recomptage.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),finalReason=reasonCode||line.reason_code||null;
    db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,user.id,qty,variance,finalReason,note||line.note||null,lineId);
-   audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,reasonCode:reasonCode||line.reason_code||null}});
+   const control=inventoryControlQuantity(variance,line.unit);audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,unit:line.unit,controlVariance:control.quantity,controlUnit:control.unit,reasonCode:reasonCode||line.reason_code||null}});
  }else{
    if(line.count1_qty!=null)throw Object.assign(new Error('Le premier comptage existe déjà. Utilise le recomptage si nécessaire.'),{status:409});
-   const variance=qty-Number(line.theoretical_qty),needs=Math.abs(variance)>=Number(policy.recount_qty_threshold);
+   const variance=qty-Number(line.theoretical_qty),control=inventoryControlQuantity(variance,line.unit),needs=Math.abs(Number(control.quantity||0))>=Number(policy.recount_qty_threshold);
    db.prepare(`UPDATE inventory_lines SET count1_qty=?,count1_by=?,count1_at=CURRENT_TIMESTAMP,variance1=?,requires_recount=?,final_qty=?,final_variance=?,reason_code=?,note=?,status=? WHERE id=?`).run(qty,user.id,variance,needs?1:0,needs?null:qty,needs?null:variance,reasonCode||null,note||null,needs?'RECOUNT':'COUNTED',lineId);
-   audit({storeId:line.store_id,userId:user.id,action:needs?'INVENTORY_RECOUNT_REQUIRED':'INVENTORY_COUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,requiresRecount:needs,reasonCode}});
+   audit({storeId:line.store_id,userId:user.id,action:needs?'INVENTORY_RECOUNT_REQUIRED':'INVENTORY_COUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,unit:line.unit,controlVariance:control.quantity,controlUnit:control.unit,requiresRecount:needs,reasonCode}});
  }
  db.prepare(`UPDATE inventory_sessions SET status=CASE WHEN status='COUNTING' THEN 'REVIEW' ELSE status END WHERE id=?`).run(line.session_id);
  return inventorySession(line.session_id);
@@ -163,9 +187,9 @@ export function finalizeInventorySession({sessionId,user}){
  const notCounted=session.lines.filter(x=>x.status!=='COUNTED');if(notCounted.length)throw Object.assign(new Error(`${notCounted.length} ligne(s) restent à compter ou recomptabiliser.`),{status:409,details:{pending:notCounted.map(x=>x.ean)}});
  const missingReason=session.lines.filter(x=>Number(x.final_variance)!==0&&!x.reason_code);if(missingReason.length)throw Object.assign(new Error('Tout écart final doit avoir un motif.'),{status:409});
  db.prepare(`UPDATE inventory_sessions SET status='READY_TO_POST',reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=?`).run(user.id,sessionId);
- audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_READY_TO_POST',entityType:'INVENTORY_SESSION',entityId:sessionId,details:{lines:session.metrics.lines,varianceLines:session.metrics.varianceLines,absoluteVarianceQty:session.metrics.absoluteVarianceQty}});
+ audit({storeId:session.store_id,userId:user.id,action:'INVENTORY_READY_TO_POST',entityType:'INVENTORY_SESSION',entityId:sessionId,details:{lines:session.metrics.lines,varianceLines:session.metrics.varianceLines,varianceByUnit:session.metrics.varianceByUnit,controlVarianceByUnit:session.metrics.controlVarianceByUnit}});
  const ready=inventorySession(sessionId),threshold=Number(inventoryPolicy().incident_qty_threshold);
- return{session:ready,highVarianceLines:ready.lines.filter(x=>Math.abs(Number(x.final_variance||0))>=threshold)};
+ return{session:ready,highVarianceLines:ready.lines.filter(x=>Math.abs(Number(x.variance_control_qty||0))>=threshold)};
 }
 export function markInventoryPosted({sessionId,user}){
  const session=inventorySession(sessionId);if(!session)throw Object.assign(new Error('Inventaire introuvable.'),{status:404});if(session.status!=='READY_TO_POST')throw Object.assign(new Error('L’inventaire doit être validé avant posting.'),{status:409});
