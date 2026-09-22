@@ -30,7 +30,7 @@ async function computeBusinessPulse(storeId,businessDate){
  }
  const c=current.data||{},prior=comparison.status==='READY'?comparison.data:null;
  const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
- const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,pages:c.pages||0,truncated:!!c.truncated,comparisonRows:prior?.rowCount||0,comparisonStatus:comparison.status||null,comparisonError:comparison.error||null,changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
+ const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,includedRows:c.includedRowCount??c.rowCount??0,pages:c.pages||0,truncated:!!c.truncated,dataQuality:c.dataQuality||null,comparisonRows:prior?.rowCount||0,comparisonDataQuality:prior?.dataQuality||null,comparisonStatus:comparison.status||null,comparisonError:comparison.error||null,changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
  cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
 }
 
