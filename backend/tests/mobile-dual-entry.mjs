@@ -21,8 +21,8 @@ assert.ok(scanner.includes('EAN_13')&&scanner.includes('CODE_128'),'fallback mus
 assert.ok(scanner.includes('saisie manuelle'),'manual fallback must remain explicit');
 assert.ok(scanner.includes("facingMode:'environment'")||scanner.includes("facingMode:{ideal:'environment'}"),'rear camera must be preferred');
 assert.ok(pwa.includes("import './mobile-barcode.js'"),'mobile scan layer must load with StoreOps');
-assert.ok(sw.includes("'/js/mobile-barcode.js'"),'scanner JS must be available in the PWA shell');
-assert.ok(sw.includes("'/mobile-barcode.css'"),'scanner CSS must be available in the PWA shell');
+assert.ok(sw.includes('registration.unregister'),'legacy worker must self-destruct instead of precaching scanner assets');
+assert.ok(!sw.includes("addEventListener('fetch'"),'legacy worker must not intercept scanner/runtime requests');
 
 assert.ok(inventory.includes('data-inv-ean'),'inventory must keep manual EAN entry');
 assert.ok(commercial.includes('id="priceCheckEan"'),'price check must keep manual EAN entry');
