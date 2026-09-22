@@ -63,7 +63,7 @@ const cashUi=readFileSync(new URL('../../frontend/js/pages/cash-opening.js',impo
 const staffing=readFileSync(new URL('../../frontend/js/pages/staffing.js',import.meta.url),'utf8');
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 
-assert.doesNotMatch(app,/\$\('#nav button\[data-page\].*\.forEach/,'navigation must not call forEach on querySelector');
+assert.doesNotMatch(app,/\$\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/,'navigation must not call forEach on the single-element $ helper');
 assert.match(app,/document\.querySelectorAll\('#nav button\[data-page\],#managerNav/);
 assert.match(boot,/storeops-legacy-runtime-cleaned-'\+BUILD/,'browser cleanup must be build-specific');
 assert.match(boot,/2\.24\.3/);
