@@ -102,7 +102,7 @@ export function addInventoryLine({sessionId,user,product}){
  if(!['COUNTING','REVIEW'].includes(session.status))throw Object.assign(new Error('Cet inventaire ne peut plus recevoir de nouvelles lignes.'),{status:409});
  const stock=Number(product.stock);
  if(!Number.isFinite(stock))throw Object.assign(new Error('Stock théorique Dynamics indisponible pour cet article. Le mapping stock doit être configuré avant comptage.'),{status:503,code:'D365_STOCK_MAPPING_REQUIRED'});
- const existing=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(sessionId,product.ean);if(existing)return hydrateLine(existing);
+ const existing=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(sessionId,product.ean);if(existing)throw Object.assign(new Error('Cet article est déjà présent dans cet inventaire.'),{status:409,code:'INVENTORY_LINE_ALREADY_EXISTS',details:{sessionId,lineId:existing.id,ean:existing.ean}});
  const id=uid('invl');
  const unit=String(product.inventoryUnit||product.unit||'').trim()||null;
  db.prepare(`INSERT INTO inventory_lines(id,session_id,ean,product_number,product_name,category,theoretical_qty,unit) VALUES(?,?,?,?,?,?,?,?)`).run(id,sessionId,product.ean,product.productNumber||null,product.name,product.category||null,stock,unit);
