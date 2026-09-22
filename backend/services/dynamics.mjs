@@ -212,8 +212,8 @@ export async function getProductIdentityByNumber(productNumber,{force=false}={})
     return x?{productNumber:item,name:x.name||item,ean:x.ean||null,unit:x.unit||null,category:x.category||null,source:'SIMULATED_D365'}:null
   }
   const company=d.dataAreaId?`${d.dataAreaField} eq '${escapeOData(d.dataAreaId)}'`:null;
-  const productFilter=[${d.productNumberField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
-  const barcodeFilter=[${d.barcodeProductField} eq '${escapeOData(item)}',company].filter(Boolean).join(' and ');
+  const productFilter=[`${d.productNumberField} eq '${escapeOData(item)}'`,company].filter(Boolean).join(' and ');
+  const barcodeFilter=[`${d.barcodeProductField} eq '${escapeOData(item)}'`,company].filter(Boolean).join(' and ');
   const inventoryUnitField=d.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
   const productPromise=d.productEntity?odataGet(d.productEntity,{filter:productFilter,select:[d.productNumberField,d.productNameField,inventoryUnitField].filter(Boolean).join(','),top:1,extra:d.dataAreaId?'cross-company=true':''}):Promise.resolve({value:[]});
   const barcodePromise=d.barcodeEntity?odataGet(d.barcodeEntity,{filter:barcodeFilter,select:[d.barcodeProductField,d.barcodeField,d.barcodeDescriptionField,d.barcodeUnitField].filter(Boolean).join(','),top:20,extra:d.dataAreaId?'cross-company=true':''}):Promise.resolve({value:[]});
