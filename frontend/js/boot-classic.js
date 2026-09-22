@@ -1,5 +1,5 @@
 (function(){
-  var BUILD='2.25.0';
+  var BUILD='2.25.1';
   var errors=[];
   var CLEAN_KEY='storeops-legacy-runtime-cleaned-v1-'+BUILD;
   window.STOREOPS_BUILD=BUILD;
@@ -16,7 +16,6 @@
   window.addEventListener('unhandledrejection',function(e){remember(e.reason);});
 
   async function cleanLegacyRuntime(){
-    if(alreadyClean())return;
     try{
       if('serviceWorker' in navigator){
         var regs=await navigator.serviceWorker.getRegistrations();
