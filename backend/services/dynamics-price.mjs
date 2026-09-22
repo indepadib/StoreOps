@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { odataGet,odataGetAll,resolveStorePriceGroups } from './dynamics.mjs';
+import { odataGet,odataGetAll,resolveStorePriceGroups,getProductIdentitiesByNumbers } from './dynamics.mjs';
 import { effectiveD365PriceHistoryMapping } from './d365-price-history-mapping.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 
@@ -235,9 +235,51 @@ export async function getCommercialPriceChanges(storeId,businessDate){
     sources.push({source:'BASE_PRICE',status:'READY',entity,rowCount:payload.rowCount,changes:inserted})
   }catch(error){sources.push({source:'BASE_PRICE',status:'ERROR',code:error.code||'D365_BASE_PRICE_DELTA_FAILED',message:error.message})}
 
-  const changes=[...byItem.values()];
+  let changes=[...byItem.values()];
+  if(changes.length){
+    try{
+      const identities=await getProductIdentitiesByNumbers(changes.map(x=>x.productNumber).filter(Boolean));
+      changes=changes.map(x=>{
+        const identity=identities.get(x.productNumber);
+        if(!identity)return x;
+        const placeholderName=!x.productName||x.productName===x.productNumber;
+        const placeholderEan=!x.ean||String(x.ean).startsWith('ITEM:');
+        return{...x,productName:placeholderName?(identity.name||x.productName):x.productName,ean:placeholderEan?(identity.ean||x.ean):x.ean,category:x.category||identity.category||null,identitySource:identity.source||null}
+      })
+    }catch(error){sources.push({source:'PRODUCT_IDENTITY',status:'ERROR',code:error?.code||'D365_PRODUCT_IDENTITY_FAILED',message:error?.message||String(error)})}
+  }
   if(!changes.length&&sources.length&&sources.every(x=>x.status==='ERROR')){
     throw Object.assign(new Error('Dynamics n’a pas permis de lire les changements de prix du jour.'),{status:502,code:'D365_COMMERCIAL_PRICE_DELTA_FAILED',details:{sources}})
   }
   return{changes,diagnostics:{mode:'LIVE',day,scanDays,priceGroups,priceGroupContext,sources}}
+}
+
+
+export async function listStoreTradeAgreements(storeId,{businessDate=null,limit=1200}={}){
+ const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),historyMapping=effectiveD365PriceHistoryMapping(),entity=historyMapping?.entity||salesPriceEntity();
+ const priceGroupContext=await resolveStorePriceGroups(storeId).catch(()=>null),priceGroups=[...new Set([...(priceGroupContext?.groups||[]),config.dynamics.storePriceGroups?.[storeId],config.dynamics.defaultPriceGroup||'Franprix'].map(clean).filter(Boolean))];
+ const store=storeOperationalSettings(storeId),warehouseId=clean(store?.storeWarehouseId)||null;
+ if(!priceLive())return{mode:'SIMULATED',storeId,businessDate:day,entity,priceGroups,priceGroupContext,warehouseId,items:[],summary:{total:0,active:0,truncated:false}};
+ const fields=historyMapping?.fields||null,groupField=fields?.priceGroup||'PriceCustomerGroupCode',companyFilter=config.dynamics.dataAreaId?${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}':'';
+ const filter=[companyFilter,groupField&&priceGroups.length?orFilter(groupField,priceGroups):''].filter(Boolean).join(' and ');
+ const select=fields?[...new Set([fields.item,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(','):AGREEMENT_SELECT_FIELDS.join(',');
+ const payload=await odataGetAll(entity,{filter,select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:Math.max(250,Math.min(5000,Number(limit)||1200))});
+ const raw=fields?(payload.value||[]).map(row=>canonicalHistoryRow(row,fields)):(payload.value||[]);
+ const active=raw.filter(row=>{
+  const from=dateOnly(row.PriceApplicableFromDate),to=dateOnly(row.PriceApplicableToDate),group=clean(row.PriceCustomerGroupCode),customer=clean(row.CustomerAccountNumber),warehouse=clean(row.PriceWarehouseId),site=clean(row.PriceSiteId);
+  return(openBoundary(from)||day>=from)&&(openBoundary(to)||day<=to)&&(!group||priceGroups.includes(group))&&!customer&&(!warehouse||warehouse===warehouseId)&&!site
+ });
+ const identities=await getProductIdentitiesByNumbers(active.map(x=>x.ItemNumber||x.ProductNumber).filter(Boolean)).catch(()=>new Map());
+ const items=active.map(row=>{
+  const productNumber=clean(row.ItemNumber||row.ProductNumber),id=identities.get(productNumber);
+  return{
+   recordId:row.RecordId??null,productNumber,productName:id?.name||productNumber,ean:id?.ean||null,
+   price:Number.isFinite(Number(row.Price))?Number(row.Price):null,currency:clean(row.PriceCurrencyCode)||'MAD',
+   unit:clean(row.QuantityUnitySymbol)||null,priceQuantity:positiveOr(row.SalesPriceQuantity,1),
+   priceGroup:clean(row.PriceCustomerGroupCode)||null,warehouse:clean(row.PriceWarehouseId)||null,
+   validFrom:dateOnly(row.PriceApplicableFromDate),validTo:dateOnly(row.PriceApplicableToDate),
+   fromQuantity:Number.isFinite(Number(row.FromQuantity))?Number(row.FromQuantity):null,toQuantity:Number.isFinite(Number(row.ToQuantity))?Number(row.ToQuantity):null
+  }
+ });
+ return{mode:'LIVE',storeId,businessDate:day,entity,priceGroups,priceGroupContext,warehouseId,items,summary:{total:items.length,active:items.length,truncated:!!payload.truncated,rowCount:payload.rowCount,pages:payload.pages}}
 }
