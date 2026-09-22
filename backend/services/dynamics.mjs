@@ -192,8 +192,8 @@ export async function getProductByEan(ean){
 
   if(!c.productEntity || !productNumber)return barcodeProduct;
   try{
-    const select=[c.productNumberField,c.productNameField].join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{};
-    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre'};
+    const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null,select=[c.productNumberField,c.productNameField,inventoryUnitField].filter(Boolean).join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{},inventoryUnit=inventoryUnitField?String(p[inventoryUnitField]||'').trim()||null:null;
+    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre',inventoryUnit:inventoryUnit||unit||null};
   }catch(e){
     return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
   }
