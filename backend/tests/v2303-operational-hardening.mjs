@@ -28,6 +28,9 @@ assert.match(app,/location\.assign\('\/repair'\)/,'boot failure must expose dete
 
 // API serialization / legacy JSON compatibility.
 assert.match(api,/typeof options\.body==='object'[\s\S]*JSON\.stringify\(options\.body\)/);
+assert.match(api,/async function fetchSafeRead/);
+assert.match(api,/method==='GET'&&attempt===0/);
+assert.match(api,/if\(method!=='GET'\|\|attempt>0\)throw error/,'write methods must never be retried');
 assert.match(accessApi,/typeof value==='string'[\s\S]*JSON\.parse\(value\)/);
 
 // Cash opening stable route only in current UI.
