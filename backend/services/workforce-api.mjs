@@ -127,7 +127,7 @@ export async function handleWorkforceApi({req,url,user}){
  }
 
   if(path==='/api/workforce/config'&&req.method==='GET')return{status:200,data:workforceConfig()};
- let p=route(path,'/api/stores/:storeId/workforce');
+ p=route(path,'/api/stores/:storeId/workforce');
  if(p&&req.method==='GET'){
   if(!ownStore(user,p.storeId))return forbidden('Accès interdit à ce magasin.');
   const date=url.searchParams.get('date')||todayISO(),includeEnded=url.searchParams.get('includeEnded')==='1';
