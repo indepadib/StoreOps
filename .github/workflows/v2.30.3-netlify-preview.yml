@@ -51,7 +51,8 @@ jobs:
           curl -fsS -H 'x-demo-user: u-tr' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/trefle/cash-opening/sync" --data '{}' -o /tmp/cash.json
           till=$(node -e "const x=require('/tmp/cash.json');const t=x.opening?.lines?.[0]?.till_code;if(!t)process.exit(2);process.stdout.write(t)")
           expected=$(node -e "const x=require('/tmp/cash.json');process.stdout.write(String(x.opening.lines[0].expected_float??500))")
-          curl -sS -H 'x-demo-user: u-tr' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/trefle/cash-opening/check"             --data "{"tillCode":"$till","cashierName":"Preview V2303","declaredFloat":$expected,"posOk":true,"tpeOk":true,"printerOk":true,"shiftOpened":true}"             -o /tmp/cash-check.json -w '%{http_code}' > /tmp/cash-code
+          node -e "const fs=require('fs');fs.writeFileSync('/tmp/cash-payload.json',JSON.stringify({tillCode:process.argv[1],cashierName:'Preview V2303',declaredFloat:Number(process.argv[2]),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true}))" "$till" "$expected"
+          curl -sS -H 'x-demo-user: u-tr' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/trefle/cash-opening/check" --data-binary @/tmp/cash-payload.json -o /tmp/cash-check.json -w '%{http_code}' > /tmp/cash-code
           code=$(cat /tmp/cash-code); test "$code" = "200" || test "$code" = "409"
           node -e "const x=require('/tmp/cash-check.json');if(!x.line?.till_code)process.exit(1)"
 
