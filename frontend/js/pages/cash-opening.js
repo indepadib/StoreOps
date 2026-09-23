@@ -8,7 +8,13 @@ const type={NOT_STARTED:'neutral',PREPARING:'warn',READY:'ok',OPENED:'ok',PENDIN
 const tpeLabel=x=>x==='MANUAL'?'TPE manuel':x==='INTEGRATED'?'TPE intégré':x==='NONE'?'Sans TPE':'TPE';
 
 export async function renderCashOpening(){
-  const [config,data]=await Promise.all([api('/api/cash-opening/config'),api(`/api/stores/${app.storeId}/cash-opening`)]);cfg=config;const o=data.opening,s=data.summary||{},locked=o?.status==='OPENED';
+  const [config,initial]=await Promise.all([api('/api/cash-opening/config'),api(`/api/stores/${app.storeId}/cash-opening`)]);cfg=config;
+  let data=initial||{};
+  if(!data.opening&&canManage()){
+    try{data=await api(`/api/stores/${app.storeId}/cash-opening/sync`,{method:'POST'})}
+    catch(error){data={...data,sync:{ok:false,message:error.message,code:error.code||'CASH_OPENING_SYNC_FAILED'}}}
+  }
+  const o=data.opening,s=data.summary||{},locked=o?.status==='OPENED';
   $('#cashOpeningContent').innerHTML=`
     <div class="grid g4 cash-open-kpis">
       <div class="card"><div class="label">Caisses prêtes</div><div class="kpi">${s.ready||0}/${s.lines||0}</div><div class="small muted">${s.status==='OPENED'?'magasin ouvert':'avant ouverture magasin'}</div></div>
@@ -22,6 +28,7 @@ export async function renderCashOpening(){
       ${canManage()&&!locked?'<button class="btn soft" id="syncCashOpeningBtn">Resynchroniser Dynamics</button>':''}
     </div>
     ${!canManage()?'<div class="banner ban-info" style="margin-top:14px"><strong>Lecture seule.</strong> Le contrôle des caisses est réservé au Responsable magasin et à la Direction.</div>':''}
+    ${data.sync?.ok===false?`<div class="banner ban-warn" style="margin-top:14px"><strong>Synchronisation caisses indisponible</strong><span>${esc(data.sync?.message||'Réessaie la synchronisation Dynamics.')}</span></div>`:''}
     <div class="cash-open-grid">${o?.lines?.length?o.lines.map(x=>lineCard(x,locked)).join(''):'<div class="card empty">Aucune caisse reçue depuis Dynamics.</div>'}</div>
     ${isDirector()?policyPanel(config.policy):''}`;
   bind();
