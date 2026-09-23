@@ -1,5 +1,5 @@
 import{api,apiBlob}from'../api.js';
-import{app,canManage,isDirector}from'../state.js';
+import{app,canManageQuality,isDirector}from'../state.js';
 import{$,status,fmtDate,esc,toast}from'../ui.js';
 
 let cfg=null,allItems=[],productPreview=null;
@@ -24,7 +24,7 @@ export async function renderDlc(){
       ${kpi('Recontrôles en retard',s.overdueControls||0,'contrôles à reprendre','danger')}
     </div>
 
-    ${canManage()?entryPanel():`<div class="role-lock" style="margin-top:14px">Lecture seule. La saisie et le traitement DLC sont réservés au Responsable magasin et au Directeur d’Exploitation.</div>`}
+    ${canManageQuality()?entryPanel():`<div class="role-lock" style="margin-top:14px">Lecture seule. La saisie et le traitement DLC sont réservés au Responsable magasin, à la Qualité réseau et à la Direction.</div>`}
 
     <div class="network-section-title"><div><strong>File de traitement DLC / DDM</strong><span>Priorité calculée automatiquement selon le rayon et le nombre de jours restants.</span></div><span class="pill">${active.length} lot(s) actif(s)</span></div>
     <div class="dlc-priority-list">${active.length?active.map(recordCard).join(''):'<div class="card empty">Aucun lot DLC actif.</div>'}</div>
@@ -76,7 +76,7 @@ function recordCard(r){
   <div class="dlc-required-action"><span>Action requise</span><strong>${esc(risk.action||'')}</strong></div>
   ${r.overdue_control?'<div class="banner ban-danger"><strong>Recontrôle en retard.</strong> Ce lot doit être revu maintenant.</div>':r.action_satisfied?'<div class="banner ban-info"><strong>Action du lot enregistrée.</strong> Le lot reste suivi jusqu’au prochain contrôle ou jusqu’à épuisement.</div>':''}
   ${t?`<div class="small muted" style="margin-top:8px">Dernière action : <strong>${esc(actionLabel(t.action_type))}</strong> · ${esc(t.performed_by_name||'')} · ${dt(t.performed_at)}</div>`:''}
-  ${canManage()?treatmentPanel(r):''}
+  ${canManageQuality()?treatmentPanel(r):''}
   ${historyPanel(r)}
  </article>`}
 function treatmentPanel(r){
