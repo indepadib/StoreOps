@@ -63,8 +63,12 @@ jobs:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
-          curl -fsS -H 'x-demo-user: u-vf' "$PREVIEW_URL/api/stores/val-fleuri/staffing" -o /tmp/staff-get.json
-          curl -fsS -H 'x-demo-user: u-vf' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/val-fleuri/staffing/sync" --data '{}' -o /tmp/staff.json
+          get_code=$(curl -sS -H 'x-demo-user: u-vf' "$PREVIEW_URL/api/stores/val-fleuri/staffing" -o /tmp/staff-get.json -w '%{http_code}' || true)
+          echo "STAFF GET HTTP $get_code"; cat /tmp/staff-get.json
+          test "$get_code" = "200"
+          sync_code=$(curl -sS -H 'x-demo-user: u-vf' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/val-fleuri/staffing/sync" --data '{}' -o /tmp/staff.json -w '%{http_code}' || true)
+          echo "STAFF SYNC HTTP $sync_code"; cat /tmp/staff.json
+          test "$sync_code" = "200"
           node -e "const x=require('/tmp/staff.json');if(!x.summary||typeof x.summary!=='object'||!x.day||!x.day.metrics)process.exit(1)"
 
       - name: Account creation and Quality network rights
