@@ -47,7 +47,9 @@ const {createAccessAccount}=await import('../services/access-management.mjs');
 const {canAccessStore,canManageQuality,canManageDlc,canManageStore}=await import('../services/permissions.mjs');
 const {getProductByReference}=await import('../services/dynamics.mjs');
 
+db.prepare(`UPDATE users SET role='ops_director',permissions_profile='platform_admin' WHERE id='u-admin'`).run();
 const admin=db.prepare(`SELECT * FROM users WHERE id='u-admin'`).get();
+assert(admin,'test admin required');
 const quality=createAccessAccount({actor:admin,name:'Qualité V229',emailAddress:'quality.v229@example.invalid',profileCode:'QUALITY_AUDIT',identityProvider:'ENTRA'});
 const row=db.prepare(`SELECT * FROM users WHERE id=?`).get(quality.id);
 for(const storeId of ['val-fleuri','trefle']){
