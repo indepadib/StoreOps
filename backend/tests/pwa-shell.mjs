@@ -45,7 +45,7 @@ assert.match(authEntry,/innerText/,'real app bootstrap error must be surfaced in
 assert.match(authEntry,/STOREOPS_BOOT_PREP/,'auth entry must await cache cleanup before module loading');
 assert.match(authEntry,/import\(`\.\/api\.js\?v=\$\{BUILD\}`\)/,'critical startup modules must be cache-busted');
 assert.doesNotMatch(pwa,/serviceWorker\.register/,'pilot must not re-register a service worker while boot stability is being validated');
-assert.match(netlifyToml,/for = "\/js\/\*"[\s\S]*Cache-Control = "no-store, max-age=0"/,'Netlify must disable JS caching during pilot hardening');
+assert.match(netlifyToml,/for = "\/js\/\*"[\s\S]*Cache-Control = "no-cache, max-age=0, must-revalidate"/,'Netlify must revalidate JS on every pilot load');
 assert.match(netlifyToml,/for = "\/runtime-config\.js"[\s\S]*Cache-Control = "no-store, max-age=0"/,'runtime config must never be stale during pilot hardening');
 assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair gateway must unregister legacy service workers independently of app modules');
 assert.match(repair,/caches\.keys\(\)/,'repair gateway must clear legacy browser caches');
