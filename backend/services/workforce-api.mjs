@@ -90,7 +90,7 @@ export async function handleWorkforceApi({req,url,user}){
  if(p&&req.method==='POST'){
   const row=db.prepare(`SELECT o.store_id FROM cash_opening_lines l JOIN cash_openings o ON o.id=l.opening_id WHERE l.id=?`).get(p.lineId);if(!row)return{status:404,data:{error:'Caisse d’ouverture introuvable.'}};
   if(!manageStore(user,row.store_id))return forbidden('Préparation caisses réservée au Responsable magasin ou à la Direction.');
-  const b=await body(req);return{status:200,data:checkCashOpeningLine({lineId:p.lineId,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''})}
+  const b=await body(req),result=checkCashOpeningLine({lineId:p.lineId,user,cashierName:b.cashierName,declaredFloat:b.declaredFloat,posOk:b.posOk===true,tpeOk:b.tpeOk===true,printerOk:b.printerOk===true,shiftOpened:b.shiftOpened===true,note:b.note||''});return{status:result.issues?.length?409:200,data:result}
  }
  p=route(path,'/api/stores/:storeId/cash-opening/open');
  if(p&&req.method==='POST'){if(!manageStore(user,p.storeId))return forbidden();return{status:200,data:markCashOpeningOpened({storeId:p.storeId,businessDate:url.searchParams.get('date')||todayISO(),user})}}
