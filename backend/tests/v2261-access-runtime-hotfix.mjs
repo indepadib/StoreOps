@@ -36,8 +36,8 @@ const staffing=readFileSync(new URL('../../frontend/js/pages/staffing.js',import
 const accessUi=readFileSync(new URL('../../frontend/js/admin-studio-access.js',import.meta.url),'utf8');
 const api=readFileSync(new URL('../../frontend/js/api.js',import.meta.url),'utf8');
 
-assert.match(app,/document\.querySelectorAll\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/);
-assert.doesNotMatch(app,/\$\('#nav button\[data-page\],[^\n]+\.forEach/);
+assert.ok(app.includes("$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach"));
+assert.ok(!app.includes("$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach"));
 assert.match(staffing,/rawMetrics=d\.metrics\|\|data\.summary\|\|\{\}/);
 assert.match(accessUi,/body:b/);
 assert.match(api,/typeof options\.body==='object'[\s\S]*JSON\.stringify\(options\.body\)/);

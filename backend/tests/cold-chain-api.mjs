@@ -5,7 +5,9 @@ function ok(v,m){if(!v)throw new Error(m)}
 let x=await call('GET','/api/cold-chain/config','u-si');
 ok(x.r.status===200&&x.data.profiles?.length===3,'cold chain config failed');
 x=await call('GET','/api/stores/sindibad/cold-chain','u-si');
-ok(x.r.status===200&&x.data.day?.lines?.length===3&&x.data.summary?.blocking===3,'cold chain day API failed');
+ok(x.r.status===200&&!x.data.day&&x.data.sync?.code==='COLD_CHAIN_NOT_SYNCED','cold chain GET must remain read-only before first sync');
+x=await call('POST','/api/stores/sindibad/cold-chain/sync','u-si');
+ok(x.r.status===200&&x.data.day?.lines?.length===3&&x.data.summary?.blocking===3,'cold chain explicit sync failed');
 const positive=x.data.day.lines.find(i=>i.profile_code==='COLD_ROOM_POS'),fresh=x.data.day.lines.find(i=>i.profile_code==='FRESH_DISPLAY'),frozen=x.data.day.lines.find(i=>i.profile_code==='FROZEN_DISPLAY');
 
 x=await call('POST',`/api/cold-chain/lines/${positive.id}/check`,'u-emp-vf',{temperature:3.2,doorOk:true});
