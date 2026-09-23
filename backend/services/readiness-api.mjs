@@ -14,18 +14,20 @@ function storeForStaffLine(id){return db.prepare(`SELECT d.store_id FROM staffin
 
 async function loadStaffing(storeId,businessDate,{force=false}={}){
  let day=staffingDay(storeId,businessDate),sync=null;
- if(force||!day){
+ if(force){
   try{const snapshot=await getStaffingSnapshot(storeId,businessDate);day=syncStaffingDay({storeId,businessDate,snapshot});sync={ok:true,source:snapshot.source||snapshot.sourceKey||'StoreOps'}}
   catch(error){sync={ok:false,code:error?.code||'STAFFING_SYNC_FAILED',message:error?.message||String(error)}}
  }
+ if(!day)sync={ok:false,code:'STAFFING_NOT_SYNCED',message:'Planning non synchronisé pour cette journée.'};
  return{day:day||null,summary:staffingSummary(storeId,businessDate),sync}
 }
 async function loadCashOpening(storeId,businessDate,{force=false}={}){
  let opening=cashOpening(storeId,businessDate),sync=null;
- if(force||!opening){
+ if(force){
   try{const snapshot=await getCashOpeningSnapshot(storeId,businessDate);opening=syncCashOpening({storeId,businessDate,snapshot});sync={ok:true,source:snapshot.source||snapshot.sourceKey||'StoreOps'}}
   catch(error){sync={ok:false,code:error?.code||'CASH_OPENING_SYNC_FAILED',message:error?.message||String(error)}}
  }
+ if(!opening)sync={ok:false,code:'CASH_OPENING_NOT_SYNCED',message:'Préparation caisses non synchronisée pour cette journée.'};
  return{opening:opening||null,summary:cashOpeningSummary(storeId,businessDate),sync}
 }
 
