@@ -7,7 +7,12 @@ const STATE={PENDING:['À contrôler','neutral'],MISMATCH:['Non conforme','dange
 const dayState={NOT_STARTED:['À démarrer','neutral'],PREPARING:['Contrôle en cours','warn'],READY:['Froid conforme','ok'],OPENED:['Ouverture validée','ok']};
 
 export async function renderColdChain(){
- const [config,data]=await Promise.all([api('/api/cold-chain/config'),api(`/api/stores/${app.storeId}/cold-chain`)]);cfg=config;const d=data.day,s=data.summary||{},locked=d?.status==='OPENED',ds=dayState[s.status]||[s.status,'neutral'];
+ const [config,initial]=await Promise.all([api('/api/cold-chain/config'),api(`/api/stores/${app.storeId}/cold-chain`)]);cfg=config;let data=initial||{};
+ if(!data.day&&canManageQuality()){
+  try{data=await api(`/api/stores/${app.storeId}/cold-chain/sync`,{method:'POST'})}
+  catch(error){data={...data,sync:{ok:false,message:error.message,code:error.code||'COLD_CHAIN_SYNC_FAILED'}}}
+ }
+ const d=data.day,s=data.summary||{},locked=d?.status==='OPENED',ds=dayState[s.status]||[s.status,'neutral'];
  $('#coldChainContent').innerHTML=`
   <div class="grid g4 cold-kpis">
    <div class="card"><div class="label">Zones conformes</div><div class="kpi">${s.ready||0}/${s.lines||0}</div><div class="small muted">avant ouverture</div></div>
