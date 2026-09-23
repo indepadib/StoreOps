@@ -1,7 +1,7 @@
 import { accessProfiles,accessIntegrationStatus,isNetworkDirector,isPlatformAdmin,listAccessAccounts,listAccessEmployees,createAccessAccount,updateAccessAccount,setAccessAccountActive } from './access-management.mjs';
 
 function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.split('/').filter(Boolean);if(a.length!==b.length)return null;const p={};for(let i=0;i<a.length;i++){if(b[i].startsWith(':'))p[b[i].slice(1)]=decodeURIComponent(a[i]);else if(a[i]!==b[i])return null}return p}
-async function body(req){let raw='';for await(const c of req)raw+=c;try{return raw?JSON.parse(raw):{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400})}}
+async function body(req){let raw='';for await(const c of req)raw+=c;try{let value=raw?JSON.parse(raw):{};if(typeof value==='string'&&value.trim().startsWith('{'))value=JSON.parse(value);return value&&typeof value==='object'?value:{}}catch{throw Object.assign(new Error('JSON invalide'),{status:400,code:'API_INVALID_JSON_BODY'})}}
 function director(user){if(!isNetworkDirector(user))throw Object.assign(new Error('Gestion des accès réservée à la Direction.'),{status:403,code:'ACCESS_ADMIN_REQUIRED'})}
 
 export async function handleAccessManagementApi({req,url,user}){
