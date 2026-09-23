@@ -1,4 +1,5 @@
 name: V2.24 Dual Pilot Pricing & Stability
+# preview-auth-refresh: demo
 
 on:
   pull_request:
