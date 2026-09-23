@@ -85,7 +85,7 @@ function resultHtml(c){
 
 export async function renderManagerScan(){
  const store=currentStore();
- $('#managerScanContent').innerHTML=`<div class="manager-scan-shell"><div class="manager-scan-head"><span class="manager-eyebrow">${esc(store?.name||'Votre magasin')}</span><h2>Que voulez-vous vérifier ?</h2><p>Scannez un article. StoreOps rassemble prix, promo, assortiment et stock pour vous dire quoi faire.</p></div><div class="manager-scan-search"><input id="managerScanEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir un code-barres" aria-label="Code-barres"><button id="managerScanGo" class="btn brand">Rechercher</button></div><div id="managerScanResult">${lastContext?resultHtml(lastContext):'<div class="manager-scan-empty"><strong>Prêt à scanner</strong><span>La fiche article s’affichera ici sans vous envoyer dans plusieurs menus.</span></div>'}</div></div>`;
+ $('#managerScanContent').innerHTML=`<div class="manager-scan-shell"><div class="manager-scan-head"><span class="manager-eyebrow">${esc(store?.name||'Votre magasin')}</span><h2>Que voulez-vous vérifier ?</h2><p>Scannez un article. StoreOps rassemble prix, promo, assortiment et stock pour vous dire quoi faire.</p></div><div class="manager-scan-search"><input id="managerScanEan" inputmode="text" autocomplete="off" placeholder="EAN / code article / code HS" aria-label="EAN ou code article"><button id="managerScanGo" class="btn brand">Rechercher</button></div><div id="managerScanResult">${lastContext?resultHtml(lastContext):'<div class="manager-scan-empty"><strong>Prêt à scanner</strong><span>La fiche article s’affichera ici sans vous envoyer dans plusieurs menus.</span></div>'}</div></div>`;
  $('#managerScanGo')?.addEventListener('click',lookup);$('#managerScanEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('#managerScanResult')?.addEventListener('click',e=>{const requestBtn=e.target.closest('[data-create-replenishment]');if(requestBtn)return createRequest(requestBtn);const expressBtn=e.target.closest('[data-express-tool]');if(expressBtn)return openExpressTool(expressBtn.dataset.expressTool);const historyBtn=e.target.closest('[data-price-history]');if(historyBtn)return loadPriceHistory(historyBtn)});setTimeout(()=>$('#managerScanEan')?.focus(),50)
 }
 
@@ -117,7 +117,7 @@ async function createRequest(btn){
 }
 
 async function lookup(){
- const input=$('#managerScanEan'),code=String(input?.value||'').trim();if(!code)return toast('Scannez ou saisissez un code-barres.');
+ const input=$('#managerScanEan'),code=String(input?.value||'').trim();if(!code)return toast('Scannez ou saisissez un EAN, un code article ou un code HS.');
  const host=$('#managerScanResult');host.innerHTML='<div class="manager-scan-loading"><i></i><strong>Analyse de l’article…</strong><span>Prix, assortiment et stock</span></div>';
  try{lastRequest=null;lastContext=await api(`/api/stores/${app.storeId}/item-assistant/${encodeURIComponent(code)}`);host.innerHTML=resultHtml(lastContext)}catch(e){lastContext=null;lastRequest=null;host.innerHTML=`<div class="manager-scan-error"><strong>Article non trouvé</strong><span>${esc(e.message||'Impossible de lire cet article.')}</span><button class="btn soft" id="managerScanRetry">Réessayer</button></div>`;$('#managerScanRetry')?.addEventListener('click',()=>{host.innerHTML='';input?.focus()})}
 }
