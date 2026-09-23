@@ -208,8 +208,8 @@ export async function getCommercialPriceChanges(storeId,businessDate){
       if(payload.truncated)throw Object.assign(new Error(`Les accords tarifaires autour du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_PRICE_AGREEMENTS_TRUNCATED'});
       const normalized=fields?(payload.value||[]).map(row=>canonicalHistoryRow(row,fields)):(payload.value||[]);
       for(const r of normalized){
-        const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode),price=Number(r.Price);
-        if(!item||!scanDays.includes(rowDay)||!Number.isFinite(price)||price<0)continue;
+        const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode),price=normalizedPrice(r.Price,r.SalesPriceQuantity||1);
+        if(!item||!scanDays.includes(rowDay)||price===null)continue;
         if(rowGroup&&priceGroups.length&&!priceGroups.includes(rowGroup))continue;
         const record=clean(r.RecordId)||`${item}:${rowGroup||'ALL'}:${rowDay}`;
         const existing=byItem.get(item);
@@ -237,8 +237,8 @@ export async function getCommercialPriceChanges(storeId,businessDate){
     if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
     let inserted=0;
     for(const r of payload.value||[]){
-      const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=Number(r.SalesPrice);
-      if(!item||rowDay!==day||!Number.isFinite(price)||price<0||byItem.has(item))continue;
+      const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=normalizedPrice(r.SalesPrice,r.SalesPriceQuantity||1);
+      if(!item||rowDay!==day||price===null||byItem.has(item))continue;
       byItem.set(item,{
         sourceKey:`D365-PRICE-BASE-${item}-${day}`,stableKey:`D365-PRICE-BASE:${item}`,
         fingerprint:stableFingerprint(['BASE',item,price,r.SalesUnitSymbol,r.SalesPriceQuantity,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
