@@ -1,0 +1,78 @@
+name: V2.30 Pilot Operations Hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  pilot-ops:
+    if: github.head_ref == 'storeops-v2.30-pilot-ops-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/inventory.mjs
+          node --check backend/services/operations-excel.mjs
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/app.js
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/admin-studio-access.js
+          node --check backend/services/opening-api.mjs
+          node --check backend/services/access-management.mjs
+
+      - name: Unit-aware inventory
+        run: |
+          node backend/tests/v230-inventory-unit-policy.mjs
+          node backend/tests/v227-inventory-counting.mjs
+          node backend/tests/inventory-privacy.mjs
+          node backend/tests/v217-demo-ready-inventory-loss.mjs
+
+      - name: Runtime regressions
+        run: |
+          node backend/tests/v228-runtime-operations-stabilization.mjs
+          node backend/tests/v229-quality-network-ux.mjs
+          node backend/tests/v2261-access-runtime-hotfix.mjs
+          node backend/tests/quality-audit-access.mjs
+          node backend/tests/pwa-shell.mjs
+          node backend/tests/showcase-receipts.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v230-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v230-media
+        run: |
+          node backend/server.mjs >/tmp/storeops-v230.log 2>&1 &
+          echo $! >/tmp/storeops-v230.pid
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-v230.log
+          exit 1
+
+      - name: Cash opening and staffing APIs
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: |
+          node backend/tests/cash-opening-api.mjs
+          node backend/tests/staffing-api.mjs
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          test ! -f /tmp/storeops-v230.pid || kill "$(cat /tmp/storeops-v230.pid)" || true
