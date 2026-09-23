@@ -20,7 +20,7 @@ jobs:
             health=$(curl -fsS "$PREVIEW_URL/api/health" || true)
             index=$(curl -fsS "$PREVIEW_URL/index.html?ci=2303" || true)
             app=$(curl -fsS "$PREVIEW_URL/js/app.js?ci=2303" || true)
-            if echo "$health" | grep -q '"version":"2.30.3"'               && echo "$index" | grep -q 'v2.30.3'               && echo "$index" | grep -q 'auth-entry.js?v=2303'               && echo "$app" | grep -q "RELEASE_BUILD='2303'"               && echo "$app" | grep -Fq "$$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach"; then
+            if echo "$health" | grep -q '"version":"2.30.3"'               && echo "$index" | grep -q 'v2.30.3'               && echo "$index" | grep -q 'auth-entry.js?v=2303'               && echo "$app" | grep -q "RELEASE_BUILD='2303'"               && echo "$app" | grep -Fq '$('\''#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]'\'').forEach'; then
               ready=1
               echo "$health"
               break
