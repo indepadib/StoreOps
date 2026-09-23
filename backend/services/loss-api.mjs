@@ -1,5 +1,5 @@
 import { db,todayISO } from '../db.mjs';
-import { canAccessStore,canManageStore } from './permissions.mjs';
+import { canAccessStore,canManageStore,canManageQuality } from './permissions.mjs';
 import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
 import { getStoreProductByEan,stockIntegrationConfig } from './dynamics-stock.mjs';
 import { getStockSignals } from './stock-signals.mjs';
@@ -20,6 +20,7 @@ function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.s
 function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',c=>{d+=c;if(d.length>8e6)reject(Object.assign(new Error('Payload trop volumineux'),{status:413}))});req.on('end',()=>{try{resolve(d?JSON.parse(d):{})}catch{reject(Object.assign(new Error('JSON invalide'),{status:400}))}});req.on('error',reject)})}
 function requireStore(user,storeId){if(!canAccessStore(user,storeId))throw Object.assign(new Error('Accès interdit à ce magasin.'),{status:403})}
 function requireManage(user,storeId){if(!canManageStore(user,storeId))throw Object.assign(new Error('Réservé au Responsable magasin ou Directeur d’exploitation'),{status:403})}
+function requireQualityManage(user,storeId){if(!canManageQuality(user,storeId))throw Object.assign(new Error('Réservé au Responsable magasin, à la Qualité réseau ou à la Direction'),{status:403})}
 function requireDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
 
 function finitePrice(value){if(value===null||value===undefined||value==='')return null;const n=Number(value);return Number.isFinite(n)&&n>=0?n:null}
@@ -101,8 +102,8 @@ export async function handleLossApi({req,url,user}){
  if(path==='/api/cold-chain/config'&&req.method==='GET')return{status:200,data:coldChainConfig()};
  p=route(path,'/api/cold-chain/profiles/:code');if(p&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateColdProfile({code:p.code,user,tempMin:b.tempMin,tempMax:b.tempMax})}}
  p=route(path,'/api/stores/:storeId/cold-chain');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO();ensureColdChainDay(p.storeId,businessDate);return{status:200,data:{summary:coldChainSummary(p.storeId,businessDate),day:coldChainDay(p.storeId,businessDate)}}}
- p=route(path,'/api/cold-chain/lines/:lineId/check');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req),result=checkColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
- p=route(path,'/api/cold-chain/lines/:lineId/recheck');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req),result=recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
+ p=route(path,'/api/cold-chain/lines/:lineId/check');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireQualityManage(user,row.store_id);const b=await body(req),result=checkColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
+ p=route(path,'/api/cold-chain/lines/:lineId/recheck');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM cold_chain_lines l JOIN cold_chain_days d ON d.id=l.cold_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Zone froid introuvable.'),{status:404});requireStore(user,row.store_id);requireQualityManage(user,row.store_id);const b=await body(req),result=recheckColdChainLine({lineId:p.lineId,user,temperature:b.temperature,doorOk:b.doorOk===true,maintenanceSignaled:b.maintenanceSignaled===true,note:b.note||''});return{status:result.issues.length?409:200,data:result}}
 
  if(path==='/api/cash-opening/config'&&req.method==='GET')return{status:200,data:cashOpeningConfig()};
  if(path==='/api/cash-opening/policy'&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateCashOpeningPolicy({user,floatTolerance:b.floatTolerance})}}
