@@ -46,7 +46,7 @@ function entryPanel(){
  return`<div class="card dlc-entry" style="margin-top:14px">
    <div class="row"><div><strong>Nouveau contrôle DLC / DDM</strong><div class="small muted">Scanner l’article, identifier le lot puis StoreOps calcule automatiquement le niveau d’alerte et l’action attendue.</div></div><span class="pill">${isQualityAudit()?'Qualité réseau':'Saisie magasin'}</span></div>
    <div class="form-grid" style="margin-top:12px">
-    <div class="field full"><label>EAN / code interne article *</label><div class="row"><input id="dlcEan" autocomplete="off" placeholder="Scanner un EAN ou saisir HS-00000" style="flex:1;min-height:56px;font-size:1.15rem;padding:14px 16px"><button class="btn brand" id="dlcLookup" type="button">Identifier l’article</button></div><div id="dlcProductPreview" class="field-help">Recherche possible par code-barres ou code interne HS-xxxxx.</div></div>
+    <div class="field full"><label>EAN / code interne article *</label><div class="row dlc-lookup-row"><input id="dlcEan" autocomplete="off" placeholder="Scanner un EAN ou saisir HS-00000"><button class="btn brand" id="dlcLookup" type="button">Identifier l’article</button></div><div id="dlcProductPreview" class="field-help">Recherche possible par code-barres ou code interne HS-xxxxx.</div></div>
     <div class="field"><label>Type de date *</label><select id="dlcExpiryType">${cfg.expiryTypes.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div>
     <div class="field"><label>DLC / DDM *</label><input id="dlcDate" type="date"></div>
     <div class="field"><label>Quantité constatée *</label><input id="dlcQty" type="number" min="0" step="0.01"></div>
