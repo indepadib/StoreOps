@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { app,canManage,isDirector } from '../state.js';
+import { app,canManageQuality,isDirector,isQualityAudit } from '../state.js';
 import { $,esc,status,toast } from '../ui.js';
 
 let cfg=null;
@@ -16,7 +16,7 @@ export async function renderColdChain(){
    <div class="card"><div class="label">Incidents liés</div><div class="kpi">${s.openIncidents||0}</div><div class="small muted">preuve/action à clôturer</div></div>
   </div>
   <div class="card cold-head" style="margin-top:14px"><div class="row"><div><strong>Chaîne du froid · ouverture</strong><div class="small muted">Relevés terrain StoreOps. Les plages sont pilotées au niveau réseau.</div></div>${status(ds[0],ds[1])}</div><div class="cold-rule-strip"><span>Température dans la plage</span><span>Porte / fermeture conforme</span><span>Recontrôle après correction si NOK</span><span>Preuve obligatoire sur incident</span></div></div>
-  ${!canManage()?'<div class="banner ban-info" style="margin-top:14px"><strong>Lecture seule.</strong> Les contrôles sont réservés au Responsable magasin et à la Direction.</div>':''}
+  ${!canManageQuality()?'<div class="banner ban-info" style="margin-top:14px"><strong>Lecture seule.</strong> Les contrôles sont réservés au Responsable magasin, à la Qualité réseau et à la Direction.</div>':isQualityAudit()?'<div class="banner ban-info" style="margin-top:14px"><strong>Qualité réseau.</strong> Tu peux contrôler la chaîne du froid sur tous les magasins. Les paramètres de température restent gouvernés par la Direction.</div>':''}
   <div class="cold-grid">${(d?.lines||[]).map(x=>zoneCard(x,locked)).join('')}</div>
   ${isDirector()?profilePanel(config.profiles):''}`;
  bind();
@@ -28,7 +28,7 @@ function zoneCard(x,locked){const p=x.profile||{},st=STATE[x.status]||[x.status,
  <div class="cold-readings"><div><span>1er relevé</span><strong>${t(x.first_temp)}</strong></div><div><span>Recontrôle</span><strong>${t(x.second_temp)}</strong></div></div>
  ${x.status==='READY'&&openIncident?`<div class="banner ban-danger compact"><strong>Température revenue conforme</strong><span>L’incident reste bloquant jusqu’à clôture de l’action corrective et ajout de la preuve.</span></div>`:''}
  ${x.status==='MISMATCH'?`<div class="banner ban-danger compact"><strong>Anomalie froid</strong><span>Corrige la cause, attends la stabilisation puis réalise un second relevé.</span></div>`:''}
- ${canManage()&&!locked?controlForm(x):''}
+ ${canManageQuality()&&!locked?controlForm(x):''}
  <div class="cold-footer"><div class="small muted">${x.checked_by_name?`1er contrôle · ${esc(x.checked_by_name)}`:'Pas encore contrôlé'}${x.rechecked_by_name?` · recontrôle ${esc(x.rechecked_by_name)}`:''}</div>${x.incident_id?`<button class="btn soft" data-open-incident="${x.incident_id}">${openIncident?'Traiter l’incident':'Voir l’incident'}</button>`:''}</div>
  </article>`}
 function controlForm(x){const recheck=x.status==='MISMATCH'||(x.first_temp!=null&&x.incident?.status==='OPEN');const value=recheck?(x.second_temp??x.first_temp??''):(x.first_temp??'');return`<div class="cold-form">
