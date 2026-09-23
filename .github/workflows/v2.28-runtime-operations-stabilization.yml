@@ -1,0 +1,82 @@
+name: V2.28 Runtime & Operations Stabilization
+# final-head: cache-revalidation
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  stabilization:
+    if: github.head_ref == 'storeops-v2.28-runtime-operations-stabilization'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check frontend/js/app.js
+          node --check frontend/js/api.js
+          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/inventory.js
+          node --check backend/services/access-management.mjs
+          node --check backend/services/opening-api.mjs
+
+      - name: V2.28 stabilization contract
+        run: node backend/tests/v228-runtime-operations-stabilization.mjs
+
+      - name: Access management
+        run: |
+          node backend/tests/v180-access-management.mjs
+          node backend/tests/v2261-access-runtime-hotfix.mjs
+          node backend/tests/quality-audit-access.mjs
+
+      - name: Inventory and counting
+        run: node backend/tests/v227-inventory-counting.mjs
+
+      - name: PWA and runtime
+        run: node backend/tests/pwa-shell.mjs
+
+      - name: Showcase receipts
+        run: node backend/tests/showcase-receipts.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v228-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v228-media
+        run: |
+          node backend/server.mjs >/tmp/storeops-v228.log 2>&1 &
+          echo $! >/tmp/storeops-v228.pid
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-v228.log
+          exit 1
+
+      - name: Cash opening API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
+      - name: Staffing API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v228.pid ]; then kill "$(cat /tmp/storeops-v228.pid)" || true; fi

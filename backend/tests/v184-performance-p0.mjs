@@ -29,8 +29,9 @@ assert.match(bridge,/Server-Timing/,'API bridge must expose server timing diagno
 
 const jsHeader=toml.match(/for = "\/js\/\*"[\s\S]*?Cache-Control = "([^"]+)"/)?.[1]||'';
 assert(jsHeader,'JS cache header missing');
-assert.doesNotMatch(jsHeader,/no-store/,'JS modules must not be re-downloaded on every page load');
-assert.match(jsHeader,/stale-while-revalidate/,'JS cache should support fast repeat visits');
+assert.doesNotMatch(jsHeader,/no-store/,'JS modules should remain revalidatable instead of forced full-download');
+assert.match(jsHeader,/no-cache/,'JS modules must revalidate every app load during pilot hardening');
+assert.match(jsHeader,/must-revalidate/,'stale JS generations must never be used silently');
 assert.match(auth,/await start\(\);\s*loadEnhancementsDeferred\(\)/,'non-critical enhancements must load after core app startup');
 assert.match(enhancements,/Promise\.allSettled/,'deferred enhancements should load concurrently');
 

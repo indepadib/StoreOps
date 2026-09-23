@@ -31,7 +31,7 @@ assert.ok(assets.includes('/js/boot-rescue.js'),'boot rescue must be part of the
 assert.match(index,/\/js\/boot-rescue\.js/,'boot rescue must load before application startup');
 assert.match(index,/\/manager-dlc-focus\.css/,'DLC focused manager stylesheet must be linked');
 assert.match(index,/\/manager-commercial-focus\.css/,'commercial focused manager stylesheet must be linked');
-assert.match(rescue,/storeops_boot_rescue_v153/,'boot rescue must guard against reload loops');
+assert.match(rescue,/storeops_boot_rescue_v228/,'boot rescue must guard against reload loops');
 assert.match(rescue,/getRegistrations\(\)/,'boot rescue must be able to remove a broken service worker');
 assert.match(rescue,/caches\.delete/,'boot rescue must clear stale StoreOps shell caches');
 assert.match(bootClassic,/STOREOPS_BOOT_PREP/,'classic runtime must prepare a cache-clean startup before modules');
@@ -45,7 +45,7 @@ assert.match(authEntry,/innerText/,'real app bootstrap error must be surfaced in
 assert.match(authEntry,/STOREOPS_BOOT_PREP/,'auth entry must await cache cleanup before module loading');
 assert.match(authEntry,/import\(`\.\/api\.js\?v=\$\{BUILD\}`\)/,'critical startup modules must be cache-busted');
 assert.doesNotMatch(pwa,/serviceWorker\.register/,'pilot must not re-register a service worker while boot stability is being validated');
-assert.match(netlifyToml,/for = "\/js\/\*"[\s\S]*Cache-Control = "no-store, max-age=0"/,'Netlify must disable JS caching during pilot hardening');
+assert.match(netlifyToml,/for = "\/js\/\*"[\s\S]*Cache-Control = "no-cache, max-age=0, must-revalidate"/,'Netlify must revalidate JS on every pilot load');
 assert.match(netlifyToml,/for = "\/runtime-config\.js"[\s\S]*Cache-Control = "no-store, max-age=0"/,'runtime config must never be stale during pilot hardening');
 assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair gateway must unregister legacy service workers independently of app modules');
 assert.match(repair,/caches\.keys\(\)/,'repair gateway must clear legacy browser caches');
