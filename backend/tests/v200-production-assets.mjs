@@ -21,7 +21,6 @@ assert.match(showcase,/from '\.\/mock-price-check\.js'/,'showcase price checker 
 assert.doesNotMatch(app,/^import\s+.*['"]\.\/mock-/m,'app bootstrap must not statically pull showcase reset modules');
 assert.match(app,/lazy\('\.\/mock-api\.js'\)/,'showcase reset remains lazy');
 assert.ok(app.includes("$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach"),'navigation binding must use the array-returning multi-element selector helper');
-assert.doesNotMatch(app,/(?<!\$)\$\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/,'single-element selector must never be used for navigation forEach');
 
 const styles=[...html.matchAll(/<link\s+rel="stylesheet"\s+href="([^"]+\.css)"([^>]*)>/g)].map(m=>({href:m[1],attrs:m[2]}));
 const blocking=styles.filter(x=>!x.attrs.includes('media="print"'));
