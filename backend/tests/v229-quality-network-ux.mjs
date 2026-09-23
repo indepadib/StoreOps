@@ -23,7 +23,7 @@ const access=read('backend/services/access-management.mjs');
 
 assert.match(index,/id="qualityAuditNav"[^>]*>[\s\S]*data-page="quality"[\s\S]*data-page="dlc"[\s\S]*data-page="coldChain"[\s\S]*data-page="opening"[\s\S]*data-page="receipts"/);
 assert.match(app,/\['quality','dlc','coldChain','opening','receipts'\]/);
-assert.match(app,/\$\$\('#qualityAuditNav button\[data-page\]'\)\.forEach/);
+assert.match(app,/document\.querySelectorAll\('#qualityAuditNav button\[data-page\]'\)\.forEach/);
 assert.match(coldUi,/canManageQuality/);
 assert.match(lossApi,/requireQualityManage/);
 assert.match(lossApi,/checkColdChainLine/);
