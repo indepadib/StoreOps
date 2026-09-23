@@ -1,0 +1,25 @@
+name: V2.30.1 DLC Input Visibility
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dlc-input:
+    if: github.head_ref == 'storeops-v2.30.1-dlc-input-visibility'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/pages/dlc.js
+          node --check frontend/js/mobile-barcode.js
+          node --check backend/tests/v2301-dlc-input-visibility.mjs
+      - name: DLC input visibility contract
+        run: node backend/tests/v2301-dlc-input-visibility.mjs
+      - name: Existing scan/manual regression
+        run: node backend/tests/mobile-dual-entry.mjs
