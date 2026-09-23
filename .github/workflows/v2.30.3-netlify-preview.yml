@@ -77,14 +77,17 @@ jobs:
         run: |
           set -euo pipefail
           email="quality.preview.${GITHUB_RUN_ID}.${GITHUB_RUN_ATTEMPT}@example.invalid"
-          curl -fsS -H 'x-demo-user: u-ops' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/admin/access/accounts"             --data "{"name":"Amine Preview 2303","email":"$email","profileCode":"QUALITY_AUDIT","identityProvider":"ENTRA","note":"preview e2e"}"             -o /tmp/account.json
+          node -e "const fs=require('fs');fs.writeFileSync('/tmp/account-create.json',JSON.stringify({name:'Amine Preview 2303',email:process.argv[1],profileCode:'QUALITY_AUDIT',identityProvider:'ENTRA',note:'preview e2e'}))" "$email"
+          curl -fsS -H 'x-demo-user: u-ops' -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/admin/access/accounts" --data-binary @/tmp/account-create.json -o /tmp/account.json
           qid=$(node -e "const x=require('/tmp/account.json');if(!x.id||x.profileCode!=='QUALITY_AUDIT'||x.scope!=='NETWORK')process.exit(2);process.stdout.write(x.id)")
-          curl -fsS -H 'x-demo-user: u-ops' -H 'content-type: application/json' -X PUT "$PREVIEW_URL/api/admin/access/accounts/$qid"             --data "{"name":"Amine Preview 2303","email":"$email","profileCode":"QUALITY_AUDIT","identityProvider":"ENTRA","note":"édition OK"}"             -o /tmp/account-update.json
+          node -e "const fs=require('fs');fs.writeFileSync('/tmp/account-update-payload.json',JSON.stringify({name:'Amine Preview 2303',email:process.argv[1],profileCode:'QUALITY_AUDIT',identityProvider:'ENTRA',note:'édition OK'}))" "$email"
+          curl -fsS -H 'x-demo-user: u-ops' -H 'content-type: application/json' -X PUT "$PREVIEW_URL/api/admin/access/accounts/$qid" --data-binary @/tmp/account-update-payload.json -o /tmp/account-update.json
           curl -fsS -H "x-demo-user: $qid" "$PREVIEW_URL/api/stores" -o /tmp/quality-stores.json
           node -e "const x=require('/tmp/quality-stores.json');if(!x.some(v=>v.id==='val-fleuri')||!x.some(v=>v.id==='trefle'))process.exit(1)"
+          node -e "const fs=require('fs');fs.writeFileSync('/tmp/dlc-payload.json',JSON.stringify({reference:'3017620422003',expiryDate:'2026-10-15',quantity:1,zone:'Rayon',expiryType:'DDM',unit:'pièce',comment:'Preview V2303'}));fs.writeFileSync('/tmp/quality-payload.json',JSON.stringify({reference:'3017620422003',context:'Contrôle réseau',deliveredQty:1,acceptedQty:1,rejectedQty:0,packagingStatus:'OK',appearanceStatus:'NA',expiryDate:'2026-10-15',comment:'Preview V2303'}))"
           for store in val-fleuri trefle; do
-            curl -fsS -H "x-demo-user: $qid" -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/$store/dlc"               --data "{"reference":"3017620422003","expiryDate":"2026-10-15","quantity":1,"zone":"Rayon","expiryType":"DDM","unit":"pièce","comment":"Preview V2303"}"               -o "/tmp/dlc-$store.json"
-            curl -fsS -H "x-demo-user: $qid" -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/$store/quality"               --data "{"reference":"3017620422003","context":"Contrôle réseau","deliveredQty":1,"acceptedQty":1,"rejectedQty":0,"packagingStatus":"OK","appearanceStatus":"NA","expiryDate":"2026-10-15","comment":"Preview V2303"}"               -o "/tmp/quality-$store.json"
+            curl -fsS -H "x-demo-user: $qid" -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/$store/dlc" --data-binary @/tmp/dlc-payload.json -o "/tmp/dlc-$store.json"
+            curl -fsS -H "x-demo-user: $qid" -H 'content-type: application/json' -X POST "$PREVIEW_URL/api/stores/$store/quality" --data-binary @/tmp/quality-payload.json -o "/tmp/quality-$store.json"
           done
 
       - name: PO TO inventory routes on both pilots
