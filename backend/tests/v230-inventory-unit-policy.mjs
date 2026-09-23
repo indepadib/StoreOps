@@ -55,4 +55,11 @@ assert.equal(mixedView.metrics.absoluteVarianceQty,null);
 assert.equal(mixedView.metrics.varianceByUnit['pièce'],1);
 assert.equal(mixedView.metrics.varianceByUnit.g,1000);
 
+const {buildInventoryExcel}=await import('../services/operations-excel.mjs');
+const workbook=buildInventoryExcel({sessionId:mixed.id,user:manager});
+assert.match(workbook.file.content,/Unité stock/);
+assert.match(workbook.file.content,/Écart absolu cumulé \(g\)/);
+assert.match(workbook.file.content,/Écart absolu cumulé \(pièce\)/);
+assert.match(workbook.file.content,/Les g, kg, mL, L et pièces ne sont jamais additionnés/);
+
 console.log('V2.30 unit-aware inventory thresholds: OK');
