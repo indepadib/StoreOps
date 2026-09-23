@@ -19,9 +19,8 @@ const receiving=read('backend/services/dynamics-receiving.mjs');
 const accessApi=read('backend/services/access-management-api.mjs');
 
 // Boot / stale shell.
-const selector="$$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach";
-assert.ok(app.includes(selector),'navigation must use multi-selector helper $$');
-assert.ok(!app.includes("$('"+selector.slice(3)),'querySelector must never be used as a collection');
+assert.match(app,/\$\$\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/,'navigation must use multi-selector helper $');
+assert.doesNotMatch(app,/[^$]\$\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/,'querySelector must never be used as a collection');
 assert.match(app,/RELEASE_BUILD='2303'/);
 assert.match(index,/v2\.30\.3/);
 assert.doesNotMatch([app,index,api,staffing,cashOpening,accessUi].join('\n'),/v=2211|2\.21\.1/);
