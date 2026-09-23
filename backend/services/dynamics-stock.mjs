@@ -1,5 +1,5 @@
 import { config } from '../config.mjs';
-import { getProductByEan,odataGetAll } from './dynamics.mjs';
+import { getProductByEan,getProductByReference,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
 import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
 
@@ -81,15 +81,15 @@ export async function getSupplyStockByProductNumber(storeId,productNumber){retur
 
 function safeError(error){return{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}
 
-export async function getStoreProductByEan(storeId,ean){
-  let product=null,identityError=null,identityFallback=false;
+export async function getStoreProductByReference(storeId,reference){
+  const ref=clean(reference);let product=null,identityError=null,identityFallback=false;
   try{
-    product=await getProductByEan(ean);
+    product=await getProductByReference(ref);
     if(product)rememberProductIdentity(product,{liveSource:product.source||'D365'});
   }catch(error){
-    identityError=safeError(error);noteProductIdentityFailure(ean,error);product=cachedProductByEan(ean);identityFallback=!!product;if(!product)throw error
+    identityError=safeError(error);if(/^\d{8,14}$/.test(ref)){noteProductIdentityFailure(ref,error);product=cachedProductByEan(ref);identityFallback=!!product}if(!product)throw error
   }
-  if(!product){product=cachedProductByEan(ean);identityFallback=!!product;if(!product)return null}
+  if(!product&&/^\d{8,14}$/.test(ref)){product=cachedProductByEan(ref);identityFallback=!!product}if(!product)return null
 
   let stock=null,stockError=null;
   try{stock=await getStoreStockByProductNumber(storeId,product.productNumber)}catch(error){stockError=safeError(error)}
@@ -99,3 +99,5 @@ export async function getStoreProductByEan(storeId,ean){
   if(stock?.mappingRequired)return {...product,identityFallback,identityError,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
   return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
 }
+
+export async function getStoreProductByEan(storeId,ean){return getStoreProductByReference(storeId,ean)}
