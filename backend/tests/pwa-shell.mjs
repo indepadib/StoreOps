@@ -31,7 +31,7 @@ assert.ok(assets.includes('/js/boot-rescue.js'),'boot rescue must be part of the
 assert.match(index,/\/js\/boot-rescue\.js/,'boot rescue must load before application startup');
 assert.match(index,/\/manager-dlc-focus\.css/,'DLC focused manager stylesheet must be linked');
 assert.match(index,/\/manager-commercial-focus\.css/,'commercial focused manager stylesheet must be linked');
-assert.match(rescue,/storeops_boot_rescue_v153/,'boot rescue must guard against reload loops');
+assert.match(rescue,/storeops_boot_rescue_v228/,'boot rescue must guard against reload loops');
 assert.match(rescue,/getRegistrations\(\)/,'boot rescue must be able to remove a broken service worker');
 assert.match(rescue,/caches\.delete/,'boot rescue must clear stale StoreOps shell caches');
 assert.match(bootClassic,/STOREOPS_BOOT_PREP/,'classic runtime must prepare a cache-clean startup before modules');
