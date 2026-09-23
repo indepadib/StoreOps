@@ -192,7 +192,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
       if(payload.truncated)throw Object.assign(new Error(`Les accords tarifaires autour du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_PRICE_AGREEMENTS_TRUNCATED'});
       const normalized=fields?(payload.value||[]).map(row=>canonicalHistoryRow(row,fields)):(payload.value||[]);
       for(const r of normalized){
-        const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode),price=Number(r.Price);
+        const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.PriceApplicableFromDate),rowGroup=clean(r.PriceCustomerGroupCode),rawPrice=Number(r.Price),priceQty=positiveOr(r.SalesPriceQuantity,1),price=Number.isFinite(rawPrice)?rawPrice/priceQty:null;
         if(!item||!scanDays.includes(rowDay)||!Number.isFinite(price)||price<0)continue;
         if(rowGroup&&priceGroups.length&&!priceGroups.includes(rowGroup))continue;
         const record=clean(r.RecordId)||`${item}:${rowGroup||'ALL'}:${rowDay}`;
@@ -221,7 +221,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
     if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
     let inserted=0;
     for(const r of payload.value||[]){
-      const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=Number(r.SalesPrice);
+      const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),rawPrice=Number(r.SalesPrice),priceQty=positiveOr(r.SalesPriceQuantity,1),price=Number.isFinite(rawPrice)?rawPrice/priceQty:null;
       if(!item||rowDay!==day||!Number.isFinite(price)||price<0||byItem.has(item))continue;
       byItem.set(item,{
         sourceKey:`D365-PRICE-BASE-${item}-${day}`,stableKey:`D365-PRICE-BASE:${item}`,
