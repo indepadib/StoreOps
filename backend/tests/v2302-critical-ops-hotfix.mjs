@@ -15,8 +15,8 @@ const {db}=await import('../db.mjs');
 const {updateAccessAccount}=await import('../services/access-management.mjs');
 const {canAccessStore,canManageQuality,canManageDlc,canManageStore}=await import('../services/permissions.mjs');
 
-const admin=db.prepare(`SELECT * FROM users WHERE id='u-admin'`).get();
-assert(admin,'u-admin seed required');
+const admin=db.prepare(`SELECT * FROM users WHERE role='ops_director' ORDER BY id LIMIT 1`).get();
+assert(admin,'network director seed required');
 const tr=db.prepare(`SELECT * FROM users WHERE id='u-tr'`).get();
 assert(tr,'u-tr seed required');
 
