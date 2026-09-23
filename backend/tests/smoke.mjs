@@ -58,6 +58,32 @@ for(const control of x.data.items){
   const verified=await call('POST',`/api/commercial/${control.id}/control`,'u-ops',{observedPrice:control.expected_price,signageOk:true,executionOk:true,note:'contrôle CI conforme'});
   ok(verified.r.status===200,'Carita commercial control verification failed');
 }
+
+// Readiness domains are explicit writes: GET never creates ephemeral line ids.
+let readiness=await call('POST','/api/stores/carita/staffing/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.day?.lines?.length,'Carita staffing sync failed');
+for(const line of readiness.data.day.lines){
+  const attendance=await call('POST',`/api/staffing/lines/${line.id}/attendance`,'u-ops',{status:'PRESENT'});
+  ok(attendance.r.status===200,'Carita staffing attendance failed');
+}
+
+const coldCfg=await call('GET','/api/cold-chain/config','u-ops');
+readiness=await call('POST','/api/stores/carita/cold-chain/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.day?.lines?.length,'Carita cold-chain sync failed');
+for(const line of readiness.data.day.lines){
+  const profile=(coldCfg.data.profiles||[]).find(p=>p.code===line.profile_code);
+  const temp=profile&&Number.isFinite(Number(profile.temp_min))&&Number.isFinite(Number(profile.temp_max))?(Number(profile.temp_min)+Number(profile.temp_max))/2:0;
+  const check=await call('POST',`/api/cold-chain/lines/${line.id}/check`,'u-ops',{temperature:temp,doorOk:true,note:'CI conforme'});
+  ok(check.r.status===200,'Carita cold-chain readiness failed');
+}
+
+readiness=await call('POST','/api/stores/carita/cash-opening/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.opening?.lines?.length,'Carita cash-opening sync failed');
+for(const line of readiness.data.opening.lines){
+  const check=await call('POST','/api/stores/carita/cash-opening/check','u-ops',{tillCode:line.till_code,cashierName:'CI',declaredFloat:Number(line.expected_float||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true});
+  ok(check.r.status===200,'Carita cash-opening readiness failed');
+}
+
 x=await call('POST','/api/stores/carita/process/opening/validate','u-ops',{});
 ok(x.r.status===200,'opening should validate after all commercial controls are verified');
 
