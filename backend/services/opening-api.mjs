@@ -14,7 +14,7 @@ const director=user=>user?.role==='ops_director';
 
 async function loadCashOpening(storeId,businessDate,{force=false}={}){
  let opening=cashOpening(storeId,businessDate),sync={ok:true,source:opening?.source_key||null,cached:!!opening};
- if(force||!opening){
+ if(force){
   try{
    const snapshot=await getCashOpeningSnapshot(storeId,businessDate);
    opening=syncCashOpening({storeId,businessDate,snapshot});
@@ -23,11 +23,12 @@ async function loadCashOpening(storeId,businessDate,{force=false}={}){
    sync={ok:false,code:error?.code||'CASH_OPENING_SYNC_FAILED',message:error?.message||String(error)};
   }
  }
+ if(!opening)sync={ok:false,code:'CASH_OPENING_NOT_SYNCED',message:'Préparation caisses non synchronisée pour cette journée.',cached:false};
  return{opening,summary:cashOpeningSummary(storeId,businessDate),sync}
 }
 async function loadStaffing(storeId,businessDate,{force=false}={}){
  let day=staffingDay(storeId,businessDate),sync={ok:true,source:day?.source_key||null,cached:!!day};
- if(force||!day){
+ if(force){
   try{
    const snapshot=await getStaffingSnapshot(storeId,businessDate);
    day=syncStaffingDay({storeId,businessDate,snapshot});
@@ -36,6 +37,7 @@ async function loadStaffing(storeId,businessDate,{force=false}={}){
    sync={ok:false,code:error?.code||'STAFFING_SYNC_FAILED',message:error?.message||String(error)};
   }
  }
+ if(!day)sync={ok:false,code:'STAFFING_NOT_SYNCED',message:'Planning non synchronisé pour cette journée.',cached:false};
  return{day,summary:staffingSummary(storeId,businessDate),sync}
 }
 
