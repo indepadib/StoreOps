@@ -16,6 +16,10 @@ const dt=v=>v?new Date(String(v).replace(' ','T')+'Z').toLocaleString('fr-FR',{d
 const lineById=id=>(data?.items||[]).flatMap(x=>x.lines||[]).find(x=>x.id===id)||null;
 const isExpress=x=>x?.inventory_type==='TARGETED'&&x?.zone==='Express';
 const activeExpress=items=>(items||[]).find(x=>isExpress(x)&&['COUNTING','REVIEW'].includes(x.status))||null;
+function uiUnit(v){const k=String(v||'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,'');return ({G:'g',GR:'g',GRAMME:'g',GRAMMES:'g',KG:'kg',KGS:'kg',KILOGRAMME:'kg',KILOGRAMMES:'kg',ML:'mL',MILLILITRE:'mL',MILLILITRES:'mL',L:'L',LT:'L',LITRE:'L',LITRES:'L',PC:'pièce',PCS:'pièce',PIECE:'pièce',PIECES:'pièce',EA:'pièce'})[k]||String(v||'').trim()||'unité'}
+function thresholdForDisplay(unit,value){const u=uiUnit(unit),n=Number(value||0);if(u==='g')return{qty:n*1000,unit:'g',basis:`${n} kg`};if(u==='mL')return{qty:n*1000,unit:'mL',basis:`${n} L`};return{qty:n,unit:u,basis:`${n} ${u}`}}
+function varianceGroups(metrics){const rows=Object.entries(metrics?.varianceByUnit||{});return rows.length?rows.map(([u,v])=>`${Number(v)} ${esc(u)}`).join(' · '):'Aucun écart'}
+
 
 export async function renderInventory(){
   applyInventoryEntryIntent();
@@ -43,18 +47,18 @@ function miniKpi(label,value,type=''){return`<div class="inventory-mini-kpi ${ty
 function quickPanel(express){
   const recount=express?.lines?.find(x=>x.status==='RECOUNT')||null,explain=express?.lines?.find(x=>x.status==='COUNTED'&&Number(x.final_variance)!==0&&!x.reason_code)||null;
   const metrics=express?.metrics||{lines:0,counted:0,pending:0,recounts:0,unexplained:0};
-  if(recount)return`<section class="card inventory-express inventory-express-recount">
+  if(recount){const threshold=thresholdForDisplay(recount.unit,cfg.policy.recount_qty_threshold);return`<section class="card inventory-express inventory-express-recount">
     <div class="inventory-express-head"><div><span class="manager-eyebrow">INVENTAIRE EXPRESS</span><h2>Recompter ${esc(recount.product_name)}</h2><p>Un écart important a été détecté. Recomptez physiquement sans consulter le stock système.</p></div><span class="pill">EAN ${esc(recount.ean)}</span></div>
     <div class="inventory-express-grid">
       <label><span>Quantité recomptée${recount.unit?` (${esc(recount.unit)})`:''}</span><input id="invQuickRecountQty" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0"></label>
     </div>
     <button class="btn brand inventory-primary-cta" id="invQuickCount" data-ean="${esc(recount.ean)}">Valider le recomptage</button>
-    <div class="inventory-express-progress"><span>${metrics.counted}/${metrics.lines} article(s) compté(s)</span><span>${metrics.recounts} recomptage(s) en attente</span></div>
-  </section>`;
+    <div class="inventory-express-progress"><span>${metrics.counted}/${metrics.lines} article(s) compté(s)</span><span>Seuil appliqué : ${threshold.qty} ${esc(threshold.unit)} (${esc(threshold.basis)})</span></div>
+  </section>`};
 
   if(explain)return`<section class="card inventory-express inventory-express-recount">
     <div class="inventory-express-head"><div><span class="manager-eyebrow">ÉCART À EXPLIQUER</span><h2>${esc(explain.product_name)}</h2><p>Le comptage est terminé. StoreOps révèle maintenant l’écart : choisis simplement sa cause.</p></div><span class="pill">${Number(explain.final_variance)>0?'+':''}${explain.final_variance}</span></div>
-    <div class="inventory-session-kpis"><div><span>Théorique</span><strong>${explain.theoretical_qty}</strong></div><div><span>Compté</span><strong>${explain.final_qty}</strong></div><div><span>Écart</span><strong>${explain.final_variance}</strong></div></div>
+    <div class="inventory-session-kpis"><div><span>Théorique</span><strong>${explain.theoretical_qty}${explain.unit?` ${esc(uiUnit(explain.unit))}`:''}</strong></div><div><span>Compté</span><strong>${explain.final_qty}${explain.unit?` ${esc(uiUnit(explain.unit))}`:''}</strong></div><div><span>Écart</span><strong>${explain.final_variance}${explain.unit?` ${esc(uiUnit(explain.unit))}`:''}</strong></div></div>
     <div class="inventory-express-grid" style="margin-top:12px"><label><span>Motif de l’écart *</span><select id="invQuickReasonExplain"><option value="">Choisir le motif</option>${cfg.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></label><label><span>Commentaire</span><input id="invQuickReasonNote" placeholder="Précision facultative"></label></div>
     <button class="btn brand inventory-primary-cta" id="invQuickExplain" data-line="${esc(explain.id)}">Valider le motif & continuer</button>
   </section>`;
@@ -71,8 +75,8 @@ function quickPanel(express){
   </section>`
 }
 
-function conceptCard(){return`<div class="card"><div class="label">Règle de contrôle</div><strong>Écart ≥ ${cfg.policy.recount_qty_threshold} → recomptage</strong><div class="small muted" style="margin-top:5px">Écart ≥ ${cfg.policy.incident_qty_threshold} → incident Stock avec preuve. Le comptage reste aveugle jusqu’à validation.</div></div>`}
-function policyCard(){return`<div class="card inventory-policy"><div class="label">Politique réseau</div><div class="form-grid" style="margin-top:8px"><div class="field"><label>Recomptage dès écart ≥</label><input id="invRecountThreshold" type="number" min="0" step="0.01" value="${cfg.policy.recount_qty_threshold}"></div><div class="field"><label>Incident dès écart ≥</label><input id="invIncidentThreshold" type="number" min="0" step="0.01" value="${cfg.policy.incident_qty_threshold}"></div></div><div class="small muted" style="margin:8px 0">Comptage aveugle activé. Si possible, faire réaliser le recomptage par une autre personne.</div><button class="btn soft" id="saveInventoryPolicy">Enregistrer la politique</button></div>`}
+function conceptCard(){return`<div class="card"><div class="label">Règle de contrôle</div><strong>Seuils normalisés par unité métier</strong><div class="small muted" style="margin-top:5px">Recomptage dès ${cfg.policy.recount_qty_threshold} pièce(s), ${cfg.policy.recount_qty_threshold} kg ou ${cfg.policy.recount_qty_threshold} L selon l’article. Incident dès ${cfg.policy.incident_qty_threshold} pièce(s), ${cfg.policy.incident_qty_threshold} kg ou ${cfg.policy.incident_qty_threshold} L. StoreOps convertit automatiquement vers g / mL si le stock est tenu dans ces unités.</div></div>`}
+function policyCard(){return`<div class="card inventory-policy"><div class="label">Politique réseau</div><div class="form-grid" style="margin-top:8px"><div class="field"><label>Recomptage dès écart ≥</label><input id="invRecountThreshold" type="number" min="0" step="0.01" value="${cfg.policy.recount_qty_threshold}"><small>Valeur métier : pièces, kg ou L. Convertie automatiquement en g / mL.</small></div><div class="field"><label>Incident dès écart ≥</label><input id="invIncidentThreshold" type="number" min="0" step="0.01" value="${cfg.policy.incident_qty_threshold}"><small>Même logique d’unité que le recomptage.</small></div></div><div class="small muted" style="margin:8px 0">Comptage aveugle activé. Les quantités théoriques restent cachées avant validation et les écarts de natures différentes ne sont jamais additionnés entre eux.</div><button class="btn soft" id="saveInventoryPolicy">Enregistrer la politique</button></div>`}
 function createPanel(){return`<div class="card inventory-create" style="margin-top:14px"><div class="row"><div><strong>Inventaire avancé</strong><div class="small muted">Pour un inventaire complet, tournant ou sur une zone précise.</div></div><span class="pill">Optionnel</span></div><div class="form-grid" style="margin-top:10px"><div class="field"><label>Type</label><select id="invType">${cfg.types.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div><div class="field"><label>Zone / périmètre</label><input id="invZone" placeholder="Ex. PLS, Réserve, Allée 3"></div><div class="field full"><label>Commentaire</label><input id="invComment" placeholder="Objectif du comptage / anomalie déclencheuse"></div></div><button class="btn soft" id="createInventory" style="margin-top:10px">Créer l’inventaire avancé</button></div>`}
 
 function sessionCard(inv){
@@ -80,7 +84,7 @@ function sessionCard(inv){
  const title=isExpress(inv)?'Comptage express':`${sessionLabel(inv.inventory_type)}${inv.zone?` · ${inv.zone}`:''}`;
  return`<article class="card inventory-session ${ready?'inventory-ready':''}" data-inventory-session-id="${esc(inv.id)}">
    <div class="row"><div><div class="small muted">${isExpress(inv)?'Scan libre':esc(inv.zone||'Périmètre magasin')}</div><h3>${esc(title)}</h3><div class="small muted">ID ${esc(inv.id)} · Créé par ${esc(inv.created_by_name||'—')} · ${dt(inv.created_at)}</div></div>${status(sessionStatus(inv.status),statusKind(inv.status))}</div>
-   <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Écart abs.</span><strong>${inv.metrics.absoluteVarianceQty}</strong></div></div>
+   <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Lignes en écart</span><strong>${inv.metrics.varianceLines}</strong></div></div><div class="small muted inventory-progress-line">Écarts cumulés par unité : ${varianceGroups(inv.metrics)}</div>
    ${editable&&inv.metrics.lines?`<div class="small muted inventory-progress-line">Progression ${pct}% · ${pending} à compter · ${unexplained} écart(s) à expliquer</div>`:''}
    ${editable&&!isExpress(inv)?addLinePanel(inv):''}
    <div class="table-wrap inventory-table-wrap" style="margin-top:10px"><table class="table inventory-table"><thead><tr><th>Article</th><th>Théorique</th><th>1er comptage</th><th>Écart</th><th>Recomptage / final</th><th>Motif</th><th>Action</th></tr></thead><tbody>${inv.lines.map(lineRow).join('')||'<tr><td colspan="7"><div class="empty compact">Aucun article.</div></td></tr>'}</tbody></table></div>
@@ -95,7 +99,7 @@ function lineRow(l){
  const unit=l.unit?` ${esc(l.unit)}`:'';
  const theoretical=view.blind?hiddenValue():`<strong>${view.theoretical}${unit}</strong>`;
  const count1=view.blind?hiddenValue(view.blind==='RECOUNT'?'1er comptage masqué':'—'):`${view.count1??'—'}${view.count1!=null?unit:''}<div class="small muted">${view.count1By?esc(view.count1By):''}</div>`;
- const varianceHtml=view.blind?hiddenValue():`${variance??'—'}`;
+ const varianceHtml=view.blind?hiddenValue():`${variance??'—'}${variance!=null&&l.unit?` ${esc(uiUnit(l.unit))}`:''}`;
  const finalHtml=view.blind?(l.status==='RECOUNT'?hiddenValue('À recompter'):'—'):`${view.final??'—'}${view.final!=null?unit:''}${l.requires_recount?'<div class="small danger-text">Recomptage obligatoire</div>':''}`;
  const reasonHtml=view.showReason?`${esc(reasonLabel(l.reason_code))}${l.note?`<div class="small muted">${esc(l.note)}</div>`:''}`:hiddenValue();
  return`<tr class="inventory-line-row ${view.blind?'inventory-line-blind':''}"><td data-label="Article"><strong>${esc(l.product_name)}</strong><div class="small muted">${esc(l.ean)}${l.product_number?' · '+esc(l.product_number):''}</div></td><td data-label="Théorique">${theoretical}</td><td data-label="1er comptage">${count1}</td><td data-label="Écart" class="${varianceClass}">${varianceHtml}</td><td data-label="Recomptage / final">${finalHtml}</td><td data-label="Motif">${reasonHtml}</td><td data-label="Action">${action}</td></tr>`}
@@ -127,7 +131,8 @@ async function lookupQuickInventoryProduct(){
   const product=await api(`/api/stores/${app.storeId}/products/${encodeURIComponent(ean)}`);
   quickInventoryProduct=product;
   const unit=product.inventoryUnit||product.unit||null;
-  if(host)host.innerHTML=`<strong>${esc(product.name||product.productNumber||ean)}</strong>${unit?` · Unité de comptage : <strong>${esc(unit)}</strong>`:' · unité de comptage non renseignée'}`;
+  const threshold=thresholdForDisplay(unit,cfg.policy.recount_qty_threshold);
+  if(host)host.innerHTML=`<strong>${esc(product.name||product.productNumber||ean)}</strong>${unit?` · Unité de comptage : <strong>${esc(uiUnit(unit))}</strong> · recomptage à partir d’un écart de <strong>${threshold.qty} ${esc(threshold.unit)}</strong>`:' · unité de comptage non renseignée'}`;
   if(label)label.textContent=`2 · Quantité physique${unit?` (${unit})`:''}`;
   if(qty){qty.disabled=false;qty.focus()}
   return product
