@@ -66,7 +66,7 @@ jobs:
           grep -q "storeops-shell-v2.30.2" frontend/sw.js
           grep -q "CASH_OPENING_NOT_SYNCED" backend/services/opening-api.mjs
           grep -q "STAFFING_NOT_SYNCED" backend/services/opening-api.mjs
-          grep -q "\$\$('#nav button" frontend/js/app.js
+          grep -q "RELEASE_BUILD='2302'" frontend/js/app.js
 
       - name: Stop isolated API
         if: always()
