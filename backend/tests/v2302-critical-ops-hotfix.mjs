@@ -5,7 +5,7 @@ process.env.STOREOPS_DB=`/tmp/storeops-v2302-hotfix-${process.pid}.db`;
 
 const appSource=fs.readFileSync(new URL('../../frontend/js/app.js',import.meta.url),'utf8');
 const openingSource=fs.readFileSync(new URL('../services/opening-api.mjs',import.meta.url),'utf8');
-assert.match(appSource,/\$\$\('#nav button\[data-page\],#managerNav button\[data-page\],#qualityAuditNav button\[data-page\],#developmentNavBar button\[data-page\]'\)\.forEach/);
+assert.ok(appSource.includes("$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach"));
 assert.doesNotMatch(openingSource,/force\|\|!opening/);
 assert.doesNotMatch(openingSource,/force\|\|!day/);
 assert.match(openingSource,/CASH_OPENING_NOT_SYNCED/);
