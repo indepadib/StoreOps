@@ -38,7 +38,7 @@ assert.match(inventory,/Historique & export/);
 assert.match(inventory,/storeops_inventory_entry_mode/);
 assert.match(accessUi,/Création autonome/);
 assert.match(accessUi,/StoreOps associe automatiquement son Object ID/);
-assert.match(authEntry,/BUILD_LABEL='2\.29\.0'/);
+assert.match(authEntry,/BUILD_LABEL='2\.30\.0'/);
 assert.match(netlify,/for = "\/js\/\*"[\s\S]*Cache-Control = "no-cache, max-age=0, must-revalidate"/);
 assert.match(netlify,/for = "\/\*\.css"[\s\S]*Cache-Control = "no-cache, max-age=0, must-revalidate"/);
 assert.doesNotMatch(pwa,/serviceWorker\.register/);
