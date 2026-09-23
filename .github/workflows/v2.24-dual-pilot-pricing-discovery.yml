@@ -1,22 +1,42 @@
-name: V2.24 Dual Pilot Pricing Discovery
+name: V2.24 Dual Pilot Pricing & Stability
 
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  pricing-discovery:
+  pricing-stability:
     if: github.head_ref == 'storeops-v2.24-dual-pilot-pricing'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - name: Discover pricing sources for both pilots
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax and static contracts
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/price-check.mjs
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/staffing.js
+          node backend/tests/v224-operational-stability.mjs
+          node backend/tests/quality-audit-access.mjs
+
+      - name: Validate live dual-pilot pricing and restored APIs
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
           code=""
-          for i in $(seq 1 60); do
+          for i in $(seq 1 90); do
             code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
             [ "$code" = "200" ] && break
             sleep 5
@@ -24,23 +44,19 @@ jobs:
           test "$code" = "200"
 
           for channel in 10001 10002; do
-            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=RetailChannelPriceGroups&top=50&filter=RetailChannelId%20eq%20%27$channel%27"               -o "/tmp/groups-$channel.json"
+            curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=RetailChannelPriceGroups&top=50&filter=RetailChannelId%20eq%20%27$channel%27"               -o "/tmp/groups-$channel.json"
           done
 
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=20&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/base-price.json
+          curl -fsS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=20&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/base-price.json
 
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/trade.json || true
+          for store in val-fleuri trefle; do
+            curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/item-assistant/HS-003577"               -o "/tmp/item-$store.json"
+            curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/price-check/context/HS-003577"               -o "/tmp/price-$store.json"
+          done
 
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/entities?q=SalesPrice"             -o /tmp/entities.json
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franprix%27"             -o /tmp/trade-franprix.json || true
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=50&filter=PriceCustomerGroupCode%20eq%20%27Franp%20VF%27"             -o /tmp/trade-vf.json || true
-
-          day=$(date -u +%F)
-          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=store eq 'FRP0002' and businessDate eq $day"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/trefle-sales-sample.json
-          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=store eq 'FRP0002' and businessDate eq $day and (netAmountInclTax lt -10000 or netAmountInclTax gt 10000)"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/trefle-sales-outliers.json
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/stores/trefle/business-pulse?date=$day&force=1"             -o /tmp/trefle-pulse.json
-          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=transactionId eq 'FRP0002-FRP2-POS2-1790066231670'"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/trefle-bad-transaction.json
-          curl -sS -G -H "x-demo-user: u-admin"             --data-urlencode "entity=RetailTransactionSalesTransBIEntities"             --data-urlencode "top=20"             --data-urlencode "filter=store eq 'FRP0001' and businessDate eq $day and (netAmountInclTax lt -10000 or netAmountInclTax gt 10000)"             "$PREVIEW_URL/api/dynamics/probe" -o /tmp/vf-sales-outliers.json
+          curl -fsS -H "x-demo-user: u-tr"             "$PREVIEW_URL/api/stores/trefle/cash-opening" -o /tmp/cash.json
+          curl -fsS -H "x-demo-user: u-tr"             "$PREVIEW_URL/api/stores/trefle/staffing" -o /tmp/staffing.json
+          curl -fsS -H "x-demo-user: u-quality-audit"             "$PREVIEW_URL/api/stores/trefle/dlc?status=ALL" -o /tmp/quality-dlc.json
 
           node - <<'NODE'
           const fs=require('fs');
@@ -48,32 +64,28 @@ jobs:
           const groups={};
           for(const ch of ['10001','10002']){
             const p=read('/tmp/groups-'+ch+'.json');
-            groups[ch]=(p.rows||[]).map(r=>({RetailChannelId:r.RetailChannelId,GroupCode:r.GroupCode,PriceGroupId:r.PriceGroupId,Name:r.Name}));
+            groups[ch]=(p.rows||[]).map(r=>r.GroupCode).filter(Boolean);
           }
           const base=read('/tmp/base-price.json');
-          const trade=read('/tmp/trade.json');
-          const entities=read('/tmp/entities.json');
-          const baseRows=(base.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|salesprice|salesunit|pricequantity|date|tax|discount/i.test(k)&&v!==null&&v!=='')));
-          const tradeRows=(trade.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')));
-          const entityRows=Array.isArray(entities)?entities:Array.isArray(entities.value)?entities.value:[];
-          const entityNames=entityRows.map(x=>x.PublicCollectionName||x.PublicEntityName||x.Name||x.EntityName).filter(Boolean);
-          const tf=read('/tmp/trade-franprix.json'),tv=read('/tmp/trade-vf.json');
-          const salesSample=read('/tmp/trefle-sales-sample.json'),salesOutliers=read('/tmp/trefle-sales-outliers.json'),pulse=read('/tmp/trefle-pulse.json'),badTx=read('/tmp/trefle-bad-transaction.json'),vfOutliers=read('/tmp/vf-sales-outliers.json');
-          const compact=p=>({ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,rows:(p.rows||[]).slice(0,10).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/item|product|price|currency|quantity|unit|group|customer|warehouse|site|from|to|date/i.test(k)&&v!==null&&v!=='')))});
-          const salesCompact=p=>({ok:p.ok,rowCount:p.rowCount,rows:(p.rows||[]).map(r=>({transactionId:r.transactionId,itemId:r.itemId,qty:r.qty,netAmountInclTax:r.netAmountInclTax,grossAmount:r.grossAmount,totalDiscountAmount:r.totalDiscountAmount,price:r.price,store:r.store,businessDate:r.businessDate}))});
-          console.log(JSON.stringify({
+          const vf=read('/tmp/item-val-fleuri.json'),tr=read('/tmp/item-trefle.json');
+          const pvf=read('/tmp/price-val-fleuri.json'),ptr=read('/tmp/price-trefle.json');
+          const cash=read('/tmp/cash.json'),staff=read('/tmp/staffing.json'),dlc=read('/tmp/quality-dlc.json');
+          const out={
             groups,
-            base:{ok:base.ok,rowCount:base.rowCount,rows:baseRows},
-            trade:{ok:trade.ok,rowCount:trade.rowCount,error:trade.error||trade.message||null,rows:tradeRows},
-            tradeByGroup:{Franprix:compact(tf),FranpVF:compact(tv)},
-            salesPriceEntities:entityNames,
-            trefleSalesSample:salesCompact(salesSample),
-            trefleSalesOutliers:salesCompact(salesOutliers),
-            trefleBadTransaction:{ok:badTx.ok,rowCount:badTx.rowCount,rows:badTx.rows||[]},
-            valFleuriSalesOutliers:salesCompact(vfOutliers),
-            treflePulse:{status:pulse.status,businessDate:pulse.businessDate,ca:pulse.snapshot?.kpis?.netSales??null,tickets:pulse.snapshot?.kpis?.tickets??null,basket:pulse.snapshot?.kpis?.averageBasket??null,rows:pulse.diagnostics?.rows??null}
-          },null,2));
-          if(!groups['10001'].length)process.exit(2);
-          if(!groups['10002'].length)process.exit(3);
-          if(!baseRows.length)process.exit(4);
+            base:(base.rows||[]).map(r=>({item:r.ItemNumber,price:r.SalesPrice,unit:r.SalesUnitSymbol,qty:r.SalesPriceQuantity})),
+            valFleuri:{item:vf.item?.productNumber,price:pvf.expectedUnitPrice,ean:pvf.product?.ean||null},
+            trefle:{item:tr.item?.productNumber,price:ptr.expectedUnitPrice,ean:ptr.product?.ean||null},
+            cash:{status:cash.summary?.status,lines:cash.opening?.lines?.length??0,sync:cash.sync},
+            staffing:{status:staff.summary?.status,hasDay:!!staff.day,sync:staff.sync},
+            qualityDlc:{items:(dlc.items||[]).length}
+          };
+          console.log(JSON.stringify(out,null,2));
+          if(!groups['10001'].includes('Franprix'))process.exit(2);
+          if(!groups['10002'].includes('Franprix'))process.exit(3);
+          if(!(base.rows||[]).some(r=>r.ItemNumber==='HS-003577'))process.exit(4);
+          if(vf.item?.productNumber!=='HS-003577'||tr.item?.productNumber!=='HS-003577')process.exit(5);
+          if(pvf.product?.productNumber!=='HS-003577'||ptr.product?.productNumber!=='HS-003577')process.exit(6);
+          if(!cash.summary)process.exit(7);
+          if(!staff.summary)process.exit(8);
+          if(!Array.isArray(dlc.items))process.exit(9);
           NODE
