@@ -171,6 +171,41 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
   priceGroupCache.set(cacheKey,{value,expiresAt:Date.now()+Math.min(ttl,15)*1000});return value;
 }
 
+export async function getProductByIdentifier(identifier){
+  const code=String(identifier||'').trim();if(!code)return null;
+  if(!isD365ReadLive('product')){
+    if(PRODUCTS[code])return PRODUCTS[code];
+    return Object.values(PRODUCTS).find(x=>String(x?.productNumber||'').trim()===code)||null;
+  }
+  const byEan=await getProductByEan(code).catch(error=>{
+    if(error?.code==='D365_MAPPING_REQUIRED')throw error;
+    return null
+  });
+  if(byEan)return byEan;
+
+  const c=config.dynamics;
+  if(!c.productEntity||!c.productNumberField)return null;
+  const filters=[`${c.productNumberField} eq '${escapeOData(code)}'`];
+  if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+  const select=[c.productNumberField,c.productNameField,c.dataAreaField].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+  const productPayload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''});
+  const row=productPayload?.value?.[0];if(!row)return null;
+
+  let barcodeRow=null;
+  if(c.barcodeEntity&&c.barcodeProductField&&c.barcodeField){
+    try{
+      const barcodeFilters=[`${c.barcodeProductField} eq '${escapeOData(code)}'`];
+      if(c.dataAreaId)barcodeFilters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+      const barcodePayload=await odataGet(c.barcodeEntity,{filter:barcodeFilters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''});
+      barcodeRow=barcodePayload?.value?.[0]||null
+    }catch{}
+  }
+  const ean=barcodeRow?.[c.barcodeField]||null;
+  const unit=barcodeRow?.[c.barcodeUnitField]||barcodeRow?.UnitID||barcodeRow?.UnitId||null;
+  const name=row?.[c.productNameField]||barcodeRow?.[c.barcodeDescriptionField]||code;
+  return{ean,name,price:null,stock:null,category:barcodeRow?.Category||row?.Category||'Autre',productNumber:row?.[c.productNumberField]||code,unit,dataAreaId:row?.[c.dataAreaField]||barcodeRow?.[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupIdentifier:code,lookupType:'PRODUCT_NUMBER'}
+}
+
 export async function getProductByEan(ean){
   if(!isD365ReadLive('product')) return PRODUCTS[ean] || null;
   const c=config.dynamics;
