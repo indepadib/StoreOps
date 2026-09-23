@@ -35,8 +35,12 @@ jobs:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
         run: |
           set -euo pipefail
-          curl -fsS -H 'x-demo-user: u-vf' "$PREVIEW_URL/api/session" -o /tmp/session.json
-          curl -fsS -H 'x-demo-user: u-ops' "$PREVIEW_URL/api/stores" -o /tmp/stores.json
+          session_code=$(curl -sS -H 'x-demo-user: u-vf' "$PREVIEW_URL/api/session" -o /tmp/session.json -w '%{http_code}' || true)
+          stores_code=$(curl -sS -H 'x-demo-user: u-ops' "$PREVIEW_URL/api/stores" -o /tmp/stores.json -w '%{http_code}' || true)
+          echo "SESSION HTTP $session_code"; cat /tmp/session.json
+          echo "STORES HTTP $stores_code"; cat /tmp/stores.json
+          test "$session_code" = "200"
+          test "$stores_code" = "200"
           node -e "const s=require('/tmp/session.json'),x=require('/tmp/stores.json');if(!s.user||!x.some(v=>v.id==='val-fleuri')||!x.some(v=>v.id==='trefle'))process.exit(1)"
 
       - name: Cash opening stable route
