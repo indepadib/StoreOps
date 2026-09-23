@@ -1,0 +1,109 @@
+name: V2.30.3 Operational Hardening
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  contracts:
+    if: github.head_ref == 'storeops-v2.30.3-operational-hardening'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check frontend/js/app.js
+          node --check frontend/js/api.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/admin-studio-access.js
+          node --check backend/services/access-management.mjs
+          node --check backend/services/access-management-api.mjs
+          node --check backend/services/opening-api.mjs
+
+      - name: Operational hardening contract
+        run: node backend/tests/v2303-operational-hardening.mjs
+
+      - name: Access runtime regressions
+        run: |
+          node backend/tests/v2261-access-runtime-hotfix.mjs
+          node backend/tests/v2302-critical-ops-hotfix.mjs
+          node backend/tests/quality-audit-access.mjs
+          node backend/tests/v180-access-management.mjs
+
+      - name: Inventory regressions
+        run: |
+          node backend/tests/v227-inventory-counting.mjs
+          node backend/tests/v230-inventory-unit-policy.mjs
+          node backend/tests/v2303-inventory-dual-pilot.mjs
+
+      - name: Showcase operational regressions
+        run: |
+          node backend/tests/showcase-cash-opening.mjs
+          node backend/tests/showcase-staffing.mjs
+          node backend/tests/showcase-receipts.mjs
+
+      - name: PWA / cache contract
+        run: node backend/tests/pwa-shell.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          D365_STOCK_READ_MODE: simulated
+          D365_RECEIVING_READ_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v2303-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2303-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v2303.log 2>&1 &
+          echo $! > /tmp/storeops-v2303.pid
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/storeops-v2303.log
+          exit 1
+
+      - name: Cash opening API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
+      - name: Staffing API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+
+      - name: Access + Quality network API
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/v2303-access-quality-api.mjs
+
+      - name: Safety
+        run: |
+          grep -q "RELEASE_BUILD='2303'" frontend/js/app.js
+          grep -q "BUILD_LABEL='2.30.3'" frontend/js/auth-entry.js
+          grep -q "storeops-shell-v2.30.3" frontend/sw.js
+          grep -q "storeops_boot_rescue_v2303" frontend/js/boot-rescue.js
+          grep -q "storeops_clean=2303" frontend/repair.html
+          ! grep -R "v=2211" frontend/js frontend/index.html
+          ! grep -Fq "\$('#nav button[data-page],#managerNav button[data-page],#qualityAuditNav button[data-page],#developmentNavBar button[data-page]').forEach" frontend/js/app.js
+          ! grep -q "/api/cash-opening/lines/" frontend/js/pages/cash-opening.js
+          grep -q "data-receipt-type=\"PO\"" frontend/js/pages/receipts.js
+          grep -q "data-receipt-type=\"TO\"" frontend/js/pages/receipts.js
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v2303.pid ]; then kill "$(cat /tmp/storeops-v2303.pid)" || true; fi
