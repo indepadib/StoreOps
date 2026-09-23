@@ -200,6 +200,39 @@ export async function getProductByEan(ean){
   }
 }
 
+
+export async function getProductByReference(reference){
+  const ref=String(reference||'').trim();
+  if(!ref)return null;
+  const direct=await getProductByEan(ref);
+  if(direct)return{...direct,lookupReference:ref,lookupType:'EAN'};
+  if(!isD365ReadLive('product')){
+    const local=Object.values(PRODUCTS).find(x=>String(x.productNumber||'').toLowerCase()===ref.toLowerCase());
+    return local?{...local,lookupReference:ref,lookupType:'PRODUCT_NUMBER'}:null
+  }
+  const c=config.dynamics;
+  if(!c.productEntity||!c.productNumberField)return null;
+  const filters=[`${c.productNumberField} eq '${escapeOData(ref)}'`];
+  if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+  const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
+  const salesUnitField=c.productEntity==='ReleasedProductsV2'?'SalesUnitSymbol':null;
+  const select=[c.productNumberField,c.productNameField,inventoryUnitField,salesUnitField,'Category'].filter(Boolean).join(',');
+  const payload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''});
+  const row=payload?.value?.[0];if(!row)return null;
+  let barcodeRow=null;
+  if(c.barcodeEntity&&c.barcodeProductField&&c.barcodeField){
+    const barcodeFilters=[`${c.barcodeProductField} eq '${escapeOData(ref)}'`];
+    if(c.dataAreaId)barcodeFilters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+    try{barcodeRow=(await odataGet(c.barcodeEntity,{filter:barcodeFilters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''}))?.value?.[0]||null}catch{}
+  }
+  const ean=barcodeRow?.[c.barcodeField]||null;
+  const name=row[c.productNameField]||barcodeRow?.[c.barcodeDescriptionField]||ref;
+  const inventoryUnit=inventoryUnitField?row[inventoryUnitField]||null:null;
+  const salesUnit=salesUnitField?row[salesUnitField]||null:null;
+  const unit=barcodeRow?.[c.barcodeUnitField]||inventoryUnit||salesUnit||null;
+  return{ean,name,price:null,stock:null,category:row.Category||barcodeRow?.Category||'Autre',productNumber:row[c.productNumberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
+}
+
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}
 export async function postInventoryAdjustmentToDynamics(sessionId,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,sessionId,postedAt:now(),lines:payload.lines?.length||0};throw Object.assign(new Error('Posting ajustement stock Dynamics live non configuré : mapper le journal d’inventaire / ajustement F&O avant activation.'),{status:501,code:'D365_INVENTORY_WRITE_NOT_MAPPED',details:{sessionId,payload}})}
 export async function postLossToDynamics(lossId,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,lossId,postedAt:now(),quantity:payload.quantity||0};throw Object.assign(new Error('Posting démarque/perte Dynamics live non configuré : mapper le journal de mouvement ou ajustement stock F&O avant activation.'),{status:501,code:'D365_LOSS_WRITE_NOT_MAPPED',details:{lossId,payload}})}
