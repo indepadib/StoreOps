@@ -1,0 +1,41 @@
+name: V2.29 Quality Network UX
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality-network:
+    if: github.head_ref == 'storeops-v2.29-quality-network-ux'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics.mjs
+          node --check backend/server.mjs
+          node --check backend/services/loss-api.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/dlc.js
+          node --check frontend/js/pages/quality.js
+          node --check frontend/js/pages/cold-chain.js
+          node --check frontend/js/admin-studio-access.js
+
+      - name: V2.29 contract
+        run: node backend/tests/v229-quality-network-ux.mjs
+
+      - name: Existing access & runtime regressions
+        run: |
+          node backend/tests/v228-runtime-operations-stabilization.mjs
+          node backend/tests/v2261-access-runtime-hotfix.mjs
+          node backend/tests/quality-audit-access.mjs
+          node backend/tests/cold-chain-engine.mjs
+          node backend/tests/v227-inventory-counting.mjs
+
+      - name: PWA shell
+        run: node backend/tests/pwa-shell.mjs
