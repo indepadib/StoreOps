@@ -17,7 +17,7 @@ db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity_provider_subject ON
 const PROFILE_DEFS=Object.freeze({
  PLATFORM_ADMIN:{code:'PLATFORM_ADMIN',label:'Administrateur StoreOps',description:'Configuration complète du tenant, accès, intégrations et réseau.',role:'ops_director',permissionsProfile:'platform_admin',scope:'NETWORK',sensitive:true},
  OPS_DIRECTOR:{code:'OPS_DIRECTOR',label:'Direction d’exploitation',description:'Pilotage de tous les magasins et opérations réseau.',role:'ops_director',permissionsProfile:null,scope:'NETWORK',sensitive:true},
- QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Lecture réseau et gestion qualité/audit sans posting opérationnel.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},
+ QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Gestion Qualité et DLC sur tous les magasins, audit réseau, sans posting opérationnel ni administration.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},
  DEVELOPMENT:{code:'DEVELOPMENT',label:'Développement réseau',description:'Sourcing de locaux, négociation, contrats, travaux et ouvertures.',role:'employee',permissionsProfile:'development',scope:'NETWORK',sensitive:false},
  STORE_MANAGER:{code:'STORE_MANAGER',label:'Responsable magasin',description:'Pilotage opérationnel complet de son magasin uniquement.',role:'store_manager',permissionsProfile:null,scope:'STORE',sensitive:false},
  STORE_USER:{code:'STORE_USER',label:'Utilisateur magasin',description:'Accès terrain à son magasin sans droits de Responsable.',role:'employee',permissionsProfile:'store_user',scope:'STORE',sensitive:false}
