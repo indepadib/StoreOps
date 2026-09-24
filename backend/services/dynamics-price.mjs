@@ -19,7 +19,7 @@ const AGREEMENT_SELECT_FIELDS=[
 ];
 
 const BASE_PRICE_SELECT_FIELDS=[
-  'dataAreaId','ItemNumber','ProductNumber','SalesPrice','SalesUnitSymbol','SalesPriceQuantity',
+  'dataAreaId','ItemNumber','ProductNumber','ProductName','SalesPrice','SalesUnitSymbol','SalesPriceQuantity',
   'SalesPriceDate','SellStartDate','SellEndDate','BaseSalesPriceSource','SalesSalesTaxItemGroupCode',
   'SalesLineDiscountProductGroupCode','SalesMultilineDiscountProductGroupCode',
   'IsRetailDiscountPOSRegistrationProhibited','IsDiscountPOSRegistrationProhibited',
@@ -227,25 +227,31 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   }catch(error){sources.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',code:error.code||'D365_PRICE_AGREEMENTS_DELTA_FAILED',message:error.message})}
 
   try{
-    const entity=basePriceEntity(),payload=await dateScopedRows(entity,{
-      dateField:'SalesPriceDate',day,filterParts:[companyFilter],
-      select:BASE_PRICE_SELECT_FIELDS.join(','),pageSize:200,maxRows:4000
-    });
-    if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
-    let inserted=0;
-    for(const r of payload.value||[]){
-      const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=Number(r.SalesPrice);
-      if(!item||rowDay!==day||!Number.isFinite(price)||price<0||agreementItems.has(item))continue;
-      changesByKey.set(`BASE:${item}`,{
-        sourceKey:`D365-PRICE-BASE-${item}-${day}`,stableKey:`D365-PRICE-BASE:${item}`,
-        fingerprint:stableFingerprint(['BASE',item,price,r.SalesUnitSymbol,r.SalesPriceQuantity,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
-        actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
-        oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix de base ${price.toFixed(2)} DH`,
-        signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:priceGroups[0]||null,priceGroups,source:'D365_RETAIL_PRICING',
-        effectiveFrom:r.SalesPriceDate||day,effectiveTo:r.SellEndDate||null,priceSource:'BASE_PRICE'
-      });inserted+=1
+    const entity=basePriceEntity();let inserted=0,totalRows=0,totalPages=0,truncated=false,todayChanges=0,catchupChanges=0;
+    for(const scanDay of scanDays){
+      const payload=await dateScopedRows(entity,{
+        dateField:'SalesPriceDate',day:scanDay,filterParts:[companyFilter],
+        select:BASE_PRICE_SELECT_FIELDS.join(','),pageSize:200,maxRows:4000
+      });
+      totalRows+=Number(payload.rowCount||0);totalPages+=Number(payload.pages||0);truncated=truncated||!!payload.truncated;
+      if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base autour du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
+      for(const r of payload.value||[]){
+        const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=Number(r.SalesPrice),priceQty=positiveOr(r.SalesPriceQuantity,1),unit=clean(r.SalesUnitSymbol),name=clean(r.ProductName)||item;
+        if(!item||!scanDays.includes(rowDay)||!Number.isFinite(price)||price<0||agreementItems.has(item))continue;
+        const unitPrice=Number((price/priceQty).toFixed(6)),catchUp=rowDay!==day;
+        changesByKey.set(`BASE:${item}`,{
+          sourceKey:`D365-PRICE-BASE-${item}-${rowDay}`,stableKey:`D365-PRICE-BASE:${item}`,
+          fingerprint:stableFingerprint(['BASE',item,price,priceQty,unit,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
+          actionType:catchUp?'VERIFY':'PRICE_CHANGE',deltaActionType:'PRICE_CHANGE',deltaOnFirstSeen:true,deltaSignageAction:'VERIFY',
+          ean:`ITEM:${item}`,productNumber:item,productName:name,category:null,
+          oldPrice:null,expectedPrice:unitPrice,promoLabel:`${catchUp?'Changement prix détecté en rattrapage':'Nouveau prix de base'} · ${price.toFixed(2)} DH${unit?` / ${priceQty!==1?`${priceQty} `:''}${unit}`:''}`,
+          signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:priceGroups[0]||null,priceGroups,source:'D365_RETAIL_PRICING',
+          effectiveFrom:r.SalesPriceDate||rowDay,effectiveTo:r.SellEndDate||null,priceSource:'BASE_PRICE'
+        });
+        inserted+=1;if(catchUp)catchupChanges+=1;else todayChanges+=1
+      }
     }
-    sources.push({source:'BASE_PRICE',status:'READY',entity,rowCount:payload.rowCount,changes:inserted})
+    sources.push({source:'BASE_PRICE',status:'READY',entity,rowCount:totalRows,pages:totalPages,truncated,changes:inserted,todayChanges,catchupChanges})
   }catch(error){sources.push({source:'BASE_PRICE',status:'ERROR',code:error.code||'D365_BASE_PRICE_DELTA_FAILED',message:error.message})}
 
   const changes=[...changesByKey.values()];
