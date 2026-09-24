@@ -28,6 +28,10 @@ jobs:
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=Trade" -o /tmp/trade-entities.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=PriceAgreement" -o /tmp/price-entities.json
 
+          for entity in TradeAgreementJournalHeaders OpenTradeAgreementJournalHeadersV2 OpenTradeAgreementJournals GUPOpenTradeAgreementJournalLinesV2 GUPOpenTradeAgreementJournalLines TradeAgreementInquiryResults; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=200&extra=cross-company%3Dtrue"               -o "/tmp/$entity.json" || true
+          done
+
           DAY=$(date -u +%F)
           YESTERDAY=$(date -u -d "$DAY -1 day" +%F)
           TOMORROW=$(date -u -d "$YESTERDAY +1 day" +%F)
@@ -50,6 +54,14 @@ jobs:
             const d=JSON.parse(fs.readFileSync(file,'utf8')),list=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
             return list.map(x=>({PublicEntityName:x.PublicEntityName,PublicCollectionName:x.PublicCollectionName,Name:x.Name})).filter(x=>/trade|price|agreement/i.test(JSON.stringify(x)));
           };
+          const journalEntities={};
+          for(const entity of ['TradeAgreementJournalHeaders','OpenTradeAgreementJournalHeadersV2','OpenTradeAgreementJournals','GUPOpenTradeAgreementJournalLinesV2','GUPOpenTradeAgreementJournalLines','TradeAgreementInquiryResults']){
+            const file='/tmp/'+entity+'.json';
+            if(!fs.existsSync(file))continue;
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),jr=d.rows||[];
+            const jkeys=[...new Set(jr.flatMap(r=>Object.keys(r||{})))].filter(k=>/journal|name|description|date|created|modified|posted|item|product|price|unit|quantity|group|account|relation|line|record|recid|number/i.test(k));
+            journalEntities[entity]={ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,keys:jkeys,rows:jr.slice(0,60).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>jkeys.includes(k)&&v!==null&&v!=='')))};
+          }
           const y=JSON.parse(fs.readFileSync('/tmp/yesterday.json','utf8'));
           const yRows=y.rows||[];
           const yCompact=yRows.map(r=>({recordId:r.RecordId,item:r.ItemNumber||r.ProductNumber,price:r.Price,from:r.PriceApplicableFromDate,to:r.PriceApplicableToDate,group:r.PriceCustomerGroupCode,warehouse:r.PriceWarehouseId})).filter(x=>x.item);
@@ -73,6 +85,7 @@ jobs:
             sample,
             yesterdayDirect:{rowCount:y.rowCount,uniqueProducts:[...new Set(yCompact.map(x=>x.item))].length,rows:yCompact.slice(0,100)},
             commercialSync:sync,
+            journalEntities,
             tradeEntities:names('/tmp/trade-entities.json'),
             priceAgreementEntities:names('/tmp/price-entities.json')
           },null,2));
