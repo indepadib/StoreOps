@@ -148,7 +148,19 @@ function aggregateOfferAnomalies(changes,businessDate){
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
- const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,source_details_json,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+ const stmt=db.prepare(`INSERT INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,source_details_json,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(store_id,business_date,source_key) DO UPDATE SET
+  ean=excluded.ean,
+  product_number=excluded.product_number,
+  product_name=excluded.product_name,
+  category=COALESCE(excluded.category,commercial_controls.category),
+  old_price=excluded.old_price,
+  expected_price=excluded.expected_price,
+  promo_label=excluded.promo_label,
+  source_details_json=excluded.source_details_json,
+  signage_action=excluded.signage_action,
+  priority=excluded.priority,
+  blocking_opening=excluded.blocking_opening`);
  let inserted=0;
  for(const c of actionable){
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
