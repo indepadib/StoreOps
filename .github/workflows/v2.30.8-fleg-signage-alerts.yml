@@ -1,0 +1,81 @@
+name: V2.30.8 FLEG Signage Alert Diagnostics
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  fleg-diagnostics:
+    if: github.head_ref == 'storeops-v2.30.8-fleg-signage-alerts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Compare FLEG source list vs Trade catalog vs signage alerts
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+          EXPECTED_JSON: '{"HS-003574":17.9,"HS-003575":16.95,"HS-003576":5.5,"HS-003577":5.5,"HS-003578":39.9,"HS-003579":39.9,"HS-003580":72.95,"HS-003581":15.9,"HS-003582":28,"HS-003583":21,"HS-003584":21.95,"HS-003585":60,"HS-003586":8.95,"HS-003587":12.95,"HS-003588":17,"HS-003589":17,"HS-003590":33.9,"HS-003591":25.9,"HS-003593":25.9,"HS-003594":25.9,"HS-003595":7.9,"HS-003596":15,"HS-003597":10.9,"HS-003598":9.5,"HS-003599":9.5,"HS-003600":13.95,"HS-003601":7.9,"HS-003602":13.95,"HS-003603":12,"HS-003604":7.95,"HS-003605":6.9,"HS-003606":15,"HS-003607":15.95,"HS-003608":23.95,"HS-003609":11,"HS-003610":21.95,"HS-003611":8.5,"HS-003612":9.9,"HS-003613":8,"HS-003614":25.95,"HS-003615":9.95,"HS-003616":25.95,"HS-003617":34,"HS-003618":16,"HS-003619":23.95,"HS-003621":17.95,"HS-003622":70,"HS-003623":64.5,"HS-003624":50,"HS-003625":8.9,"HS-003626":7.5,"HS-003627":7.5,"HS-003628":7.5,"HS-003629":18,"HS-003630":3.9,"HS-003631":3.9,"HS-003632":3.5,"HS-003633":18,"HS-003634":8,"HS-003635":10,"HS-003636":12.5,"HS-003637":7.95,"HS-003638":9,"HS-006583":21.9,"HS-006594":80,"HS-006595":50,"HS-006596":50,"HS-006692":81.95,"HS-006719":8.95}'
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 90); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          DAY=$(date -u +%F)
+          for store in val-fleuri trefle; do
+            curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/$store/trade-agreements?limit=1000" -o "/tmp/trade-$store.json"
+            curl -fsS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/$store/commercial/sync?date=$DAY" --data '{}' -o "/tmp/sync-$store.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const expected=JSON.parse(process.env.EXPECTED_JSON);
+          const codes=Object.keys(expected);
+          const out={};
+          let totalCatalog=0,totalAlerts=0;
+          for(const store of ['val-fleuri','trefle']){
+            const trade=JSON.parse(fs.readFileSync('/tmp/trade-'+store+'.json','utf8'));
+            const sync=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
+            const catalog=(trade.items||[]).filter(x=>codes.includes(x.itemNumber));
+            const alerts=(sync.items||[]).filter(x=>codes.includes(x.product_number)&&x.action_type==='PRICE_CHANGE');
+            const alertMap=new Map(alerts.map(x=>[x.product_number,x]));
+            const catMap=new Map(catalog.map(x=>[x.itemNumber,x]));
+            const rows=codes.map(code=>{
+              const c=catMap.get(code),a=alertMap.get(code);
+              return {
+                code,
+                expectedFromSource:expected[code],
+                catalogPrice:c?.normalizedUnitPrice??c?.price??null,
+                catalogUnit:c?.unit??null,
+                catalogGroup:c?.priceGroup??null,
+                validFrom:c?.validFrom??null,
+                validTo:c?.validTo??null,
+                alert:!!a,
+                alertPrice:a?.expected_price??null,
+                label:a?.promo_label??null,
+                sourceDetails:a?.sourceDetails??null
+              };
+            });
+            totalCatalog+=catalog.length;totalAlerts+=alerts.length;
+            out[store]={
+              priceGroups:trade.priceGroups,
+              catalogTotal:trade.total,
+              flegInCatalog:catalog.length,
+              flegAlerts:alerts.length,
+              missingFromCatalog:rows.filter(x=>!catMap.has(x.code)).map(x=>x.code),
+              missingFromAlerts:rows.filter(x=>catMap.has(x.code)&&!x.alert).map(x=>x.code),
+              rows
+            };
+          }
+          console.log(JSON.stringify({expectedCount:codes.length,totalCatalog,totalAlerts,stores:out},null,2));
+          if(codes.length!==69)process.exit(2);
+          if(totalCatalog<69)process.exit(3);
+          NODE
