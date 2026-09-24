@@ -1,0 +1,121 @@
+name: V2.30.5 Trade Agreement Metadata Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover:
+    if: github.head_ref == 'storeops-v2.30.5-trade-agreements-enriched'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect live SalesPriceAgreements metadata
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=100&extra=cross-company%3Dtrue"             -o /tmp/agreements.json
+
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=Trade" -o /tmp/trade-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=PriceAgreement" -o /tmp/price-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=JournalLine" -o /tmp/journal-line-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=OpenTradeAgreement" -o /tmp/open-trade-entities.json
+
+          for entity in TradeAgreementJournalHeaders OpenTradeAgreementJournalHeadersV2 OpenTradeAgreementJournals GUPOpenTradeAgreementJournalLinesV2 GUPOpenTradeAgreementJournalLines OpenSalesPriceJournalLinesV2 OpenSalesPriceJournalLines CDSOpenSalesPriceJournalLinesV2 CDSOpenSalesPriceJournalLines TradeAgreementInquiryResults; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=200&extra=cross-company%3Dtrue"               -o "/tmp/$entity.json" || true
+          done
+
+          for entity in OpenSalesPriceJournalLinesV2 OpenSalesPriceJournalLines CDSOpenSalesPriceJournalLinesV2 CDSOpenSalesPriceJournalLines; do
+            curl -sS -H "x-demo-user: u-admin" \
+              "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=500&filter=JournalNumber%20eq%20%275001-000104%27&extra=cross-company%3Dtrue" \
+              -o "/tmp/${entity}-104.json" || true
+          done
+
+          DAY=$(date -u +%F)
+          YESTERDAY=$(date -u -d "$DAY -1 day" +%F)
+          TOMORROW=$(date -u -d "$YESTERDAY +1 day" +%F)
+          echo "DAY=$DAY YESTERDAY=$YESTERDAY"
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=500&filter=PriceApplicableFromDate%20ge%20${YESTERDAY}T00%3A00%3A00Z%20and%20PriceApplicableFromDate%20lt%20${TOMORROW}T00%3A00%3A00Z&extra=cross-company%3Dtrue"             -o /tmp/yesterday.json
+
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=500&filter=SalesPriceDate%20ge%20${YESTERDAY}T00%3A00%3A00Z%20and%20SalesPriceDate%20lt%20${TOMORROW}T00%3A00%3A00Z&extra=cross-company%3Dtrue" \
+            -o /tmp/base-yesterday.json
+
+          for STORE in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const a=JSON.parse(fs.readFileSync('/tmp/agreements.json','utf8'));
+          const rows=a.rows||[];
+          const keys=[...new Set(rows.flatMap(r=>Object.keys(r||{})))].sort();
+          const interestingKeys=keys.filter(k=>/journal|name|modified|created|date|agreement|record|item|product|group|price|currency|warehouse|site/i.test(k));
+          const sample=rows.slice(0,10).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>interestingKeys.includes(k)&&v!==null&&v!=='')));
+          const names=file=>{
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),list=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
+            return list.map(x=>({PublicEntityName:x.PublicEntityName,PublicCollectionName:x.PublicCollectionName,Name:x.Name})).filter(x=>/trade|price|agreement/i.test(JSON.stringify(x)));
+          };
+          const journalEntities={};
+          for(const entity of ['TradeAgreementJournalHeaders','OpenTradeAgreementJournalHeadersV2','OpenTradeAgreementJournals','GUPOpenTradeAgreementJournalLinesV2','GUPOpenTradeAgreementJournalLines','OpenSalesPriceJournalLinesV2','OpenSalesPriceJournalLines','CDSOpenSalesPriceJournalLinesV2','CDSOpenSalesPriceJournalLines','TradeAgreementInquiryResults']){
+            const file='/tmp/'+entity+'.json';
+            if(!fs.existsSync(file))continue;
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),jr=d.rows||[];
+            const jkeys=[...new Set(jr.flatMap(r=>Object.keys(r||{})))].filter(k=>/journal|name|description|date|created|modified|posted|item|product|price|unit|quantity|group|account|relation|line|record|recid|number/i.test(k));
+            journalEntities[entity]={ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,keys:jkeys,rows:jr.slice(0,60).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>jkeys.includes(k)&&v!==null&&v!=='')))};
+          }
+          const journal104={};
+          for(const entity of ['OpenSalesPriceJournalLinesV2','OpenSalesPriceJournalLines','CDSOpenSalesPriceJournalLinesV2','CDSOpenSalesPriceJournalLines']){
+            const file='/tmp/'+entity+'-104.json';
+            if(!fs.existsSync(file))continue;
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),jr=d.rows||[];
+            const jkeys=[...new Set(jr.flatMap(r=>Object.keys(r||{})))].filter(k=>/journal|name|description|date|item|product|price|unit|quantity|group|account|relation|line|record|recid|number/i.test(k));
+            journal104[entity]={ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,keys:jkeys,rows:jr.slice(0,120).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>jkeys.includes(k)&&v!==null&&v!=='')))};
+          }
+          const y=JSON.parse(fs.readFileSync('/tmp/yesterday.json','utf8'));
+          const yRows=y.rows||[];
+          const yCompact=yRows.map(r=>({recordId:r.RecordId,item:r.ItemNumber||r.ProductNumber,price:r.Price,from:r.PriceApplicableFromDate,to:r.PriceApplicableToDate,group:r.PriceCustomerGroupCode,warehouse:r.PriceWarehouseId})).filter(x=>x.item);
+          const baseYesterday=JSON.parse(fs.readFileSync('/tmp/base-yesterday.json','utf8'));
+          const baseRaw=baseYesterday.rows||[];
+          const baseKeys=[...new Set(baseRaw.flatMap(r=>Object.keys(r||{})))].filter(k=>/name|search|product|item|description/i.test(k));
+          const baseRows=baseRaw.map(r=>({item:r.ItemNumber||r.ProductNumber,name:r.ProductName||r.SearchName||r.ProductSearchName||r.ItemName||r.Description||null,price:r.SalesPrice,unit:r.SalesUnitSymbol,priceQty:r.SalesPriceQuantity,date:r.SalesPriceDate,category:r.Category||r.ProductCategoryName||null,nameFields:Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>baseKeys.includes(k)&&v!==null&&v!==''))})).filter(x=>x.item);
+          const sync={};
+          for(const store of ['val-fleuri','trefle']){
+            const d=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
+            const items=d.items||[],trades=items.filter(x=>/accord tarifaire/i.test(String(x.promo_label||'')));
+            const priceSource=(d.sync?.sources||[]).find(x=>x.name==='prices');
+            const agreementDiag=(priceSource?.diagnostics?.sources||[]).find(x=>x.source==='SALES_PRICE_AGREEMENTS')||null;
+            sync[store]={
+              totalControls:items.length,
+              tradeControls:trades.length,
+              tradeProducts:[...new Set(trades.map(x=>x.product_number).filter(Boolean))],
+              agreementDiagnostics:agreementDiag,
+              sample:trades.slice(0,30).map(x=>({product:x.product_number,label:x.promo_label,price:x.expected_price}))
+            };
+          }
+          console.log(JSON.stringify({
+            rowCount:a.rowCount,
+            interestingKeys,
+            sample,
+            yesterdayDirect:{rowCount:y.rowCount,uniqueProducts:[...new Set(yCompact.map(x=>x.item))].length,rows:yCompact.slice(0,100)},
+            basePriceYesterday:{rowCount:baseYesterday.rowCount,baseKeys,uniqueProducts:[...new Set(baseRows.map(x=>x.item))].length,rows:baseRows.slice(0,150)},
+            commercialSync:sync,
+            journalEntities,
+            journal104,
+            tradeEntities:names('/tmp/trade-entities.json'),
+            priceAgreementEntities:names('/tmp/price-entities.json'),
+            journalLineEntities:names('/tmp/journal-line-entities.json'),
+            openTradeEntities:names('/tmp/open-trade-entities.json')
+          },null,2));
+          if(!rows.length)process.exit(2);
+          NODE

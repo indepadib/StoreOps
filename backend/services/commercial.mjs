@@ -89,20 +89,21 @@ function shortHash(value){
  let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)
 }
 function materializeCommercialDeltas(storeId,businessDate,changes=[]){
- const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`),history=db.prepare(`SELECT action_type,ean,product_number,expected_price,old_price,promo_label,signage_action FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1`);
+ const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`),history=db.prepare(`SELECT business_date,status,action_type,ean,product_number,expected_price,old_price,promo_label,signage_action FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1`),current=db.prepare(`SELECT id,status FROM commercial_controls WHERE store_id=? AND business_date=? AND source_key LIKE ? ORDER BY created_at DESC LIMIT 1`);
  const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,first_seen_at,last_seen_at,last_changed_at,last_action_business_date) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date)`);
  for(const original of Array.isArray(changes)?changes:[]){
   let c={...original};const d365=c.source==='D365_RETAIL_PRICING',stableKey=stableKeyFor(c),fingerprint=fingerprintFor(c);
   if(!d365||!stableKey){out.push(c);continue}
-  const previous=get.get(storeId,stableKey),historical=!previous?history.get(storeId,`${stableKey}-%`):null,changed=!!previous&&previous.fingerprint!==fingerprint;
+  const previous=get.get(storeId,stableKey),historical=history.get(storeId,`${stableKey}-%`),currentControl=current.get(storeId,businessDate,`${stableKey}-%`),changed=!!previous&&previous.fingerprint!==fingerprint;
   const historicalFingerprint=historical?fingerprintFor({productNumber:historical.product_number,ean:historical.ean,expectedPrice:historical.expected_price,oldPrice:historical.old_price,promoLabel:historical.promo_label,signageAction:historical.signage_action}):null,changedFromHistory=!!historical&&historicalFingerprint!==fingerprint;
-  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen);
+  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recent=distance!==null&&distance>=0&&distance<=7,recentFirstSeen=!previous&&!historical&&recent,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen),recoverMissing=!!previous&&!currentControl&&historical?.status!=='VERIFIED'&&recent&&c.deltaOnFirstSeen===true;
   let actionDate=null;
-  if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen)){
+  if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen||recoverMissing)){
     const deltaActionType=c.deltaActionType||'PROMO_START',priceDelta=deltaActionType==='PRICE_CHANGE';
     c={...c,actionType:deltaActionType,signageAction:c.deltaSignageAction|| (priceDelta?'VERIFY':'INSTALL'),priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed||changedFromHistory?(priceDelta?'Accord tarifaire modifié dans Dynamics':'Promotion modifiée dans Dynamics'):(priceDelta?'Nouvel accord tarifaire détecté':'Promotion récente détectée'),c.promoLabel].filter(Boolean).join(' · ')};
     actionDate=businessDate
   }else if(c.actionType!=='VERIFY')actionDate=businessDate;
+  c.stableKey=stableKey;
   if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
   upsert.run(storeId,stableKey,fingerprint,actionDate);
   out.push(c)
@@ -145,16 +146,20 @@ function aggregateOfferAnomalies(changes,businessDate){
 }
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
- const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
  const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
- let inserted=0;
+ const exact=db.prepare(`SELECT id FROM commercial_controls WHERE store_id=? AND business_date=? AND source_key=? LIMIT 1`);
+ const replacePending=db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE ? AND source_key<>?`);
+ let inserted=0,removed=0;
  for(const c of actionable){
-  const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
+  const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL',sourceKey=String(c.sourceKey);
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
-  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
+  if(c.source==='D365_RETAIL_PRICING'&&c.stableKey&&!exact.get(storeId,businessDate,sourceKey)){
+   removed+=Number(replacePending.run(storeId,businessDate,`${c.stableKey}-%`,sourceKey).changes||0)
+  }
+  const info=stmt.run(uid('cc'),storeId,businessDate,sourceKey,actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
- return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
+ return{inserted,removed,preserveExisting:!!preserveExisting,pendingRetention:true,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
  return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
