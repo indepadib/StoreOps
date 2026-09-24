@@ -229,10 +229,13 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   try{
     const entity=basePriceEntity();let inserted=0,totalRows=0,totalPages=0,truncated=false,todayChanges=0,catchupChanges=0;
     for(const scanDay of scanDays){
-      const payload=await dateScopedRows(entity,{
-        dateField:'SalesPriceDate',day:scanDay,filterParts:[companyFilter],
-        select:BASE_PRICE_SELECT_FIELDS.join(','),pageSize:200,maxRows:4000
+      const tomorrow=nextDay(scanDay),payload=await odataGetAll(entity,{
+        filter:`SalesPriceDate ge ${scanDay}T00:00:00Z and SalesPriceDate lt ${tomorrow}T00:00:00Z`,
+        select:BASE_PRICE_SELECT_FIELDS.join(','),
+        extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:200,maxRows:4000
       });
+      const companyRows=config.dynamics.dataAreaId?(payload.value||[]).filter(r=>clean(r?.[config.dynamics.dataAreaField]??r?.dataAreaId)===clean(config.dynamics.dataAreaId)):(payload.value||[]);
+      payload.value=companyRows;payload.rowCount=companyRows.length;
       totalRows+=Number(payload.rowCount||0);totalPages+=Number(payload.pages||0);truncated=truncated||!!payload.truncated;
       if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base autour du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
       for(const r of payload.value||[]){
