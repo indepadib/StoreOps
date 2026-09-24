@@ -23,7 +23,7 @@ export async function renderCommercial(){
  cfg=cfgResult.status==='fulfilled'?cfgResult.value:(cfg||{actionTypes:[],signageActions:[],policy:{price_tolerance:0.01}});
  data=commercialResult.status==='fulfilled'?commercialResult.value:{summary:{total:0,pending:0,mismatch:0,verified:0,blocking:0,readiness:100},items:[],sync:{ok:false,code:commercialError?.code||'COMMERCIAL_READ_FAILED',error:commercialError?.message||'Lecture Prix & promos indisponible.'}};
  priceChecks=historyResult.status==='fulfilled'?(historyResult.value.items||[]):[];
- const s=data.summary||{},rows=data.items||[],syncError=data.sync&&!data.sync.ok?data.sync:null;
+ const s=data.summary||{},rows=data.items||[],tradeRows=rows.filter(x=>/accord tarifaire/i.test(String(x.promo_label||''))),syncError=data.sync&&!data.sync.ok?data.sync:null;
  $('#commercialContent').innerHTML=`
    <div id="commercialSyncNotice">
     ${commercialError?`<div class="banner ban-danger"><strong>Le snapshot Prix & promos n’a pas pu être chargé.</strong><div class="small">${esc(commercialError.message||'Backend temporairement indisponible.')}</div><button class="btn soft" id="retryCommercialBtn" style="margin-top:8px">Réessayer</button></div>`:syncError?`<div class="banner ban-danger"><strong>Synchronisation Dynamics prix/promos indisponible.</strong><div class="small">${esc(syncError.error||'Mapping ou service Dynamics indisponible')}</div></div>`:''}
@@ -39,6 +39,10 @@ export async function renderCommercial(){
    <div class="card commercial-readiness" style="margin-top:14px">
      <div class="row"><div><strong>Exécution commerciale du jour</strong><div class="small muted">Le snapshot s’affiche immédiatement. Dynamics est rafraîchi séparément pour éviter de bloquer l’écran.</div></div>${status(s.blocking?`${s.blocking} bloquante(s)`:'Prêt ouverture',s.blocking?'danger':'ok')}</div>
      ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
+   </div>
+   <div class="card" style="margin-top:12px">
+     <div class="row"><div><strong>Trade Agreements du jour</strong><div class="small muted">Accords tarifaires Dynamics démarrant ou modifiés récemment et applicables au magasin.</div></div>${status(tradeRows.length?`${tradeRows.length} détecté(s)`:'0 détecté','neutral')}</div>
+     ${tradeRows.length?`<div class="small" style="margin-top:8px">${tradeRows.slice(0,6).map(x=>`<div>• <strong>${esc(x.product_number||x.product_name)}</strong> · ${money(x.expected_price)} · ${esc(x.promo_label||'')}</div>`).join('')}${tradeRows.length>6?`<div class="muted" style="margin-top:4px">+${tradeRows.length-6} autre(s) dans la liste ci-dessous</div>`:''}</div>`:'<div class="small muted" style="margin-top:8px">Aucun accord tarifaire n’a encore été matérialisé dans le snapshot du jour. Utilisez « Rafraîchir depuis Dynamics » pour forcer la lecture.</div>'}
    </div>
    <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucune action prix/promo dans le snapshot du jour. Vous pouvez scanner un article ou rafraîchir Dynamics.</div>'}</div>
    ${isDirector()?policyCard():''}
