@@ -30,6 +30,9 @@ jobs:
           test "$code" = "200"
 
           DAY=$(date -u +%F)
+          for item in HS-003574 HS-006594; do
+            curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=5&filter=ItemNumber%20eq%20%27$item%27" -o "/tmp/raw-$item.json"
+          done
           for store in val-fleuri trefle; do
             curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/$store/trade-agreements?limit=1000" -o "/tmp/trade-$store.json"
             curl -fsS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/$store/commercial/sync?date=$DAY" --data '{}' -o "/tmp/sync-$store.json"
@@ -40,6 +43,11 @@ jobs:
           const expected=JSON.parse(process.env.EXPECTED_JSON);
           const codes=Object.keys(expected);
           const out={};
+          const rawSamples={};
+          for(const item of ['HS-003574','HS-006594']){
+            const p=JSON.parse(fs.readFileSync('/tmp/raw-'+item+'.json','utf8'));
+            rawSamples[item]=(p.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/date|time|modified|created|record|recid|price|item|group|unit/i.test(k)&&v!==null&&v!=='')));
+          }
           let totalCatalog=0,totalAlerts=0;
           for(const store of ['val-fleuri','trefle']){
             const trade=JSON.parse(fs.readFileSync('/tmp/trade-'+store+'.json','utf8'));
@@ -75,7 +83,7 @@ jobs:
               rows
             };
           }
-          console.log(JSON.stringify({expectedCount:codes.length,totalCatalog,totalAlerts,stores:out},null,2));
+          console.log(JSON.stringify({expectedCount:codes.length,totalCatalog,totalAlerts,rawSamples,stores:out},null,2));
           if(codes.length!==69)process.exit(2);
           if(totalCatalog<69)process.exit(3);
           NODE
