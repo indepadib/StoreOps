@@ -192,9 +192,10 @@ export function resolveDlcProductDefaults({product=null,taxonomy=[]}={}){
   if(department)classificationSource='D365_TAXONOMY_DEPARTMENT';
  }
  if(!department){
-  const key=dlcNorm(product?.category);
-  department=DLC_CATEGORY_DEPARTMENT[key]||null;
-  if(department)classificationSource='PRODUCT_CATEGORY_FALLBACK'
+  for(const raw of [product?.category,product?.searchName]){
+   const key=dlcNorm(raw),resolved=DLC_CATEGORY_DEPARTMENT[key]||null;
+   if(resolved){department=resolved;classificationSource=raw===product?.category?'PRODUCT_CATEGORY_FALLBACK':'D365_SEARCH_NAME_FALLBACK';break}
+  }
  }
  return{unit,department,family,classificationSource,taxonomyLabels:labels.slice(0,20)}
 }
