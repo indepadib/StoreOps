@@ -1,0 +1,77 @@
+name: V2.30.4 Trade Agreements Today Diagnostic
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  live-diagnostic:
+    if: github.head_ref == 'storeops-v2.30.4-trade-agreements-today'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Compare D365 date filters and StoreOps commercial sync
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          DAY=$(date -u +%F)
+          NEXT=$(date -u -d "$DAY +1 day" +%F)
+          echo "DAY=$DAY NEXT=$NEXT"
+
+          for GROUP in "Franprix" "Franp VF"; do
+            KEY=$(echo "$GROUP" | tr ' ' '_')
+            curl -sS -G -H "x-demo-user: u-admin"               --data-urlencode "entity=SalesPriceAgreements"               --data-urlencode "top=200"               --data-urlencode "filter=PriceCustomerGroupCode eq '$GROUP' and PriceApplicableFromDate eq $DAY"               "$PREVIEW_URL/api/dynamics/probe" -o "/tmp/eq-$KEY.json"
+
+            curl -sS -G -H "x-demo-user: u-admin"               --data-urlencode "entity=SalesPriceAgreements"               --data-urlencode "top=500"               --data-urlencode "filter=PriceCustomerGroupCode eq '$GROUP' and PriceApplicableFromDate ge ${DAY}T00:00:00Z and PriceApplicableFromDate lt ${NEXT}T00:00:00Z"               "$PREVIEW_URL/api/dynamics/probe" -o "/tmp/range-$KEY.json"
+          done
+
+          for STORE in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
+          const compact=d=>({
+            ok:d.ok,
+            rowCount:d.rowCount,
+            error:d.error||d.message||null,
+            rows:(d.rows||[]).slice(0,20).map(r=>({
+              item:r.ItemNumber||r.ProductNumber||null,
+              price:r.Price,
+              group:r.PriceCustomerGroupCode,
+              from:r.PriceApplicableFromDate,
+              to:r.PriceApplicableToDate,
+              unit:r.QuantityUnitySymbol,
+              qty:r.SalesPriceQuantity,
+              warehouse:r.PriceWarehouseId,
+              recordId:r.RecordId
+            }))
+          });
+          const out={
+            equality:{
+              Franprix:compact(read('/tmp/eq-Franprix.json')),
+              FranpVF:compact(read('/tmp/eq-Franp_VF.json'))
+            },
+            range:{
+              Franprix:compact(read('/tmp/range-Franprix.json')),
+              FranpVF:compact(read('/tmp/range-Franp_VF.json'))
+            },
+            sync:{
+              valFleuri:read('/tmp/sync-val-fleuri.json'),
+              trefle:read('/tmp/sync-trefle.json')
+            }
+          };
+          console.log(JSON.stringify(out,null,2));
+          const rangeCount=(out.range.Franprix.rowCount||0)+(out.range.FranpVF.rowCount||0);
+          if(rangeCount<1)process.exit(2);
+          NODE
