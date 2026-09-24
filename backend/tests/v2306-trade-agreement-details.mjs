@@ -14,6 +14,10 @@ process.env.D365_CHANNEL_PRICE_GROUP_ENTITY='RetailChannelPriceGroups';
 process.env.D365_PRODUCT_ENTITY='ReleasedProductsV2';
 process.env.D365_PRODUCT_NUMBER_FIELD='ProductNumber';
 process.env.D365_PRODUCT_NAME_FIELD='ProductName';
+process.env.D365_BARCODE_ENTITY='RetailInventItemBarcode';
+process.env.D365_BARCODE_PRODUCT_FIELD='itemId';
+process.env.D365_BARCODE_DESCRIPTION_FIELD='description';
+process.env.D365_BARCODE_FIELD='itemBarCode';
 
 const json=value=>new Response(JSON.stringify({value}),{status:200,headers:{'content-type':'application/json'}});
 globalThis.fetch=async url=>{
@@ -35,9 +39,12 @@ globalThis.fetch=async url=>{
  }
  if(u.includes('/data/ReleasedProductsV2')){
   if(u.includes('SalesPriceDate'))return json([]);
+  return json([]);
+ }
+ if(u.includes('/data/RetailInventItemBarcode')){
   const rows=[];
-  if(u.includes("ProductNumber eq 'HS-005694'"))rows.push({ProductNumber:'HS-005694',ProductName:'Melon jaune premium'});
-  if(u.includes("ProductNumber eq 'HS-005927'"))rows.push({ProductNumber:'HS-005927',ProductName:'Article frais test'});
+  if(u.includes("itemId eq 'HS-005694'"))rows.push({itemId:'HS-005694',description:'Melon jaune premium',itemBarCode:'6110000056940'});
+  if(u.includes("itemId eq 'HS-005927'"))rows.push({itemId:'HS-005927',description:'Article frais test',itemBarCode:'6110000059279'});
   return json(rows);
  }
  throw new Error('Unexpected URL '+u);
@@ -63,6 +70,9 @@ assert.equal(melon.sourceDetails.priceGroup,null);
 assert.equal(melon.sourceDetails.validFrom,'2026-09-24T00:00:00Z');
 assert.equal(melon.sourceDetails.validTo,'2026-10-15T00:00:00Z');
 assert.equal(melon.sourceDetails.productName,'Melon jaune premium');
+assert.equal(melon.ean,'6110000056940');
+assert.equal(melon.sourceDetails.ean,'6110000056940');
+assert.match(melon.sourceDetails.productNameSource,/RetailInventItemBarcode/);
 
 const diag=result.diagnostics.sources.find(x=>x.source==='PRODUCT_IDENTITY');
 assert.equal(diag.status,'READY');
