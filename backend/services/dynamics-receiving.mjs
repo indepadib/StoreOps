@@ -192,6 +192,55 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
  throw Object.assign(new Error(`Aucun champ warehouse exploitable n’a permis de lire les PO de ${warehouseId}.`),{status:503,code:'D365_RECEIVING_WAREHOUSE_FIELD_UNRESOLVED',details:{warehouseId,entity:c.lineEntity,attemptedFields:warehouseCandidates,sampleWarehouseFields:sampleKeys,attempts:attempts.slice(-8)}})
 }
 
+async function openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate){
+ const c=receiving(),cutoff=oneMonthAgoISO(businessDate),warehouseCandidates=unique([c.headerWarehouseField,'DefaultReceivingWarehouseId','ReplenishmentWarehouseId','ReceivingWarehouseId','WarehouseId']),attempts=[];
+ if(!c.headerEntity)throw Object.assign(new Error('D365_PO_HEADER_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_HEADER_MAPPING_REQUIRED'});
+ for(const warehouseField of warehouseCandidates){
+  const filters=[
+   {kind:'PURCH_STATUS_ENUM',value:`${c.headerStatusField} eq Microsoft.Dynamics.DataEntities.PurchStatus'Backorder'`},
+   {kind:'WAREHOUSE_ONLY',value:''}
+  ];
+  for(const candidate of filters){
+   const filter=withCompany([`${warehouseField} eq '${esc(warehouseId)}'`,candidate.value].filter(Boolean).join(' and '));
+   try{
+    const payload=await odataGetAll(c.headerEntity,{filter,pageSize:200,maxRows:5000,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[];
+    const open=raw.filter(row=>openPoStatus(field(row,c.headerStatusField,['PurchaseOrderStatus']))),recent=[],old=[];
+    for(const row of open){
+     const created=dateOnly(field(row,c.creationDateField,['AccountingDate','CreatedDateTime','PurchaseOrderCreationDate']));
+     (created&&created<cutoff?old:recent).push(row)
+    }
+    return{value:recent,rowCount:recent.length,pages:payload.pages||1,truncated:!!payload.truncated,warehouseField,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',openFilterKind:candidate.kind,hiddenOldPo:old.length,cutoff,attempts}
+   }catch(error){attempts.push({warehouseField,openFilterKind:candidate.kind,code:error?.code||'D365_PO_HEADER_FILTER_FAILED',message:error?.message||String(error)})}
+  }
+ }
+ throw Object.assign(new Error(`Lecture des en-têtes PO ouverts de ${warehouseId} impossible.`),{status:503,code:'D365_RECEIVING_HEADER_READ_FAILED',details:{warehouseId,attempts}})
+}
+
+async function purchaseOrderLinesForOrders(poNumbers){
+ const c=receiving(),parts=chunks(poNumbers,20),attempts=[];
+ if(!poNumbers.length)return{value:[],rowCount:0,pages:0,truncated:false,attempts};
+ const settled=await Promise.allSettled(parts.map(async part=>{
+  const base=orFilter(c.purchaseOrderField,part),filters=[
+   {kind:'PURCH_STATUS_ENUM',value:withCompany(`${base} and ${c.lineStatusField||'PurchaseOrderLineStatus'} eq Microsoft.Dynamics.DataEntities.PurchStatus'Backorder'`)},
+   {kind:'PO_ONLY',value:withCompany(base)}
+  ];
+  let lastError=null;
+  for(const candidate of filters){
+   try{
+    const payload=await odataGetAll(c.lineEntity,{filter:candidate.value,pageSize:Math.max(100,Math.min(1000,Number(c.pageSize)||250)),maxRows:5000,extra:extraCompany()});
+    return{value:(payload.value||[]).filter(row=>purchaseLineOpen(row,c)),pages:payload.pages||1,truncated:!!payload.truncated,filterKind:candidate.kind}
+   }catch(error){lastError=error;attempts.push({orders:part,filterKind:candidate.kind,code:error?.code||'D365_PO_LINE_FILTER_FAILED',message:error?.message||String(error)})}
+  }
+  throw lastError||new Error('Lecture lignes PO impossible.')
+ }));
+ const rows=[];let pages=0,truncated=false,errors=0;
+ for(const result of settled){
+  if(result.status==='fulfilled'){rows.push(...result.value.value);pages+=result.value.pages;truncated=truncated||result.value.truncated}
+  else{errors++}
+ }
+ return{value:rows,rowCount:rows.length,pages,truncated:truncated||errors>0,attempts,errors}
+}
+
 async function purchaseOrderHeaders(poNumbers){
  const c=receiving(),limit=headerEnrichmentLimit();
  if(!poNumbers.length||limit===0)return{value:[],rowCount:0,pages:0,truncated:false,skipped:limit===0};
@@ -205,10 +254,10 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
  const c=receiving(),storeSettings=storeOperationalSettings(storeId),warehouseId=clean(storeSettings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId]);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false,code:config.realOnly?'D365_RECEIVING_NOT_CONNECTED':null}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
- const startedAt=Date.now(),linePayload=await purchaseOrderLinesForWarehouse(warehouseId),lines=linePayload.value||[];
- const poNumbers=unique(lines.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),headerPayload=await purchaseOrderHeaders(poNumbers),headers=headerPayload.value||[];
+ const startedAt=Date.now(),headerPayload=await openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate),headers=headerPayload.value||[];
+ const poNumbers=unique(headers.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),linePayload=await purchaseOrderLinesForOrders(poNumbers),lines=linePayload.value||[];
  const headerByPo=new Map(headers.map(row=>[clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber'])),row]));
- const cutoff=oneMonthAgoISO(todayISO());let hiddenOld=0,hiddenClosed=0;
+ const cutoff=headerPayload.cutoff||oneMonthAgoISO(businessDate);let hiddenOld=headerPayload.hiddenOldPo||0,hiddenClosed=0;
  const items=poNumbers.map(poNumber=>{
   const poLines=lines.filter(row=>clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber']))===poNumber),header=headerByPo.get(poNumber)||{};
   const dates=poLines.map(row=>dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))).filter(Boolean).sort();
@@ -228,7 +277,7 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
   };
  }).filter(Boolean);
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverOpenFilter:!!linePayload.serverOpenFilter,serverRemainingFilter:false,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverOpenFilter:!!linePayload.serverOpenFilter,serverRemainingFilter:false,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:false,headerError:null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:headerPayload.warehouseField||c.headerWarehouseField,serverHeaderOpenFilter:!!headerPayload.serverOpenFilter,filterFallbacks:[...(headerPayload.attempts||[]),...(linePayload.attempts||[])],truncated,authoritative:!truncated}};
 }
 
 
