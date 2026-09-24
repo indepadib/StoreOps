@@ -19,11 +19,18 @@ function transferReceiving(){return config.dynamics.transferReceiving||{}}
 function field(row,name,fallbacks=[]){for(const key of [name,...fallbacks].filter(Boolean)){if(row?.[key]!==undefined&&row?.[key]!==null)return row[key]}return null}
 function selected(...fields){return unique(fields).join(',')}
 function remainingFor(row,c){
-  const explicit=finite(field(row,c.remainingQtyField,['RemainingPurchaseQuantity','RemainingInventoryQuantity']));
-  if(explicit!==null)return explicit;
-  const ordered=finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0;
-  const received=finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']))??0;
-  return Math.max(0,ordered-received);
+  const explicit=c.remainingQtyField?finite(field(row,c.remainingQtyField,[])):null;
+  if(explicit!==null)return Math.max(0,explicit);
+  const ordered=finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']));
+  const received=c.receivedQtyField?finite(field(row,c.receivedQtyField,[])):null;
+  if(ordered!==null&&received!==null)return Math.max(0,ordered-received);
+  return null;
+}
+function purchaseLineOpen(row,c){
+ const status=clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus'])).toUpperCase();
+ if(status)return !/(CANCEL|INVOICE|RECEIVED|CLOSED|FINALIZED)/.test(status);
+ const remaining=remainingFor(row,c);
+ return remaining==null||remaining>0
 }
 function temperatureRequired(category=''){return /frais|surgel/i.test(clean(category))?1:0}
 
@@ -139,7 +146,8 @@ export function receivingIntegrationConfig(storeId=null){
    barcode:c.barcodeField||null,
    category:c.categoryField||null,
    orderedQty:c.orderedQtyField,
-   receivedQty:c.receivedQtyField,
+   lineStatus:c.lineStatusField||null,
+   receivedQty:c.receivedQtyField||null,
    remainingQty:c.remainingQtyField,
    unit:c.unitField,
    lineDate:c.lineDateField,
@@ -153,23 +161,23 @@ function headerEnrichmentLimit(){return Math.max(0,Math.min(500,Number(process.e
 function oneMonthAgoISO(reference=todayISO()){const d=new Date(`${dateOnly(reference)||todayISO()}T00:00:00Z`);d.setUTCMonth(d.getUTCMonth()-1);return d.toISOString().slice(0,10)}
 function openPoStatus(value){const s=clean(value).toUpperCase();return !/(CANCEL|CANCELED|CANCELLED|INVOICE|RECEIVED|CLOSED|FINALIZED)/.test(s)}
 function syncTimeoutMs(){return Math.max(4000,Math.min(20000,Number(process.env.D365_PO_SYNC_TIMEOUT_MS)||12000))}
-function withSyncTimeout(promise){const ms=syncTimeoutMs();return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error(`Synchronisation PO interrompue après ${ms} ms pour protéger StoreOps.`),{status:503,code:'D365_RECEIVING_SYNC_TIMEOUT',details:{timeoutMs:ms}})),ms))])}
+function withSyncTimeout(promise,documentType='PO'){const ms=syncTimeoutMs();return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(Object.assign(new Error(`Synchronisation ${documentType} interrompue après ${ms} ms pour protéger StoreOps.`),{status:503,code:'D365_RECEIVING_SYNC_TIMEOUT',details:{timeoutMs:ms,documentType}})),ms))])}
 
 async function purchaseOrderLinesForWarehouse(warehouseId){
  const c=receiving();
  if(!c.lineEntity)throw Object.assign(new Error('D365_PO_LINE_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_LINE_MAPPING_REQUIRED'});
- const top=syncTop(),warehouseCandidates=unique([c.warehouseField,'ReceivingWarehouseId','InventoryWarehouseId','WarehouseId','DefaultReceivingWarehouseId','InventLocationId']);
+ const top=syncTop(),warehouseCandidates=unique([c.warehouseField,'ReceivingWarehouseId','InventoryWarehouseId','WarehouseId','DefaultReceivingWarehouseId','InventLocationId']),statusField=c.lineStatusField||'PurchaseOrderLineStatus';
  const attempts=[];
  for(const warehouseField of warehouseCandidates){
-  for(const useRemainingFilter of [true,false]){
-   const remainingFilter=useRemainingFilter&&c.remainingQtyField?`${c.remainingQtyField} gt 0`:'';
-   const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,remainingFilter].filter(Boolean).join(' and '));
+  for(const useOpenFilter of [true,false]){
+   const openFilter=useOpenFilter&&statusField?`${statusField} ne 'Invoiced' and ${statusField} ne 'Canceled' and ${statusField} ne 'Cancelled' and ${statusField} ne 'Received'`:'';
+   const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,openFilter].filter(Boolean).join(' and '));
    try{
-    const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>remainingFor(row,c)>0);
-    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverRemainingFilter:!!remainingFilter,warehouseField,attempts};
+    const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>purchaseLineOpen(row,c));
+    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverOpenFilter:!!openFilter,serverRemainingFilter:false,warehouseField,attempts};
    }catch(error){
-    attempts.push({warehouseField,serverRemainingFilter:!!remainingFilter,code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
-    if(!remainingFilter)break;
+    attempts.push({warehouseField,serverOpenFilter:!!openFilter,code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
+    if(!openFilter)break;
    }
   }
  }
@@ -212,12 +220,12 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
    poNumber,vendor:vendorName,vendorName,vendorAccount,createdDate,creationDateSource:createdDate?(c.creationDateField||'AccountingDate'):null,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:poLines.map(row=>{
     const productNumber=clean(field(row,c.productField,['ProductNumber','ItemNumber'])),ean=clean(field(row,c.barcodeField,['Barcode'])),category=clean(field(row,c.categoryField,['ProcurementProductCategoryName']))||'Autre';
-    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,receivedQty:finite(field(row,c.receivedQtyField,['ReceivedPurchaseQuantity','ReceivedInventoryQuantity']))??0,remainingQty:remainingFor(row,c),unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
+    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,lineStatus:clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus']))||null,receivedQty:c.receivedQtyField?finite(field(row,c.receivedQtyField,[])):null,remainingQty:remainingFor(row,c),remainingSource:remainingFor(row,c)==null?'UNAVAILABLE':'D365',unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
    })
   };
  }).filter(Boolean);
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
- return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverRemainingFilter:!!linePayload.serverRemainingFilter,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
+ return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverOpenFilter:!!linePayload.serverOpenFilter,serverRemainingFilter:false,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:!!headerPayload.skipped,headerError:headerPayload.error||null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:linePayload.warehouseField||c.warehouseField,filterFallbacks:linePayload.attempts||[],truncated,authoritative:!truncated}};
 }
 
 
@@ -253,20 +261,16 @@ async function transferLinesForOrders(orderNumbers){
  return{value:all,rowCount:all.length,truncated,attempts}
 }
 async function transferProductNames(itemNumbers){
- const entity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',numberField='ItemNumber',nameField='ProductName',map=new Map();
- for(const batch of chunks(itemNumbers,20)){
-  try{
-   const p=await odataGet(entity,{filter:withCompany(orFilter(numberField,batch)),select:`${numberField},${nameField}`,top:Math.max(50,batch.length),extra:extraCompany()});
-   for(const row of p?.value||[])map.set(clean(row[numberField]),clean(row[nameField]))
-  }catch{}
- }
+ const entity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',numberField='ItemNumber',nameField='ProductName',map=new Map(),parts=chunks(itemNumbers,20);
+ const settled=await Promise.allSettled(parts.map(batch=>odataGet(entity,{filter:withCompany(orFilter(numberField,batch)),select:`${numberField},${nameField}`,top:Math.max(50,batch.length),extra:extraCompany()})));
+ for(const result of settled)if(result.status==='fulfilled')for(const row of result.value?.value||[])map.set(clean(row[numberField]),clean(row[nameField]));
  return map
 }
 export async function listExpectedTransferOrders(storeId,{businessDate=todayISO()}={}){
  const t=transferReceiving(),warehouseId=storeWarehouse(storeId);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',documentType:'TO',storeId,warehouseId,businessDate,items:[],diagnostics:{liveRequested:false}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',documentType:'TO',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
- const startedAt=Date.now(),headersPayload=await transferHeadersForWarehouse(warehouseId),headers=headersPayload.value||[],numbers=unique(headers.map(r=>r?.[t.numberField]));
+ const startedAt=Date.now(),headersPayload=await transferHeadersForWarehouse(warehouseId),allHeaders=headersPayload.value||[],cutoff=oneMonthAgoISO(businessDate),headers=allHeaders.filter(h=>{const d=dateOnly(h?.[t.headerDateField]);return !d||d>=cutoff}),hiddenOldTo=allHeaders.length-headers.length,numbers=unique(headers.map(r=>r?.[t.numberField]));
  const linesPayload=await transferLinesForOrders(numbers),lines=linesPayload.value||[],withLines=new Set(lines.map(r=>clean(r?.[t.numberField]))),activeHeaders=headers.filter(h=>withLines.has(clean(h?.[t.numberField])));
  const itemNumbers=unique(lines.map(r=>r?.[t.productField])),names=await transferProductNames(itemNumbers);
  const items=activeHeaders.map(header=>{
@@ -280,7 +284,7 @@ export async function listExpectedTransferOrders(storeId,{businessDate=todayISO(
   }
  });
  const truncated=!!headersPayload.truncated||!!linesPayload.truncated;
- return{mode:'LIVE',source:'D365',documentType:'TO',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,headerRows:headers.length,lineRows:lines.length,openHeaders:items.length,headerAttempts:headersPayload.attempts||[],lineAttempts:linesPayload.attempts||[],truncated,authoritative:!truncated}}
+ return{mode:'LIVE',source:'D365',documentType:'TO',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,headerRows:headers.length,hiddenOldTo,toCutoffDate:cutoff,lineRows:lines.length,openHeaders:items.length,headerAttempts:headersPayload.attempts||[],lineAttempts:linesPayload.attempts||[],truncated,authoritative:!truncated}}
 }
 
 function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(c=>c.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
@@ -336,7 +340,7 @@ export async function syncExpectedReceiptsFromDynamics(storeId,{businessDate=tod
 
 export async function syncExpectedTransferOrdersFromDynamics(storeId,{businessDate=todayISO()}={}){
  ensureReceivingStorage();let snapshot;
- try{snapshot=await withSyncTimeout(listExpectedTransferOrders(storeId,{businessDate}))}
+ try{snapshot=await withSyncTimeout(listExpectedTransferOrders(storeId,{businessDate}),'TO')}
  catch(error){const code=error?.code||'D365_TRANSFER_RECEIVING_SYNC_FAILED',message=error?.message||String(error);recordTransferReceivingFailure(storeId,{code,message,diagnostics:{liveRequested:true,code}});return{mode:'LIVE_ERROR',source:'D365',documentType:'TO',storeId,businessDate,items:[],synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,error:{code,message},readiness:transferReceivingStateForStore(storeId)}}
  if(snapshot.mode!=='LIVE'){recordTransferReceivingFailure(storeId,{warehouseId:snapshot.warehouseId,code:snapshot.diagnostics?.code||'D365_TRANSFER_RECEIVING_NOT_LIVE',message:'Lecture TO D365 non exploitable.',diagnostics:snapshot.diagnostics});return{...snapshot,synced:false,partial:false,authoritative:false,created:0,updated:0,lineCreated:0,lineUpdated:0,readiness:transferReceivingStateForStore(storeId)}}
  const authoritative=snapshot.diagnostics?.authoritative!==false&&!snapshot.diagnostics?.truncated;let created=0,updated=0,lineCreated=0,lineUpdated=0;
