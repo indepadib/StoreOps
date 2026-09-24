@@ -23,8 +23,10 @@ const app=readFileSync(new URL('../../frontend/js/app.js',import.meta.url),'utf8
 const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
 const bridge=readFileSync(new URL('../../netlify/functions/api.mts',import.meta.url),'utf8');
 
-assert.match(receiving,/RemainingPurchaseQuantity/,'receiving mapping must expose remaining quantity');
-assert.match(receiving,/remainingQtyField\} gt 0/,'PO lines must be filtered server-side to remaining quantities when mapped');
+assert.match(receiving,/function remainingFor\(row,c\)/,'receiving must derive remaining quantity truthfully');
+assert.match(receiving,/OrderedPurchaseQuantity/,'receiving must retain ordered quantity as a supported source');
+assert.match(receiving,/PurchaseOrderLineStatus/,'PO lines must use the real D365 line status when available');
+assert.match(receiving,/serverRemainingFilter:false/,'PO sync must not pretend a RemainingPurchaseQuantity server filter exists when the field is not mapped');
 assert.match(receiving,/D365_PO_SYNC_TOP/,'PO sync needs a bounded line budget');
 assert.match(receiving,/D365_PO_SYNC_TIMEOUT_MS/,'PO sync needs a platform-safe total time budget');
 assert.match(receiving,/D365_RECEIVING_SYNC_TIMEOUT/,'PO timeout must become a controlled integration state');
