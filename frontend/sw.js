@@ -1,6 +1,6 @@
-const CACHE='storeops-shell-v2.30.4';
+const CACHE='storeops-shell-v2.30.5';
 const CORE=[
-  '/','/index.html','/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/handover.css','/maintenance.css','/price-check-mobile.css','/manager.css','/manager-scan.css','/manager-team.css','/manager-pulse.css','/mobile-barcode.css','/auth.css','/guided-day.css','/manager-alerts.css','/manager-incident-flow.css','/manager-handover.css','/manager-control-focus.css','/manager-receiving-focus.css','/manager-dlc-focus.css','/manager-commercial-focus.css','/admin-studio.css','/admin-studio-guided.css','/admin-studio-access.css','/admin-studio-integrations.css','/admin-studio-tenant.css','/development.css','/runtime-config.js',
+  '/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/handover.css','/maintenance.css','/price-check-mobile.css','/manager.css','/manager-scan.css','/manager-team.css','/manager-pulse.css','/mobile-barcode.css','/auth.css','/guided-day.css','/manager-alerts.css','/manager-incident-flow.css','/manager-handover.css','/manager-control-focus.css','/manager-receiving-focus.css','/manager-dlc-focus.css','/manager-commercial-focus.css','/admin-studio.css','/admin-studio-guided.css','/admin-studio-access.css','/admin-studio-integrations.css','/admin-studio-tenant.css','/development.css','/runtime-config.js',
   '/js/boot-rescue.js','/js/pwa.js','/js/mobile-barcode.js','/js/manager-polish.js','/js/manager-alerts.js','/js/manager-incident-flow.js','/js/manager-handover.js','/js/manager-control-focus.js','/js/manager-receiving-focus.js','/js/manager-dlc-focus.js','/js/manager-commercial-focus.js','/js/admin-studio-replenishment.js','/js/admin-studio-stores.js','/js/admin-studio-access.js','/js/admin-studio-integrations.js','/js/admin-studio-tenant.js','/js/tenant-branding.js','/js/auth-entry.js','/js/auth.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/today-signals.js','/js/store-health.js','/js/manager-journey.js','/js/manager-compliance.js','/js/inventory-privacy.js','/js/quality-draft.js','/js/network-risk.js','/js/maintenance-model.js','/js/custom-process-runs.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
   '/js/pages/today.js','/js/pages/manager-home.js','/js/pages/manager-hubs.js','/js/pages/manager-scan.js','/js/pages/manager-team.js','/js/pages/manager-performance.js','/js/pages/process.js','/js/pages/handover.js','/js/pages/staffing.js','/js/pages/cold-chain.js','/js/pages/cash-opening.js','/js/pages/dlc.js','/js/pages/commercial.js','/js/pages/receipts.js','/js/pages/inventory.js','/js/pages/losses.js','/js/pages/quality.js','/js/pages/maintenance.js','/js/pages/cash.js','/js/pages/network.js','/js/pages/admin-studio.js','/js/pages/development.js','/js/pages/system.js','/js/pages/incidents.js'
 ];
@@ -28,7 +28,7 @@ self.addEventListener('fetch',event=>{
   const url=new URL(req.url);if(url.origin!==self.location.origin)return;
   if(url.pathname.startsWith('/api/'))return;
   if(req.mode==='navigate'){
-    event.respondWith(networkFirst(req,'/index.html'));
+    event.respondWith(fetch(req,{cache:'no-store'}));
     return;
   }
   const freshAsset=url.pathname==='/runtime-config.js'||url.pathname==='/sw.js'||url.pathname.endsWith('.js')||url.pathname.endsWith('.css');
