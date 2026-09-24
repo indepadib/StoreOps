@@ -47,6 +47,10 @@ jobs:
 
           curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=500&filter=PriceApplicableFromDate%20ge%20${YESTERDAY}T00%3A00%3A00Z%20and%20PriceApplicableFromDate%20lt%20${TOMORROW}T00%3A00%3A00Z&extra=cross-company%3Dtrue"             -o /tmp/yesterday.json
 
+          curl -sS -H "x-demo-user: u-admin" \
+            "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=500&filter=SalesPriceDate%20ge%20${YESTERDAY}T00%3A00%3A00Z%20and%20SalesPriceDate%20lt%20${TOMORROW}T00%3A00%3A00Z&extra=cross-company%3Dtrue" \
+            -o /tmp/base-yesterday.json
+
           for STORE in val-fleuri trefle; do
             curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
           done
@@ -81,6 +85,8 @@ jobs:
           const y=JSON.parse(fs.readFileSync('/tmp/yesterday.json','utf8'));
           const yRows=y.rows||[];
           const yCompact=yRows.map(r=>({recordId:r.RecordId,item:r.ItemNumber||r.ProductNumber,price:r.Price,from:r.PriceApplicableFromDate,to:r.PriceApplicableToDate,group:r.PriceCustomerGroupCode,warehouse:r.PriceWarehouseId})).filter(x=>x.item);
+          const baseYesterday=JSON.parse(fs.readFileSync('/tmp/base-yesterday.json','utf8'));
+          const baseRows=(baseYesterday.rows||[]).map(r=>({item:r.ItemNumber||r.ProductNumber,name:r.ProductName||r.SearchName||r.ProductSearchName||null,price:r.SalesPrice,unit:r.SalesUnitSymbol,priceQty:r.SalesPriceQuantity,date:r.SalesPriceDate,category:r.Category||r.ProductCategoryName||null})).filter(x=>x.item);
           const sync={};
           for(const store of ['val-fleuri','trefle']){
             const d=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
@@ -100,6 +106,7 @@ jobs:
             interestingKeys,
             sample,
             yesterdayDirect:{rowCount:y.rowCount,uniqueProducts:[...new Set(yCompact.map(x=>x.item))].length,rows:yCompact.slice(0,100)},
+            basePriceYesterday:{rowCount:baseYesterday.rowCount,uniqueProducts:[...new Set(baseRows.map(x=>x.item))].length,rows:baseRows.slice(0,150)},
             commercialSync:sync,
             journalEntities,
             journal104,
