@@ -171,6 +171,33 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
   priceGroupCache.set(cacheKey,{value,expiresAt:Date.now()+Math.min(ttl,15)*1000});return value;
 }
 
+function productDisplayName(row,configuredField,fallback){
+  const fields=[configuredField,'ProductSearchName','SearchName','ProductName','Name','Description','ItemName'].filter(Boolean);
+  for(const field of fields){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
+  return String(fallback??'').trim()||null
+}
+function productCategory(row,barcodeRow){
+  for(const field of ['RetailProductCategoryName','ProductCategoryName','CategoryName','Category']){const value=row?.[field]??barcodeRow?.[field];if(String(value??'').trim())return String(value).trim()}
+  return 'Autre'
+}
+async function productEntityRowByReference(reference){
+  const c=config.dynamics,ref=String(reference||'').trim();if(!c.productEntity||!ref)return null;
+  const numberFields=c.productEntity==='ReleasedProductsV2'?cleanList([c.productNumberField,'ProductNumber','ItemNumber']):cleanList([c.productNumberField]);
+  let lastError=null;
+  for(const numberField of numberFields){
+    const filters=[`${numberField} eq '${escapeOData(ref)}'`];if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+    try{
+      const payload=await odataGet(c.productEntity,{filter:filters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''}),row=payload?.value?.[0]||null;
+      if(row)return{row,numberField}
+    }catch(error){
+      lastError=error;
+      if(!(error?.code==='D365_REQUEST_FAILED'&&Number(error?.details?.httpStatus)===400))throw error
+    }
+  }
+  if(lastError&&numberFields.length===1)throw lastError;
+  return null
+}
+
 export async function getProductByEan(ean){
   if(!isD365ReadLive('product')) return PRODUCTS[ean] || null;
   const c=config.dynamics;
@@ -192,9 +219,9 @@ export async function getProductByEan(ean){
 
   if(!c.productEntity || !productNumber)return barcodeProduct;
   try{
-    const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
-    const select=[c.productNumberField,c.productNameField,inventoryUnitField].filter(Boolean).join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{};
-    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre',inventoryUnit:inventoryUnitField?(p[inventoryUnitField]||null):null};
+    const resolved=await productEntityRowByReference(productNumber),p=resolved?.row||{};
+    const inventoryUnit=c.productEntity==='ReleasedProductsV2'?(p.InventoryUnitSymbol||null):null,salesUnit=c.productEntity==='ReleasedProductsV2'?(p.SalesUnitSymbol||null):null;
+    return {...barcodeProduct,name:productDisplayName(p,c.productNameField,barcodeName||productNumber),category:productCategory(p,barcodeRow),inventoryUnit,salesUnit};
   }catch(e){
     return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
   }
@@ -212,13 +239,7 @@ export async function getProductByReference(reference){
   }
   const c=config.dynamics;
   if(!c.productEntity||!c.productNumberField)return null;
-  const filters=[`${c.productNumberField} eq '${escapeOData(ref)}'`];
-  if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
-  const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
-  const salesUnitField=c.productEntity==='ReleasedProductsV2'?'SalesUnitSymbol':null;
-  const select=[c.productNumberField,c.productNameField,inventoryUnitField,salesUnitField,'Category'].filter(Boolean).join(',');
-  const payload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''});
-  const row=payload?.value?.[0];if(!row)return null;
+  const resolved=await productEntityRowByReference(ref),row=resolved?.row;if(!row)return null;
   let barcodeRow=null;
   if(c.barcodeEntity&&c.barcodeProductField&&c.barcodeField){
     const barcodeFilters=[`${c.barcodeProductField} eq '${escapeOData(ref)}'`];
@@ -226,11 +247,11 @@ export async function getProductByReference(reference){
     try{barcodeRow=(await odataGet(c.barcodeEntity,{filter:barcodeFilters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''}))?.value?.[0]||null}catch{}
   }
   const ean=barcodeRow?.[c.barcodeField]||null;
-  const name=row[c.productNameField]||barcodeRow?.[c.barcodeDescriptionField]||ref;
-  const inventoryUnit=inventoryUnitField?row[inventoryUnitField]||null:null;
-  const salesUnit=salesUnitField?row[salesUnitField]||null:null;
+  const name=productDisplayName(row,c.productNameField,barcodeRow?.[c.barcodeDescriptionField]||barcodeRow?.Description||barcodeRow?.description||ref);
+  const inventoryUnit=c.productEntity==='ReleasedProductsV2'?(row.InventoryUnitSymbol||null):null;
+  const salesUnit=c.productEntity==='ReleasedProductsV2'?(row.SalesUnitSymbol||null):null;
   const unit=barcodeRow?.[c.barcodeUnitField]||inventoryUnit||salesUnit||null;
-  return{ean,name,price:null,stock:null,category:row.Category||barcodeRow?.Category||'Autre',productNumber:row[c.productNumberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
+  return{ean,name,price:null,stock:null,category:productCategory(row,barcodeRow),productNumber:row[resolved.numberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}
