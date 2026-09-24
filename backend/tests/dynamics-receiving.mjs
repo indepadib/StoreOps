@@ -22,9 +22,9 @@ globalThis.fetch=async(input)=>{
  const url=String(input);calls.push(url);
  if(url.includes('login.microsoftonline.com'))return Response.json({access_token:'test-token',expires_in:3600});
  if(url.includes('/data/PurchaseOrderLinesV2'))return Response.json({value:[
-  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:1,ProductNumber:'HS-001',LineDescription:'Lait frais',Barcode:'611100000001',ProcurementProductCategoryName:'Frais',OrderedPurchaseQuantity:10,ReceivedPurchaseQuantity:2,RemainingPurchaseQuantity:8,PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
-  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:2,ProductNumber:'HS-002',LineDescription:'Épicerie test',Barcode:'611100000002',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:5,ReceivedPurchaseQuantity:0,RemainingPurchaseQuantity:5,PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
-  {dataAreaId:'5001',PurchaseOrderNumber:'PO-CLOSED',LineNumber:1,ProductNumber:'HS-003',LineDescription:'Déjà reçu',Barcode:'611100000003',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:4,ReceivedPurchaseQuantity:4,RemainingPurchaseQuantity:0,PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-09T12:00:00Z',ReceivingWarehouseId:'FRP0001'}
+  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:1,ProductNumber:'HS-001',LineDescription:'Lait frais',Barcode:'611100000001',ProcurementProductCategoryName:'Frais',OrderedPurchaseQuantity:10,PurchaseOrderLineStatus:'OpenOrder',PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
+  {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',LineNumber:2,ProductNumber:'HS-002',LineDescription:'Épicerie test',Barcode:'611100000002',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:5,PurchaseOrderLineStatus:'OpenOrder',PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-10T12:00:00Z',ReceivingWarehouseId:'FRP0001'},
+  {dataAreaId:'5001',PurchaseOrderNumber:'PO-CLOSED',LineNumber:1,ProductNumber:'HS-003',LineDescription:'Déjà reçu',Barcode:'611100000003',ProcurementProductCategoryName:'Épicerie',OrderedPurchaseQuantity:4,PurchaseOrderLineStatus:'Invoiced',PurchaseUnitSymbol:'pc',RequestedDeliveryDate:'2026-09-09T12:00:00Z',ReceivingWarehouseId:'FRP0001'}
  ]});
  if(url.includes('/data/PurchaseOrderHeadersV2'))return Response.json({value:[
   {dataAreaId:'5001',PurchaseOrderNumber:'PO-100',OrderVendorAccountNumber:'VEND-01',PurchaseOrderName:'Fournisseur Test Maroc',AccountingDate:'2026-09-05T12:00:00Z',PurchaseOrderStatus:'OpenOrder',RequestedDeliveryDate:'2026-09-10T12:00:00Z',DefaultReceivingWarehouseId:'FRP0001'}
@@ -54,9 +54,12 @@ assert.equal(snapshot.items[0].vendor,'Fournisseur Test Maroc');
 assert.equal(snapshot.items[0].vendorAccount,'VEND-01');
 assert.equal(snapshot.items[0].createdDate,'2026-09-05');
 assert.equal(snapshot.items[0].lines.length,2);
-assert.equal(snapshot.items[0].lines[0].remainingQty,8);
+assert.equal(snapshot.items[0].lines[0].remainingQty,null);
+assert.equal(snapshot.items[0].lines[0].lineStatus,'OpenOrder');
 assert.equal(snapshot.items[0].lines[0].temperatureRequired,1);
 assert.ok(calls.some(x=>x.includes('ReceivingWarehouseId')&&x.includes('FRP0001')),'PO lines must be scoped to the store warehouse');
+assert.ok(calls.some(x=>x.includes('PurchaseOrderLineStatus')),'PO line query must use the real D365 line status');
+assert.ok(!calls.some(x=>x.includes('RemainingPurchaseQuantity')),'PO line query must not use non-existent RemainingPurchaseQuantity');
 
 const sync=await receiving.syncExpectedReceiptsFromDynamics('val-fleuri',{businessDate:'2026-09-10'});
 assert.equal(sync.synced,true);
@@ -71,7 +74,7 @@ assert.equal(receipt.source_created_date,'2026-09-05');
 const lines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? ORDER BY source_line_number`).all(receipt.id);
 assert.equal(lines.length,2);
 assert.equal(lines[0].product_number,'HS-001');
-assert.equal(lines[0].remaining_qty,8);
+assert.equal(lines[0].remaining_qty,null);
 assert.equal(lines[0].ean,'611100000001');
 assert.equal(receipt.document_type,'PO');
 
