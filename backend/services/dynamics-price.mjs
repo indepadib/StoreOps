@@ -192,7 +192,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
 
   try{
     const entity=historyMapping?.entity||salesPriceEntity(),fields=historyMapping?.fields||null;
-    let totalRows=0,totalPages=0,truncated=false;
+    let totalRows=0,totalPages=0,truncated=false,todayChanges=0,catchupChanges=0;
     for(const scanDay of scanDays){
       const dateField=fields?.validFrom||'PriceApplicableFromDate',groupField=fields?.priceGroup||'PriceCustomerGroupCode';
       const filterParts=[companyFilter,groupField?priceGroupScopeFilter(groupField,priceGroups):''].filter(Boolean);
@@ -209,11 +209,12 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         if(warehouse&&(!storeWarehouse||warehouse!==storeWarehouse))continue;
         const record=clean(r.RecordId)||`${item}:${rowGroup||'ALL'}:${warehouse||'ALL'}:${rowDay}`,key=`AGREEMENT:${record}`,unitPrice=Number((price/priceQty).toFixed(6)),basis=priceQty!==1||unit?` · ${price.toFixed(2)} DH / ${priceQty!==1?`${priceQty} `:''}${unit||'unité'}`:` · ${price.toFixed(2)} DH`;
         agreementItems.add(item);
+        if(rowDay===day)todayChanges+=1;else catchupChanges+=1;
         changesByKey.set(key,{
           sourceKey:`D365-PRICE-AGREEMENT-${record}-${rowDay}`,
           stableKey:`D365-PRICE-AGREEMENT:${record}`,
           fingerprint:stableFingerprint(['AGREEMENT',record,item,price,priceQty,unit,rowGroup,r.PriceCurrencyCode,r.PriceApplicableFromDate,r.PriceApplicableToDate,warehouse,r.PriceSiteId]),
-          actionType:'VERIFY',deltaActionType:'PRICE_CHANGE',deltaOnFirstSeen:true,deltaSignageAction:'VERIFY',
+          actionType:rowDay===day?'PRICE_CHANGE':'VERIFY',deltaActionType:'PRICE_CHANGE',deltaOnFirstSeen:true,deltaSignageAction:'VERIFY',
           ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
           oldPrice:null,expectedPrice:unitPrice,promoLabel:`Accord tarifaire ${rowGroup||'Tous groupes'}${basis}${warehouse?` · entrepôt ${warehouse}`:''}${rowDay===day?'':` · détecté en rattrapage (${rowDay})`}`,
           signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:rowGroup||null,priceGroups,
@@ -221,7 +222,8 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         })
       }
     }
-    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',priceGroups,storeWarehouse,rowCount:totalRows,pages:totalPages,truncated,changes:[...changesByKey.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT').length})
+    const agreementChanges=[...changesByKey.values()].filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT');
+    sources.push({source:'SALES_PRICE_AGREEMENTS',status:'READY',entity,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG',priceGroups,storeWarehouse,rowCount:totalRows,pages:totalPages,truncated,changes:agreementChanges.length,todayChanges,catchupChanges,sample:agreementChanges.slice(0,10).map(x=>({productNumber:x.productNumber,expectedPrice:x.expectedPrice,priceGroup:x.priceGroup,effectiveFrom:x.effectiveFrom,actionType:x.actionType,label:x.promoLabel}))})
   }catch(error){sources.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',code:error.code||'D365_PRICE_AGREEMENTS_DELTA_FAILED',message:error.message})}
 
   try{
