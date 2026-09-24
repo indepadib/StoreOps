@@ -1,0 +1,79 @@
+name: V2.30.6 Trade Agreement Details
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  trade-details:
+    if: github.head_ref == 'storeops-v2.30.6-trade-agreement-details'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/commercial.mjs
+          node --check frontend/js/pages/commercial.js
+
+      - name: Contracts
+        run: |
+          node backend/tests/v2306-trade-agreement-details.mjs
+          node backend/tests/v2304-trade-agreements-today.mjs
+
+      - name: Validate live names and full Trade Agreements
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          DAY=$(date -u +%F)
+          for STORE in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const stores=['val-fleuri','trefle'],out={};
+          let total=0,named=0,detailed=0;
+          for(const store of stores){
+            const d=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
+            const rows=(d.items||[]).filter(x=>x.sourceDetails?.type==='TRADE_AGREEMENT'||/accord tarifaire/i.test(String(x.promo_label||'')));
+            const sample=rows.slice(0,10).map(x=>({
+              productNumber:x.product_number,
+              productName:x.product_name,
+              expectedPrice:x.expected_price,
+              sourceDetails:x.sourceDetails
+            }));
+            const namedRows=rows.filter(x=>x.product_name&&x.product_name!==x.product_number);
+            const detailedRows=rows.filter(x=>{
+              const s=x.sourceDetails||{};
+              return s.type==='TRADE_AGREEMENT'&&s.recordId&&s.price!=null&&s.priceQuantity!=null&&s.normalizedUnitPrice!=null&&s.validFrom;
+            });
+            total+=rows.length;named+=namedRows.length;detailed+=detailedRows.length;
+            out[store]={tradeControls:rows.length,named:namedRows.length,detailed:detailedRows.length,sample};
+          }
+          console.log(JSON.stringify({date:new Date().toISOString().slice(0,10),total,named,detailed,stores:out},null,2));
+          if(total<1)process.exit(2);
+          if(named!==total)process.exit(3);
+          if(detailed!==total)process.exit(4);
+          NODE
+
+      - name: Safety
+        run: |
+          grep -q "productDirectoryByNumber" backend/services/dynamics-price.mjs
+          grep -q "source_details_json" backend/services/commercial.mjs
+          grep -q "Détail Trade Agreement Dynamics" frontend/js/pages/commercial.js
+          grep -q "ProductName" backend/tests/v2306-trade-agreement-details.mjs
