@@ -1,0 +1,33 @@
+name: V2.25 PO Header Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover:
+    if: github.head_ref == 'storeops-v2.25-ops-stability'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Inspect PurchaseOrderHeadersV2 fields
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=PurchaseOrderHeadersV2&top=5&extra=cross-company%3Dtrue" -o /tmp/poheaders.json
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('/tmp/poheaders.json','utf8'));
+          const rows=p.rows||p.value||[];
+          const out=rows.map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/purchase|vendor|supplier|date|created|warehouse|status|name|account/i.test(k)&&v!==null&&v!=='')));
+          console.log(JSON.stringify({ok:p.ok,rowCount:p.rowCount,rows:out},null,2));
+          if(!rows.length)process.exit(2);
+          NODE

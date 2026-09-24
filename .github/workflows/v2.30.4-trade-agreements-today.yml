@@ -1,0 +1,97 @@
+name: V2.30.4 Trade Agreements Today
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  trade-agreements:
+    if: github.head_ref == 'storeops-v2.30.4-trade-agreements-today'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check frontend/js/pages/commercial.js
+
+      - name: Trade Agreements date contract
+        run: node backend/tests/v2304-trade-agreements-today.mjs
+
+      - name: Validate live Trade Agreements materialization
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          DAY=$(date -u +%F)
+          echo "Business date: $DAY"
+
+          for STORE in val-fleuri trefle; do
+            status=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               -o "/tmp/sync-$STORE.json" -w "%{http_code}"               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}')
+            echo "$STORE sync HTTP $status"
+            test "$status" = "200"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
+          const stores=['val-fleuri','trefle'];
+          const out={};
+          let totalTradeControls=0,totalSourceChanges=0;
+
+          for(const store of stores){
+            const d=read('/tmp/sync-'+store+'.json');
+            const items=Array.isArray(d.items)?d.items:[];
+            const trades=items.filter(x=>/accord tarifaire/i.test(String(x.promo_label||'')));
+            const priceSource=(d.sync?.sources||[]).find(x=>x.name==='prices');
+            const agreementDiag=(priceSource?.diagnostics?.sources||[]).find(x=>x.source==='SALES_PRICE_AGREEMENTS')||null;
+            const sourceChanges=Number(agreementDiag?.changes||0);
+            totalTradeControls+=trades.length;
+            totalSourceChanges+=sourceChanges;
+            out[store]={
+              summary:d.summary||null,
+              tradeControls:trades.length,
+              sourceChanges,
+              agreementDiagnostics:agreementDiag,
+              sample:trades.slice(0,12).map(x=>({
+                productNumber:x.product_number,
+                expectedPrice:x.expected_price,
+                label:x.promo_label,
+                actionType:x.action_type,
+                priority:x.priority
+              }))
+            };
+          }
+
+          console.log(JSON.stringify({date:new Date().toISOString().slice(0,10),totalTradeControls,totalSourceChanges,stores:out},null,2));
+
+          if(totalSourceChanges<1){
+            console.error('D365 did not expose any Trade Agreement change for today.');
+            process.exit(2);
+          }
+          if(totalTradeControls<1){
+            console.error('Trade Agreement changes exist in D365 but StoreOps materialized zero controls.');
+            process.exit(3);
+          }
+          NODE
+
+      - name: Safety
+        run: |
+          grep -q "DATETIME_RANGE" backend/services/dynamics-price.mjs
+          grep -q "priceGroupScopeFilter" backend/services/dynamics-price.mjs
+          grep -q "Trade Agreements du jour" frontend/js/pages/commercial.js
+          grep -q "v2304-trade-agreements-today" .github/workflows/v2.30.4-trade-agreements-today.yml
+          ! grep -R "post.*Dynamics" backend/services/dynamics-price.mjs

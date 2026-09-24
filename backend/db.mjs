@@ -219,6 +219,14 @@ ensureColumn('incidents','due_at','TEXT NULL');
 ensureColumn('incidents','requires_evidence','INTEGER NOT NULL DEFAULT 0');
 ensureColumn('incidents','resolution_note','TEXT NULL');
 ensureColumn('incidents','resolved_by','TEXT NULL');
+ensureColumn('users','dynamics_email','TEXT NULL');
+ensureColumn('users','permissions_profile','TEXT NULL');
+ensureColumn('users','linked_employee_id','TEXT NULL');
+ensureColumn('users','identity_provider','TEXT NULL');
+ensureColumn('users','identity_subject','TEXT NULL');
+ensureColumn('users','access_note','TEXT NULL');
+ensureColumn('users','updated_at','TEXT NULL');
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity_provider_subject ON users(identity_provider,identity_subject) WHERE identity_provider IS NOT NULL AND identity_subject IS NOT NULL;`);
 
 const stores = [
   ['val-fleuri','Val Fleuri','VF'],

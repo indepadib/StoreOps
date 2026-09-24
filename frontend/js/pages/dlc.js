@@ -1,5 +1,5 @@
 import{api,apiBlob}from'../api.js';
-import{app,canManageQuality,isDirector}from'../state.js';
+import{app,canManageDlc,isDirector,isQualityAudit}from'../state.js';
 import{$,status,fmtDate,esc,toast}from'../ui.js';
 
 let cfg=null,allItems=[],productPreview=null;
@@ -24,7 +24,7 @@ export async function renderDlc(){
       ${kpi('Recontrôles en retard',s.overdueControls||0,'contrôles à reprendre','danger')}
     </div>
 
-    ${canManageQuality()?entryPanel():`<div class="role-lock" style="margin-top:14px">Lecture seule. La saisie et le traitement DLC sont réservés au Responsable magasin, à la Qualité réseau et à la Direction.</div>`}
+    ${canManageDlc()?entryPanel():`<div class="role-lock" style="margin-top:14px">Lecture seule. La saisie et le traitement DLC sont réservés au Responsable magasin, à la Qualité réseau ou à la Direction.</div>`}
 
     <div class="network-section-title"><div><strong>File de traitement DLC / DDM</strong><span>Priorité calculée automatiquement selon le rayon et le nombre de jours restants.</span></div><span class="pill">${active.length} lot(s) actif(s)</span></div>
     <div class="dlc-priority-list">${active.length?active.map(recordCard).join(''):'<div class="card empty">Aucun lot DLC actif.</div>'}</div>
@@ -44,9 +44,9 @@ function kpi(label,value,sub,type){return`<div class="card ${type==='danger'?'dl
 function entryPanel(){
  const dept=cfg.departments[0];
  return`<div class="card dlc-entry" style="margin-top:14px">
-   <div class="row"><div><strong>Nouveau contrôle DLC / DDM</strong><div class="small muted">Scanner l’article, identifier le lot puis StoreOps calcule automatiquement le niveau d’alerte et l’action attendue.</div></div><span class="pill">Saisie magasin</span></div>
+   <div class="row"><div><strong>Nouveau contrôle DLC / DDM</strong><div class="small muted">Scanner l’article, identifier le lot puis StoreOps calcule automatiquement le niveau d’alerte et l’action attendue.</div></div><span class="pill">${isQualityAudit()?'Qualité réseau':'Saisie magasin'}</span></div>
    <div class="form-grid" style="margin-top:12px">
-    <div class="field"><label>EAN / code article *</label><div class="row"><input id="dlcEan" placeholder="Scanner / saisir" style="flex:1"><button class="btn soft" id="dlcLookup" type="button">Identifier</button></div><div id="dlcProductPreview" class="field-help"></div></div>
+    <div class="field full"><label>EAN / code interne article *</label><div class="row dlc-lookup-row"><input id="dlcEan" autocomplete="off" placeholder="Scanner un EAN ou saisir HS-00000"><button class="btn brand" id="dlcLookup" type="button">Identifier l’article</button></div><div id="dlcProductPreview" class="field-help">Recherche possible par code-barres ou code interne HS-xxxxx.</div></div>
     <div class="field"><label>Type de date *</label><select id="dlcExpiryType">${cfg.expiryTypes.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div>
     <div class="field"><label>DLC / DDM *</label><input id="dlcDate" type="date"></div>
     <div class="field"><label>Quantité constatée *</label><input id="dlcQty" type="number" min="0" step="0.01"></div>
@@ -76,7 +76,7 @@ function recordCard(r){
   <div class="dlc-required-action"><span>Action requise</span><strong>${esc(risk.action||'')}</strong></div>
   ${r.overdue_control?'<div class="banner ban-danger"><strong>Recontrôle en retard.</strong> Ce lot doit être revu maintenant.</div>':r.action_satisfied?'<div class="banner ban-info"><strong>Action du lot enregistrée.</strong> Le lot reste suivi jusqu’au prochain contrôle ou jusqu’à épuisement.</div>':''}
   ${t?`<div class="small muted" style="margin-top:8px">Dernière action : <strong>${esc(actionLabel(t.action_type))}</strong> · ${esc(t.performed_by_name||'')} · ${dt(t.performed_at)}</div>`:''}
-  ${canManageQuality()?treatmentPanel(r):''}
+  ${canManageDlc()?treatmentPanel(r):''}
   ${historyPanel(r)}
  </article>`}
 function treatmentPanel(r){
@@ -122,9 +122,17 @@ function bindDlc(){
  document.querySelectorAll('[data-dlc-evidence]').forEach(b=>b.addEventListener('click',()=>viewEvidence(b.dataset.dlcEvidence)));
  document.querySelectorAll('[data-save-dlc-th]').forEach(b=>b.addEventListener('click',()=>saveThreshold(b)));
 }
+function normalizeUnit(v){const x=String(v||'').trim().toLowerCase();if(['kg','kilogramme','kilograms'].includes(x))return'kg';if(['g','gr','gramme','grams'].includes(x))return'g';if(['l','lt','litre'].includes(x))return'L';if(['ea','pc','pcs','piece','pièce','unit'].includes(x))return'pièce';return null}
+function prefillFromProduct(product){
+ const unit=normalizeUnit(product?.inventoryUnit||product?.unit||product?.salesUnit),unitSelect=$('#dlcUnit');
+ if(unit&&unitSelect&&[...unitSelect.options].some(o=>o.value===unit||o.text===unit))unitSelect.value=unit;
+ const category=String(product?.category||'').trim();if(!category)return;
+ const dept=cfg.departments.find(d=>d.department===category||(d.families||[]).includes(category));
+ if(dept){$('#dlcDepartment').value=dept.department;updateFamilies();if((dept.families||[]).includes(category))$('#dlcFamily').value=category}
+}
 function updateFamilies(){const d=cfg.departments.find(x=>x.department===$('#dlcDepartment').value);$('#dlcFamily').innerHTML=(d?.families||[]).map(x=>`<option>${esc(x)}</option>`).join('')}
-async function lookupProduct(){try{const ean=$('#dlcEan').value.trim();if(!ean)throw new Error('Scanner ou saisir un EAN.');productPreview=await api(`/api/products/${encodeURIComponent(ean)}`);$('#dlcProductPreview').innerHTML=`<strong>${esc(productPreview.name)}</strong> · ${esc(productPreview.category||'')}`;toast('Article identifié.')}catch(e){productPreview=null;$('#dlcProductPreview').textContent=e.message;toast(e.message)}}
-async function saveDlc(){try{if(!productPreview||productPreview.ean!==$('#dlcEan').value.trim())await lookupProduct();if(!productPreview)throw new Error('Article non identifié.');const b={ean:$('#dlcEan').value.trim(),expiryType:$('#dlcExpiryType').value,expiryDate:$('#dlcDate').value,quantity:Number($('#dlcQty').value),unit:$('#dlcUnit').value,department:$('#dlcDepartment').value,family:$('#dlcFamily').value||null,zone:$('#dlcZone').value,lotRef:$('#dlcLot').value.trim(),comment:$('#dlcComment').value.trim()};await api(`/api/stores/${app.storeId}/dlc`,{method:'POST',body:JSON.stringify(b)});toast('Lot enregistré et risque calculé.');productPreview=null;await renderDlc()}catch(e){toast(e.message)}}
+async function lookupProduct(){try{const reference=$('#dlcEan').value.trim();if(!reference)throw new Error('Scanne un EAN ou saisis un code interne.');productPreview=await api(`/api/products/lookup?q=${encodeURIComponent(reference)}`);const code=productPreview.productNumber||'—',ean=productPreview.ean||'EAN non trouvé',unit=productPreview.inventoryUnit||productPreview.unit||null;$('#dlcProductPreview').innerHTML=`<strong>${esc(productPreview.name)}</strong><div class="small muted">Code ${esc(code)} · EAN ${esc(ean)}${unit?` · unité ${esc(unit)}`:''}</div>`;prefillFromProduct(productPreview);toast('Article identifié.')}catch(e){productPreview=null;$('#dlcProductPreview').textContent=e.message;toast(e.message)}}
+async function saveDlc(){try{const reference=$('#dlcEan').value.trim();if(!productPreview||![productPreview.lookupReference,productPreview.ean,productPreview.productNumber].filter(Boolean).some(x=>String(x).toLowerCase()===reference.toLowerCase()))await lookupProduct();if(!productPreview)throw new Error('Article non identifié.');const b={reference,ean:productPreview.ean||null,productNumber:productPreview.productNumber||null,expiryType:$('#dlcExpiryType').value,expiryDate:$('#dlcDate').value,quantity:Number($('#dlcQty').value),unit:$('#dlcUnit').value,department:$('#dlcDepartment').value,family:$('#dlcFamily').value||null,zone:$('#dlcZone').value,lotRef:$('#dlcLot').value.trim(),comment:$('#dlcComment').value.trim()};await api(`/api/stores/${app.storeId}/dlc`,{method:'POST',body:JSON.stringify(b)});toast('Lot enregistré et risque calculé.');productPreview=null;await renderDlc()}catch(e){toast(e.message)}}
 async function treat(id){try{const actionType=document.querySelector(`[data-dlc-action="${id}"]`).value,quantity=Number(document.querySelector(`[data-dlc-action-qty="${id}"]`).value||0),note=document.querySelector(`[data-dlc-action-note="${id}"]`).value.trim(),file=document.querySelector(`[data-dlc-proof="${id}"]`).files?.[0]||null,caption=document.querySelector(`[data-dlc-proof-caption="${id}"]`).value.trim();let dataUrl=null;if(file)dataUrl=await fileDataUrl(file);await api(`/api/dlc/${id}/treatments`,{method:'POST',body:JSON.stringify({actionType,quantity,note,dataUrl,fileName:file?.name||null,caption})});toast('Action DLC enregistrée et auditée.');await renderDlc()}catch(e){toast(e.message)}}
 async function recheck(id){try{const quantity=Number(document.querySelector(`[data-dlc-recheck-qty="${id}"]`).value),note=document.querySelector(`[data-dlc-recheck-note="${id}"]`).value.trim();await api(`/api/dlc/${id}/recheck`,{method:'POST',body:JSON.stringify({quantity,note})});toast(quantity===0?'Lot clôturé.':'Recontrôle enregistré.');await renderDlc()}catch(e){toast(e.message)}}
 async function viewEvidence(id){try{const blob=await apiBlob(`/api/dlc-media/${id}`);const url=URL.createObjectURL(blob);window.open(url,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(e){toast(e.message)}}

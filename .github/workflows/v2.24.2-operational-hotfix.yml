@@ -1,0 +1,42 @@
+name: V2.24.2 Operational Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  operational-hotfix:
+    if: github.head_ref == 'storeops-v2.24.2-operational-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/readiness-api.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/pages/staffing.js
+      - name: Static hotfix contract
+        run: node backend/tests/v2242-operational-hotfix.mjs
+      - name: Start StoreOps API
+        run: |
+          AUTH_MODE=demo D365_MODE=simulated STOREOPS_DB=/tmp/storeops-v2242.db PORT=8787 node backend/server.mjs >/tmp/storeops.log 2>&1 &
+          echo $! >/tmp/storeops.pid
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/api/health >/dev/null && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8787/api/health
+      - name: Cash-opening API
+        run: STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/cash-opening-api.mjs
+      - name: Staffing API
+        run: STOREOPS_TEST_BASE=http://127.0.0.1:8787 node backend/tests/staffing-api.mjs
+      - name: Quality network access
+        run: node backend/tests/quality-audit-access.mjs
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/storeops.log || true

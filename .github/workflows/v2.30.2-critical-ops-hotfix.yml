@@ -1,0 +1,74 @@
+name: V2.30.2 Critical Ops Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  hotfix:
+    if: github.head_ref == 'storeops-v2.23.1-critical-ops-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/opening-api.mjs
+          node --check backend/services/access-management-api.mjs
+          node --check backend/services/access-management.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+
+      - name: Critical hotfix contract
+        run: node backend/tests/v2302-critical-ops-hotfix.mjs
+
+      - name: Quality network regression
+        run: node backend/tests/quality-audit-access.mjs
+
+      - name: PWA shell regression
+        run: node backend/tests/pwa-shell.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v2302-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2302-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v2302.log 2>&1 &
+          echo $! > /tmp/storeops-v2302.pid
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v2302.log
+          exit 1
+
+      - name: Cash opening persistence regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
+      - name: Staffing persistence regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+
+      - name: Safety
+        run: |
+          grep -q "BUILD_LABEL='2.30.2'" frontend/js/auth-entry.js
+          grep -q "storeops-shell-v2.30.2" frontend/sw.js
+          grep -q "CASH_OPENING_NOT_SYNCED" backend/services/opening-api.mjs
+          grep -q "STAFFING_NOT_SYNCED" backend/services/opening-api.mjs
+          grep -q "RELEASE_BUILD='2302'" frontend/js/app.js
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v2302.pid ]; then kill "$(cat /tmp/storeops-v2302.pid)" || true; fi

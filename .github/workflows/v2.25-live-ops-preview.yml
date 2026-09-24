@@ -1,0 +1,132 @@
+name: V2.25 Live Operations Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  live-ops:
+    if: github.head_ref == 'storeops-v2.25-ops-stability'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for exact preview
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ] && grep -q '"version":"2.25.0"' /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            echo "Attempt $i · HTTP $code"
+            sleep 5
+          done
+          cat /tmp/health.json || true
+          exit 1
+
+      - name: Cash opening route and stale-safe check
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/trefle/cash-opening" -o /tmp/cash.json
+          node - <<'NODE' >/tmp/cash.env
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/cash.json','utf8'));
+          const line=d.opening?.lines?.[0];
+          console.error(JSON.stringify({status:d.summary?.status,lines:d.opening?.lines?.length||0,first:line&&{id:line.id,till:line.till_code,expected:line.expected_float}},null,2));
+          if(!line)process.exit(2);
+          console.log('LINE_ID='+line.id);
+          console.log('EXPECTED='+Number(line.expected_float||0));
+          NODE
+          source /tmp/cash.env
+          EXPECTED="$EXPECTED" node -e "require('fs').writeFileSync('/tmp/cash-payload.json',JSON.stringify({cashierName:'Test V2.25',declaredFloat:Number(process.env.EXPECTED||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true,note:'preview smoke'}))"
+          code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/cash-opening/lines/$LINE_ID/check" --data-binary @/tmp/cash-payload.json -o /tmp/cash-check.json -w "%{http_code}")
+          cat /tmp/cash-check.json
+          test "$code" = "200"
+
+      - name: Staffing route is renderable
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/trefle/staffing" -o /tmp/staff.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/staff.json','utf8'));
+          console.log(JSON.stringify({day:!!d.day,summary:d.summary,sync:d.sync},null,2));
+          if(!d.day)process.exit(2);
+          const m=d.day.metrics||d.summary||{};
+          if(typeof m!=='object')process.exit(3);
+          NODE
+
+      - name: Amine quality network account and access-save JSON
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/admin/access/accounts?all=1" -o /tmp/accounts.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/accounts.json','utf8')),a=(d.items||[]).find(x=>x.id==='u-tr');
+          if(!a)process.exit(2);
+          fs.writeFileSync('/tmp/amine-payload.json',JSON.stringify({name:'Amine Chibani',email:a.email||'amine.chibani@storeops.test',profileCode:'QUALITY_AUDIT',storeId:null,linkedEmployeeId:a.linkedEmployeeId||null,identityProvider:a.identityProvider||'ENTRA',identitySubject:a.identitySubject||null,note:'V2.25 preview quality network test'}));
+          NODE
+          code=$(curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X PUT "$PREVIEW_URL/api/admin/access/accounts/u-tr" --data-binary @/tmp/amine-payload.json -o /tmp/access-save.json -w "%{http_code}")
+          cat /tmp/access-save.json
+          test "$code" = "200"
+          curl -sS -H "x-demo-user: u-tr" "$PREVIEW_URL/api/session" -o /tmp/session.json
+          curl -sS -H "x-demo-user: u-tr" "$PREVIEW_URL/api/stores" -o /tmp/stores.json
+          node - <<'NODE'
+          const fs=require('fs'),s=JSON.parse(fs.readFileSync('/tmp/session.json','utf8')),stores=JSON.parse(fs.readFileSync('/tmp/stores.json','utf8'));
+          console.log(JSON.stringify({user:s.user&&{id:s.user.id,name:s.user.name,role:s.user.role,profile:s.user.permissions_profile},stores:(stores||[]).map(x=>x.id)},null,2));
+          if(s.user?.id!=='u-tr'||s.user?.permissions_profile!=='quality_audit')process.exit(3);
+          if(!(stores||[]).some(x=>x.id==='val-fleuri')||!(stores||[]).some(x=>x.id==='trefle'))process.exit(4);
+          NODE
+
+      - name: PO and TO routes are distinct
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/val-fleuri/receipts/po/sync" --data '{}' -o /tmp/po-sync.json
+          curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/val-fleuri/receipts/to/sync" --data '{}' -o /tmp/to-sync.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/po" -o /tmp/po.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/receipts/to" -o /tmp/to.json
+          node - <<'NODE'
+          const fs=require('fs'),po=JSON.parse(fs.readFileSync('/tmp/po.json','utf8')),to=JSON.parse(fs.readFileSync('/tmp/to.json','utf8'));
+          const now=new Date('2026-09-21T12:00:00Z'),cutoff=new Date(now);cutoff.setUTCMonth(cutoff.getUTCMonth()-1);
+          console.log(JSON.stringify({po:po.length,to:to.length,poTypes:[...new Set(po.map(x=>x.document_type))],toTypes:[...new Set(to.map(x=>x.document_type))],poSample:po.slice(0,3).map(x=>({number:x.po_number,vendor:x.vendor,vendorAccount:x.source_vendor_account,created:x.source_created_date,warehouse:x.source_warehouse_id,lines:x.line_count}))},null,2));
+          if(!Array.isArray(po)||!Array.isArray(to))process.exit(2);
+          if(po.some(x=>(x.document_type||'PO')!=='PO'))process.exit(3);
+          if(to.some(x=>x.document_type!=='TO'))process.exit(4);
+          if(po.some(x=>x.source_created_date&&new Date(x.source_created_date+'T12:00:00Z')<cutoff))process.exit(5);
+          if(po.some(x=>!x.vendor||!Number.isFinite(Number(x.line_count))))process.exit(6);
+          NODE
+
+      - name: Stock anomaly payload stays compact
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/stock-signals" -o /tmp/stock.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/stock.json','utf8')),s=d.summary||{};
+          console.log(JSON.stringify({total:s.total,preview:s.previewItems,hidden:s.hiddenItems,negative:s.negative,negativePreview:s.negativePreview,outOfStock:s.outOfStock,outOfStockPreview:s.outOfStockPreview},null,2));
+          if(!Array.isArray(d.items))process.exit(2);
+          if(Number(s.previewItems||0)!==d.items.length)process.exit(3);
+          if(Number(s.previewItems||0)>53)process.exit(4);
+          if(Number(s.total||0)<d.items.length)process.exit(5);
+          NODE
+
+      - name: Inventory route and no-write guard
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/val-fleuri/inventory?status=ALL" -o /tmp/inventory.json
+          node - <<'NODE'
+          const fs=require('fs'),d=JSON.parse(fs.readFileSync('/tmp/inventory.json','utf8'));
+          console.log(JSON.stringify({summary:d.summary,items:d.items?.length||0},null,2));
+          if(!Array.isArray(d.items))process.exit(2);
+          NODE

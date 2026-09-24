@@ -58,6 +58,32 @@ for(const control of x.data.items){
   const verified=await call('POST',`/api/commercial/${control.id}/control`,'u-ops',{observedPrice:control.expected_price,signageOk:true,executionOk:true,note:'contrôle CI conforme'});
   ok(verified.r.status===200,'Carita commercial control verification failed');
 }
+
+// Readiness domains are explicit writes: GET never creates ephemeral line ids.
+let readiness=await call('POST','/api/stores/carita/staffing/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.day?.lines?.length,'Carita staffing sync failed');
+for(const line of readiness.data.day.lines){
+  const attendance=await call('POST',`/api/staffing/lines/${line.id}/attendance`,'u-ops',{status:'PRESENT'});
+  ok(attendance.r.status===200,'Carita staffing attendance failed');
+}
+
+const coldCfg=await call('GET','/api/cold-chain/config','u-ops');
+readiness=await call('POST','/api/stores/carita/cold-chain/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.day?.lines?.length,'Carita cold-chain sync failed');
+for(const line of readiness.data.day.lines){
+  const profile=(coldCfg.data.profiles||[]).find(p=>p.code===line.profile_code);
+  const temp=profile&&Number.isFinite(Number(profile.temp_min))&&Number.isFinite(Number(profile.temp_max))?(Number(profile.temp_min)+Number(profile.temp_max))/2:0;
+  const check=await call('POST',`/api/cold-chain/lines/${line.id}/check`,'u-ops',{temperature:temp,doorOk:true,note:'CI conforme'});
+  ok(check.r.status===200,'Carita cold-chain readiness failed');
+}
+
+readiness=await call('POST','/api/stores/carita/cash-opening/sync','u-ops',{});
+ok(readiness.r.status===200&&readiness.data.opening?.lines?.length,'Carita cash-opening sync failed');
+for(const line of readiness.data.opening.lines){
+  const check=await call('POST','/api/stores/carita/cash-opening/check','u-ops',{tillCode:line.till_code,cashierName:'CI',declaredFloat:Number(line.expected_float||0),posOk:true,tpeOk:true,printerOk:true,shiftOpened:true});
+  ok(check.r.status===200,'Carita cash-opening readiness failed');
+}
+
 x=await call('POST','/api/stores/carita/process/opening/validate','u-ops',{});
 ok(x.r.status===200,'opening should validate after all commercial controls are verified');
 
@@ -71,16 +97,20 @@ ok(x.r.status===201&&x.data.status==='COUNTING','manager inventory session creat
 x=await call('POST',`/api/inventory/${inventoryId}/lines`,'u-vf',{ean:'3017620422003'});
 ok(x.r.status===201&&Number(x.data.theoretical_qty)===17,'inventory Nutella stock snapshot failed');const nutLineId=x.data.id;
 x=await call('POST',`/api/inventory/lines/${nutLineId}/count`,'u-vf',{quantity:16});
-ok(x.r.status===409,'inventory low variance reason requirement bypassed');
-x=await call('POST',`/api/inventory/lines/${nutLineId}/count`,'u-vf',{quantity:16,reasonCode:'SHRINK',note:'1 unité manquante'});
-ok(x.r.status===200&&x.data.lines.find(i=>i.id===nutLineId)?.status==='COUNTED','inventory direct count with reason failed');
+ok(x.r.status===200&&x.data.lines.find(i=>i.id===nutLineId)?.status==='COUNTED'&&!x.data.lines.find(i=>i.id===nutLineId)?.reason_code,'inventory low variance must be counted before explanation');
+x=await call('POST',`/api/inventory/${inventoryId}/finalize`,'u-vf',{});
+ok(x.r.status===409,'inventory must not finalize with an unexplained variance');
+x=await call('POST',`/api/inventory/lines/${nutLineId}/explain`,'u-vf',{reasonCode:'SHRINK',note:'1 unité manquante'});
+ok(x.r.status===200&&x.data.lines.find(i=>i.id===nutLineId)?.reason_code==='SHRINK','inventory low variance explanation failed');
 
 x=await call('POST',`/api/inventory/${inventoryId}/lines`,'u-vf',{ean:'6111040001111'});
 ok(x.r.status===201&&Number(x.data.theoretical_qty)===24,'inventory milk stock snapshot failed');const milkLineId=x.data.id;
-x=await call('POST',`/api/inventory/lines/${milkLineId}/count`,'u-vf',{quantity:18,reasonCode:'SHRINK',note:'écart important'});
+x=await call('POST',`/api/inventory/lines/${milkLineId}/count`,'u-vf',{quantity:18});
 ok(x.r.status===200&&x.data.lines.find(i=>i.id===milkLineId)?.status==='RECOUNT','inventory recount threshold failed');
 x=await call('POST',`/api/inventory/lines/${milkLineId}/count`,'u-vf',{quantity:18,recount:true});
-ok(x.r.status===200&&Number(x.data.lines.find(i=>i.id===milkLineId)?.final_variance)===-6&&x.data.lines.find(i=>i.id===milkLineId)?.reason_code==='SHRINK','inventory recount/final variance failed');
+ok(x.r.status===200&&Number(x.data.lines.find(i=>i.id===milkLineId)?.final_variance)===-6&&!x.data.lines.find(i=>i.id===milkLineId)?.reason_code,'inventory recount must finish before explanation');
+x=await call('POST',`/api/inventory/lines/${milkLineId}/explain`,'u-vf',{reasonCode:'SHRINK',note:'écart important'});
+ok(x.r.status===200&&x.data.lines.find(i=>i.id===milkLineId)?.reason_code==='SHRINK','inventory recount explanation failed');
 
 x=await call('POST',`/api/inventory/${inventoryId}/finalize`,'u-vf',{});
 ok(x.r.status===200&&x.data.session.status==='READY_TO_POST'&&x.data.highVarianceLines.some(i=>i.id===milkLineId),'inventory finalize/high variance failed');
@@ -88,7 +118,7 @@ x=await call('GET','/api/stores/val-fleuri/incidents?status=OPEN','u-vf');
 const stockIncident=x.data.items?.find(i=>i.source_type==='INVENTORY_LINE'&&i.source_id===milkLineId);
 ok(x.r.status===200&&stockIncident&&stockIncident.category==='STOCK'&&Number(stockIncident.requires_evidence)===1,'inventory stock incident escalation failed');
 x=await call('POST',`/api/inventory/${inventoryId}/post`,'u-vf',{});
-ok(x.r.status===200&&x.data.dynamics?.simulated===true&&x.data.session?.status==='POSTED','inventory simulated posting failed');
+ok(x.r.status===409&&x.data.code==='D365_WRITE_DISABLED','inventory posting must remain disabled');
 
 x=await call('PUT','/api/inventory/policy','u-vf',{recountThreshold:3,incidentThreshold:6});
 ok(x.r.status===403,'store manager must not change inventory policy');

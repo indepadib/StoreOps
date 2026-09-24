@@ -1,6 +1,6 @@
 import { db,uid,audit,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
-import { getStoreProductByIdentifier } from './dynamics-stock.mjs';
+import { getStoreProductByEan } from './dynamics-stock.mjs';
 import { getProductPricing } from './dynamics-promotion.mjs';
 
 db.exec(`
@@ -50,18 +50,17 @@ function openPriceIncident(storeId,ean){
 }
 function integrationError(error,domain='pricing'){return{[domain]:{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}}
 
-export async function buildPriceCheckContext({storeId,ean,identifier,businessDate=todayISO()}){
- const code=String(identifier??ean??'').trim();if(!code)throw Object.assign(new Error('EAN ou code article obligatoire.'),{status:400});
- const product=await getStoreProductByIdentifier(storeId,code);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404,code:'ITEM_NOT_FOUND'});
- const canonicalEan=String(product.ean||'').trim()||`ITEM:${product.productNumber||code}`;
+export async function buildPriceCheckContext({storeId,ean,businessDate=todayISO()}){
+ const code=String(ean||'').trim();if(!code)throw Object.assign(new Error('EAN obligatoire.'),{status:400});
+ const product=await getStoreProductByEan(storeId,code);if(!product)throw Object.assign(new Error('Article introuvable Dynamics.'),{status:404,code:'ITEM_NOT_FOUND'});
  const priceGroup=priceGroupForStore(storeId),category=String(product.category||'Autre').trim()||'Autre';
  let pricing=null,pricingFailure=null;
  try{pricing=await getProductPricing(product.productNumber,{businessDate,priceGroup,storeId,productName:product.name,productCategory:category})}catch(error){pricingFailure=error;pricing={basePrice:null,effectiveUnitPrice:null,promotions:{items:[]},conditionalPromotions:[],pricingNote:'Prix temps réel indisponible',sources:null,errors:integrationError(error).pricing}}
  const mergedErrors={...(pricing?.errors||{})};if(product.identityError)mergedErrors.identity=product.identityError;if(product.stockError)mergedErrors.stock=product.stockError;if(pricingFailure&&!mergedErrors.pricing)mergedErrors.pricing={code:pricingFailure.code||'D365_UNAVAILABLE',message:pricingFailure.message};
  return{
-  storeId,businessDate,ean:canonicalEan,lookupIdentifier:code,priceGroup:pricing?.priceGroup||priceGroup,priceGroups:pricing?.priceGroups||[priceGroup],priceGroupContext:pricing?.priceGroupContext||null,
-  product:{ean:product.ean||null,productNumber:product.productNumber,name:product.name,category,unit:product.unit,source:product.source||null,identityFallback:!!product.identityFallback,identityStale:!!product.identityStale,cacheSyncedAt:product.cacheSyncedAt||null,stock:product.stock,availableStock:product.availableStock,reservedStock:product.reservedStock??null,onOrderStock:product.onOrderStock??null,totalAvailableStock:product.totalAvailableStock??null,warehouseId:product.warehouseId??null,stockRowCount:product.stockRowCount??null,stockSource:product.stockSource??null,stockMappingRequired:!!product.stockMappingRequired,stockUnavailable:!!product.stockUnavailable,stockError:product.stockError||null},
-  basePrice:pricing?.basePrice??null,tradeAgreement:pricing?.tradeAgreements?.active||null,referencePrice:pricing?.referencePrice??null,referencePriceSource:pricing?.referencePriceSource||null,expectedUnitPrice:pricing?.effectiveUnitPrice??null,effectivePriceSource:pricing?.effectivePriceSource||null,promotions:pricing?.promotions||{items:[]},conditionalPromotions:pricing?.conditionalPromotions||[],promoLabel:promoText(pricing),pricingNote:pricing?.pricingNote||null,pricingSources:pricing?.sources||null,integrationErrors:Object.keys(mergedErrors).length?mergedErrors:null,promotionError:mergedErrors?.promotion||null,promotionScan:pricing?.promotions?.scan||null,openIncident:openPriceIncident(storeId,canonicalEan),partial:!!(product.identityFallback||product.stockUnavailable||pricingFailure)
+  storeId,businessDate,ean:code,priceGroup:pricing?.priceGroup||priceGroup,priceGroups:pricing?.priceGroups||[priceGroup],priceGroupContext:pricing?.priceGroupContext||null,
+  product:{ean:code,productNumber:product.productNumber,name:product.name,category,unit:product.unit,source:product.source||null,identityFallback:!!product.identityFallback,identityStale:!!product.identityStale,cacheSyncedAt:product.cacheSyncedAt||null,stock:product.stock,availableStock:product.availableStock,reservedStock:product.reservedStock??null,onOrderStock:product.onOrderStock??null,totalAvailableStock:product.totalAvailableStock??null,warehouseId:product.warehouseId??null,stockRowCount:product.stockRowCount??null,stockSource:product.stockSource??null,stockMappingRequired:!!product.stockMappingRequired,stockUnavailable:!!product.stockUnavailable,stockError:product.stockError||null},
+  basePrice:pricing?.basePrice??null,expectedUnitPrice:pricing?.effectiveUnitPrice??null,pricingBasis:pricing?.pricingBasis||null,tradeAgreements:pricing?.tradeAgreements||{rowCount:0,rows:[],applicability:null},promotions:pricing?.promotions||{items:[]},conditionalPromotions:pricing?.conditionalPromotions||[],promoLabel:promoText(pricing),pricingNote:pricing?.pricingNote||null,pricingSources:pricing?.sources||null,integrationErrors:Object.keys(mergedErrors).length?mergedErrors:null,promotionError:mergedErrors?.promotion||null,promotionScan:pricing?.promotions?.scan||null,openIncident:openPriceIncident(storeId,code),partial:!!(product.identityFallback||product.stockUnavailable||pricingFailure)
  }
 }
 

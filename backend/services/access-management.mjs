@@ -14,10 +14,21 @@ ensureColumn('users','updated_at','TEXT NULL');
 
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_identity_provider_subject ON users(identity_provider,identity_subject) WHERE identity_provider IS NOT NULL AND identity_subject IS NOT NULL;`);
 
+function migrateLegacyQualityAccounts(){
+ const rows=db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users`).all();
+ for(const row of rows){
+  const name=String(row.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+  if(name.includes('amine')&&name.includes('chibani')&&row.permissions_profile!=='quality_audit'){
+   db.prepare(`UPDATE users SET role='employee',store_id=NULL,permissions_profile='quality_audit',updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(row.id);
+  }
+ }
+}
+migrateLegacyQualityAccounts();
+
 const PROFILE_DEFS=Object.freeze({
  PLATFORM_ADMIN:{code:'PLATFORM_ADMIN',label:'Administrateur StoreOps',description:'Configuration complète du tenant, accès, intégrations et réseau.',role:'ops_director',permissionsProfile:'platform_admin',scope:'NETWORK',sensitive:true},
  OPS_DIRECTOR:{code:'OPS_DIRECTOR',label:'Direction d’exploitation',description:'Pilotage de tous les magasins et opérations réseau.',role:'ops_director',permissionsProfile:null,scope:'NETWORK',sensitive:true},
- QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Gestion Qualité et DLC sur tous les magasins, audit réseau, sans posting opérationnel ni administration.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:true},
+ QUALITY_AUDIT:{code:'QUALITY_AUDIT',label:'Qualité & audit réseau',description:'Tous magasins · Qualité, DLC/DDM, Chaîne du froid, suivi Ouverture et contrôles en réception · aucun posting ERP.',role:'employee',permissionsProfile:'quality_audit',scope:'NETWORK',sensitive:false},
  DEVELOPMENT:{code:'DEVELOPMENT',label:'Développement réseau',description:'Sourcing de locaux, négociation, contrats, travaux et ouvertures.',role:'employee',permissionsProfile:'development',scope:'NETWORK',sensitive:false},
  STORE_MANAGER:{code:'STORE_MANAGER',label:'Responsable magasin',description:'Pilotage opérationnel complet de son magasin uniquement.',role:'store_manager',permissionsProfile:null,scope:'STORE',sensitive:false},
  STORE_USER:{code:'STORE_USER',label:'Utilisateur magasin',description:'Accès terrain à son magasin sans droits de Responsable.',role:'employee',permissionsProfile:'store_user',scope:'STORE',sensitive:false}
@@ -80,12 +91,12 @@ export function createAccessAccount({actor,name,emailAddress,profileCode,storeId
 export function updateAccessAccount({actor,userId,name,emailAddress,profileCode,storeId=null,linkedEmployeeId=null,identityProvider='ENTRA',identitySubject=null,note=null}){
  const current=userRow(userId);if(!current)throw Object.assign(new Error('Compte StoreOps introuvable.'),{status:404,code:'ACCESS_ACCOUNT_NOT_FOUND'});const profile=requireProfile(profileCode),currentProfile=profileFromUser(current);ensureActorCanManage(actor,profile,current);
  if(actor?.id===userId&&currentProfile.code==='PLATFORM_ADMIN'&&profile.code!=='PLATFORM_ADMIN')throw Object.assign(new Error('Vous ne pouvez pas retirer votre propre rôle Administrateur.'),{status:409,code:'ACCESS_SELF_DEMOTION_FORBIDDEN'});
- const person=clean(name),mail=email(emailAddress),provider=normalizeProvider(identityProvider),subject=clean(identitySubject)||null;if(!person)throw Object.assign(new Error('Nom du compte obligatoire.'),{status:400});if(provider==='ENTRA'&&!mail&&!subject)throw Object.assign(new Error('Email/UPN ou Object ID Entra obligatoire.'),{status:400});validateStoreAndEmployee({profile,storeId,linkedEmployeeId});
+ const person=clean(name),mail=email(emailAddress),provider=normalizeProvider(identityProvider),subject=clean(identitySubject)||null;if(!person)throw Object.assign(new Error('Nom du compte obligatoire.'),{status:400});const legacyIdentityPending=provider==='ENTRA'&&!mail&&!subject&&!current.email&&!current.identity_subject&&!current.entra_oid;if(provider==='ENTRA'&&!mail&&!subject&&!legacyIdentityPending)throw Object.assign(new Error('Email/UPN ou Object ID Entra obligatoire.'),{status:400,code:'ACCESS_ENTRA_IDENTITY_REQUIRED'});validateStoreAndEmployee({profile,storeId,linkedEmployeeId});
  if(mail&&db.prepare(`SELECT id FROM users WHERE (lower(email)=? OR lower(dynamics_email)=?) AND id<>?`).get(mail,mail,userId))throw Object.assign(new Error('Cet email est déjà utilisé par un autre compte.'),{status:409,code:'ACCESS_EMAIL_EXISTS'});
  if(linkedEmployeeId&&db.prepare(`SELECT id FROM users WHERE linked_employee_id=? AND id<>?`).get(linkedEmployeeId,userId))throw Object.assign(new Error('Ce collaborateur possède déjà un autre compte StoreOps.'),{status:409,code:'ACCESS_EMPLOYEE_ALREADY_LINKED'});
  const primaryStore=profile.scope==='STORE'?storeId:null,entraOid=provider==='ENTRA'&&subject?subject:(provider==='ENTRA'?current.entra_oid:null);
  db.prepare(`UPDATE users SET name=?,email=?,entra_oid=?,role=?,store_id=?,permissions_profile=?,linked_employee_id=?,identity_provider=?,identity_subject=?,access_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(person,mail||null,entraOid,profile.role,primaryStore,profile.permissionsProfile,linkedEmployeeId||null,provider,subject,clean(note)||null,userId);
- const row=userRow(userId);auditAccess(actor,row,'USER_ACCESS_UPDATED',{fromProfile:currentProfile.code,toProfile:profile.code,storeId:primaryStore,linkedEmployeeId:linkedEmployeeId||null,provider});return accountView(row)
+ const row=userRow(userId);auditAccess(actor,row,'USER_ACCESS_UPDATED',{fromProfile:currentProfile.code,toProfile:profile.code,storeId:primaryStore,linkedEmployeeId:linkedEmployeeId||null,provider,legacyIdentityPending});return accountView(row)
 }
 
 export function setAccessAccountActive({actor,userId,active}){

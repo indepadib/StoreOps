@@ -3,6 +3,29 @@ import { app } from './state.js';
 const BASE=(window.STOREOPS_CONFIG?.apiBase||'').replace(/\/$/,'');
 const bootConsumed=new Set();
 let showcaseRuntimePromise=null;
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+function methodOf(options={}){return String(options.method||'GET').toUpperCase()}
+function transientReadResponse(r){
+  if(!r)return false;
+  if([502,503,504].includes(Number(r.status)))return true;
+  const type=String(r.headers?.get?.('content-type')||'').toLowerCase();
+  return Number(r.status)===500&&!type.includes('application/json')
+}
+async function fetchSafeRead(url,init={},method='GET'){
+  let lastError=null;
+  for(let attempt=0;attempt<2;attempt++){
+    try{
+      const r=await fetch(url,init);
+      if(method==='GET'&&attempt===0&&transientReadResponse(r)){await wait(250);continue}
+      return r
+    }catch(error){
+      lastError=error;
+      if(method!=='GET'||attempt>0)throw error;
+      await wait(250);
+    }
+  }
+  throw lastError||new Error('Lecture StoreOps indisponible.')
+}
 
 function apiUrl(path){return `${BASE}${path}`}
 export function isShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}
@@ -55,18 +78,19 @@ async function parseJsonResponse(r,url){
 export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
-  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path);let r;
-  try{r=await fetch(url,{...options,headers})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie STOREOPS_API_BASE et que le backend est déployé. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path),method=methodOf(options);let r;
+  const body=options.body!=null&&typeof options.body==='object'&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;
+  try{r=await fetchSafeRead(url,{...options,body,headers},method)}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie la connexion réseau puis réessaie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
   if(isShowcase())return (await showcaseRuntime()).health();
   if(window.STOREOPS_BOOT_HEALTH&&!window.STOREOPS_BOOT_HEALTH_CONSUMED){window.STOREOPS_BOOT_HEALTH_CONSUMED=true;return window.STOREOPS_BOOT_HEALTH}
   const url=apiUrl('/api/health');let r;
-  try{r=await fetch(url,{cache:'no-store'})}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Configure STOREOPS_API_BASE dans Netlify puis redéploie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  try{r=await fetchSafeRead(url,{cache:'no-store'},'GET')}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie la connexion réseau puis réessaie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Healthcheck API en erreur (${r.status}).`);e.status=r.status;throw e}return data
 }
 export async function apiBlob(path){
   if(isShowcase())return (await showcaseRuntime()).apiBlob(path);
-  const headers=applyAuth({}),r=await fetch(apiUrl(path),{headers});if(!r.ok)throw new Error(`Erreur HTTP ${r.status}`);return r.blob()
+  const headers=applyAuth({}),r=await fetchSafeRead(apiUrl(path),{headers},'GET');if(!r.ok)throw new Error(`Erreur HTTP ${r.status}`);return r.blob()
 }

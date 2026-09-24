@@ -1,7 +1,7 @@
 (function(){
-  var BUILD='2.23.0';
+  var BUILD='2.30.6';
   var errors=[];
-  var CLEAN_KEY='storeops-legacy-runtime-cleaned-v1';
+  var CLEAN_KEY='storeops-legacy-runtime-cleaned-v1-'+BUILD;
   window.STOREOPS_BUILD=BUILD;
   window.STOREOPS_BOOT_ERRORS=errors;
 
@@ -9,14 +9,10 @@
     try{return String(v&&v.message?v.message:v||'Erreur inconnue')}catch(_){return'Erreur inconnue'}
   }
   function remember(v){var text=msg(v);if(text&&errors.indexOf(text)<0)errors.push(text);}
-  function alreadyClean(){try{return localStorage.getItem(CLEAN_KEY)==='1'}catch(_){return false}}
-  function markClean(){try{localStorage.setItem(CLEAN_KEY,'1')}catch(_){}}
-
   window.addEventListener('error',function(e){remember(e.error||e.message);});
   window.addEventListener('unhandledrejection',function(e){remember(e.reason);});
 
   async function cleanLegacyRuntime(){
-    if(alreadyClean())return;
     try{
       if('serviceWorker' in navigator){
         var regs=await navigator.serviceWorker.getRegistrations();
@@ -26,7 +22,7 @@
         var keys=await caches.keys();
         await Promise.all(keys.filter(function(k){return k.indexOf('storeops-shell-')===0;}).map(function(k){return caches.delete(k);}));
       }
-      markClean();
+      try{localStorage.removeItem(CLEAN_KEY)}catch(_){}
     }catch(e){remember(e);}
   }
   window.STOREOPS_BOOT_PREP=cleanLegacyRuntime();

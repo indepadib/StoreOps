@@ -1,0 +1,90 @@
+name: V2.26 Dual Pilot Pricing Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover:
+    if: github.head_ref == 'storeops-v2.26-dual-pilot-pricing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Discover live pricing agreements for both pilots
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for channel in 10001 10002; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=RetailChannelPriceGroups&top=100&filter=RetailChannelId%20eq%20%27$channel%27"               -o "/tmp/groups-$channel.json"
+          done
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=200&filter=PriceCustomerGroupCode%20eq%20%27Franprix%27"             -o /tmp/agreements-franprix.json
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=200&filter=PriceCustomerGroupCode%20eq%20%27Franp%20VF%27"             -o /tmp/agreements-vf.json
+
+          for store in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/items/HS-001032/price-history?date=2026-07-20&days=7"               -o "/tmp/history-$store-july.json"
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/items/HS-001032/price-history?date=2026-09-22&days=7"               -o "/tmp/history-$store-now.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
+          const groups={};
+          for(const ch of ['10001','10002']){
+            const p=read('/tmp/groups-'+ch+'.json');
+            groups[ch]=(p.rows||[]).map(r=>({RetailChannelId:r.RetailChannelId,GroupCode:r.GroupCode,PriceGroupId:r.PriceGroupId,Name:r.Name}));
+          }
+          const compact=p=>{
+            const d=read(p);
+            return {
+              ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,
+              rows:(d.rows||[]).slice(0,30).map(r=>({
+                ItemNumber:r.ItemNumber||r.ProductNumber||null,
+                Price:r.Price,
+                Currency:r.PriceCurrencyCode||null,
+                Qty:r.SalesPriceQuantity||null,
+                Unit:r.QuantityUnitySymbol||null,
+                Group:r.PriceCustomerGroupCode||null,
+                Customer:r.CustomerAccountNumber||null,
+                Warehouse:r.PriceWarehouseId||null,
+                Site:r.PriceSiteId||null,
+                From:r.PriceApplicableFromDate||null,
+                To:r.PriceApplicableToDate||null,
+                FromQty:r.FromQuantity||null,
+                ToQty:r.ToQuantity||null,
+                Continue:r.WillSearchContinue??null,
+                RecordId:r.RecordId??null
+              }))
+            };
+          };
+          const histories={};
+          for(const store of ['val-fleuri','trefle']){
+            histories[store]={
+              july:read('/tmp/history-'+store+'-july.json'),
+              now:read('/tmp/history-'+store+'-now.json')
+            };
+          }
+          const out={groups,agreements:{Franprix:compact('/tmp/agreements-franprix.json'),FranpVF:compact('/tmp/agreements-vf.json')},histories};
+          console.log(JSON.stringify(out,null,2));
+          if(!groups['10001'].length||!groups['10002'].length)process.exit(2);
+          if(out.agreements.Franprix.ok!==true)process.exit(3);
+          for(const store of ['val-fleuri','trefle']){
+            const july=histories[store]?.tradeAgreements?.applicability||histories[store]?.july?.tradeAgreements?.applicability;
+            const now=histories[store]?.now?.tradeAgreements?.applicability;
+            if(!july)process.exit(4);
+            const julySafe=july.status==='UNIQUE'&&Number(july.safePrice)===10;
+            const julyBlocked=july.status==='UNSAFE'&&(july.evaluated||[]).some(x=>(x.reasons||[]).includes('UNIT_CONVERSION_UNPROVEN'));
+            if(!julySafe&&!julyBlocked)process.exit(4);
+            if(!now||now.status!=='NONE')process.exit(5);
+          }
+          NODE

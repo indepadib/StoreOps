@@ -1,0 +1,118 @@
+name: V2.26.1 Access & Runtime Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  hotfix:
+    if: github.head_ref == 'storeops-v2.23.1-access-runtime-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/auth/session.mjs
+          node --check backend/auth/session-readonly.mjs
+          node --check backend/services/access-management.mjs
+          node --check backend/services/opening-api.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/admin-studio-access.js
+
+      - name: Access and runtime contract
+        run: node backend/tests/v2261-access-runtime-hotfix.mjs
+
+      - name: Quality network regression
+        run: node backend/tests/quality-audit-access.mjs
+
+      - name: PWA shell regression
+        run: node backend/tests/pwa-shell.mjs
+
+      - name: Start isolated API
+        env:
+          AUTH_MODE: demo
+          D365_MODE: simulated
+          PORT: 8787
+          STOREOPS_DB: /tmp/storeops-v2261-api.db
+          STOREOPS_MEDIA_DIR: /tmp/storeops-v2261-media
+        run: |
+          node backend/server.mjs > /tmp/storeops-v2261.log 2>&1 &
+          echo $! > /tmp/storeops-v2261.pid
+          for i in {1..40}; do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/tmp/health.json; then cat /tmp/health.json; exit 0; fi
+            sleep 1
+          done
+          cat /tmp/storeops-v2261.log
+          exit 1
+
+      - name: Cash opening stable-route regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/cash-opening-api.mjs
+
+      - name: Staffing API regression
+        env:
+          STOREOPS_TEST_BASE: http://127.0.0.1:8787
+        run: node backend/tests/staffing-api.mjs
+
+      - name: Safety
+        run: |
+          grep -q "identity_subject" backend/auth/session.mjs
+          grep -q "CASH_OPENING_TILL_REQUIRED" backend/services/opening-api.mjs
+          grep -q "document.querySelectorAll('#nav button" frontend/js/app.js
+          grep -q "rawMetrics=d.metrics||data.summary||{}" frontend/js/pages/staffing.js
+          grep -q "BUILD_LABEL='2.26.1'" frontend/js/auth-entry.js
+          grep -q "storeops-shell-v2.26.1" frontend/sw.js
+
+      - name: Stop isolated API
+        if: always()
+        run: |
+          if [ -f /tmp/storeops-v2261.pid ]; then kill "$(cat /tmp/storeops-v2261.pid)" || true; fi
+
+  live-preview:
+    if: github.head_ref == 'storeops-v2.23.1-access-runtime-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for exact preview and inspect access metadata
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 80); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            if [ "$code" = "200" ] && grep -q '"version":"2.26.1"' /tmp/health.json; then break; fi
+            sleep 5
+          done
+          test "$code" = "200"
+          grep -q '"version":"2.26.1"' /tmp/health.json
+
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/admin/access/accounts?all=1" -o /tmp/accounts.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/session" -o /tmp/session.json
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const a=JSON.parse(fs.readFileSync('/tmp/accounts.json','utf8'));
+          const s=JSON.parse(fs.readFileSync('/tmp/session.json','utf8'));
+          const safe=(a.items||[]).map(x=>({
+            name:x.name,
+            profile:x.profileCode,
+            active:x.active,
+            scope:x.scope,
+            storeId:x.storeId,
+            hasEmail:!!x.email,
+            hasIdentitySubject:!!x.identitySubject,
+            identityProvider:x.identityProvider
+          }));
+          console.log(JSON.stringify({version:'2.26.1',session:s.user&&{name:s.user.name,role:s.user.role,profile:s.user.permissions_profile},accounts:safe},null,2));
+          const amine=safe.find(x=>/amine.*chibani|chibani.*amine/i.test(String(x.name||'')));
+          if(amine && (amine.profile!=='QUALITY_AUDIT'||amine.scope!=='NETWORK'||amine.active!==true))process.exit(2);
+          NODE

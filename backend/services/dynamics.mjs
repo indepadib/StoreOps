@@ -171,41 +171,6 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
   priceGroupCache.set(cacheKey,{value,expiresAt:Date.now()+Math.min(ttl,15)*1000});return value;
 }
 
-export async function getProductByIdentifier(identifier){
-  const code=String(identifier||'').trim();if(!code)return null;
-  if(!isD365ReadLive('product')){
-    if(PRODUCTS[code])return PRODUCTS[code];
-    return Object.values(PRODUCTS).find(x=>String(x?.productNumber||'').trim()===code)||null;
-  }
-  const byEan=await getProductByEan(code).catch(error=>{
-    if(error?.code==='D365_MAPPING_REQUIRED')throw error;
-    return null
-  });
-  if(byEan)return byEan;
-
-  const c=config.dynamics;
-  if(!c.productEntity||!c.productNumberField)return null;
-  const filters=[`${c.productNumberField} eq '${escapeOData(code)}'`];
-  if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
-  const select=[c.productNumberField,c.productNameField,c.dataAreaField].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
-  const productPayload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''});
-  const row=productPayload?.value?.[0];if(!row)return null;
-
-  let barcodeRow=null;
-  if(c.barcodeEntity&&c.barcodeProductField&&c.barcodeField){
-    try{
-      const barcodeFilters=[`${c.barcodeProductField} eq '${escapeOData(code)}'`];
-      if(c.dataAreaId)barcodeFilters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
-      const barcodePayload=await odataGet(c.barcodeEntity,{filter:barcodeFilters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''});
-      barcodeRow=barcodePayload?.value?.[0]||null
-    }catch{}
-  }
-  const ean=barcodeRow?.[c.barcodeField]||null;
-  const unit=barcodeRow?.[c.barcodeUnitField]||barcodeRow?.UnitID||barcodeRow?.UnitId||null;
-  const name=row?.[c.productNameField]||barcodeRow?.[c.barcodeDescriptionField]||code;
-  return{ean,name,price:null,stock:null,category:barcodeRow?.Category||row?.Category||'Autre',productNumber:row?.[c.productNumberField]||code,unit,dataAreaId:row?.[c.dataAreaField]||barcodeRow?.[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupIdentifier:code,lookupType:'PRODUCT_NUMBER'}
-}
-
 export async function getProductByEan(ean){
   if(!isD365ReadLive('product')) return PRODUCTS[ean] || null;
   const c=config.dynamics;
@@ -227,11 +192,45 @@ export async function getProductByEan(ean){
 
   if(!c.productEntity || !productNumber)return barcodeProduct;
   try{
-    const select=[c.productNumberField,c.productNameField].join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{};
-    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre'};
+    const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
+    const select=[c.productNumberField,c.productNameField,inventoryUnitField].filter(Boolean).join(','),productPayload=await odataGet(c.productEntity,{filter:`${c.productNumberField} eq '${escapeOData(productNumber)}'`,select,top:1,extra:c.dataAreaId?'cross-company=true':''}),p=productPayload?.value?.[0]||{};
+    return {...barcodeProduct,name:p[c.productNameField]||barcodeName||productNumber,category:p.Category||barcodeRow.Category||'Autre',inventoryUnit:inventoryUnitField?(p[inventoryUnitField]||null):null};
   }catch(e){
     return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
   }
+}
+
+
+export async function getProductByReference(reference){
+  const ref=String(reference||'').trim();
+  if(!ref)return null;
+  const direct=await getProductByEan(ref);
+  if(direct)return{...direct,lookupReference:ref,lookupType:'EAN'};
+  if(!isD365ReadLive('product')){
+    const local=Object.values(PRODUCTS).find(x=>String(x.productNumber||'').toLowerCase()===ref.toLowerCase());
+    return local?{...local,lookupReference:ref,lookupType:'PRODUCT_NUMBER'}:null
+  }
+  const c=config.dynamics;
+  if(!c.productEntity||!c.productNumberField)return null;
+  const filters=[`${c.productNumberField} eq '${escapeOData(ref)}'`];
+  if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+  const inventoryUnitField=c.productEntity==='ReleasedProductsV2'?'InventoryUnitSymbol':null;
+  const salesUnitField=c.productEntity==='ReleasedProductsV2'?'SalesUnitSymbol':null;
+  const select=[c.productNumberField,c.productNameField,inventoryUnitField,salesUnitField,'Category'].filter(Boolean).join(',');
+  const payload=await odataGet(c.productEntity,{filter:filters.join(' and '),select,top:1,extra:c.dataAreaId?'cross-company=true':''});
+  const row=payload?.value?.[0];if(!row)return null;
+  let barcodeRow=null;
+  if(c.barcodeEntity&&c.barcodeProductField&&c.barcodeField){
+    const barcodeFilters=[`${c.barcodeProductField} eq '${escapeOData(ref)}'`];
+    if(c.dataAreaId)barcodeFilters.push(`${c.dataAreaField} eq '${escapeOData(c.dataAreaId)}'`);
+    try{barcodeRow=(await odataGet(c.barcodeEntity,{filter:barcodeFilters.join(' and '),top:1,extra:c.dataAreaId?'cross-company=true':''}))?.value?.[0]||null}catch{}
+  }
+  const ean=barcodeRow?.[c.barcodeField]||null;
+  const name=row[c.productNameField]||barcodeRow?.[c.barcodeDescriptionField]||ref;
+  const inventoryUnit=inventoryUnitField?row[inventoryUnitField]||null:null;
+  const salesUnit=salesUnitField?row[salesUnitField]||null:null;
+  const unit=barcodeRow?.[c.barcodeUnitField]||inventoryUnit||salesUnit||null;
+  return{ean,name,price:null,stock:null,category:row.Category||barcodeRow?.Category||'Autre',productNumber:row[c.productNumberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}

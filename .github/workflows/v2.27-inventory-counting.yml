@@ -1,0 +1,33 @@
+name: V2.27 Inventory Counting
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  inventory-counting:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/inventory.mjs
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/manager-inventory-focus.js
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/app.js
+      - name: Inventory/counting separation
+        run: node backend/tests/v227-inventory-counting.mjs
+      - name: Existing inventory regressions
+        run: |
+          node backend/tests/inventory-privacy.mjs
+          node backend/tests/v217-demo-ready-inventory-loss.mjs
+      - name: Safety
+        run: |
+          grep -q "INVENTORY_LINE_ALREADY_EXISTS" backend/services/inventory.mjs
+          grep -q "data-inventory-mode=\\\"NEW\\\"" frontend/js/pages/manager-hubs.js
+          grep -q "data-inventory-session-id" frontend/js/pages/inventory.js
