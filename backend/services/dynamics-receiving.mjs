@@ -1,6 +1,6 @@
 import { db,uid,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
-import { isD365ReadLive,odataGet } from './dynamics.mjs';
+import { isD365ReadLive,odataGet,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 
 const clean=v=>String(v??'').trim();
@@ -176,8 +176,9 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
   for(const candidate of filters){
    const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,candidate.value].filter(Boolean).join(' and '));
    try{
-    const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>purchaseLineOpen(row,c));
-    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',openFilterKind:candidate.kind,serverRemainingFilter:false,warehouseField,attempts};
+    const pageSize=Math.max(100,Math.min(2000,Number(c.pageSize)||top)),maxRows=Math.max(pageSize,Math.min(25000,Number(c.maxRows)||10000));
+    const payload=await odataGetAll(c.lineEntity,{filter,pageSize,maxRows,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>purchaseLineOpen(row,c));
+    return{value:rows,rowCount:rows.length,pages:payload.pages||1,truncated:!!payload.truncated,top:pageSize,maxRows,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',openFilterKind:candidate.kind,serverRemainingFilter:false,warehouseField,attempts};
    }catch(error){
     attempts.push({warehouseField,openFilterKind:candidate.kind,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
    }
