@@ -3,7 +3,7 @@ import{refreshCommercialLive,scheduleCommercialLiveRefresh}from'../commercial-li
 import{app,canManage,isDirector}from'../state.js';
 import{$,status,esc,toast}from'../ui.js';
 
-let cfg=null,data=null,scanCtx=null,priceChecks=[];
+let cfg=null,data=null,scanCtx=null,priceChecks=[],tradeCatalog={status:'IDLE',items:[],total:0},tradeCatalogKey=null;
 const autoSyncAttempted=new Set();
 const actionLabel=x=>cfg?.actionTypes?.find(a=>a.code===x)?.label||x;
 const signageLabel=x=>cfg?.signageActions?.find(a=>a.code===x)?.label||x;
@@ -38,6 +38,27 @@ function priceContextTradeAgreements(c){
  return `<details class="commercial-control" style="margin-top:8px" open><summary>Trade Agreements Dynamics (${evaluated.length})</summary><div style="display:grid;gap:8px;margin-top:8px">${evaluated.map(x=>{const r=x.row||{};return`<div style="border:1px solid var(--line);border-radius:12px;padding:9px"><div class="row"><strong>${money(x.price)} / ${Number(x.priceQuantity||1)!==1?`${Number(x.priceQuantity)} `:''}${esc(x.unit||'unité')}</strong>${status(x.eligible?'Applicable':'Non applicable',x.eligible?'ok':'neutral')}</div><div class="small muted" style="margin-top:4px">Groupe ${esc(x.group||'Tous')} · ${day(x.from)} → ${day(x.to)} · entrepôt ${esc(x.warehouse||'Tous')} · site ${esc(r.PriceSiteId||'Tous')} · client ${esc(r.CustomerAccountNumber||'Tous')}</div><div class="small muted">Devise ${esc(r.PriceCurrencyCode||'—')} · Qté min. ${r.FromQuantity??'—'} · Qté max. ${r.ToQuantity??'—'} · prix normalisé ${money(x.normalizedPrice)} · Record ${esc(x.recordId||'—')}</div>${x.reasons?.length?`<div class="small muted">Écart contexte : ${x.reasons.map(esc).join(' · ')}</div>`:''}</div>`}).join('')}</div></details>`
 }
 
+function tradeCatalogRows(items=[]){
+ if(!items.length)return'<div class="empty compact">Aucun Trade Agreement actif trouvé pour ce magasin.</div>';
+ return items.map(x=>{const basis=x.price==null?'—':`${money(x.price)} / ${Number(x.priceQuantity||1)!==1?`${Number(x.priceQuantity)} `:''}${esc(x.unit||'unité')}`,scope=x.priceGroup?`Groupe ${esc(x.priceGroup)}`:'Tous clients / tous groupes',dates=`${day(x.validFrom)} → ${day(x.validTo)}`,search=esc([x.itemNumber,x.productName,x.priceGroup,x.unit,x.recordId].filter(Boolean).join(' ').toLowerCase());return`<div class="trade-catalog-row" data-trade-search="${search}" style="padding:9px 0;border-bottom:1px solid var(--line)"><div class="row" style="align-items:flex-start"><div style="min-width:0"><strong style="display:block;overflow-wrap:anywhere">${esc(x.productName||x.itemNumber)}</strong><div class="small muted">${esc(x.itemNumber)} · ${scope} · ${dates}</div></div><strong style="white-space:nowrap">${basis}</strong></div><div class="small muted" style="margin-top:4px">Qté min. ${x.fromQuantity??'—'} · Qté max. ${x.toQuantity??'—'} · entrepôt ${esc(x.warehouse||'Tous')} · Record ${esc(x.recordId||'—')}</div></div>`}).join('')
+}
+function tradeCatalogCard(catalog=tradeCatalog){
+ if(catalog?.status==='LOADING')return'<div class="card"><div class="row"><div><strong>Liste Trade Agreements actifs</strong><div class="small muted">Chargement de la liste exhaustive Dynamics…</div></div>'+status('Chargement','neutral')+'</div></div>';
+ if(catalog?.status==='ERROR')return`<div class="card"><div class="row"><div><strong>Liste Trade Agreements actifs</strong><div class="small muted">${esc(catalog.error||'Lecture indisponible')}</div></div>${status('Indisponible','warn')}</div></div>`;
+ const items=catalog?.items||[],total=Number(catalog?.total||items.length);
+ return`<div class="card"><div class="row"><div><strong>Liste Trade Agreements actifs</strong><div class="small muted">Liste exhaustive D365 applicable au magasin. À distinguer des changements du jour.</div></div>${status(`${total} ligne(s)`,'neutral')}</div><div class="field" style="margin-top:10px"><label>Rechercher article / code</label><input id="tradeCatalogSearch" placeholder="Ex. HS-003577, melon…"></div><div id="tradeCatalogRows" style="margin-top:8px;max-height:560px;overflow:auto;padding-right:4px">${tradeCatalogRows(items)}</div>${catalog?.hasMore?`<div class="banner ban-warn" style="margin-top:8px"><strong>Liste partielle</strong><span>${items.length} sur ${total} lignes chargées.</span></div>`:''}</div>`
+}
+function bindTradeCatalogSearch(){
+ const input=$('#tradeCatalogSearch');if(!input)return;
+ input.addEventListener('input',()=>{const q=String(input.value||'').trim().toLowerCase();document.querySelectorAll('[data-trade-search]').forEach(row=>{row.style.display=!q||String(row.dataset.tradeSearch||'').includes(q)?'':'none'})})
+}
+async function hydrateTradeCatalog(){
+ const storeId=app.storeId,key=`${storeId}:${new Date().toISOString().slice(0,10)}`;if(tradeCatalogKey===key&&['READY','LOADING'].includes(tradeCatalog.status))return;
+ tradeCatalogKey=key;tradeCatalog={status:'LOADING',items:[],total:0};const host=$('#tradeAgreementCatalog');if(host)host.innerHTML=tradeCatalogCard(tradeCatalog);
+ try{const result=await api(`/api/stores/${encodeURIComponent(storeId)}/trade-agreements?limit=1000`);if(app.storeId!==storeId)return;tradeCatalog={status:'READY',...result};if(host){host.innerHTML=tradeCatalogCard(tradeCatalog);bindTradeCatalogSearch()}}
+ catch(error){if(app.storeId!==storeId)return;tradeCatalog={status:'ERROR',items:[],total:0,error:error?.message||'Lecture Trade Agreements indisponible.'};if(host)host.innerHTML=tradeCatalogCard(tradeCatalog)}
+}
+
 export async function renderCommercial(){
  const [cfgResult,commercialResult,historyResult]=await Promise.allSettled([
   api('/api/commercial/config'),
@@ -66,13 +87,14 @@ export async function renderCommercial(){
      ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
    </div>
    <div class="card" style="margin-top:12px">
-     <div class="row"><div><strong>Trade Agreements du jour</strong><div class="small muted">Accords tarifaires Dynamics démarrant ou modifiés récemment et applicables au magasin.</div></div>${status(tradeRows.length?`${tradeRows.length} détecté(s)`:'0 détecté','neutral')}</div>
+     <div class="row"><div><strong>Changements Trade Agreements du jour</strong><div class="small muted">Uniquement les accords démarrant ou modifiés récemment et nécessitant un contrôle terrain.</div></div>${status(tradeRows.length?`${tradeRows.length} détecté(s)`:'0 détecté','neutral')}</div>
      ${tradeRows.length?`<div class="small" style="margin-top:8px">${tradeRows.slice(0,6).map(x=>{const d=x.sourceDetails||{};return`<div style="margin-bottom:5px">• <strong>${esc(x.product_name||x.product_number)}</strong> <span class="muted">(${esc(x.product_number||'—')})</span> · ${money(x.expected_price)} · groupe ${esc(d.priceGroup||x.priceGroup||'Tous')} · ${day(d.validFrom||x.business_date)} → ${day(d.validTo)}</div>`}).join('')}${tradeRows.length>6?`<div class="muted" style="margin-top:4px">+${tradeRows.length-6} autre(s) dans la liste détaillée ci-dessous</div>`:''}</div>`:'<div class="small muted" style="margin-top:8px">Aucun accord tarifaire n’a encore été matérialisé dans le snapshot du jour. Utilisez « Rafraîchir depuis Dynamics » pour forcer la lecture.</div>'}
    </div>
+   <div id="tradeAgreementCatalog" style="margin-top:12px">${tradeCatalogCard(tradeCatalog)}</div>
    <div class="commercial-list" style="margin-top:12px">${rows.length?rows.map(controlCard).join(''):'<div class="card empty">Aucune action prix/promo dans le snapshot du jour. Vous pouvez scanner un article ou rafraîchir Dynamics.</div>'}</div>
    ${isDirector()?policyCard():''}
  `;
- bindCommercial();
+ bindCommercial();bindTradeCatalogSearch();void hydrateTradeCatalog();
  const autoKey=`${app.storeId}:${new Date().toISOString().slice(0,10)}`;
  if(canManage()&&!commercialError&&data.sync?.deferred&&!autoSyncAttempted.has(autoKey)){
   autoSyncAttempted.add(autoKey);
