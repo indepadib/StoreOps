@@ -53,6 +53,7 @@ jobs:
           for store in val-fleuri trefle; do
             curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/item-assistant/HS-003577"               -o "/tmp/item-$store.json"
             curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/price-check/context/HS-003577"               -o "/tmp/price-$store.json"
+            curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/trade-agreements?limit=1000"               -o "/tmp/trade-$store.json"
           done
 
           curl -fsS -H "x-demo-user: u-tr"             "$PREVIEW_URL/api/stores/trefle/cash-opening" -o /tmp/cash.json
@@ -71,11 +72,16 @@ jobs:
           const vf=read('/tmp/item-val-fleuri.json'),tr=read('/tmp/item-trefle.json');
           const pvf=read('/tmp/price-val-fleuri.json'),ptr=read('/tmp/price-trefle.json');
           const cash=read('/tmp/cash.json'),staff=read('/tmp/staffing.json'),dlc=read('/tmp/quality-dlc.json');
+          const tvf=read('/tmp/trade-val-fleuri.json'),ttr=read('/tmp/trade-trefle.json');
           const out={
             groups,
             base:(base.rows||[]).map(r=>({item:r.ItemNumber,price:r.SalesPrice,unit:r.SalesUnitSymbol,qty:r.SalesPriceQuantity})),
             valFleuri:{item:vf.item?.productNumber,price:pvf.expectedUnitPrice,ean:pvf.product?.ean||null},
             trefle:{item:tr.item?.productNumber,price:ptr.expectedUnitPrice,ean:ptr.product?.ean||null},
+            tradeAgreements:{
+              valFleuri:{total:tvf.total,items:(tvf.items||[]).length,sample:(tvf.items||[]).slice(0,5).map(x=>x.itemNumber)},
+              trefle:{total:ttr.total,items:(ttr.items||[]).length,sample:(ttr.items||[]).slice(0,5).map(x=>x.itemNumber)}
+            },
             cash:{status:cash.summary?.status,lines:cash.opening?.lines?.length??0,sync:cash.sync},
             staffing:{status:staff.summary?.status,hasDay:!!staff.day,sync:staff.sync},
             qualityDlc:{items:(dlc.items||[]).length}
@@ -86,6 +92,12 @@ jobs:
           if(!(base.rows||[]).some(r=>r.ItemNumber==='HS-003577'))process.exit(4);
           if(vf.item?.productNumber!=='HS-003577'||tr.item?.productNumber!=='HS-003577')process.exit(5);
           if(pvf.product?.productNumber!=='HS-003577'||ptr.product?.productNumber!=='HS-003577')process.exit(6);
+          const expectedItems=['HS-003574','HS-003577','HS-006719'];
+          for(const [label,payload] of [['Val Fleuri',tvf],['Trèfle',ttr]]){
+            if(Number(payload.total)<69)process.exit(10);
+            for(const item of expectedItems)if(!(payload.items||[]).some(x=>x.itemNumber===item))process.exit(11);
+            if(payload.hasMore)process.exit(12);
+          }
           if(!cash.summary)process.exit(7);
           if(!staff.summary)process.exit(8);
           if(!Array.isArray(dlc.items))process.exit(9);
