@@ -44,6 +44,13 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
           done
 
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=5&filter=ItemNumber%20eq%20%27HS-006594%27" -o /tmp/probe-item.json || true
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=5&filter=ProductNumber%20eq%20%27HS-006594%27" -o /tmp/probe-product.json || true
+          echo "RELEASED PRODUCTS BY ITEMNUMBER"
+          cat /tmp/probe-item.json
+          echo "RELEASED PRODUCTS BY PRODUCTNUMBER"
+          cat /tmp/probe-product.json
+
           node - <<'NODE'
           const fs=require('fs');
           const stores=['val-fleuri','trefle'],out={};
