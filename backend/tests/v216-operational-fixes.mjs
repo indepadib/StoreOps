@@ -30,9 +30,8 @@ globalThis.fetch=async(input)=>{
  if(url.includes('login.microsoftonline.com'))return Response.json({access_token:'test-token',expires_in:3600});
  if(url.includes('/data/RetailTransactionSalesTransBIEntities'))return Response.json({value:salesRows});
  if(url.includes('/data/PurchaseOrderLinesV2')){
-  if(url.includes('ReceivingWarehouseId'))return Response.json({error:{message:'Field ReceivingWarehouseId does not exist'}},{status:400});
-  if(url.includes('InventoryWarehouseId'))return Response.json({value:[
-   {dataAreaId:'5001',PurchaseOrderNumber:'PO-216',LineNumber:1,ItemNumber:'HS-001',LineDescription:'Article PO',OrderedPurchaseQuantity:10,ReceivedPurchaseQuantity:2,RemainingPurchaseQuantity:8,PurchaseUnitSymbol:'PC',RequestedDeliveryDate:'2026-09-19T12:00:00Z',InventoryWarehouseId:'FRP0001'}
+  if(url.includes('PurchaseOrderNumber'))return Response.json({value:[
+   {dataAreaId:'5001',PurchaseOrderNumber:'PO-216',LineNumber:1,ItemNumber:'HS-001',LineDescription:'Article PO',OrderedPurchaseQuantity:10,PurchaseOrderLineStatus:'Backorder',PurchaseUnitSymbol:'PC',RequestedDeliveryDate:'2026-09-19T12:00:00Z'}
   ]});
   return Response.json({value:[]});
  }
@@ -61,10 +60,11 @@ const snapshot=await receiving.listExpectedPurchaseOrders('val-fleuri',{business
 assert.equal(snapshot.mode,'LIVE');
 assert.equal(snapshot.items.length,1);
 assert.equal(snapshot.items[0].poNumber,'PO-216');
-assert.equal(snapshot.diagnostics.warehouseField,'InventoryWarehouseId','receiving must recover when the configured/default warehouse field is rejected by D365');
-assert(snapshot.diagnostics.filterFallbacks.length>0);
-assert(calls.some(x=>x.includes('ReceivingWarehouseId')));
-assert(calls.some(x=>x.includes('InventoryWarehouseId')));
+assert.equal(snapshot.diagnostics.warehouseField,'DefaultReceivingWarehouseId','receiving diagnostics must report the proven header warehouse field');
+assert(calls.some(x=>x.includes('DefaultReceivingWarehouseId')),'PO headers must be scoped by the proven receiving warehouse field');
+assert(calls.some(x=>x.includes('PurchaseOrderNumber')),'PO lines must be fetched from the authoritative open header set');
+assert.equal(snapshot.items[0].lines.length,1);
+assert.equal(snapshot.items[0].lines[0].lineStatus,'Backorder');
 
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const storesUi=readFileSync(new URL('../../frontend/js/admin-studio-stores.js',import.meta.url),'utf8');

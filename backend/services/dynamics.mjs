@@ -172,10 +172,14 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
 }
 
 function productDisplayName(row,configuredField,fallback){
-  const fields=[configuredField,'ProductSearchName','SearchName','ProductName','Name','Description','ItemName'].filter(Boolean);
-  for(const field of fields){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
-  return String(fallback??'').trim()||null
+  const primary=[configuredField,'ProductName','Name','Description','ItemName'].filter(Boolean);
+  for(const field of primary){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
+  const fb=String(fallback??'').trim(),productNumber=String(row?.ProductNumber??row?.ItemNumber??'').trim();
+  if(fb&&fb!==productNumber&&!/^HS-[0-9]+$/i.test(fb))return fb;
+  for(const field of ['ProductSearchName','SearchName']){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
+  return fb||null
 }
+function productSearchName(row){return String(row?.ProductSearchName??row?.SearchName??'').trim()||null}
 function productCategory(row,barcodeRow){
   for(const field of ['RetailProductCategoryName','ProductCategoryName','CategoryName','Category']){const value=row?.[field]??barcodeRow?.[field];if(String(value??'').trim())return String(value).trim()}
   return 'Autre'
@@ -221,7 +225,7 @@ export async function getProductByEan(ean){
   try{
     const resolved=await productEntityRowByReference(productNumber),p=resolved?.row||{};
     const inventoryUnit=c.productEntity==='ReleasedProductsV2'?(p.InventoryUnitSymbol||null):null,salesUnit=c.productEntity==='ReleasedProductsV2'?(p.SalesUnitSymbol||null):null;
-    return {...barcodeProduct,name:productDisplayName(p,c.productNameField,barcodeName||productNumber),category:productCategory(p,barcodeRow),inventoryUnit,salesUnit};
+    return {...barcodeProduct,name:productDisplayName(p,c.productNameField,barcodeName||productNumber),searchName:productSearchName(p),category:productCategory(p,barcodeRow),inventoryUnit,salesUnit};
   }catch(e){
     return {...barcodeProduct,productEnrichment:'FAILED',productEnrichmentMessage:e.message};
   }
@@ -251,7 +255,7 @@ export async function getProductByReference(reference){
   const inventoryUnit=c.productEntity==='ReleasedProductsV2'?(row.InventoryUnitSymbol||null):null;
   const salesUnit=c.productEntity==='ReleasedProductsV2'?(row.SalesUnitSymbol||null):null;
   const unit=barcodeRow?.[c.barcodeUnitField]||inventoryUnit||salesUnit||null;
-  return{ean,name,price:null,stock:null,category:productCategory(row,barcodeRow),productNumber:row[resolved.numberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
+  return{ean,name,searchName:productSearchName(row),price:null,stock:null,category:productCategory(row,barcodeRow),productNumber:row[resolved.numberField]||ref,unit,inventoryUnit,salesUnit,dataAreaId:row[c.dataAreaField]||c.dataAreaId||null,source:'D365',lookupReference:ref,lookupType:'PRODUCT_NUMBER'}
 }
 
 export async function postReceiptToDynamics(poNumber,payload={}){if(config.dynamics.mode!=='live') return {ok:true,simulated:true,poNumber,postedAt:now()};throw Object.assign(new Error('Posting réception Dynamics live non configuré : mapper le service de réception F&O avant activation.'),{status:501,code:'D365_RECEIPT_WRITE_NOT_MAPPED',details:{poNumber,payload}})}

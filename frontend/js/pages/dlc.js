@@ -5,6 +5,7 @@ import{$,status,fmtDate,esc,toast}from'../ui.js';
 let cfg=null,allItems=[],productPreview=null;
 const sev=x=>x==='CRITICAL'?'danger':x==='HIGH'||x==='MEDIUM'?'warn':'ok';
 const dt=v=>v?new Date(v.endsWith?.('Z')?v:v+'Z').toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const money=v=>v===null||v===undefined||v===''?'—':Number(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' DH';
 
 export async function renderDlc(){
   cfg=await api('/api/dlc/config');
@@ -46,7 +47,7 @@ function entryPanel(){
  return`<div class="card dlc-entry" style="margin-top:14px">
    <div class="row"><div><strong>Nouveau contrôle DLC / DDM</strong><div class="small muted">Scanner l’article, identifier le lot puis StoreOps calcule automatiquement le niveau d’alerte et l’action attendue.</div></div><span class="pill">${isQualityAudit()?'Qualité réseau':'Saisie magasin'}</span></div>
    <div class="form-grid" style="margin-top:12px">
-    <div class="field full"><label>EAN / code interne article *</label><div class="row dlc-lookup-row"><input id="dlcEan" autocomplete="off" placeholder="Scanner un EAN ou saisir HS-00000"><button class="btn brand" id="dlcLookup" type="button">Identifier l’article</button></div><div id="dlcProductPreview" class="field-help">Recherche possible par code-barres ou code interne HS-xxxxx.</div></div>
+    <div class="field full"><label>EAN / code interne article *</label><div class="row dlc-lookup-row"><input id="dlcEan" autocomplete="off" placeholder="Scanner un EAN ou saisir HS-00000"><button class="btn brand" id="dlcLookup" type="button">Identifier l’article</button></div><div id="dlcProductPreview" class="field-help">Recherche possible par code-barres ou code interne HS-xxxxx. L’unité, le rayon et la famille seront préremplis depuis l’article.</div></div>
     <div class="field"><label>Type de date *</label><select id="dlcExpiryType">${cfg.expiryTypes.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div>
     <div class="field"><label>DLC / DDM *</label><input id="dlcDate" type="date"></div>
     <div class="field"><label>Quantité constatée *</label><input id="dlcQty" type="number" min="0" step="0.01"></div>
@@ -124,14 +125,43 @@ function bindDlc(){
 }
 function normalizeUnit(v){const x=String(v||'').trim().toLowerCase();if(['kg','kilogramme','kilograms'].includes(x))return'kg';if(['g','gr','gramme','grams'].includes(x))return'g';if(['l','lt','litre'].includes(x))return'L';if(['ea','pc','pcs','piece','pièce','unit'].includes(x))return'pièce';return null}
 function prefillFromProduct(product){
- const unit=normalizeUnit(product?.inventoryUnit||product?.unit||product?.salesUnit),unitSelect=$('#dlcUnit');
+ const defaults=product?.dlcDefaults||{},unit=normalizeUnit(defaults.unit||product?.inventoryUnit||product?.unit||product?.salesUnit||product?.retailUnit),unitSelect=$('#dlcUnit');
  if(unit&&unitSelect&&[...unitSelect.options].some(o=>o.value===unit||o.text===unit))unitSelect.value=unit;
- const category=String(product?.category||'').trim();if(!category)return;
- const dept=cfg.departments.find(d=>d.department===category||(d.families||[]).includes(category));
- if(dept){$('#dlcDepartment').value=dept.department;updateFamilies();if((dept.families||[]).includes(category))$('#dlcFamily').value=category}
+ let department=String(defaults.department||'').trim(),family=String(defaults.family||'').trim();
+ if(!department){
+  const category=String(product?.category||'').trim(),dept=cfg.departments.find(d=>d.department===category||(d.families||[]).includes(category));
+  if(dept){department=dept.department;if((dept.families||[]).includes(category))family=category}
+ }
+ if(department&&cfg.departments.some(d=>d.department===department)){
+  $('#dlcDepartment').value=department;updateFamilies();
+  const dept=cfg.departments.find(d=>d.department===department);
+  if(family&&(dept?.families||[]).includes(family))$('#dlcFamily').value=family
+ }
+ const qty=$('#dlcQty'),resolvedUnit=$('#dlcUnit')?.value||unit;
+ if(qty){
+  qty.value='';
+  qty.step=resolvedUnit==='g'||['pièce','barquette','colis'].includes(resolvedUnit)?'1':'0.001';
+  const stock=product?.availableStock??product?.stock;
+  qty.placeholder=stock===null||stock===undefined?'Quantité réellement constatée':'À compter · stock D365 '+Number(stock).toLocaleString('fr-FR')+' '+(resolvedUnit||'');
+ }
 }
 function updateFamilies(){const d=cfg.departments.find(x=>x.department===$('#dlcDepartment').value);$('#dlcFamily').innerHTML=(d?.families||[]).map(x=>`<option>${esc(x)}</option>`).join('')}
-async function lookupProduct(){try{const reference=$('#dlcEan').value.trim();if(!reference)throw new Error('Scanne un EAN ou saisis un code interne.');productPreview=await api(`/api/products/lookup?q=${encodeURIComponent(reference)}`);const code=productPreview.productNumber||'—',ean=productPreview.ean||'EAN non trouvé',unit=productPreview.inventoryUnit||productPreview.unit||null;$('#dlcProductPreview').innerHTML=`<strong>${esc(productPreview.name)}</strong><div class="small muted">Code ${esc(code)} · EAN ${esc(ean)}${unit?` · unité ${esc(unit)}`:''}</div>`;prefillFromProduct(productPreview);toast('Article identifié.')}catch(e){productPreview=null;$('#dlcProductPreview').textContent=e.message;toast(e.message)}}
+async function lookupProduct(){try{
+ const reference=$('#dlcEan').value.trim();if(!reference)throw new Error('Scanne un EAN ou saisis un code interne.');
+ productPreview=await api('/api/stores/'+app.storeId+'/dlc/product-context?q='+encodeURIComponent(reference));
+ const code=productPreview.productNumber||'—',ean=productPreview.ean||'EAN non trouvé',unit=productPreview.dlcDefaults?.unit||productPreview.inventoryUnit||productPreview.unit||productPreview.salesUnit||null,department=productPreview.dlcDefaults?.department||null,family=productPreview.dlcDefaults?.family||null;
+ const stock=productPreview.availableStock??productPreview.stock,retailUnit=productPreview.retailUnit||productPreview.salesUnit||unit,costUnit=productPreview.costUnit||productPreview.inventoryUnit||unit;
+ const price=productPreview.price==null?'Prix indisponible':money(productPreview.price)+(retailUnit?' / '+esc(retailUnit):''),cost=productPreview.unitCost==null?'Coût indisponible':money(productPreview.unitCost)+(costUnit?' / '+esc(costUnit):'');
+ let html='<div class="dlc-product-context"><strong>'+esc(productPreview.name)+'</strong>';
+ html+='<div class="small muted">Code '+esc(code)+' · EAN '+esc(ean)+(unit?' · unité stock '+esc(unit):'')+'</div>';
+ html+='<div class="small muted">'+(department?'Rayon '+esc(department):'Rayon à confirmer')+(family?' · famille '+esc(family):'')+' · '+price+' · '+cost+' · '+(stock==null?'stock indisponible':'stock dispo '+Number(stock).toLocaleString('fr-FR')+' '+esc(unit||''))+'</div>';
+ if(productPreview.contextError)html+='<div class="small" style="color:var(--warn)">Contexte article partiel : '+esc(productPreview.contextError.message||'certaines données D365 sont indisponibles')+'</div>';
+ html+='</div>';
+ $('#dlcProductPreview').innerHTML=html;
+ prefillFromProduct(productPreview);
+ $('#dlcDate')?.focus();
+ toast('Article identifié · champs article préremplis.');
+}catch(e){productPreview=null;$('#dlcProductPreview').textContent=e.message;toast(e.message)}}
 async function saveDlc(){try{const reference=$('#dlcEan').value.trim();if(!productPreview||![productPreview.lookupReference,productPreview.ean,productPreview.productNumber].filter(Boolean).some(x=>String(x).toLowerCase()===reference.toLowerCase()))await lookupProduct();if(!productPreview)throw new Error('Article non identifié.');const b={reference,ean:productPreview.ean||null,productNumber:productPreview.productNumber||null,expiryType:$('#dlcExpiryType').value,expiryDate:$('#dlcDate').value,quantity:Number($('#dlcQty').value),unit:$('#dlcUnit').value,department:$('#dlcDepartment').value,family:$('#dlcFamily').value||null,zone:$('#dlcZone').value,lotRef:$('#dlcLot').value.trim(),comment:$('#dlcComment').value.trim()};await api(`/api/stores/${app.storeId}/dlc`,{method:'POST',body:JSON.stringify(b)});toast('Lot enregistré et risque calculé.');productPreview=null;await renderDlc()}catch(e){toast(e.message)}}
 async function treat(id){try{const actionType=document.querySelector(`[data-dlc-action="${id}"]`).value,quantity=Number(document.querySelector(`[data-dlc-action-qty="${id}"]`).value||0),note=document.querySelector(`[data-dlc-action-note="${id}"]`).value.trim(),file=document.querySelector(`[data-dlc-proof="${id}"]`).files?.[0]||null,caption=document.querySelector(`[data-dlc-proof-caption="${id}"]`).value.trim();let dataUrl=null;if(file)dataUrl=await fileDataUrl(file);await api(`/api/dlc/${id}/treatments`,{method:'POST',body:JSON.stringify({actionType,quantity,note,dataUrl,fileName:file?.name||null,caption})});toast('Action DLC enregistrée et auditée.');await renderDlc()}catch(e){toast(e.message)}}
 async function recheck(id){try{const quantity=Number(document.querySelector(`[data-dlc-recheck-qty="${id}"]`).value),note=document.querySelector(`[data-dlc-recheck-note="${id}"]`).value.trim();await api(`/api/dlc/${id}/recheck`,{method:'POST',body:JSON.stringify({quantity,note})});toast(quantity===0?'Lot clôturé.':'Recontrôle enregistré.');await renderDlc()}catch(e){toast(e.message)}}
