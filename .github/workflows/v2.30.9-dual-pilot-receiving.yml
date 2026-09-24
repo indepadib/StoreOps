@@ -1,0 +1,66 @@
+name: V2.30.9 Dual Pilot Receiving Preview
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  receiving-live:
+    if: github.head_ref == 'storeops-v2.30.9-receiving-clarity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Validate PO/TO receiving on both pilots
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for store in val-fleuri trefle; do
+            echo "=== $store PO sync ==="
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json"               -X POST "$PREVIEW_URL/api/stores/$store/receipts/po/sync" --data '{}'               -o "/tmp/$store-po.json"
+            cat "/tmp/$store-po.json"
+
+            echo "=== $store TO sync ==="
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json"               -X POST "$PREVIEW_URL/api/stores/$store/receipts/to/sync" --data '{}'               -o "/tmp/$store-to.json"
+            cat "/tmp/$store-to.json"
+
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/receipts/readiness"               -o "/tmp/$store-ready.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const stores=['val-fleuri','trefle'];
+          for(const store of stores){
+            const po=JSON.parse(fs.readFileSync('/tmp/'+store+'-po.json','utf8'));
+            const to=JSON.parse(fs.readFileSync('/tmp/'+store+'-to.json','utf8'));
+            const ready=JSON.parse(fs.readFileSync('/tmp/'+store+'-ready.json','utf8'));
+            const compactDoc=r=>({
+              type:r.document_type||r.documentType||null,
+              number:r.po_number||r.poNumber||r.documentNumber||null,
+              vendor:r.vendor||null,
+              origin:r.source_origin||r.origin||null,
+              destination:r.source_destination||r.warehouseId||null,
+              warehouse:r.source_warehouse_id||r.warehouseId||null,
+              created:r.source_created_date||r.createdDate||null,
+              eta:r.eta||null,
+              lines:Number(r.line_count??r.lines?.length??0),
+              status:r.source_status||r.sourceStatus||r.status||null
+            });
+            console.log(JSON.stringify({
+              store,
+              poSync:{synced:po.sync?.synced,partial:po.sync?.partial,error:po.sync?.error||null,diagnostics:po.sync?.diagnostics||null,count:po.items?.length||0,sample:(po.items||[]).slice(0,5).map(compactDoc)},
+              toSync:{synced:to.sync?.synced,partial:to.sync?.partial,error:to.sync?.error||null,diagnostics:to.sync?.diagnostics||null,count:to.items?.length||0,sample:(to.items||[]).slice(0,5).map(compactDoc)},
+              readiness:{po:ready.stores?.[store]||null,to:ready.transferStores?.[store]||null}
+            },null,2));
+            if(po.sync?.synced!==true)process.exit(2);
+            if(to.sync?.synced!==true)process.exit(3);
+          }
+          NODE
