@@ -43,6 +43,18 @@ jobs:
           done
           test "$code" = "200"
 
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=RetailInventItemBarcode&top=20&filter=itemId%20eq%20%27HS-003577%27"             -o /tmp/barcodes.json
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=ReleasedProductsV2&top=5&filter=ItemNumber%20eq%20%27HS-003577%27"             -o /tmp/released.json
+
+          node - <<'NODE'
+          const fs=require('fs'),pick=(r,rx)=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>rx.test(k)&&v!==null&&v!==''));
+          const b=JSON.parse(fs.readFileSync('/tmp/barcodes.json','utf8')),r=JSON.parse(fs.readFileSync('/tmp/released.json','utf8'));
+          console.log('DLC NAME SOURCES',JSON.stringify({
+            barcode:(b.rows||[]).map(x=>pick(x,/item|barcode|description|name/i)),
+            released:(r.rows||[]).map(x=>pick(x,/item|product|search|name|description/i))
+          },null,2));
+          NODE
+
           for store in val-fleuri trefle; do
             start=$(date +%s)
             curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/dlc/product-context?q=HS-003577"               -o "/tmp/$store.json"
