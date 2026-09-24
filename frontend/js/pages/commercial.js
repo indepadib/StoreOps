@@ -28,13 +28,14 @@ function tradeDetails(d){
   <div><span>Qté min.</span><strong>${d.fromQuantity==null?'—':Number(d.fromQuantity)}</strong></div>
   <div><span>Qté max.</span><strong>${d.toQuantity==null?'—':Number(d.toQuantity)}</strong></div>
   <div><span>Client</span><strong>${esc(d.customerAccount||'Tous')}</strong></div>
+  <div><span>Poursuivre recherche</span><strong>${d.willSearchContinue==null?'—':esc(String(d.willSearchContinue))}</strong></div>
   <div><span>Record ID</span><strong style="overflow-wrap:anywhere">${esc(d.recordId||'—')}</strong></div>
  </div></details>`
 }
 function priceContextTradeAgreements(c){
  const evaluated=c?.tradeAgreements?.applicability?.evaluated||[];
  if(!evaluated.length)return'';
- return `<details class="commercial-control" style="margin-top:8px" open><summary>Trade Agreements Dynamics (${evaluated.length})</summary><div style="display:grid;gap:8px;margin-top:8px">${evaluated.map(x=>`<div style="border:1px solid var(--line);border-radius:12px;padding:9px"><div class="row"><strong>${money(x.price)} / ${Number(x.priceQuantity||1)!==1?`${Number(x.priceQuantity)} `:''}${esc(x.unit||'unité')}</strong>${status(x.eligible?'Applicable':'Non applicable',x.eligible?'ok':'neutral')}</div><div class="small muted" style="margin-top:4px">Groupe ${esc(x.group||'Tous')} · ${day(x.from)} → ${day(x.to)} · entrepôt ${esc(x.warehouse||'Tous')} · prix normalisé ${money(x.normalizedPrice)}</div>${x.reasons?.length?`<div class="small muted">Écart contexte : ${x.reasons.map(esc).join(' · ')}</div>`:''}</div>`).join('')}</div></details>`
+ return `<details class="commercial-control" style="margin-top:8px" open><summary>Trade Agreements Dynamics (${evaluated.length})</summary><div style="display:grid;gap:8px;margin-top:8px">${evaluated.map(x=>{const r=x.row||{};return`<div style="border:1px solid var(--line);border-radius:12px;padding:9px"><div class="row"><strong>${money(x.price)} / ${Number(x.priceQuantity||1)!==1?`${Number(x.priceQuantity)} `:''}${esc(x.unit||'unité')}</strong>${status(x.eligible?'Applicable':'Non applicable',x.eligible?'ok':'neutral')}</div><div class="small muted" style="margin-top:4px">Groupe ${esc(x.group||'Tous')} · ${day(x.from)} → ${day(x.to)} · entrepôt ${esc(x.warehouse||'Tous')} · site ${esc(r.PriceSiteId||'Tous')} · client ${esc(r.CustomerAccountNumber||'Tous')}</div><div class="small muted">Devise ${esc(r.PriceCurrencyCode||'—')} · Qté min. ${r.FromQuantity??'—'} · Qté max. ${r.ToQuantity??'—'} · prix normalisé ${money(x.normalizedPrice)} · Record ${esc(x.recordId||'—')}</div>${x.reasons?.length?`<div class="small muted">Écart contexte : ${x.reasons.map(esc).join(' · ')}</div>`:''}</div>`}).join('')}</div></details>`
 }
 
 export async function renderCommercial(){
