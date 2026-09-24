@@ -63,7 +63,8 @@ function normalizeBatch(input={}){
 
 export function upsertCommercialPriceBatch(input,{user=null,auditChanges=true}={}){
  const batch=normalizeBatch(input);
- const tx=db.transaction(()=>{
+ db.exec('BEGIN IMMEDIATE');
+ try{
   db.prepare(`INSERT INTO commercial_price_batches(id,label,effective_date,valid_to,source_ref,status,created_by,created_at,updated_at)
    VALUES(?,?,?,?,?,'ACTIVE',?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
    ON CONFLICT(id) DO UPDATE SET label=excluded.label,effective_date=excluded.effective_date,valid_to=excluded.valid_to,source_ref=excluded.source_ref,status='ACTIVE',updated_at=CURRENT_TIMESTAMP`)
@@ -74,8 +75,8 @@ export function upsertCommercialPriceBatch(input,{user=null,auditChanges=true}={
   for(const storeId of batch.stores)addStore.run(batch.id,storeId);
   const addLine=db.prepare(`INSERT INTO commercial_price_batch_lines(batch_id,product_number,product_name,expected_price,unit,sort_order) VALUES(?,?,?,?,?,?)`);
   for(const row of batch.lines)addLine.run(batch.id,row.productNumber,row.productName,row.expectedPrice,row.unit,row.sortOrder);
- });
- tx();
+  db.exec('COMMIT')
+ }catch(error){try{db.exec('ROLLBACK')}catch{}throw error}
  if(auditChanges&&user){
   for(const storeId of batch.stores)audit({storeId,userId:user.id,action:'COMMERCIAL_PRICE_BATCH_UPSERTED',entityType:'COMMERCIAL_PRICE_BATCH',entityId:batch.id,details:{label:batch.label,effectiveDate:batch.effectiveDate,validTo:batch.validTo,lines:batch.lines.length,sourceRef:batch.sourceRef}})
  }
