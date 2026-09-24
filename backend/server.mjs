@@ -20,6 +20,7 @@ import { createHandover, listHandover, acknowledgeHandover, resolveHandover, rev
 import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, explainInventoryLine, expressInventoryCount, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
 import { buildInventoryExcel } from './services/operations-excel.mjs';
 import { commercialConfig, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
+import { getCommercialPriceBatchChanges,listCommercialPriceBatches,commercialPriceBatch,upsertCommercialPriceBatch,cancelCommercialPriceBatch } from './services/commercial-price-batches.mjs';
 import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
 import { handleLossApi } from './services/loss-api.mjs';
 import { handleMerchandisingApi } from './services/merchandising-api.mjs';
@@ -54,7 +55,8 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
  if(!required&&liveHeavy)return{ok:true,deferred:true,code:'COMMERCIAL_SYNC_ON_DEMAND',message:'Snapshot StoreOps servi immédiatement ; synchronisation Dynamics en arrière-plan.'};
  const jobs=[
   ['promotions',getCommercialChanges(storeId,businessDate)],
-  ['prices',getCommercialPriceChanges(storeId,businessDate)]
+  ['prices',getCommercialPriceChanges(storeId,businessDate)],
+  ['price-batches',Promise.resolve(getCommercialPriceBatchChanges(storeId,businessDate))]
  ],settled=await Promise.allSettled(jobs.map(([,promise])=>promise)),changes=[],sources=[];
  settled.forEach((result,index)=>{
   const name=jobs[index][0];
@@ -68,7 +70,10 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
   const error=Object.assign(new Error('Dynamics n’a retourné aucune source prix/promo exploitable.'),{status:502,code:'COMMERCIAL_SYNC_ALL_SOURCES_FAILED',details:{sources}});
   if(required)throw error;return{ok:false,deferred:false,error:error.message,code:error.code,sources}
  }
- const preserveExisting=sources.some(x=>x.status==='ERROR');return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes,preserveExisting}),sources}
+ const batchProducts=new Set(changes.filter(x=>x.source==='STOREOPS_PRICE_BATCH'&&x.actionType==='PRICE_CHANGE').map(x=>String(x.productNumber||'')).filter(Boolean));
+ const effectiveChanges=changes.filter(x=>!(x.source==='D365_RETAIL_PRICING'&&x.actionType==='PRICE_CHANGE'&&batchProducts.has(String(x.productNumber||''))));
+ const shadowed=changes.length-effectiveChanges.length,preserveExisting=sources.some(x=>x.status==='ERROR');
+ return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes:effectiveChanges,preserveExisting}),sources,centralPriceBatchProducts:batchProducts.size,shadowedD365PriceChanges:shadowed}
 }
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
 
@@ -110,6 +115,10 @@ async function api(req,res,url){
   p=route(path,'/api/inventory/:sessionId/finalize');if(p&&req.method==='POST'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);const result=finalizeInventorySession({sessionId:p.sessionId,user});for(const line of result.highVarianceLines){const existing=db.prepare(`SELECT id FROM incidents WHERE source_type='INVENTORY_LINE' AND source_id=? AND status='OPEN'`).get(line.id);if(!existing){const abs=Math.abs(Number(line.final_variance||0)),threshold=Number(inventoryPolicy().incident_qty_threshold),inc=createIncident({storeId:inv.store_id,user,title:`Écart inventaire · ${line.product_name}`,description:`Stock théorique ${line.theoretical_qty} · compté ${line.final_qty} · écart ${line.final_variance} · motif ${line.reason_code||'—'}`,category:'STOCK',criticality:abs>=threshold*2?'CRITICAL':'HIGH',blockingLevel:'NONE',sourceType:'INVENTORY_LINE',sourceId:line.id,assignedTo:user.role==='store_manager'?user.id:null,requiresEvidence:true});addAction({incidentId:inc.id,user,title:'Analyser et documenter l’écart de stock',note:line.note||'',assignedTo:user.role==='store_manager'?user.id:null})}}return json(req,res,200,result)}
   p=route(path,'/api/inventory/:sessionId/post');if(p&&req.method==='POST'){const inv=inventorySession(p.sessionId);if(!inv)return json(req,res,404,{error:'Inventaire introuvable'});requireStore(user,inv.store_id);ensureManage(user,inv.store_id);return json(req,res,409,{error:'Écriture D365 désactivée. Utilise l’export Excel des ajustements inventaire.',code:'D365_WRITE_DISABLED'})}
 
+  if(path==='/api/admin/commercial/price-batches'&&req.method==='GET'){ensureDirector(user);return json(req,res,200,{items:listCommercialPriceBatches()})}
+  if(path==='/api/admin/commercial/price-batches'&&req.method==='POST'){ensureDirector(user);return json(req,res,201,upsertCommercialPriceBatch(await body(req),{user}))}
+  p=route(path,'/api/admin/commercial/price-batches/:batchId');if(p&&req.method==='GET'){ensureDirector(user);const batch=commercialPriceBatch(p.batchId);if(!batch)return json(req,res,404,{error:'Campagne prix introuvable.'});return json(req,res,200,batch)}
+  p=route(path,'/api/admin/commercial/price-batches/:batchId/cancel');if(p&&req.method==='POST'){ensureDirector(user);return json(req,res,200,cancelCommercialPriceBatch(p.batchId,{user}))}
   if(path==='/api/commercial/config'&&req.method==='GET')return json(req,res,200,commercialConfig());
   if(path==='/api/commercial/policy'&&(req.method==='PUT'||req.method==='PATCH')){ensureDirector(user);const b=await body(req);return json(req,res,200,updateCommercialPolicy({user,priceTolerance:b.priceTolerance}))}
   p=route(path,'/api/stores/:storeId/trade-agreements');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),search=url.searchParams.get('q')||'',limit=Number(url.searchParams.get('limit')||500),offset=Number(url.searchParams.get('offset')||0);return json(req,res,200,await getStoreTradeAgreementCatalog(p.storeId,{businessDate,search,limit,offset}))}
