@@ -15,14 +15,15 @@ import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
 import { listIncidents, incidentById, createIncident, addAction, completeAction, addEvidence, mediaById, resolveIncident, reopenIncident, incidentStats } from './services/incidents.mjs';
 import { listQualityProfiles, updateQualityProfile, listSlaPolicies, updateSlaPolicy } from './services/governance.mjs';
-import { dlcConfig, listDlc, dlcSummary, createDlcRecord, addDlcTreatment, recheckDlc, updateDlcThreshold, dlcMedia } from './services/dlc.mjs';
+import { dlcConfig, listDlc, dlcSummary, createDlcRecord, addDlcTreatment, recheckDlc, updateDlcThreshold, dlcMedia, resolveDlcProductDefaults } from './services/dlc.mjs';
 import { createHandover, listHandover, acknowledgeHandover, resolveHandover, reviewClosingHandover, handoverStats, dayCycleMetrics } from './services/handover.mjs';
 import { inventoryConfig, inventoryPolicy, listInventorySessions, inventorySession, inventorySummary, createInventorySession, addInventoryLine, countInventoryLine, explainInventoryLine, expressInventoryCount, finalizeInventorySession, markInventoryPosted, updateInventoryPolicy } from './services/inventory.mjs';
 import { buildInventoryExcel } from './services/operations-excel.mjs';
 import { commercialConfig, syncCommercialControls, listCommercialControls, commercialSummary, submitCommercialControl, updateCommercialPolicy } from './services/commercial.mjs';
 import { cashConfig, cashClosing, cashClosingById, cashClosingSummary, syncCashClosing, countCashLine, finalizeCashClosing, markCashClosingClosed, updateCashPolicy } from './services/cash.mjs';
-import { handleLossApi } from './services/loss-api.mjs';
+import { handleLossApi, getStoreCommerceProduct } from './services/loss-api.mjs';
 import { handleMerchandisingApi } from './services/merchandising-api.mjs';
+import { productTaxonomy } from './services/assortment.mjs';
 import { handleWorkforceApi } from './services/workforce-api.mjs';
 import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
@@ -124,6 +125,16 @@ async function api(req,res,url){
   p=route(path,'/api/cash/lines/:lineId/count');if(p&&req.method==='POST'){const row=db.prepare(`SELECT c.store_id FROM cash_closing_lines l JOIN cash_closings c ON c.id=l.closing_id WHERE l.id=?`).get(p.lineId);if(!row)return json(req,res,404,{error:'Shift caisse introuvable'});requireStore(user,row.store_id);ensureManage(user,row.store_id);const b=await body(req);return json(req,res,200,countCashLine({lineId:p.lineId,user,declaredCash:b.declaredCash,cardSettlement:b.cardSettlement,statementOk:b.statementOk===true,reasonCode:b.reasonCode,note:b.note,recount:!!b.recount}))}
   p=route(path,'/api/cash/:closingId/finalize');if(p&&req.method==='POST'){const closing=cashClosingById(p.closingId);if(!closing)return json(req,res,404,{error:'Clôture caisse introuvable'});requireStore(user,closing.store_id);ensureManage(user,closing.store_id);return json(req,res,200,finalizeCashClosing({closingId:p.closingId,user}))}
   p=route(path,'/api/cash/:closingId/close');if(p&&req.method==='POST'){const closing=cashClosingById(p.closingId);if(!closing)return json(req,res,404,{error:'Clôture caisse introuvable'});requireStore(user,closing.store_id);ensureManage(user,closing.store_id);return json(req,res,200,markCashClosingClosed({closingId:p.closingId,user}))}
+
+  p=route(path,'/api/stores/:storeId/dlc/product-context');if(p&&req.method==='GET'){
+    requireStore(user,p.storeId);
+    const reference=String(url.searchParams.get('q')||'').trim();if(!reference)return json(req,res,400,{error:'EAN ou code interne requis.'});
+    const identity=await getProductByReference(reference);if(!identity)return json(req,res,404,{error:'Article introuvable par EAN ou code interne'});
+    let product=identity,contextError=null;
+    if(identity.ean){try{product=await getStoreCommerceProduct(p.storeId,identity.ean,url.searchParams.get('date')||todayISO())||identity}catch(error){contextError={code:error?.code||'DLC_PRODUCT_CONTEXT_PARTIAL',message:error?.message||String(error)}}}
+    const taxonomy=product?.productNumber?productTaxonomy(product.productNumber):[],defaults=resolveDlcProductDefaults({product,taxonomy});
+    return json(req,res,200,{...product,lookupReference:reference,lookupType:identity.lookupType||null,qualityProfile:qualityProfileFor(product.category||'Autre'),taxonomy:taxonomy.map(x=>({categoryId:x.category_id,categoryName:x.category_name,path:x.path,level:x.level,hierarchy:x.hierarchy_key,source:x.source})),dlcDefaults:defaults,contextError});
+  }
 
   if(path==='/api/products/lookup'&&req.method==='GET'){const q=url.searchParams.get('q')||'';const product=await getProductByReference(q);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable par EAN ou code interne'})}
   p=route(path,'/api/products/:ean');if(p){const product=await getProductByEan(p.ean);return product?json(req,res,200,{...product,qualityProfile:qualityProfileFor(product.category||'Autre')}):json(req,res,404,{error:'Article introuvable'})}
