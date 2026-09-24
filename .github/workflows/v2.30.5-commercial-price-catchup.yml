@@ -1,0 +1,69 @@
+name: V2.30.5 Commercial Price Catch-up
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  price-catchup:
+    if: github.head_ref == 'storeops-v2.30.5-trade-agreements-enriched'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/services/commercial.mjs
+
+      - name: Multi-article catch-up contract
+        run: node backend/tests/v2305-commercial-catchup.mjs
+
+      - name: Validate live Control queue
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+          DAY=$(date -u +%F)
+
+          for pass in 1 2; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/val-fleuri/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$pass.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const read=p=>JSON.parse(fs.readFileSync(p,'utf8'));
+          const first=read('/tmp/sync-1.json'),second=read('/tmp/sync-2.json');
+          const priceRows=d=>(d.items||[]).filter(x=>x.action_type==='PRICE_CHANGE');
+          const a=priceRows(first),b=priceRows(second);
+          const compact=rows=>rows.map(x=>({product:x.product_number,name:x.product_name,price:x.expected_price,label:x.promo_label,status:x.status}));
+          console.log(JSON.stringify({
+            first:{count:a.length,rows:compact(a)},
+            second:{count:b.length,rows:compact(b)},
+            sync:first.sync
+          },null,2));
+          for(const sku of ['HS-002789','HS-002973']){
+            if(!a.some(x=>x.product_number===sku))process.exit(2);
+            if(!b.some(x=>x.product_number===sku))process.exit(3);
+          }
+          if(b.length<a.length)process.exit(4);
+          if(!b.some(x=>x.product_name==='DINDY'))process.exit(5);
+          if(!b.some(x=>x.product_name==='ZEN'))process.exit(6);
+          NODE
+
+      - name: Safety
+        run: |
+          grep -q "pendingRetention:true" backend/services/commercial.mjs
+          grep -q "for(const scanDay of scanDays)" backend/services/dynamics-price.mjs
+          ! grep -q "DELETE FROM commercial_controls WHERE store_id=.*source_key LIKE 'D365-%'" backend/services/commercial.mjs
