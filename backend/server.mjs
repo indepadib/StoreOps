@@ -55,9 +55,10 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
  if(!required&&liveHeavy)return{ok:true,deferred:true,code:'COMMERCIAL_SYNC_ON_DEMAND',message:'Snapshot StoreOps servi immédiatement ; synchronisation Dynamics en arrière-plan.'};
  const jobs=[
   ['promotions',getCommercialChanges(storeId,businessDate)],
-  ['prices',getCommercialPriceChanges(storeId,businessDate)],
-  ['price-batches',Promise.resolve(getCommercialPriceBatchChanges(storeId,businessDate))]
- ],settled=await Promise.allSettled(jobs.map(([,promise])=>promise)),changes=[],sources=[];
+  ['prices',getCommercialPriceChanges(storeId,businessDate)]
+ ];
+ if(config.dynamics.mode==='live')jobs.push(['price-batches',Promise.resolve(getCommercialPriceBatchChanges(storeId,businessDate))]);
+ const settled=await Promise.allSettled(jobs.map(([,promise])=>promise)),changes=[],sources=[];
  settled.forEach((result,index)=>{
   const name=jobs[index][0];
   if(result.status==='fulfilled'){
