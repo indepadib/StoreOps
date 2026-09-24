@@ -1,0 +1,50 @@
+name: V2.30.5 Trade Agreement Metadata Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  discover:
+    if: github.head_ref == 'storeops-v2.30.5-trade-agreements-enriched'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect live SalesPriceAgreements metadata
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=100&extra=cross-company%3Dtrue"             -o /tmp/agreements.json
+
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=Trade" -o /tmp/trade-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=PriceAgreement" -o /tmp/price-entities.json
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const a=JSON.parse(fs.readFileSync('/tmp/agreements.json','utf8'));
+          const rows=a.rows||[];
+          const keys=[...new Set(rows.flatMap(r=>Object.keys(r||{})))].sort();
+          const interestingKeys=keys.filter(k=>/journal|name|modified|created|date|agreement|record|item|product|group|price|currency|warehouse|site/i.test(k));
+          const sample=rows.slice(0,10).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>interestingKeys.includes(k)&&v!==null&&v!=='')));
+          const names=file=>{
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),list=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
+            return list.map(x=>({PublicEntityName:x.PublicEntityName,PublicCollectionName:x.PublicCollectionName,Name:x.Name})).filter(x=>/trade|price|agreement/i.test(JSON.stringify(x)));
+          };
+          console.log(JSON.stringify({
+            rowCount:a.rowCount,
+            interestingKeys,
+            sample,
+            tradeEntities:names('/tmp/trade-entities.json'),
+            priceAgreementEntities:names('/tmp/price-entities.json')
+          },null,2));
+          if(!rows.length)process.exit(2);
+          NODE
