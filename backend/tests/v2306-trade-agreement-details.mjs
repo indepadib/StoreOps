@@ -51,6 +51,7 @@ globalThis.fetch=async url=>{
 };
 
 const {getCommercialPriceChanges}=await import('../services/dynamics-price.mjs');
+const {db}=await import('../db.mjs');
 const {syncCommercialControls,listCommercialControls}=await import('../services/commercial.mjs');
 
 const result=await getCommercialPriceChanges('val-fleuri','2026-09-24');
@@ -80,12 +81,22 @@ assert.equal(diag.resolved,2);
 
 const synced=syncCommercialControls({storeId:'val-fleuri',businessDate:'2026-09-24',changes:result.changes});
 assert(synced.inserted>=2);
-const rows=listCommercialControls('val-fleuri','2026-09-24');
+let rows=listCommercialControls('val-fleuri','2026-09-24');
 const persisted=rows.find(x=>x.product_number==='HS-005694');
 assert(persisted);
 assert.equal(persisted.product_name,'Melon jaune premium');
 assert.equal(persisted.sourceDetails.type,'TRADE_AGREEMENT');
 assert.equal(persisted.sourceDetails.recordId,'A');
 assert.equal(persisted.sourceDetails.unit,'kg');
+
+// Existing controls keep their operational status but refresh their source metadata.
+const existing=rows.find(x=>x.product_number==='HS-005694');
+db.prepare(`UPDATE commercial_controls SET status='VERIFIED',product_name='HS-005694',source_details_json=NULL WHERE id=?`).run(existing.id);
+syncCommercialControls({storeId:'val-fleuri',businessDate:'2026-09-24',changes:result.changes,preserveExisting:true});
+rows=listCommercialControls('val-fleuri','2026-09-24');
+const refreshed=rows.find(x=>x.id===existing.id);
+assert.equal(refreshed.status,'VERIFIED');
+assert.equal(refreshed.product_name,'Melon jaune premium');
+assert.equal(refreshed.sourceDetails.type,'TRADE_AGREEMENT');
 
 console.log('V2.30.6 Trade Agreement names/details contract: OK');
