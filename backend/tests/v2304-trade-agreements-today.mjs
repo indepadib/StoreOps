@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 process.env.STOREOPS_DB=`/tmp/storeops-v2304-trades-${process.pid}.db`;
 process.env.D365_MODE='live';
 process.env.D365_PRICE_READ_MODE='live';
+process.env.D365_PROMOTION_READ_MODE='live';
 process.env.D365_BASE_URL='https://example.operations.dynamics.com';
 process.env.D365_TENANT_ID='tenant';
 process.env.D365_CLIENT_ID='client';
