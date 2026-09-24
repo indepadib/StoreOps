@@ -1,11 +1,11 @@
-name: V2.30.8 FLEG Signage Alert Diagnostics
+name: V2.30.8 FLEG Signage Alerts
 
 on:
   pull_request:
     branches: [main]
 
 jobs:
-  fleg-diagnostics:
+  fleg-alerts:
     if: github.head_ref == 'storeops-v2.30.8-fleg-signage-alerts'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -15,75 +15,77 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Compare FLEG source list vs Trade catalog vs signage alerts
+      - name: Syntax
+        run: |
+          node --check backend/services/commercial-price-batches.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/commercial.js
+
+      - name: Central batch contract
+        run: node backend/tests/v2308-fleg-signage-alerts.mjs
+
+      - name: Validate 69 FLEG alerts on both pilots
         env:
           PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
           EXPECTED_JSON: '{"HS-003574":17.9,"HS-003575":16.95,"HS-003576":5.5,"HS-003577":5.5,"HS-003578":39.9,"HS-003579":39.9,"HS-003580":72.95,"HS-003581":15.9,"HS-003582":28,"HS-003583":21,"HS-003584":21.95,"HS-003585":60,"HS-003586":8.95,"HS-003587":12.95,"HS-003588":17,"HS-003589":17,"HS-003590":33.9,"HS-003591":25.9,"HS-003593":25.9,"HS-003594":25.9,"HS-003595":7.9,"HS-003596":15,"HS-003597":10.9,"HS-003598":9.5,"HS-003599":9.5,"HS-003600":13.95,"HS-003601":7.9,"HS-003602":13.95,"HS-003603":12,"HS-003604":7.95,"HS-003605":6.9,"HS-003606":15,"HS-003607":15.95,"HS-003608":23.95,"HS-003609":11,"HS-003610":21.95,"HS-003611":8.5,"HS-003612":9.9,"HS-003613":8,"HS-003614":25.95,"HS-003615":9.95,"HS-003616":25.95,"HS-003617":34,"HS-003618":16,"HS-003619":23.95,"HS-003621":17.95,"HS-003622":70,"HS-003623":64.5,"HS-003624":50,"HS-003625":8.9,"HS-003626":7.5,"HS-003627":7.5,"HS-003628":7.5,"HS-003629":18,"HS-003630":3.9,"HS-003631":3.9,"HS-003632":3.5,"HS-003633":18,"HS-003634":8,"HS-003635":10,"HS-003636":12.5,"HS-003637":7.95,"HS-003638":9,"HS-006583":21.9,"HS-006594":80,"HS-006595":50,"HS-006596":50,"HS-006692":81.95,"HS-006719":8.95}'
         run: |
           set -euo pipefail
-          code=""
+          ready=""
           for i in $(seq 1 90); do
-            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
-            [ "$code" = "200" ] && break
+            code=$(curl -sS -H "x-demo-user: u-admin" -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            version=$(node -e "try{const p=require('/tmp/health.json');process.stdout.write(String(p.version||''))}catch{}" || true)
+            if [ "$code" = "200" ] && [ "$version" = "2.30.8" ]; then ready=1; break; fi
+            echo "Attempt $i: HTTP $code version=$version"
             sleep 5
           done
-          test "$code" = "200"
+          test "$ready" = "1"
 
-          DAY=$(date -u +%F)
-          for item in HS-003574 HS-006594; do
-            curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=5&filter=ItemNumber%20eq%20%27$item%27" -o "/tmp/raw-$item.json"
-          done
+          DAY=2026-09-24
+          curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/admin/commercial/price-batches" -o /tmp/batches.json
           for store in val-fleuri trefle; do
-            curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/$store/trade-agreements?limit=1000" -o "/tmp/trade-$store.json"
+            curl -fsS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/stores/$store/trade-agreements?date=$DAY&limit=1000" -o "/tmp/trade-$store.json"
             curl -fsS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST "$PREVIEW_URL/api/stores/$store/commercial/sync?date=$DAY" --data '{}' -o "/tmp/sync-$store.json"
           done
 
           node - <<'NODE'
-          const fs=require('fs');
-          const expected=JSON.parse(process.env.EXPECTED_JSON);
-          const codes=Object.keys(expected);
+          const fs=require('fs'),expected=JSON.parse(process.env.EXPECTED_JSON),codes=Object.keys(expected),stores=['val-fleuri','trefle'];
+          const batches=JSON.parse(fs.readFileSync('/tmp/batches.json','utf8'));
+          const flegBatch=(batches.items||[]).find(x=>x.id==='FLEG-2026-09-24');
+          if(!flegBatch||Number(flegBatch.line_count)!==69)process.exit(2);
           const out={};
-          const rawSamples={};
-          for(const item of ['HS-003574','HS-006594']){
-            const p=JSON.parse(fs.readFileSync('/tmp/raw-'+item+'.json','utf8'));
-            rawSamples[item]=(p.rows||[]).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>/date|time|modified|created|record|recid|price|item|group|unit/i.test(k)&&v!==null&&v!=='')));
-          }
-          let totalCatalog=0,totalAlerts=0;
-          for(const store of ['val-fleuri','trefle']){
+          for(const store of stores){
             const trade=JSON.parse(fs.readFileSync('/tmp/trade-'+store+'.json','utf8'));
             const sync=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
             const catalog=(trade.items||[]).filter(x=>codes.includes(x.itemNumber));
             const alerts=(sync.items||[]).filter(x=>codes.includes(x.product_number)&&x.action_type==='PRICE_CHANGE');
-            const alertMap=new Map(alerts.map(x=>[x.product_number,x]));
-            const catMap=new Map(catalog.map(x=>[x.itemNumber,x]));
-            const rows=codes.map(code=>{
-              const c=catMap.get(code),a=alertMap.get(code);
-              return {
-                code,
-                expectedFromSource:expected[code],
-                catalogPrice:c?.normalizedUnitPrice??c?.price??null,
-                catalogUnit:c?.unit??null,
-                catalogGroup:c?.priceGroup??null,
-                validFrom:c?.validFrom??null,
-                validTo:c?.validTo??null,
-                alert:!!a,
-                alertPrice:a?.expected_price??null,
-                label:a?.promo_label??null,
-                sourceDetails:a?.sourceDetails??null
-              };
-            });
-            totalCatalog+=catalog.length;totalAlerts+=alerts.length;
+            const byCode=new Map(alerts.map(x=>[x.product_number,x]));
+            const duplicates=alerts.filter((x,i,a)=>a.findIndex(y=>y.product_number===x.product_number)!==i);
+            const badPrices=codes.filter(code=>!byCode.has(code)||Math.abs(Number(byCode.get(code)?.expected_price)-Number(expected[code]))>0.001);
+            const wrongSource=alerts.filter(x=>x.sourceDetails?.type!=='CENTRAL_PRICE_BATCH');
             out[store]={
-              priceGroups:trade.priceGroups,
-              catalogTotal:trade.total,
-              flegInCatalog:catalog.length,
-              flegAlerts:alerts.length,
-              missingFromCatalog:rows.filter(x=>!catMap.has(x.code)).map(x=>x.code),
-              missingFromAlerts:rows.filter(x=>catMap.has(x.code)&&!x.alert).map(x=>x.code),
-              rows
+              catalogFleg:catalog.length,alerts:alerts.length,
+              duplicates:duplicates.map(x=>x.product_number),
+              missing:codes.filter(x=>!byCode.has(x)),
+              badPrices,
+              wrongSource:wrongSource.map(x=>x.product_number),
+              centralPriceBatchProducts:sync.sync?.centralPriceBatchProducts??null,
+              shadowedD365PriceChanges:sync.sync?.shadowedD365PriceChanges??null,
+              sample:alerts.slice(0,8).map(x=>({code:x.product_number,name:x.product_name,price:x.expected_price,status:x.status,source:x.sourceDetails?.type}))
             };
+            if(catalog.length!==69)process.exit(3);
+            if(alerts.length!==69)process.exit(4);
+            if(duplicates.length)process.exit(5);
+            if(badPrices.length)process.exit(6);
+            if(wrongSource.length)process.exit(7);
+            if(!byCode.has('HS-006594')||byCode.get('HS-006594').sourceDetails?.type!=='CENTRAL_PRICE_BATCH')process.exit(8);
           }
-          console.log(JSON.stringify({expectedCount:codes.length,totalCatalog,totalAlerts,rawSamples,stores:out},null,2));
-          if(codes.length!==69)process.exit(2);
-          if(totalCatalog<69)process.exit(3);
+          console.log(JSON.stringify({expectedCount:codes.length,batch:flegBatch,stores:out},null,2));
           NODE
+
+      - name: Safety
+        run: |
+          grep -q "CENTRAL_PRICE_BATCH" backend/services/commercial-price-batches.mjs
+          grep -q "FLEG-2026-09-24" backend/services/commercial-price-batches.mjs
+          grep -q "price-batches" backend/server.mjs
+          grep -q "Campagne centrale de balisage" frontend/js/pages/commercial.js
+          ! grep -R "post.*Dynamics" backend/services/commercial-price-batches.mjs
