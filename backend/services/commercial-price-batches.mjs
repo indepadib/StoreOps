@@ -113,10 +113,11 @@ export function getCommercialPriceBatchChanges(storeId,businessDate=todayISO()){
   WHERE b.status='ACTIVE' AND b.effective_date<=? AND (b.valid_to IS NULL OR b.valid_to>=?)
   ORDER BY b.effective_date,l.sort_order,l.product_number`).all(id,day,day);
  const verified=db.prepare(`SELECT 1 FROM commercial_controls WHERE store_id=? AND source_key=? AND status='VERIFIED' LIMIT 1`);
+ const verifiedEquivalent=db.prepare(`SELECT 1 FROM commercial_controls WHERE store_id=? AND product_number=? AND action_type='PRICE_CHANGE' AND status='VERIFIED' AND business_date>=? AND expected_price IS NOT NULL AND ABS(expected_price-?)<=0.01 LIMIT 1`);
  const changes=[];
  for(const row of rows){
   const sourceKey=`PRICE-BATCH:${row.batch_id}:${row.product_number}`;
-  if(verified.get(id,sourceKey))continue;
+  if(verified.get(id,sourceKey)||verifiedEquivalent.get(id,row.product_number,row.effective_date,Number(row.expected_price)))continue;
   changes.push({
    sourceKey,stableKey:sourceKey,
    actionType:'PRICE_CHANGE',ean:`ITEM:${row.product_number}`,productNumber:row.product_number,productName:row.product_name,category:'Fruits & Légumes',
