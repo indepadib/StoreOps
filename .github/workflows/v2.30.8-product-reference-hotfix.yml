@@ -1,0 +1,53 @@
+name: V2.30.8 Product Reference Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  product-reference:
+    if: github.head_ref == 'storeops-v2.30.8-product-reference-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Static and unit contracts
+        run: |
+          node --check backend/services/dynamics.mjs
+          node backend/tests/v2308-product-reference-hotfix.mjs
+          ! grep -q "select=\[c.productNumberField,c.productNameField" backend/services/dynamics.mjs
+
+      - name: Validate live internal-code lookup
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 90); do
+            code=$(curl -sS -H "x-demo-user: u-admin" -o /tmp/product.json -w "%{http_code}"               "$PREVIEW_URL/api/products/lookup?q=HS-003577" || true)
+            if [ "$code" = "200" ]; then break; fi
+            echo "Attempt $i: HTTP $code"
+            sleep 5
+          done
+          test "$code" = "200"
+          node - <<'NODE'
+          const fs=require('fs');
+          const p=JSON.parse(fs.readFileSync('/tmp/product.json','utf8'));
+          console.log(JSON.stringify({
+            productNumber:p.productNumber,
+            name:p.name,
+            ean:p.ean,
+            lookupType:p.lookupType,
+            unit:p.unit,
+            inventoryUnit:p.inventoryUnit,
+            salesUnit:p.salesUnit,
+            productEnrichment:p.productEnrichment||null
+          },null,2));
+          if(p.productNumber!=='HS-003577')process.exit(2);
+          if(p.lookupType!=='PRODUCT_NUMBER')process.exit(3);
+          if(!p.name)process.exit(4);
+          NODE
