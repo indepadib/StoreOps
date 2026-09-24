@@ -14,7 +14,9 @@ const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDi
 const dt=v=>v?new Date(String(v).replace(' ','T')+'Z').toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
 const day=v=>{if(!v)return'—';const s=String(v);const m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}/${m[2]}/${m[1]}`:s};
 function tradeDetails(d){
- if(!d||d.type!=='TRADE_AGREEMENT')return'';
+ if(!d)return'';
+ if(d.type==='CENTRAL_PRICE_BATCH')return `<details class="commercial-control" open style="margin-top:8px"><summary>Campagne centrale de balisage</summary><div class="commercial-grid" style="margin-top:9px"><div><span>Campagne</span><strong>${esc(d.label||d.batchId||'—')}</strong></div><div><span>Date d’effet</span><strong>${day(d.effectiveDate)}</strong></div><div><span>Fin campagne</span><strong>${day(d.validTo)}</strong></div><div><span>Source</span><strong>${esc(d.sourceRef||'Direction commerciale')}</strong></div></div></details>`;
+ if(d.type!=='TRADE_AGREEMENT')return'';
  const priceBasis=d.price==null?'—':`${money(d.price)} / ${Number(d.priceQuantity||1)!==1?`${Number(d.priceQuantity)} `:''}${esc(d.unit||'unité')}`;
  return `<details class="commercial-control trade-agreement-details" open style="margin-top:8px"><summary>Détail Trade Agreement Dynamics</summary><div class="commercial-grid" style="margin-top:9px">
   <div><span>Groupe prix</span><strong>${esc(d.priceGroup||'Tous groupes')}</strong></div>
@@ -69,7 +71,7 @@ export async function renderCommercial(){
  cfg=cfgResult.status==='fulfilled'?cfgResult.value:(cfg||{actionTypes:[],signageActions:[],policy:{price_tolerance:0.01}});
  data=commercialResult.status==='fulfilled'?commercialResult.value:{summary:{total:0,pending:0,mismatch:0,verified:0,blocking:0,readiness:100},items:[],sync:{ok:false,code:commercialError?.code||'COMMERCIAL_READ_FAILED',error:commercialError?.message||'Lecture Prix & promos indisponible.'}};
  priceChecks=historyResult.status==='fulfilled'?(historyResult.value.items||[]):[];
- const s=data.summary||{},rows=data.items||[],tradeRows=rows.filter(x=>x.sourceDetails?.type==='TRADE_AGREEMENT'||/accord tarifaire/i.test(String(x.promo_label||''))),syncError=data.sync&&!data.sync.ok?data.sync:null;
+ const s=data.summary||{},rows=data.items||[],tradeRows=rows.filter(x=>x.sourceDetails?.type==='TRADE_AGREEMENT'||/accord tarifaire/i.test(String(x.promo_label||''))),batchRows=rows.filter(x=>x.sourceDetails?.type==='CENTRAL_PRICE_BATCH'),syncError=data.sync&&!data.sync.ok?data.sync:null;
  $('#commercialContent').innerHTML=`
    <div id="commercialSyncNotice">
     ${commercialError?`<div class="banner ban-danger"><strong>Le snapshot Prix & promos n’a pas pu être chargé.</strong><div class="small">${esc(commercialError.message||'Backend temporairement indisponible.')}</div><button class="btn soft" id="retryCommercialBtn" style="margin-top:8px">Réessayer</button></div>`:syncError?`<div class="banner ban-danger"><strong>Synchronisation Dynamics prix/promos indisponible.</strong><div class="small">${esc(syncError.error||'Mapping ou service Dynamics indisponible')}</div></div>`:''}
@@ -86,6 +88,7 @@ export async function renderCommercial(){
      <div class="row"><div><strong>Exécution commerciale du jour</strong><div class="small muted">Le snapshot s’affiche immédiatement. Dynamics est rafraîchi séparément pour éviter de bloquer l’écran.</div></div>${status(s.blocking?`${s.blocking} bloquante(s)`:'Prêt ouverture',s.blocking?'danger':'ok')}</div>
      ${canManage()?`<button class="btn soft" id="syncCommercialBtn" style="margin-top:10px">Rafraîchir depuis Dynamics</button>`:''}
    </div>
+   ${batchRows.length?`<div class="card" style="margin-top:12px"><div class="row"><div><strong>Campagne centrale de balisage</strong><div class="small muted">Changements de prix communiqués au réseau, à contrôler physiquement dans le magasin.</div></div>${status(`${batchRows.filter(x=>x.status!=='VERIFIED').length} à traiter`,batchRows.some(x=>x.status!=='VERIFIED')?'warn':'ok')}</div><div class="small" style="margin-top:8px"><strong>${esc(batchRows[0]?.sourceDetails?.label||'Campagne prix')}</strong> · ${batchRows.length} référence(s) · effet ${day(batchRows[0]?.sourceDetails?.effectiveDate)} → ${day(batchRows[0]?.sourceDetails?.validTo)}</div></div>`:''}
    <div class="card" style="margin-top:12px">
      <div class="row"><div><strong>Changements Trade Agreements du jour</strong><div class="small muted">Uniquement les accords démarrant ou modifiés récemment et nécessitant un contrôle terrain.</div></div>${status(tradeRows.length?`${tradeRows.length} détecté(s)`:'0 détecté','neutral')}</div>
      ${tradeRows.length?`<div class="small" style="margin-top:8px">${tradeRows.slice(0,6).map(x=>{const d=x.sourceDetails||{};return`<div style="margin-bottom:5px">• <strong>${esc(x.product_name||x.product_number)}</strong> <span class="muted">(${esc(x.product_number||'—')})</span> · ${money(x.expected_price)} · groupe ${esc(d.priceGroup||x.priceGroup||'Tous')} · ${day(d.validFrom||x.business_date)} → ${day(d.validTo)}</div>`}).join('')}${tradeRows.length>6?`<div class="muted" style="margin-top:4px">+${tradeRows.length-6} autre(s) dans la liste détaillée ci-dessous</div>`:''}</div>`:'<div class="small muted" style="margin-top:8px">Aucun accord tarifaire n’a encore été matérialisé dans le snapshot du jour. Utilisez « Rafraîchir depuis Dynamics » pour forcer la lecture.</div>'}
