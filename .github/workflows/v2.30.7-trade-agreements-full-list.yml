@@ -1,0 +1,62 @@
+name: V2.30.7 Trade Agreements Full List
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  trade-agreements:
+    if: github.head_ref == 'storeops-v2.30.7-trade-agreements-full-list'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Static contracts
+        run: |
+          node --check backend/services/dynamics-price.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/commercial.js
+          grep -q "getStoreTradeAgreementCatalog" backend/services/dynamics-price.mjs
+          grep -q "/trade-agreements" backend/server.mjs
+          grep -q "Liste Trade Agreements actifs" frontend/js/pages/commercial.js
+          grep -q "Changements Trade Agreements du jour" frontend/js/pages/commercial.js
+
+      - name: Validate exhaustive D365 list on both pilots
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 90); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for store in val-fleuri trefle; do
+            curl -fsS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/trade-agreements?limit=1000"               -o "/tmp/$store.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const expected=['HS-003574','HS-003577','HS-006719'];
+          const out={};
+          for(const store of ['val-fleuri','trefle']){
+            const p=JSON.parse(fs.readFileSync('/tmp/'+store+'.json','utf8'));
+            out[store]={
+              mode:p.mode,total:p.total,loaded:(p.items||[]).length,hasMore:p.hasMore,
+              priceGroups:p.priceGroups,warehouseId:p.warehouseId,
+              sample:(p.items||[]).slice(0,8).map(x=>({item:x.itemNumber,name:x.productName,price:x.price,unit:x.unit,group:x.priceGroup}))
+            };
+            if(p.mode!=='LIVE')process.exit(2);
+            if(Number(p.total)<69)process.exit(3);
+            if(p.hasMore)process.exit(4);
+            for(const item of expected)if(!(p.items||[]).some(x=>x.itemNumber===item))process.exit(5);
+          }
+          console.log(JSON.stringify(out,null,2));
+          NODE

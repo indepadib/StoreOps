@@ -147,6 +147,33 @@ export function resolveApplicableTradeAgreements({rows=[],businessDate=null,pric
  }else if(safe.length)status='AMBIGUOUS';
  return{status,businessDate:day,priceGroups:groups,warehouseId:wh||null,quantity:qty,baseUnit:clean(baseUnit)||null,basePriceQuantity:baseQty,rowCount:evaluated.length,scopeRelevantCount:evaluated.filter(x=>x.scopeEligible).length,eligibleCount:eligible.length,safeCount:safe.length,safePrice,selected,evaluated,reason:status==='UNIQUE'?'Un accord tarifaire magasin non ambigu est applicable.':status==='AMBIGUOUS'?'Plusieurs accords tarifaires compatibles donnent des prix différents ; aucun prix n’est imposé par StoreOps.':status==='UNSAFE'?'Un accord est applicable mais son unité n’est pas comparable de façon prouvée au prix de base.':'Aucun accord tarifaire applicable à ce magasin et cette date.'}
 }
+export async function getStoreTradeAgreementCatalog(storeId,{businessDate=null,search='',limit=500,offset=0}={}){
+ const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),historyMapping=effectiveD365PriceHistoryMapping(),entity=historyMapping?.entity||salesPriceEntity(),store=storeOperationalSettings(storeId);
+ let groupContext=null;try{groupContext=await resolveStorePriceGroups(storeId)}catch{}
+ const priceGroups=[...new Set([...(groupContext?.groups||[]),config.dynamics.storePriceGroups?.[storeId],config.dynamics.defaultPriceGroup||'Franprix'].map(clean).filter(Boolean))],warehouseId=clean(store?.storeWarehouseId)||null;
+ const take=Math.max(1,Math.min(1000,Number(limit)||500)),start=Math.max(0,Number(offset)||0);
+ if(!priceLive())return{mode:'SIMULATED',entity,storeId,businessDate:day,priceGroups,warehouseId,total:0,offset:start,limit:take,hasMore:false,items:[],truncated:false,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG'};
+ const fields=historyMapping?.fields||null,company=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
+ const groupField=fields?.priceGroup||'PriceCustomerGroupCode',filterParts=[company,groupField?priceGroupScopeFilter(groupField,priceGroups):''].filter(Boolean);
+ const select=fields?[...new Set([fields.item,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(','):AGREEMENT_SELECT_FIELDS.join(',');
+ const payload=await odataGetAll(entity,{filter:filterParts.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:10000});
+ if(payload.truncated)throw Object.assign(new Error('La liste Trade Agreements dépasse la limite de sécurité StoreOps ; aucun sous-ensemble ne doit être présenté comme exhaustif.'),{status:503,code:'D365_TRADE_AGREEMENT_CATALOG_TRUNCATED',details:{entity,rowCount:payload.rowCount,maxRows:10000}});
+ const rows=fields?(payload.value||[]).map(row=>canonicalHistoryRow(row,fields)):(payload.value||[]);
+ const relevant=rows.filter(row=>{
+  const from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate),group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),warehouse=clean(row?.PriceWarehouseId),site=clean(row?.PriceSiteId);
+  return (openBoundary(from)||day>=from)&&(openBoundary(to)||day<=to)&&(!group||!priceGroups.length||priceGroups.includes(group))&&!customer&&(!warehouse||(!!warehouseId&&warehouse===warehouseId))&&!site
+ });
+ const itemNumbers=[...new Set(relevant.map(r=>clean(r.ItemNumber||r.ProductNumber)).filter(Boolean))],directory=await productDirectoryByNumber(itemNumbers),q=clean(search).toLowerCase();
+ let items=relevant.map((r,index)=>{
+  const itemNumber=clean(r.ItemNumber||r.ProductNumber),price=Number(r.Price),priceQty=positiveOr(r.SalesPriceQuantity,1),unit=clean(r.QuantityUnitySymbol),fromQty=Number(r.FromQuantity),toQty=Number(r.ToQuantity);
+  return{index,recordId:r.RecordId??null,itemNumber,productName:directory.names.get(itemNumber)||itemNumber,price:Number.isFinite(price)?price:null,currency:clean(r.PriceCurrencyCode)||null,priceQuantity:priceQty,unit:unit||null,normalizedUnitPrice:Number.isFinite(price)?Number((price/priceQty).toFixed(6)):null,priceGroup:clean(r.PriceCustomerGroupCode)||null,customerAccount:clean(r.CustomerAccountNumber)||null,warehouse:clean(r.PriceWarehouseId)||null,site:clean(r.PriceSiteId)||null,validFrom:dateOnly(r.PriceApplicableFromDate),validTo:dateOnly(r.PriceApplicableToDate),fromQuantity:Number.isFinite(fromQty)&&fromQty>0?fromQty:null,toQuantity:Number.isFinite(toQty)&&toQty>0?toQty:null,willSearchContinue:r.WillSearchContinue??null}
+ });
+ if(q)items=items.filter(x=>[x.itemNumber,x.productName,x.priceGroup,x.unit,x.recordId].some(v=>clean(v).toLowerCase().includes(q)));
+ items.sort((a,b)=>a.itemNumber.localeCompare(b.itemNumber)||String(a.recordId??'').localeCompare(String(b.recordId??'')));
+ const total=items.length;
+ return{mode:'LIVE',entity,storeId,businessDate:day,priceGroups,priceGroupContext:groupContext,warehouseId,total,offset:start,limit:take,hasMore:start+take<total,items:items.slice(start,start+take),rowsRead:payload.rowCount,pages:payload.pages,truncated:false,mappingSource:historyMapping?'STOREOPS_VALIDATED_MAPPING':'ENV_CONFIG'}
+}
+
 export async function getStoreSalesPriceContext(productNumber,{storeId=null,businessDate=null,quantity=1,priceGroups=[]}={}){
  const payload=await getSalesPriceAgreementsByItem(productNumber),base=payload?.basePrice?.row||null;
  let groupContext=null;try{groupContext=storeId?await resolveStorePriceGroups(storeId):null}catch{}
