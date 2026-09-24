@@ -61,8 +61,8 @@ const snapshot=await receiving.listExpectedPurchaseOrders('val-fleuri',{business
 assert.equal(snapshot.mode,'LIVE');
 assert.equal(snapshot.items.length,1);
 assert.equal(snapshot.items[0].poNumber,'PO-216');
-assert.equal(snapshot.diagnostics.warehouseField,'InventoryWarehouseId','receiving must recover when the configured/default warehouse field is rejected by D365');
-assert(snapshot.diagnostics.filterFallbacks.length>0);
+assert.equal(snapshot.diagnostics.warehouseField,'DefaultReceivingWarehouseId','receiving diagnostics must report the proven header warehouse field');
+assert(snapshot.diagnostics.filterFallbacks.length>0,'line warehouse fallback attempts must remain auditable');
 assert(calls.some(x=>x.includes('ReceivingWarehouseId')));
 assert(calls.some(x=>x.includes('InventoryWarehouseId')));
 
