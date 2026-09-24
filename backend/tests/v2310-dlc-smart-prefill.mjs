@@ -10,6 +10,11 @@ assert.equal(weighted.department,'Fruits & Légumes');
 assert.equal(weighted.family,null);
 assert.equal(weighted.classificationSource,'PRODUCT_CATEGORY_FALLBACK');
 
+const fleg=resolveDlcProductDefaults({product:{inventoryUnit:'g',category:'Autre',searchName:'FLEG'},taxonomy:[]});
+assert.equal(fleg.unit,'g');
+assert.equal(fleg.department,'Fruits & Légumes');
+assert.equal(fleg.classificationSource,'D365_SEARCH_NAME_FALLBACK');
+
 const family=resolveDlcProductDefaults({
  product:{inventoryUnit:'KG',category:'Autre'},
  taxonomy:[{category_name:'Fruits frais',path:'Retail > Fruits & Légumes > Fruits frais'}]
