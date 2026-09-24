@@ -28,6 +28,17 @@ jobs:
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=Trade" -o /tmp/trade-entities.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=PriceAgreement" -o /tmp/price-entities.json
 
+          DAY=$(date -u +%F)
+          YESTERDAY=$(date -u -d "$DAY -1 day" +%F)
+          TOMORROW=$(date -u -d "$YESTERDAY +1 day" +%F)
+          echo "DAY=$DAY YESTERDAY=$YESTERDAY"
+
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/probe?entity=SalesPriceAgreements&top=500&filter=PriceApplicableFromDate%20ge%20${YESTERDAY}T00%3A00%3A00Z%20and%20PriceApplicableFromDate%20lt%20${TOMORROW}T00%3A00%3A00Z&extra=cross-company%3Dtrue"             -o /tmp/yesterday.json
+
+          for STORE in val-fleuri trefle; do
+            curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json" -X POST               "$PREVIEW_URL/api/stores/$STORE/commercial/sync?date=$DAY" --data '{}'               -o "/tmp/sync-$STORE.json"
+          done
+
           node - <<'NODE'
           const fs=require('fs');
           const a=JSON.parse(fs.readFileSync('/tmp/agreements.json','utf8'));
@@ -39,10 +50,29 @@ jobs:
             const d=JSON.parse(fs.readFileSync(file,'utf8')),list=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
             return list.map(x=>({PublicEntityName:x.PublicEntityName,PublicCollectionName:x.PublicCollectionName,Name:x.Name})).filter(x=>/trade|price|agreement/i.test(JSON.stringify(x)));
           };
+          const y=JSON.parse(fs.readFileSync('/tmp/yesterday.json','utf8'));
+          const yRows=y.rows||[];
+          const yCompact=yRows.map(r=>({recordId:r.RecordId,item:r.ItemNumber||r.ProductNumber,price:r.Price,from:r.PriceApplicableFromDate,to:r.PriceApplicableToDate,group:r.PriceCustomerGroupCode,warehouse:r.PriceWarehouseId})).filter(x=>x.item);
+          const sync={};
+          for(const store of ['val-fleuri','trefle']){
+            const d=JSON.parse(fs.readFileSync('/tmp/sync-'+store+'.json','utf8'));
+            const items=d.items||[],trades=items.filter(x=>/accord tarifaire/i.test(String(x.promo_label||'')));
+            const priceSource=(d.sync?.sources||[]).find(x=>x.name==='prices');
+            const agreementDiag=(priceSource?.diagnostics?.sources||[]).find(x=>x.source==='SALES_PRICE_AGREEMENTS')||null;
+            sync[store]={
+              totalControls:items.length,
+              tradeControls:trades.length,
+              tradeProducts:[...new Set(trades.map(x=>x.product_number).filter(Boolean))],
+              agreementDiagnostics:agreementDiag,
+              sample:trades.slice(0,30).map(x=>({product:x.product_number,label:x.promo_label,price:x.expected_price}))
+            };
+          }
           console.log(JSON.stringify({
             rowCount:a.rowCount,
             interestingKeys,
             sample,
+            yesterdayDirect:{rowCount:y.rowCount,uniqueProducts:[...new Set(yCompact.map(x=>x.item))].length,rows:yCompact.slice(0,100)},
+            commercialSync:sync,
             tradeEntities:names('/tmp/trade-entities.json'),
             priceAgreementEntities:names('/tmp/price-entities.json')
           },null,2));
