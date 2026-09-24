@@ -148,6 +148,56 @@ function hydrate(row){
  const pending=row.status==='ACTIVE'&&(!satisfied||overdue)&&risk.stage!=='CONFORM';
  return{...row,quantity:Number(row.remaining_quantity??row.quantity??0),remaining_quantity:Number(row.remaining_quantity??row.quantity??0),original_quantity:Number(row.original_quantity??row.quantity??0),created_by_name:userName(row.created_by),closed_by_name:userName(row.closed_by),risk,treatments,evidence,pending_action:pending,action_satisfied:satisfied,overdue_control:overdue};
 }
+
+const dlcNorm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9&]+/g,' ').trim();
+const DLC_CATEGORY_DEPARTMENT=Object.freeze({
+ 'f&l':'Fruits & Légumes','f l':'Fruits & Légumes','fruits legumes':'Fruits & Légumes','fruits et legumes':'Fruits & Légumes',
+ 'frais':'Crémerie / PLS','cremerie pls':'Crémerie / PLS','cremerie':'Crémerie / PLS',
+ 'surgele':'Surgelés','surgeles':'Surgelés',
+ 'boucherie':'Boucherie','volaille':'Volaille','poissonnerie':'Poissonnerie',
+ 'charcuterie traiteur':'Charcuterie / Traiteur','fromagerie coupe':'Fromagerie coupe',
+ 'boulangerie patisserie':'Boulangerie / Pâtisserie','epicerie salee':'Épicerie salée','epicerie sucree':'Épicerie sucrée',
+ 'boissons':'Boissons','droguerie hygiene beaute':'Droguerie / Hygiène-Beauté'
+});
+function dlcUnit(value){
+ const x=dlcNorm(value);
+ if(['kg','kilogramme','kilogrammes'].includes(x))return'kg';
+ if(['g','gr','gramme','grammes'].includes(x))return'g';
+ if(['l','lt','litre','litres'].includes(x))return'L';
+ if(['ea','pc','pcs','piece','pieces','unite','unites'].includes(x))return'pièce';
+ if(['barquette','barquettes'].includes(x))return'barquette';
+ if(['colis'].includes(x))return'colis';
+ return null
+}
+function taxonomyLabels(taxonomy=[]){
+ const out=[];
+ for(const row of Array.isArray(taxonomy)?taxonomy:[]){
+  for(const raw of [row?.category_name,row?.categoryName,row?.path]){
+   const text=String(raw||'').trim();if(!text)continue;
+   out.push(text);
+   if(raw===row?.path)for(const part of text.split(/[>\/\\|;]+/).map(x=>x.trim()).filter(Boolean))out.push(part)
+  }
+ }
+ return [...new Set(out)]
+}
+export function resolveDlcProductDefaults({product=null,taxonomy=[]}={}){
+ const unit=dlcUnit(product?.inventoryUnit||product?.unit||product?.salesUnit||product?.retailUnit),labels=taxonomyLabels(taxonomy),normalized=labels.map(x=>({raw:x,key:dlcNorm(x)}));
+ let department=null,family=null,classificationSource=null;
+ for(const [dept,families] of Object.entries(DLC_FAMILIES)){
+  const familyHit=(families||[]).find(f=>normalized.some(x=>x.key===dlcNorm(f)));
+  if(familyHit){department=dept;family=familyHit;classificationSource='D365_TAXONOMY_FAMILY';break}
+ }
+ if(!department){
+  department=Object.keys(DLC_FAMILIES).find(dept=>normalized.some(x=>x.key===dlcNorm(dept)))||null;
+  if(department)classificationSource='D365_TAXONOMY_DEPARTMENT';
+ }
+ if(!department){
+  const key=dlcNorm(product?.category);
+  department=DLC_CATEGORY_DEPARTMENT[key]||null;
+  if(department)classificationSource='PRODUCT_CATEGORY_FALLBACK'
+ }
+ return{unit,department,family,classificationSource,taxonomyLabels:labels.slice(0,20)}
+}
 export function dlcConfig(){return{departments:db.prepare(`SELECT * FROM dlc_thresholds WHERE active=1 ORDER BY rowid`).all().map(x=>({...x,families:DLC_FAMILIES[x.department]||[]})),units:['kg','g','L','pièce','barquette','colis'],expiryTypes:[{code:'DLC',label:'DLC'},{code:'DDM',label:'DDM'}],actions:DLC_ACTIONS}}
 export function listDlc(storeId,status='ACTIVE'){const rows=status==='ALL'?db.prepare(`SELECT * FROM dlc_records WHERE store_id=? ORDER BY expiry_date,created_at DESC`).all(storeId):db.prepare(`SELECT * FROM dlc_records WHERE store_id=? AND status=? ORDER BY expiry_date,created_at DESC`).all(storeId,status);return rows.map(hydrate).sort((a,b)=>riskRank(a.risk.stage)-riskRank(b.risk.stage)||a.risk.daysRemaining-b.risk.daysRemaining)}
 function riskRank(s){return({EXPIRED:0,DDM_PASSED:0,CRITICAL:1,ALERT:2,WATCH:3,CONFORM:4}[s]??9)}
