@@ -83,12 +83,13 @@ jobs:
             };
             console.log(JSON.stringify(safe,null,2));
             if(p.productNumber!=='HS-003577')process.exit(2);
-            if(!p.ean)process.exit(3);
-            if(p.dlcDefaults?.unit!=='g')process.exit(4);
-            if(p.dlcDefaults?.department!=='Fruits & Légumes')process.exit(5);
-            if(!Number.isFinite(Number(p.price)))process.exit(6);
-            if(!Number.isFinite(Number(p.unitCost)))process.exit(7);
-            if(String(p.costUnit||'').toLowerCase()!=='g')process.exit(8);
-            if(!p.warehouseId)process.exit(9);
+            if(String(p.name||'').toLowerCase()!=='melon vert au kg')process.exit(3);
+            if(!p.ean)process.exit(4);
+            if(p.dlcDefaults?.unit!=='g')process.exit(5);
+            if(p.dlcDefaults?.department!=='Fruits & Légumes')process.exit(6);
+            if(!Number.isFinite(Number(p.price)))process.exit(7);
+            if(!Number.isFinite(Number(p.unitCost)))process.exit(8);
+            if(String(p.costUnit||'').toLowerCase()!=='g')process.exit(9);
+            if(!p.warehouseId)process.exit(10);
           }
           NODE
