@@ -48,6 +48,8 @@ CREATE TABLE IF NOT EXISTS commercial_source_state(
 CREATE INDEX IF NOT EXISTS ix_commercial_source_state_store ON commercial_source_state(store_id,last_seen_at);
 `);
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
+function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(x=>x.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
+ensureColumn('commercial_controls','source_details_json','TEXT NULL');
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
 export function commercialPolicy(){return db.prepare(`SELECT * FROM commercial_policies WHERE id='default'`).get()}
@@ -71,9 +73,9 @@ export function commercialConfig(){
 }
 function hydrate(row){
  if(!row)return null;
- let issues=[];try{issues=row.last_issues_json?JSON.parse(row.last_issues_json):[]}catch{}
+ let issues=[],sourceDetails=null;try{issues=row.last_issues_json?JSON.parse(row.last_issues_json):[]}catch{}try{sourceDetails=row.source_details_json?JSON.parse(row.source_details_json):null}catch{}
  const incident=db.prepare(`SELECT id,status,criticality,requires_evidence FROM incidents WHERE source_type='COMMERCIAL_CONTROL' AND source_id=? ORDER BY created_at DESC LIMIT 1`).get(row.id)||null;
- return{...row,controlled_by_name:userName(row.controlled_by),issues,incident};
+ return{...row,sourceDetails,controlled_by_name:userName(row.controlled_by),issues,incident};
 }
 function dateOnly(v){const s=String(v||'');return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function dayDistance(from,to){const a=dateOnly(from),b=dateOnly(to);if(!a||!b)return null;return Math.round((new Date(`${b}T12:00:00Z`)-new Date(`${a}T12:00:00Z`))/86400000)}
@@ -146,12 +148,24 @@ function aggregateOfferAnomalies(changes,businessDate){
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
- const stmt=db.prepare(`INSERT OR IGNORE INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+ const stmt=db.prepare(`INSERT INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,source_details_json,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(store_id,business_date,source_key) DO UPDATE SET
+  ean=excluded.ean,
+  product_number=excluded.product_number,
+  product_name=excluded.product_name,
+  category=COALESCE(excluded.category,commercial_controls.category),
+  old_price=excluded.old_price,
+  expected_price=excluded.expected_price,
+  promo_label=excluded.promo_label,
+  source_details_json=excluded.source_details_json,
+  signage_action=excluded.signage_action,
+  priority=excluded.priority,
+  blocking_opening=excluded.blocking_opening`);
  let inserted=0;
  for(const c of actionable){
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
-  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.signageAction||'VERIFY',priority,blocking);
+  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.sourceDetails?JSON.stringify(c.sourceDetails):null,c.signageAction||'VERIFY',priority,blocking);
   inserted+=Number(info.changes||0);
  }
  return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};

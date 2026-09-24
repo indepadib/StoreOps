@@ -160,6 +160,43 @@ function previousDays(day,count=2){const out=[];const d=new Date(`${day}T12:00:0
 function nextDay(day){const d=new Date(`${day}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10)}
 function orFilter(field,values=[]){const rows=[...new Set((values||[]).map(clean).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 function priceGroupScopeFilter(field,values=[]){const base=orFilter(field,values);return base?`(${base} or ${field} eq '')`:`${field} eq ''`}
+async function productDirectoryByNumber(items=[]){
+  const wanted=[...new Set((items||[]).map(clean).filter(Boolean))];
+  const names=new Map(),barcodes=new Map(),sourcesByItem=new Map(),entity=config.dynamics.productEntity||BASE_PRICE_ENTITY,configuredItemField=config.dynamics.productNumberField||'ProductNumber',nameField=config.dynamics.productNameField||'ProductName',errors=[],fieldsTried=[];
+  if(!wanted.length)return{names,barcodes,sourcesByItem,entity,itemField:configuredItemField,nameField,rowCount:0,errors,fieldsTried};
+  const itemFields=[...new Set([configuredItemField,entity==='ReleasedProductsV2'?'ItemNumber':null,'ProductNumber'].filter(Boolean))];
+  const extra=config.dynamics.dataAreaId?'cross-company=true':'',company=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
+  for(let i=0;i<wanted.length;i+=40){
+    const chunk=wanted.slice(i,i+40),unresolved=new Set(chunk);
+    for(const itemField of itemFields){
+      if(!unresolved.size)break;
+      const candidates=[...unresolved],filter=[company,orFilter(itemField,candidates)].filter(Boolean).join(' and ');
+      fieldsTried.push(`${entity}.${itemField}`);
+      try{
+        const payload=await odataGetAll(entity,{filter,select:[itemField,nameField].join(','),extra,pageSize:100,maxRows:Math.max(200,candidates.length*4)});
+        for(const row of payload.value||[]){
+          const item=clean(row?.[itemField]),name=clean(row?.[nameField]);
+          if(item&&name&&unresolved.has(item)){names.set(item,name);sourcesByItem.set(item,`D365/${entity}.${nameField}`);unresolved.delete(item)}
+        }
+      }catch(error){errors.push({code:error?.code||'D365_PRODUCT_DIRECTORY_FAILED',message:error?.message||String(error),entity,itemField,items:candidates.length})}
+    }
+    if(unresolved.size&&config.dynamics.barcodeEntity&&config.dynamics.barcodeProductField&&config.dynamics.barcodeDescriptionField){
+      const barcodeEntity=config.dynamics.barcodeEntity,productField=config.dynamics.barcodeProductField,descriptionField=config.dynamics.barcodeDescriptionField,barcodeField=config.dynamics.barcodeField||'';
+      const candidates=[...unresolved],filter=[company,orFilter(productField,candidates)].filter(Boolean).join(' and '),select=[productField,descriptionField,barcodeField].filter(Boolean).join(',');
+      fieldsTried.push(`${barcodeEntity}.${productField}`);
+      try{
+        const payload=await odataGetAll(barcodeEntity,{filter,select,extra,pageSize:200,maxRows:Math.max(500,candidates.length*20)});
+        for(const row of payload.value||[]){
+          const item=clean(row?.[productField]),name=clean(row?.[descriptionField]),ean=clean(barcodeField?row?.[barcodeField]:'');
+          if(!item||!unresolved.has(item))continue;
+          if(ean&&!barcodes.has(item))barcodes.set(item,ean);
+          if(name){names.set(item,name);sourcesByItem.set(item,`D365/${barcodeEntity}.${descriptionField}`);unresolved.delete(item)}
+        }
+      }catch(error){errors.push({code:error?.code||'D365_BARCODE_DIRECTORY_FAILED',message:error?.message||String(error),entity:barcodeEntity,itemField:productField,items:candidates.length})}
+    }
+  }
+  return{names,barcodes,sourcesByItem,entity,itemField:configuredItemField,nameField,rowCount:names.size,errors,fieldsTried:[...new Set(fieldsTried)]}
+}
 async function dateScopedRows(entity,{dateField,day,filterParts=[],select='',pageSize=200,maxRows=4000}={}){
   const extra=config.dynamics.dataAreaId?'cross-company=true':'',tomorrow=nextDay(day);
   const dateFilters=[
@@ -213,10 +250,19 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         changesByKey.set(key,{
           sourceKey:`D365-PRICE-AGREEMENT-${record}-${rowDay}`,
           stableKey:`D365-PRICE-AGREEMENT:${record}`,
-          fingerprint:stableFingerprint(['AGREEMENT',record,item,price,priceQty,unit,rowGroup,r.PriceCurrencyCode,r.PriceApplicableFromDate,r.PriceApplicableToDate,warehouse,r.PriceSiteId]),
+          fingerprint:stableFingerprint(['AGREEMENT',record,item,price,priceQty,unit,rowGroup,r.PriceCurrencyCode,r.PriceApplicableFromDate,r.PriceApplicableToDate,warehouse,r.PriceSiteId,r.FromQuantity,r.ToQuantity,r.WillSearchContinue]),
           actionType:rowDay===day?'PRICE_CHANGE':'VERIFY',deltaActionType:'PRICE_CHANGE',deltaOnFirstSeen:true,deltaSignageAction:'VERIFY',
           ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
           oldPrice:null,expectedPrice:unitPrice,promoLabel:`Accord tarifaire ${rowGroup||'Tous groupes'}${basis}${warehouse?` · entrepôt ${warehouse}`:''}${rowDay===day?'':` · détecté en rattrapage (${rowDay})`}`,
+          sourceDetails:{
+            type:'TRADE_AGREEMENT',recordId:record,itemNumber:item,price:price,currency:clean(r.PriceCurrencyCode)||null,
+            priceQuantity:priceQty,unit:unit||null,normalizedUnitPrice:unitPrice,priceGroup:rowGroup||null,
+            customerAccount:customer||null,warehouse:warehouse||null,site:clean(r.PriceSiteId)||null,
+            validFrom:r.PriceApplicableFromDate||rowDay,validTo:r.PriceApplicableToDate||null,
+            fromQuantity:Number.isFinite(Number(r.FromQuantity))?Number(r.FromQuantity):null,
+            toQuantity:Number.isFinite(Number(r.ToQuantity))?Number(r.ToQuantity):null,
+            willSearchContinue:r.WillSearchContinue??null
+          },
           signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:rowGroup||null,priceGroups,
           source:'D365_RETAIL_PRICING',effectiveFrom:r.PriceApplicableFromDate||rowDay,effectiveTo:r.PriceApplicableToDate||null,priceSource:'SALES_PRICE_AGREEMENT'
         })
@@ -241,6 +287,7 @@ export async function getCommercialPriceChanges(storeId,businessDate){
         fingerprint:stableFingerprint(['BASE',item,price,r.SalesUnitSymbol,r.SalesPriceQuantity,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
         actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
         oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix de base ${price.toFixed(2)} DH`,
+        sourceDetails:{type:'BASE_PRICE',itemNumber:item,price,unit:clean(r.SalesUnitSymbol)||null,priceQuantity:positiveOr(r.SalesPriceQuantity,1),validFrom:r.SalesPriceDate||day,validTo:r.SellEndDate||null,baseSalesPriceSource:clean(r.BaseSalesPriceSource)||null},
         signageAction:'VERIFY',priority:'HIGH',blockingOpening:true,storeId,priceGroup:priceGroups[0]||null,priceGroups,source:'D365_RETAIL_PRICING',
         effectiveFrom:r.SalesPriceDate||day,effectiveTo:r.SellEndDate||null,priceSource:'BASE_PRICE'
       });inserted+=1
@@ -249,6 +296,15 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   }catch(error){sources.push({source:'BASE_PRICE',status:'ERROR',code:error.code||'D365_BASE_PRICE_DELTA_FAILED',message:error.message})}
 
   const changes=[...changesByKey.values()];
+  const directory=await productDirectoryByNumber(changes.map(x=>x.productNumber)).catch(error=>({names:new Map(),entity:config.dynamics.productEntity||BASE_PRICE_ENTITY,itemField:config.dynamics.productNumberField||'ProductNumber',nameField:config.dynamics.productNameField||'ProductName',rowCount:0,errors:[{code:error?.code||'D365_PRODUCT_DIRECTORY_FAILED',message:error?.message||String(error)}]}));
+  let named=0;
+  for(const change of changes){
+    const item=clean(change.productNumber),name=directory.names?.get(item),ean=directory.barcodes?.get(item),nameSource=directory.sourcesByItem?.get(item)||null;
+    if(name){change.productName=name;named+=1}
+    if(ean)change.ean=ean;
+    if(change.sourceDetails)change.sourceDetails={...change.sourceDetails,productName:name||null,productNameSource:nameSource,ean:ean||null}
+  }
+  sources.push({source:'PRODUCT_IDENTITY',status:directory.errors?.length&&named===0?'DEGRADED':'READY',entity:directory.entity,itemField:directory.itemField,nameField:directory.nameField,itemFieldsTried:directory.fieldsTried||[directory.itemField],requested:changes.filter(x=>x.productNumber).length,resolved:named,errors:directory.errors||[]});
   if(!changes.length&&sources.length&&sources.every(x=>x.status==='ERROR')){
     throw Object.assign(new Error('Dynamics n’a pas permis de lire les changements de prix du jour.'),{status:502,code:'D365_COMMERCIAL_PRICE_DELTA_FAILED',details:{sources}})
   }
