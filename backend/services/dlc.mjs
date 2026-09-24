@@ -151,7 +151,7 @@ function hydrate(row){
 
 const dlcNorm=v=>String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9&]+/g,' ').trim();
 const DLC_CATEGORY_DEPARTMENT=Object.freeze({
- 'f&l':'Fruits & Légumes','f l':'Fruits & Légumes','fruits legumes':'Fruits & Légumes','fruits et legumes':'Fruits & Légumes',
+ 'f&l':'Fruits & Légumes','f l':'Fruits & Légumes','fleg':'Fruits & Légumes','fruits legumes':'Fruits & Légumes','fruits et legumes':'Fruits & Légumes',
  'frais':'Crémerie / PLS','cremerie pls':'Crémerie / PLS','cremerie':'Crémerie / PLS',
  'surgele':'Surgelés','surgeles':'Surgelés',
  'boucherie':'Boucherie','volaille':'Volaille','poissonnerie':'Poissonnerie',
