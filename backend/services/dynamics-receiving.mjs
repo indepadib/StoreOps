@@ -169,15 +169,17 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
  const top=syncTop(),warehouseCandidates=unique([c.warehouseField,'ReceivingWarehouseId','InventoryWarehouseId','WarehouseId','DefaultReceivingWarehouseId','InventLocationId']),statusField=c.lineStatusField||'PurchaseOrderLineStatus';
  const attempts=[];
  for(const warehouseField of warehouseCandidates){
-  for(const useOpenFilter of [true,false]){
-   const openFilter=useOpenFilter&&statusField?`${statusField} ne 'Invoiced' and ${statusField} ne 'Canceled' and ${statusField} ne 'Cancelled' and ${statusField} ne 'Received'`:'';
-   const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,openFilter].filter(Boolean).join(' and '));
+  const filters=[
+   {kind:'PURCH_STATUS_ENUM',value:`${statusField} eq Microsoft.Dynamics.DataEntities.PurchStatus'Backorder'`},
+   {kind:'WAREHOUSE_ONLY',value:''}
+  ];
+  for(const candidate of filters){
+   const warehouseFilter=`${warehouseField} eq '${esc(warehouseId)}'`,filter=withCompany([warehouseFilter,candidate.value].filter(Boolean).join(' and '));
    try{
     const payload=await odataGet(c.lineEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(row=>purchaseLineOpen(row,c));
-    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverOpenFilter:!!openFilter,serverRemainingFilter:false,warehouseField,attempts};
+    return{value:rows,rowCount:rows.length,pages:1,truncated:raw.length>=top,top,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',openFilterKind:candidate.kind,serverRemainingFilter:false,warehouseField,attempts};
    }catch(error){
-    attempts.push({warehouseField,serverOpenFilter:!!openFilter,code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
-    if(!openFilter)break;
+    attempts.push({warehouseField,openFilterKind:candidate.kind,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',code:error?.code||'D365_PO_FILTER_FAILED',message:error?.message||String(error)});
    }
   }
  }
