@@ -27,6 +27,8 @@ jobs:
 
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=Trade" -o /tmp/trade-entities.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=PriceAgreement" -o /tmp/price-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=JournalLine" -o /tmp/journal-line-entities.json
+          curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=OpenTradeAgreement" -o /tmp/open-trade-entities.json
 
           for entity in TradeAgreementJournalHeaders OpenTradeAgreementJournalHeadersV2 OpenTradeAgreementJournals GUPOpenTradeAgreementJournalLinesV2 GUPOpenTradeAgreementJournalLines TradeAgreementInquiryResults; do
             curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=200&extra=cross-company%3Dtrue"               -o "/tmp/$entity.json" || true
@@ -87,7 +89,9 @@ jobs:
             commercialSync:sync,
             journalEntities,
             tradeEntities:names('/tmp/trade-entities.json'),
-            priceAgreementEntities:names('/tmp/price-entities.json')
+            priceAgreementEntities:names('/tmp/price-entities.json'),
+            journalLineEntities:names('/tmp/journal-line-entities.json'),
+            openTradeEntities:names('/tmp/open-trade-entities.json')
           },null,2));
           if(!rows.length)process.exit(2);
           NODE
