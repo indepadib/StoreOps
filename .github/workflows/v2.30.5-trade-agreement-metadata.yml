@@ -30,8 +30,14 @@ jobs:
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=JournalLine" -o /tmp/journal-line-entities.json
           curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=OpenTradeAgreement" -o /tmp/open-trade-entities.json
 
-          for entity in TradeAgreementJournalHeaders OpenTradeAgreementJournalHeadersV2 OpenTradeAgreementJournals GUPOpenTradeAgreementJournalLinesV2 GUPOpenTradeAgreementJournalLines TradeAgreementInquiryResults; do
+          for entity in TradeAgreementJournalHeaders OpenTradeAgreementJournalHeadersV2 OpenTradeAgreementJournals GUPOpenTradeAgreementJournalLinesV2 GUPOpenTradeAgreementJournalLines OpenSalesPriceJournalLinesV2 OpenSalesPriceJournalLines CDSOpenSalesPriceJournalLinesV2 CDSOpenSalesPriceJournalLines TradeAgreementInquiryResults; do
             curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=200&extra=cross-company%3Dtrue"               -o "/tmp/$entity.json" || true
+          done
+
+          for entity in OpenSalesPriceJournalLinesV2 OpenSalesPriceJournalLines CDSOpenSalesPriceJournalLinesV2 CDSOpenSalesPriceJournalLines; do
+            curl -sS -H "x-demo-user: u-admin" \
+              "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=500&filter=JournalNumber%20eq%20%275001-000104%27&extra=cross-company%3Dtrue" \
+              -o "/tmp/${entity}-104.json" || true
           done
 
           DAY=$(date -u +%F)
@@ -57,12 +63,20 @@ jobs:
             return list.map(x=>({PublicEntityName:x.PublicEntityName,PublicCollectionName:x.PublicCollectionName,Name:x.Name})).filter(x=>/trade|price|agreement/i.test(JSON.stringify(x)));
           };
           const journalEntities={};
-          for(const entity of ['TradeAgreementJournalHeaders','OpenTradeAgreementJournalHeadersV2','OpenTradeAgreementJournals','GUPOpenTradeAgreementJournalLinesV2','GUPOpenTradeAgreementJournalLines','TradeAgreementInquiryResults']){
+          for(const entity of ['TradeAgreementJournalHeaders','OpenTradeAgreementJournalHeadersV2','OpenTradeAgreementJournals','GUPOpenTradeAgreementJournalLinesV2','GUPOpenTradeAgreementJournalLines','OpenSalesPriceJournalLinesV2','OpenSalesPriceJournalLines','CDSOpenSalesPriceJournalLinesV2','CDSOpenSalesPriceJournalLines','TradeAgreementInquiryResults']){
             const file='/tmp/'+entity+'.json';
             if(!fs.existsSync(file))continue;
             const d=JSON.parse(fs.readFileSync(file,'utf8')),jr=d.rows||[];
             const jkeys=[...new Set(jr.flatMap(r=>Object.keys(r||{})))].filter(k=>/journal|name|description|date|created|modified|posted|item|product|price|unit|quantity|group|account|relation|line|record|recid|number/i.test(k));
             journalEntities[entity]={ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,keys:jkeys,rows:jr.slice(0,60).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>jkeys.includes(k)&&v!==null&&v!=='')))};
+          }
+          const journal104={};
+          for(const entity of ['OpenSalesPriceJournalLinesV2','OpenSalesPriceJournalLines','CDSOpenSalesPriceJournalLinesV2','CDSOpenSalesPriceJournalLines']){
+            const file='/tmp/'+entity+'-104.json';
+            if(!fs.existsSync(file))continue;
+            const d=JSON.parse(fs.readFileSync(file,'utf8')),jr=d.rows||[];
+            const jkeys=[...new Set(jr.flatMap(r=>Object.keys(r||{})))].filter(k=>/journal|name|description|date|item|product|price|unit|quantity|group|account|relation|line|record|recid|number/i.test(k));
+            journal104[entity]={ok:d.ok,rowCount:d.rowCount,error:d.error||d.message||null,keys:jkeys,rows:jr.slice(0,120).map(r=>Object.fromEntries(Object.entries(r||{}).filter(([k,v])=>jkeys.includes(k)&&v!==null&&v!=='')))};
           }
           const y=JSON.parse(fs.readFileSync('/tmp/yesterday.json','utf8'));
           const yRows=y.rows||[];
@@ -88,6 +102,7 @@ jobs:
             yesterdayDirect:{rowCount:y.rowCount,uniqueProducts:[...new Set(yCompact.map(x=>x.item))].length,rows:yCompact.slice(0,100)},
             commercialSync:sync,
             journalEntities,
+            journal104,
             tradeEntities:names('/tmp/trade-entities.json'),
             priceAgreementEntities:names('/tmp/price-entities.json'),
             journalLineEntities:names('/tmp/journal-line-entities.json'),
