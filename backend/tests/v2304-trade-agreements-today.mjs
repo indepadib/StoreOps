@@ -48,12 +48,14 @@ assert(vfTrades.some(x=>x.productNumber==='HS-GLOBAL'&&x.expectedPrice===10),'bl
 assert(!vfTrades.some(x=>x.productNumber==='HS-CUSTOMER'));
 assert(!vfTrades.some(x=>x.productNumber==='HS-TR'));
 assert(vfTrades.every(x=>/Accord tarifaire/i.test(x.promoLabel)));
+assert(vfTrades.every(x=>x.actionType==='PRICE_CHANGE'),'same-day agreements must materialize as PRICE_CHANGE');
 
 const tr=await getCommercialPriceChanges('trefle','2026-09-24');
 const trTrades=tr.changes.filter(x=>x.priceSource==='SALES_PRICE_AGREEMENT');
 assert.equal(trTrades.length,3);
 assert(trTrades.some(x=>x.productNumber==='HS-TR'));
 assert(!trTrades.some(x=>x.priceGroup==='Franp VF'));
+assert(trTrades.every(x=>x.actionType==='PRICE_CHANGE'));
 
 assert(seen.some(u=>u.includes('PriceApplicableFromDate ge 2026-09-24T00:00:00Z')&&u.includes('PriceApplicableFromDate lt 2026-09-25T00:00:00Z')),'commercial scan must use a DateTime range');
 assert(seen.some(u=>u.includes("PriceCustomerGroupCode eq ''")),'commercial scan must include global agreements');
