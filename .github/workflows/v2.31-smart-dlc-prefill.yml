@@ -1,0 +1,82 @@
+name: V2.31 Smart DLC Prefill
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dlc-prefill:
+    if: github.head_ref == 'storeops-v2.31.0-dlc-smart-prefill'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/dlc.mjs
+          node --check frontend/js/pages/dlc.js
+          node --check backend/tests/v2310-dlc-smart-prefill.mjs
+
+      - name: Smart prefill contract
+        run: node backend/tests/v2310-dlc-smart-prefill.mjs
+
+      - name: Existing DLC regressions
+        run: |
+          node backend/tests/v2301-dlc-input-visibility.mjs
+          node backend/tests/loss-source-dlc.mjs
+
+      - name: Validate live article context on both pilots
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for store in val-fleuri trefle; do
+            start=$(date +%s)
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/stores/$store/dlc/product-context?q=HS-003577"               -o "/tmp/$store.json"
+            end=$(date +%s)
+            echo "$store context seconds: $((end-start))"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          for(const store of ['val-fleuri','trefle']){
+            const p=JSON.parse(fs.readFileSync('/tmp/'+store+'.json','utf8'));
+            const safe={
+              store,
+              name:p.name,
+              productNumber:p.productNumber,
+              ean:p.ean,
+              inventoryUnit:p.inventoryUnit,
+              retailUnit:p.retailUnit,
+              price:p.price,
+              unitCost:p.unitCost,
+              costUnit:p.costUnit,
+              availableStock:p.availableStock,
+              warehouseId:p.warehouseId,
+              dlcDefaults:p.dlcDefaults,
+              contextError:p.contextError||null
+            };
+            console.log(JSON.stringify(safe,null,2));
+            if(p.productNumber!=='HS-003577')process.exit(2);
+            if(!p.ean)process.exit(3);
+            if(p.dlcDefaults?.unit!=='g')process.exit(4);
+            if(p.dlcDefaults?.department!=='Fruits & Légumes')process.exit(5);
+            if(!Number.isFinite(Number(p.price)))process.exit(6);
+            if(!Number.isFinite(Number(p.unitCost)))process.exit(7);
+            if(String(p.costUnit||'').toLowerCase()!=='g')process.exit(8);
+            if(!p.warehouseId)process.exit(9);
+          }
+          NODE
