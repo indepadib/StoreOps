@@ -162,8 +162,8 @@ function orFilter(field,values=[]){const rows=[...new Set((values||[]).map(clean
 function priceGroupScopeFilter(field,values=[]){const base=orFilter(field,values);return base?`(${base} or ${field} eq '')`:`${field} eq ''`}
 async function productDirectoryByNumber(items=[]){
   const wanted=[...new Set((items||[]).map(clean).filter(Boolean))];
-  const names=new Map(),entity=config.dynamics.productEntity||BASE_PRICE_ENTITY,configuredItemField=config.dynamics.productNumberField||'ProductNumber',nameField=config.dynamics.productNameField||'ProductName',errors=[],fieldsTried=[];
-  if(!wanted.length)return{names,entity,itemField:configuredItemField,nameField,rowCount:0,errors,fieldsTried};
+  const names=new Map(),barcodes=new Map(),sourcesByItem=new Map(),entity=config.dynamics.productEntity||BASE_PRICE_ENTITY,configuredItemField=config.dynamics.productNumberField||'ProductNumber',nameField=config.dynamics.productNameField||'ProductName',errors=[],fieldsTried=[];
+  if(!wanted.length)return{names,barcodes,sourcesByItem,entity,itemField:configuredItemField,nameField,rowCount:0,errors,fieldsTried};
   const itemFields=[...new Set([configuredItemField,entity==='ReleasedProductsV2'?'ItemNumber':null,'ProductNumber'].filter(Boolean))];
   const extra=config.dynamics.dataAreaId?'cross-company=true':'',company=config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:'';
   for(let i=0;i<wanted.length;i+=40){
@@ -171,17 +171,31 @@ async function productDirectoryByNumber(items=[]){
     for(const itemField of itemFields){
       if(!unresolved.size)break;
       const candidates=[...unresolved],filter=[company,orFilter(itemField,candidates)].filter(Boolean).join(' and ');
-      fieldsTried.push(itemField);
+      fieldsTried.push(`${entity}.${itemField}`);
       try{
         const payload=await odataGetAll(entity,{filter,select:[itemField,nameField].join(','),extra,pageSize:100,maxRows:Math.max(200,candidates.length*4)});
         for(const row of payload.value||[]){
           const item=clean(row?.[itemField]),name=clean(row?.[nameField]);
-          if(item&&name&&unresolved.has(item)){names.set(item,name);unresolved.delete(item)}
+          if(item&&name&&unresolved.has(item)){names.set(item,name);sourcesByItem.set(item,`D365/${entity}.${nameField}`);unresolved.delete(item)}
         }
-      }catch(error){errors.push({code:error?.code||'D365_PRODUCT_DIRECTORY_FAILED',message:error?.message||String(error),itemField,items:candidates.length})}
+      }catch(error){errors.push({code:error?.code||'D365_PRODUCT_DIRECTORY_FAILED',message:error?.message||String(error),entity,itemField,items:candidates.length})}
+    }
+    if(unresolved.size&&config.dynamics.barcodeEntity&&config.dynamics.barcodeProductField&&config.dynamics.barcodeDescriptionField){
+      const barcodeEntity=config.dynamics.barcodeEntity,productField=config.dynamics.barcodeProductField,descriptionField=config.dynamics.barcodeDescriptionField,barcodeField=config.dynamics.barcodeField||'';
+      const candidates=[...unresolved],filter=[company,orFilter(productField,candidates)].filter(Boolean).join(' and '),select=[productField,descriptionField,barcodeField].filter(Boolean).join(',');
+      fieldsTried.push(`${barcodeEntity}.${productField}`);
+      try{
+        const payload=await odataGetAll(barcodeEntity,{filter,select,extra,pageSize:200,maxRows:Math.max(500,candidates.length*20)});
+        for(const row of payload.value||[]){
+          const item=clean(row?.[productField]),name=clean(row?.[descriptionField]),ean=clean(barcodeField?row?.[barcodeField]:'');
+          if(!item||!unresolved.has(item))continue;
+          if(ean&&!barcodes.has(item))barcodes.set(item,ean);
+          if(name){names.set(item,name);sourcesByItem.set(item,`D365/${barcodeEntity}.${descriptionField}`);unresolved.delete(item)}
+        }
+      }catch(error){errors.push({code:error?.code||'D365_BARCODE_DIRECTORY_FAILED',message:error?.message||String(error),entity:barcodeEntity,itemField:productField,items:candidates.length})}
     }
   }
-  return{names,entity,itemField:configuredItemField,nameField,rowCount:names.size,errors,fieldsTried:[...new Set(fieldsTried)]}
+  return{names,barcodes,sourcesByItem,entity,itemField:configuredItemField,nameField,rowCount:names.size,errors,fieldsTried:[...new Set(fieldsTried)]}
 }
 async function dateScopedRows(entity,{dateField,day,filterParts=[],select='',pageSize=200,maxRows=4000}={}){
   const extra=config.dynamics.dataAreaId?'cross-company=true':'',tomorrow=nextDay(day);
@@ -285,9 +299,10 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   const directory=await productDirectoryByNumber(changes.map(x=>x.productNumber)).catch(error=>({names:new Map(),entity:config.dynamics.productEntity||BASE_PRICE_ENTITY,itemField:config.dynamics.productNumberField||'ProductNumber',nameField:config.dynamics.productNameField||'ProductName',rowCount:0,errors:[{code:error?.code||'D365_PRODUCT_DIRECTORY_FAILED',message:error?.message||String(error)}]}));
   let named=0;
   for(const change of changes){
-    const name=directory.names?.get(clean(change.productNumber));
+    const item=clean(change.productNumber),name=directory.names?.get(item),ean=directory.barcodes?.get(item),nameSource=directory.sourcesByItem?.get(item)||null;
     if(name){change.productName=name;named+=1}
-    if(change.sourceDetails)change.sourceDetails={...change.sourceDetails,productName:name||null,productNameSource:name?`D365/${directory.entity}`:null}
+    if(ean)change.ean=ean;
+    if(change.sourceDetails)change.sourceDetails={...change.sourceDetails,productName:name||null,productNameSource:nameSource,ean:ean||null}
   }
   sources.push({source:'PRODUCT_IDENTITY',status:directory.errors?.length&&named===0?'DEGRADED':'READY',entity:directory.entity,itemField:directory.itemField,nameField:directory.nameField,itemFieldsTried:directory.fieldsTried||[directory.itemField],requested:changes.filter(x=>x.productNumber).length,resolved:named,errors:directory.errors||[]});
   if(!changes.length&&sources.length&&sources.every(x=>x.status==='ERROR')){
