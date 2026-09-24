@@ -55,6 +55,17 @@ jobs:
           }
           NODE
 
+          for wh in FRP0001 FRP0002; do
+            curl -sS -H "x-demo-user: u-admin"               "$PREVIEW_URL/api/dynamics/probe?entity=PurchaseOrderLinesV2&top=50&filter=ReceivingWarehouseId%20eq%20%27$wh%27%20and%20PurchaseOrderLineStatus%20eq%20Microsoft.Dynamics.DataEntities.PurchStatus%27Backorder%27&extra=cross-company%3Dtrue"               -o "/tmp/po-enum-$wh.json" || true
+          done
+          node - <<'NODE'
+          const fs=require('fs');
+          for(const wh of ['FRP0001','FRP0002']){
+            const p=JSON.parse(fs.readFileSync('/tmp/po-enum-'+wh+'.json','utf8'));
+            console.log('PO ENUM FILTER',wh,JSON.stringify({ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,statuses:[...new Set((p.rows||[]).map(x=>x.PurchaseOrderLineStatus))],orders:[...new Set((p.rows||[]).map(x=>x.PurchaseOrderNumber))].slice(0,20)},null,2));
+          }
+          NODE
+
           for store in val-fleuri trefle; do
             echo "=== $store PO sync ==="
             curl -sS -H "x-demo-user: u-admin" -H "content-type: application/json"               -X POST "$PREVIEW_URL/api/stores/$store/receipts/po/sync" --data '{}'               -o "/tmp/$store-po.json"
