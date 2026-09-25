@@ -1,4 +1,5 @@
-const CACHE='storeops-shell-v2.30.5';
+const CACHE='storeops-shell-v2.31.3';
+const BUILD='2313';
 const CORE=[
   '/manifest.webmanifest','/styles.css','/incidents.css','/cash.css','/losses.css','/cash-opening.css','/cold-chain.css','/staffing.css','/handover.css','/maintenance.css','/price-check-mobile.css','/manager.css','/manager-scan.css','/manager-team.css','/manager-pulse.css','/mobile-barcode.css','/auth.css','/guided-day.css','/manager-alerts.css','/manager-incident-flow.css','/manager-handover.css','/manager-control-focus.css','/manager-receiving-focus.css','/manager-dlc-focus.css','/manager-commercial-focus.css','/admin-studio.css','/admin-studio-guided.css','/admin-studio-access.css','/admin-studio-integrations.css','/admin-studio-tenant.css','/development.css','/runtime-config.js',
   '/js/boot-rescue.js','/js/pwa.js','/js/mobile-barcode.js','/js/manager-polish.js','/js/manager-alerts.js','/js/manager-incident-flow.js','/js/manager-handover.js','/js/manager-control-focus.js','/js/manager-receiving-focus.js','/js/manager-dlc-focus.js','/js/manager-commercial-focus.js','/js/admin-studio-replenishment.js','/js/admin-studio-stores.js','/js/admin-studio-access.js','/js/admin-studio-integrations.js','/js/admin-studio-tenant.js','/js/tenant-branding.js','/js/auth-entry.js','/js/auth.js','/js/app.js','/js/api.js','/js/state.js','/js/ui.js','/js/today-signals.js','/js/store-health.js','/js/manager-journey.js','/js/manager-compliance.js','/js/inventory-privacy.js','/js/quality-draft.js','/js/network-risk.js','/js/maintenance-model.js','/js/custom-process-runs.js','/js/mock-api.js','/js/mock-cash.js','/js/mock-loss.js','/js/mock-cash-opening.js','/js/mock-cold-chain.js','/js/mock-staffing.js','/js/mock-price-check.js',
@@ -9,7 +10,18 @@ self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>Promise.allSettled(CORE.map(url=>cache.add(url)))).then(()=>self.skipWaiting()))
 });
 self.addEventListener('activate',event=>{
-  event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE&&k.startsWith('storeops-shell-')).map(k=>caches.delete(k)))).then(()=>self.clients.claim()))
+  event.waitUntil((async()=>{
+    const keys=await caches.keys();
+    await Promise.all(keys.filter(k=>k!==CACHE&&k.startsWith('storeops-shell-')).map(k=>caches.delete(k)));
+    await self.clients.claim();
+    const clients=await self.clients.matchAll({type:'window',includeUncontrolled:true});
+    await Promise.allSettled(clients.map(client=>{
+      const u=new URL(client.url);
+      if(u.origin!==self.location.origin)return null;
+      u.pathname='/index.html';u.search='';u.searchParams.set('storeops_refresh',BUILD);
+      return client.navigate(u.toString());
+    }));
+  })())
 });
 
 async function networkFirst(req,fallbackKey=null){
@@ -22,6 +34,21 @@ async function networkFirst(req,fallbackKey=null){
     return (await cache.match(fallbackKey||req))||(fallbackKey?await cache.match(req):undefined)||Response.error();
   }
 }
+async function networkFirstAsset(req,url){
+  const cache=await caches.open(CACHE),canonical=url.pathname;
+  try{
+    const res=await fetch(req,{cache:'no-store'});
+    if(res.ok)await Promise.allSettled([cache.put(req,res.clone()),cache.put(canonical,res.clone())]);
+    return res;
+  }catch{
+    const requestedBuild=url.searchParams.get('v');
+    if(requestedBuild&&requestedBuild!==BUILD){
+      const current=await cache.match(canonical);
+      return current||Response.error();
+    }
+    return (await cache.match(req))||(await cache.match(canonical))||Response.error();
+  }
+}
 
 self.addEventListener('fetch',event=>{
   const req=event.request;if(req.method!=='GET')return;
@@ -32,6 +59,6 @@ self.addEventListener('fetch',event=>{
     return;
   }
   const freshAsset=url.pathname==='/runtime-config.js'||url.pathname==='/sw.js'||url.pathname.endsWith('.js')||url.pathname.endsWith('.css');
-  if(freshAsset){event.respondWith(networkFirst(req));return}
+  if(freshAsset){event.respondWith(networkFirstAsset(req,url));return}
   event.respondWith(caches.match(req).then(cached=>cached||fetch(req).then(async res=>{if(res.ok){const cache=await caches.open(CACHE);await cache.put(req,res.clone())}return res})))
 });
