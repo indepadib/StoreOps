@@ -1,0 +1,36 @@
+name: V2.31.1 Receipt & Label Contract
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  receipt-label:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/services/label-printing.mjs
+          node --check backend/services/label-printing-api.mjs
+          node --check frontend/js/label-printing.js
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/pages/commercial.js
+      - name: One action per PO or TO
+        run: node backend/tests/v2311-receipt-document-actions.mjs
+      - name: Label connector contract
+        run: node backend/tests/v2311-label-printing.mjs
+      - name: Safety guards
+        run: |
+          grep -q "receiptActions(receiptsRaw,businessDate)" backend/services/manager-inbox-batch.mjs
+          grep -q "D365_LABEL_PRINT_SERVICE_PATH" backend/services/label-printing.mjs
+          grep -q "LABEL_PRINT_D365_CONNECTOR_REQUIRED" backend/services/label-printing.mjs
+          grep -q "Honeywell PC42E-T (ValFleuri1)" backend/tests/v2311-label-printing.mjs
+          grep -q "Honeywell PC42E-T (Trefel)" backend/tests/v2311-label-printing.mjs
+          grep -q "Imprimer l’étiquette" frontend/js/pages/manager-scan.js
+          grep -q "Imprimer l’étiquette" frontend/js/pages/commercial.js
