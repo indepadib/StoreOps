@@ -8,7 +8,6 @@ const PRODUCTS = {
 };
 
 let tokenCache={token:null,expiresAt:0};
-let metadataXmlCache={xml:null,expiresAt:0};
 const priceGroupCache=new Map();
 const now=()=>new Date().toISOString();
 function escapeOData(v){ return String(v).replaceAll("'","''"); }
@@ -89,52 +88,6 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
   if(!r.ok){const text=await r.text();throw Object.assign(new Error(`Dynamics ${r.status}: ${text.slice(0,500)}`),{status:502,code:'D365_REQUEST_FAILED',details:{httpStatus:r.status,path}})}
   if(r.status===204) return null;
   return r.json();
-}
-
-async function d365FetchText(path,{headers={}}={}){
-  if(config.dynamics.mode!=='live')throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
-  const token=await acquireToken(),url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
-  const timeoutMs=Math.max(5000,Math.min(60000,Number(process.env.D365_METADATA_TIMEOUT_MS)||25000)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
-  let r;
-  try{r=await fetch(url,{headers:{authorization:`Bearer ${token}`,accept:'application/xml,text/xml,*/*',...headers},signal:controller.signal})}
-  catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT'});throw error}
-  finally{clearTimeout(timer)}
-  if(!r.ok){const text=await r.text();throw Object.assign(new Error(`Dynamics ${r.status}: ${text.slice(0,500)}`),{status:502,code:'D365_REQUEST_FAILED'})}
-  return r.text()
-}
-
-async function odataMetadataXml({force=false}={}){
- if(!force&&metadataXmlCache.xml&&Date.now()<metadataXmlCache.expiresAt)return metadataXmlCache.xml;
- const xml=await d365FetchText('/data/$metadata');
- metadataXmlCache={xml,expiresAt:Date.now()+10*60*1000};
- return xml
-}
-
-function metadataOperationRows(xml){
- const rows=[];
- const blockPatterns=[
-  ['ACTION',/<Action\b[^>]*Name="([^"]+)"[^>]*>([\s\S]*?)<\/Action>/g],
-  ['FUNCTION',/<Function\b[^>]*Name="([^"]+)"[^>]*>([\s\S]*?)<\/Function>/g]
- ];
- for(const [kind,re] of blockPatterns){
-  let m;
-  while((m=re.exec(xml))){
-   const body=m[2]||'',params=[];
-   const pr=/<Parameter\b[^>]*Name="([^"]+)"[^>]*Type="([^"]+)"[^>]*\/?>(?:<\/Parameter>)?/g;
-   let pm;while((pm=pr.exec(body)))params.push({name:pm[1],type:pm[2]});
-   const ret=body.match(/<ReturnType\b[^>]*Type="([^"]+)"/)?.[1]||null;
-   rows.push({kind,name:m[1],parameters:params,returnType:ret});
-  }
- }
- const importPatterns=[['ACTION_IMPORT',/<ActionImport\b[^>]*Name="([^"]+)"[^>]*(?:Action="([^"]+)")?/g],['FUNCTION_IMPORT',/<FunctionImport\b[^>]*Name="([^"]+)"[^>]*(?:Function="([^"]+)")?/g]];
- for(const [kind,re] of importPatterns){let m;while((m=re.exec(xml)))rows.push({kind,name:m[1],target:m[2]||null,parameters:[],returnType:null})}
- return rows
-}
-
-export async function searchODataServiceMetadata(query=''){
- const q=String(query||'').trim().toLowerCase(),terms=q.split(',').map(x=>x.trim()).filter(Boolean),xml=await odataMetadataXml(),rows=metadataOperationRows(xml);
- const filtered=terms.length?rows.filter(x=>terms.some(term=>x.name.toLowerCase().includes(term)||String(x.target||'').toLowerCase().includes(term))):rows;
- return{query:q,terms,count:filtered.length,items:[...new Map(filtered.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,300)}
 }
 
 export async function getDynamicsDiagnostics({forceToken=false}={}){
