@@ -155,6 +155,12 @@ export async function getDynamicsDiagnostics({forceToken=false}={}){
   }catch(e){base.checks.metadata={ok:false,skipped:false,latencyMs:Date.now()-metaStart,error:e.message,code:e.code||'D365_METADATA_FAILED'};return{...base,connected:false,mode:'LIVE_METADATA_FAILED',nextAction:'Le token fonctionne mais F&O refuse ou ne répond pas sur Metadata/DataEntities. Vérifier le compte de service et ses rôles Dynamics.'}}
 }
 
+export async function callDynamicsService(path,body){
+ const servicePath=String(path||'').trim();
+ if(!servicePath)throw Object.assign(new Error('Chemin du service Dynamics non configuré.'),{status:409,code:'D365_SERVICE_PATH_REQUIRED'});
+ return d365Fetch(servicePath,{method:'POST',body})
+}
+
 export async function getDynamicsHealth(){const d=await getDynamicsDiagnostics();return{connected:d.connected,mode:d.mode,readModes:d.configuration.readModes||{},checkedAt:d.checkedAt,baseUrl:d.configuration.baseUrl.value,missing:d.checks.config.missing||[],latencyMs:d.checks.metadata.latencyMs||d.checks.token.latencyMs||null,error:d.checks.metadata.error||d.checks.token.error||null,configuredEntities:{productEntity:config.dynamics.productEntity||null,barcodeEntity:config.dynamics.barcodeEntity||null,stockEntity:config.dynamics.stock?.entity||null,purchaseOrderHeaderEntity:config.dynamics.receiving?.headerEntity||null,purchaseOrderLineEntity:config.dynamics.receiving?.lineEntity||null}}}
 
 export async function listDataEntities(search=''){
