@@ -1,0 +1,27 @@
+name: V2.31.2 Today Receipt Aggregation
+
+on:
+  push:
+    branches: [main, storeops-v2.31.2-today-receipt-aggregation]
+  pull_request:
+    branches: [main]
+
+jobs:
+  receipt-aggregation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: node --check backend/services/manager-inbox-batch.mjs
+      - name: Today receipt aggregation contract
+        run: node backend/tests/v2312-today-receipt-aggregation.mjs
+      - name: Existing manager inbox regression
+        run: node backend/tests/v186-manager-inbox-batch.mjs
+      - name: Safety
+        run: |
+          grep -q "id:'receipt-summary'" backend/services/manager-inbox-batch.mjs
+          ! grep -q 'receipt-${receipt.id}-${line.id}' backend/services/manager-inbox-batch.mjs
