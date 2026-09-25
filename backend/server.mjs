@@ -29,6 +29,7 @@ import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
 import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
 import { handleOpeningApi } from './services/opening-api.mjs';
+import { handleLabelPrintingApi } from './services/label-printing-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -89,6 +90,7 @@ async function api(req,res,url){
   const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
   const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return json(req,res,storeSettingsResponse.status,storeSettingsResponse.data);
+  const labelPrintingResponse=await handleLabelPrintingApi({req,url,user});if(labelPrintingResponse)return json(req,res,labelPrintingResponse.status,labelPrintingResponse.data);
 
   let p;
   if(path==='/api/stores'){const rows=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter(s=>canAccessStore(user,s.id));return json(req,res,200,rows)}

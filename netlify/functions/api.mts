@@ -34,7 +34,7 @@ function bridgeBackendEnvironment(){
     'D365_MODE','D365_PRODUCT_READ_MODE','D365_STOCK_READ_MODE','D365_PRICE_READ_MODE','D365_PROMOTION_READ_MODE','D365_RECEIVING_READ_MODE','D365_ASSORTMENT_READ_MODE','D365_TAXONOMY_READ_MODE',
     'D365_BASE_URL','D365_TENANT_ID','D365_CLIENT_ID','D365_CLIENT_SECRET','D365_OAUTH_VERSION','D365_DATA_AREA_ID','D365_DATA_AREA_FIELD',
     'D365_BARCODE_ENTITY','D365_PRODUCT_ENTITY','D365_BARCODE_FIELD','D365_BARCODE_PRODUCT_FIELD','D365_BARCODE_DESCRIPTION_FIELD','D365_BARCODE_UNIT_FIELD','D365_PRODUCT_NUMBER_FIELD','D365_PRODUCT_NAME_FIELD',
-    'D365_DEFAULT_PRICE_GROUP','D365_STORE_PRICE_GROUPS',
+    'D365_DEFAULT_PRICE_GROUP','D365_STORE_PRICE_GROUPS','D365_LABEL_PRINT_SERVICE_PATH','D365_LABEL_DATA_SOURCE_ID',
     'D365_BASE_PRICE_ENTITY','D365_SALES_PRICE_ENTITY','D365_RETAIL_DISCOUNT_ENTITY','D365_RETAIL_DISCOUNT_LINE_ENTITY','D365_RETAIL_DISCOUNT_PRICE_GROUP_ENTITY','D365_MIX_MATCH_LINE_GROUP_ENTITY',
     'D365_STOCK_ENTITY','D365_STOCK_PRODUCT_FIELD','D365_STOCK_NAME_FIELD','D365_STOCK_EAN_FIELD','D365_STOCK_WAREHOUSE_FIELD','D365_STOCK_AVAILABLE_FIELD','D365_STOCK_PHYSICAL_FIELD','D365_STORE_WAREHOUSES','D365_STORE_SUPPLY_WAREHOUSES','D365_DEFAULT_SUPPLY_WAREHOUSE',
     'D365_WAREHOUSE_DIRECTORY_ENTITY','D365_WAREHOUSE_DIRECTORY_ID_FIELD','D365_WAREHOUSE_DIRECTORY_NAME_FIELD','D365_WAREHOUSE_DIRECTORY_PAGE_SIZE','D365_WAREHOUSE_DIRECTORY_MAX_ROWS',
@@ -119,7 +119,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.31.0',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.31.1',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }

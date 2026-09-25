@@ -17,6 +17,22 @@ const action=({id,category,severity='HIGH',title,detail,page,blocking=false,meta
 function commercialTitle(row){if(row.action_type==='PRICE_CHANGE')return `Changer le prix · ${row.product_name}`;if(row.action_type==='PROMO_START')return `Installer la promo · ${row.product_name}`;if(row.action_type==='PROMO_END')return `Retirer la promo · ${row.product_name}`;if(row.action_type==='NEW_ITEM')return `Valider le nouvel article · ${row.product_name}`;return `Valider l’article · ${row.product_name}`}
 function commercialDetail(row){if(row.action_type==='PRICE_CHANGE')return `${money(row.old_price)} → ${money(row.expected_price)} · vérifier prix rayon et étiquette`;if(row.action_type==='PROMO_START')return `${row.promo_label||'Promotion à installer'} · prix attendu ${money(row.expected_price)}`;if(row.action_type==='PROMO_END')return `${row.promo_label||'Promotion terminée'} · retour attendu ${money(row.expected_price)}`;return `EAN ${row.ean||'—'} · contrôle rayon à valider`}
 function receiptRows(storeId){const rows=db.prepare(`SELECT * FROM receipts WHERE store_id=? ORDER BY eta,po_number`).all(storeId);const lines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? ORDER BY product_name`);return rows.map(r=>({...r,lines:lines.all(r.id)}))}
+export function receiptActions(rows,businessDate){
+ const out=[];
+ for(const receipt of rows||[]){
+  if(receipt.status==='POSTED')continue;
+  const pending=(receipt.lines||[]).filter(line=>!line.quality_control_id),pendingCount=pending.length;
+  if(!pendingCount)continue;
+  const overdue=String(receipt.eta||'').slice(0,10)<businessDate,type=receipt.document_type==='TO'?'TO':'PO',origin=type==='PO'?(receipt.vendor||receipt.source_origin||'Fournisseur'):(receipt.source_origin||receipt.vendor||'Origine');
+  out.push(action({
+   id:`receipt-${receipt.id}`,category:'RECEIPT',severity:'HIGH',
+   title:`Réceptionner ${type} · ${receipt.po_number||receipt.id}`,
+   detail:`${origin} · ${pendingCount} article${pendingCount>1?'s':''} à contrôler${overdue?' · en retard':''}`,
+   page:'receipts',meta:overdue?'En retard':`${pendingCount} à contrôler`,priority:overdue?'P0':'P1',source:type
+  }))
+ }
+ return out
+}
 function qualityRows(storeId,businessDate){return db.prepare(`SELECT * FROM quality_controls WHERE store_id=? AND date(created_at)=? ORDER BY created_at DESC`).all(storeId,businessDate)}
 function summarizeReceipts(rows,businessDate){let activeReceipts=0,pendingLines=0,overdue=0;for(const r of rows){if(r.status==='POSTED')continue;activeReceipts++;if(String(r.eta||'').slice(0,10)<businessDate)overdue++;pendingLines+=(r.lines||[]).filter(x=>!x.quality_control_id).length}return{activeReceipts,pendingLines,overdue}}
 function summarizeQuality(rows){const nonConform=rows.filter(x=>x.decision!=='ACCEPT').length,temperatureNok=rows.filter(x=>x.temperature_status==='NOK').length;return{controls:rows.length,nonConform,temperatureNok,rejected:rows.reduce((s,x)=>s+n(x.rejected_qty),0)}}
@@ -40,7 +56,7 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  if(n(cashOpen.blocking)>0)items.push(action({id:'cash-opening',category:'OPENING',severity:'CRITICAL',title:'Caisses à préparer',detail:`${cashOpen.blocking} caisse(s) ne sont pas encore prêtes`,page:'cashOpening',blocking:true,priority:'P0'}));
 
  for(const row of commercialRows){if(row.status==='VERIFIED')continue;const mismatch=row.status==='MISMATCH';items.push(action({id:`commercial-${row.id}`,category:'COMMERCIAL',severity:mismatch?'CRITICAL':row.priority||'HIGH',title:commercialTitle(row),detail:commercialDetail(row),page:'commercial',blocking:!!row.blocking_opening,meta:mismatch?'Écart détecté':'À valider',priority:mismatch?'P0':row.priority==='CRITICAL'?'P0':'P1'}))}
- for(const receipt of receiptsRaw){if(receipt.status==='POSTED')continue;const overdue=String(receipt.eta||'').slice(0,10)<businessDate;for(const line of receipt.lines||[]){if(line.quality_control_id)continue;items.push(action({id:`receipt-${receipt.id}-${line.id}`,category:'RECEIPT',severity:'HIGH',title:`Réception · ${line.product_name||line.ean||'Article à contrôler'}`,detail:`${receipt.po_number||receipt.id} · quantité / qualité à valider${overdue?' · en retard':''}`,page:'receipts',meta:overdue?'En retard':'Article à valider',priority:overdue?'P0':'P1'}))}}
+ items.push(...receiptActions(receiptsRaw,businessDate));
  const negativeSignals=stockSignals.filter(sig=>sig.type==='NEGATIVE'||n(sig.qty)<0),ruptureSignals=stockSignals.filter(sig=>sig.type==='OUT'),residualSignals=stockSignals.filter(sig=>sig.type==='OUTSIDE_ASSORTMENT');
  const negativeCount=n(stockData.summary?.negative)||negativeSignals.length,ruptureCount=n(stockData.summary?.outOfStock)||ruptureSignals.length,promoPreview=ruptureSignals.filter(sig=>promoEans.has(String(sig.ean||''))),topNames=rows=>rows.slice(0,3).map(x=>x.product||x.productNumber||x.ean).filter(Boolean).join(' · ');
  if(negativeCount>0)items.push(action({id:'stock-negative-summary',category:'STOCK',severity:'CRITICAL',title:negativeCount+' stock(s) négatif(s) à contrôler',detail:(topNames(negativeSignals)||'Anomalies D365')+(negativeCount>negativeSignals.length?' · +'+(negativeCount-negativeSignals.length)+' autre(s)':'')+' · lancer un comptage ciblé',page:'inventory',meta:negativeSignals.length+' prioritaire(s) affiché(s)',priority:'P0',source:stockData.source||''}));
