@@ -27,9 +27,7 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
           done
 
-          for q in label print custom printer; do
-            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/metadata-actions?q=$q" -o "/tmp/actions-$q.json"
-          done
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/metadata-actions?q=label,print,custom,printer"             -o /tmp/actions.json
 
           for entity in RetailItemLabelsToPrint DocumentRoutingPrinters PrintLayouts; do
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=25&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
@@ -46,10 +44,8 @@ jobs:
 
           node - <<'NODE'
           const fs=require('fs');
-          for(const q of ['label','print','custom','printer']){
-            const a=JSON.parse(fs.readFileSync('/tmp/actions-'+q+'.json','utf8'));
-            console.log('\nACTIONS '+q,JSON.stringify(a,null,2));
-          }
+          const actions=JSON.parse(fs.readFileSync('/tmp/actions.json','utf8'));
+          console.log('\nD365 LABEL / PRINT ACTIONS',JSON.stringify(actions,null,2));
           const rows=[];
           for(const q of ['label','printer','print','routing']){
             const d=JSON.parse(fs.readFileSync('/tmp/entities-'+q+'.json','utf8'));
