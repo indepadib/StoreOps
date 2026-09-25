@@ -40,7 +40,18 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  if(n(cashOpen.blocking)>0)items.push(action({id:'cash-opening',category:'OPENING',severity:'CRITICAL',title:'Caisses à préparer',detail:`${cashOpen.blocking} caisse(s) ne sont pas encore prêtes`,page:'cashOpening',blocking:true,priority:'P0'}));
 
  for(const row of commercialRows){if(row.status==='VERIFIED')continue;const mismatch=row.status==='MISMATCH';items.push(action({id:`commercial-${row.id}`,category:'COMMERCIAL',severity:mismatch?'CRITICAL':row.priority||'HIGH',title:commercialTitle(row),detail:commercialDetail(row),page:'commercial',blocking:!!row.blocking_opening,meta:mismatch?'Écart détecté':'À valider',priority:mismatch?'P0':row.priority==='CRITICAL'?'P0':'P1'}))}
- for(const receipt of receiptsRaw){if(receipt.status==='POSTED')continue;const overdue=String(receipt.eta||'').slice(0,10)<businessDate;for(const line of receipt.lines||[]){if(line.quality_control_id)continue;items.push(action({id:`receipt-${receipt.id}-${line.id}`,category:'RECEIPT',severity:'HIGH',title:`Réception · ${line.product_name||line.ean||'Article à contrôler'}`,detail:`${receipt.po_number||receipt.id} · quantité / qualité à valider${overdue?' · en retard':''}`,page:'receipts',meta:overdue?'En retard':'Article à valider',priority:overdue?'P0':'P1'}))}}
+ for(const receipt of receiptsRaw){
+  if(receipt.status==='POSTED')continue;
+  const pending=(receipt.lines||[]).filter(line=>!line.quality_control_id),pendingCount=pending.length;
+  if(!pendingCount)continue;
+  const overdue=String(receipt.eta||'').slice(0,10)<businessDate,type=receipt.document_type==='TO'?'TO':'PO',origin=type==='PO'?(receipt.vendor||receipt.source_origin||'Fournisseur'):(receipt.source_origin||receipt.vendor||'Origine');
+  items.push(action({
+   id:`receipt-${receipt.id}`,category:'RECEIPT',severity:'HIGH',
+   title:`Réceptionner ${type} · ${receipt.po_number||receipt.id}`,
+   detail:`${origin} · ${pendingCount} article${pendingCount>1?'s':''} à contrôler${overdue?' · en retard':''}`,
+   page:'receipts',meta:overdue?'En retard':`${pendingCount} à contrôler`,priority:overdue?'P0':'P1',source:type
+  }))
+ }
  const negativeSignals=stockSignals.filter(sig=>sig.type==='NEGATIVE'||n(sig.qty)<0),ruptureSignals=stockSignals.filter(sig=>sig.type==='OUT'),residualSignals=stockSignals.filter(sig=>sig.type==='OUTSIDE_ASSORTMENT');
  const negativeCount=n(stockData.summary?.negative)||negativeSignals.length,ruptureCount=n(stockData.summary?.outOfStock)||ruptureSignals.length,promoPreview=ruptureSignals.filter(sig=>promoEans.has(String(sig.ean||''))),topNames=rows=>rows.slice(0,3).map(x=>x.product||x.productNumber||x.ean).filter(Boolean).join(' · ');
  if(negativeCount>0)items.push(action({id:'stock-negative-summary',category:'STOCK',severity:'CRITICAL',title:negativeCount+' stock(s) négatif(s) à contrôler',detail:(topNames(negativeSignals)||'Anomalies D365')+(negativeCount>negativeSignals.length?' · +'+(negativeCount-negativeSignals.length)+' autre(s)':'')+' · lancer un comptage ciblé',page:'inventory',meta:negativeSignals.length+' prioritaire(s) affiché(s)',priority:'P0',source:stockData.source||''}));
