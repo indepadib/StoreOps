@@ -1,10 +1,21 @@
-import{api}from'../api.js';import{app,canManage,canManageQuality}from'../state.js';import{$,status,esc,toast}from'../ui.js';
-let profiles=new Map(),documentType='PO',selectedReceiptId=null,readiness=null;
+import{api}from'../api.js';import{app,canManage,canManageQuality,currentStore}from'../state.js';import{$,status,esc,toast}from'../ui.js';import{aggregatePoRows,buildPoPrintHtml}from'../receipt-aggregation.js';
+let profiles=new Map(),documentType='PO',selectedReceiptId=null,readiness=null,poView='AGGREGATED';
 const receiptCache={PO:[],TO:[]};
 const dt=v=>v?new Date(String(v).slice(0,10)+'T12:00:00Z').toLocaleDateString('fr-FR'):'—';
 const currentRows=()=>receiptCache[documentType]||[];
 const currentReceipt=()=>currentRows().find(x=>x.id===selectedReceiptId)||null;
 const docCount=t=>(receiptCache[t]||[]).length;
+const poGroups=()=>aggregatePoRows(receiptCache.PO||[]);
+function launchPoPrint(groups,title){
+ const popup=window.open('','_blank');
+ if(!popup){toast('Le navigateur a bloqué la fenêtre d’impression. Autorise les pop-ups pour StoreOps puis réessaie.');return}
+ try{
+  popup.opener=null;
+  popup.document.open();
+  popup.document.write(buildPoPrintHtml({groups,storeName:currentStore()?.name||app.storeId||'Magasin',title}));
+  popup.document.close();
+ }catch(error){try{popup.close()}catch{};toast(`Impression indisponible : ${error.message}`)}
+}
 
 export async function renderReceipts(){
  const [poResult,toResult,readinessResult]=await Promise.allSettled([
@@ -46,13 +57,19 @@ async function drawReceipts(errors={}){
    <button class="btn ${documentType==='TO'?'brand':'ghost'}" data-receipt-type="TO"><span>TO · Transferts de stock</span><span class="pill">${docCount('TO')}</span></button>
   </div>`;
  const help=documentType==='PO'
-   ?'Commandes PO ouvertes du dernier mois uniquement · fournisseur, date PO, entrepôt et livraison visibles avant ouverture.'
+   ?'PO ouverts du dernier mois · vue agrégée par fournisseur par défaut · impression directe depuis StoreOps.'
    :'Transferts TO ouverts à destination du magasin · origine et destination visibles avant ouverture.';
+ const poTools=!selected&&documentType==='PO'?'<div class="receipt-po-tools"><div class="receipt-view-switch"><button class="btn '+(poView==='AGGREGATED'?'brand':'ghost')+'" data-po-view="AGGREGATED">Vue agrégée</button><button class="btn '+(poView==='DOCUMENTS'?'brand':'ghost')+'" data-po-view="DOCUMENTS">Vue par PO</button></div><button class="btn soft" id="printAllPo" '+(rows.length?'':'disabled')+'>🖨 Imprimer tous les PO ouverts</button></div>':'';
  const body=selected?receiptDetail(selected,ro):documentList(rows,error);
- $('#receiptsContent').innerHTML=`${tabs}<div class="small muted" style="margin:8px 0 12px">${help}</div>${ro?'<div class="role-lock">Lecture seule : contrôle réservé au Responsable magasin, à la Qualité réseau et à la Direction.</div>':''}<div class="row" style="margin:14px 0 10px"><div><strong>${selected?`${documentType} ${esc(selected.po_number)}`:`${documentType==='PO'?'Commandes à réceptionner':'Transferts à réceptionner'}`}</strong><div class="small muted">${selected?'Détail du document et contrôle article par article.':'Choisis un document pour afficher ses articles. Aucun détail lourd n’est chargé visuellement tant que tu ne l’ouvres pas.'}</div></div>${canManage()&&!selected?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner}${body}`;
+ const subtitle=selected?'Détail du document, contrôle article par article et impression du PO.':documentType==='PO'?(poView==='AGGREGATED'?'PO regroupés par fournisseur avec consolidation des articles identiques.':'Ouvre un PO pour voir ses articles et lancer son impression.'):'Choisis un transfert pour afficher ses articles.';
+ $('#receiptsContent').innerHTML=`${tabs}<div class="small muted" style="margin:8px 0 12px">${help}</div>${ro?'<div class="role-lock">Lecture seule : contrôle réservé au Responsable magasin, à la Qualité réseau et à la Direction.</div>':''}${poTools}<div class="row" style="margin:14px 0 10px"><div><strong>${selected?`${documentType} ${esc(selected.po_number)}`:`${documentType==='PO'?'Commandes à réceptionner':'Transferts à réceptionner'}`}</strong><div class="small muted">${subtitle}</div></div>${canManage()&&!selected?'<button class="btn soft" id="syncReceiptsBtn">Synchroniser D365</button>':''}</div>${sourceBanner}${body}`;
  bindReceiptControls();
  document.querySelectorAll('[data-receipt-type]').forEach(b=>b.addEventListener('click',async()=>{documentType=b.dataset.receiptType;selectedReceiptId=null;await drawReceipts()}));
  document.querySelectorAll('[data-open-receipt]').forEach(b=>b.addEventListener('click',async()=>{selectedReceiptId=b.dataset.openReceipt;await drawReceipts()}));
+ document.querySelectorAll('[data-po-view]').forEach(b=>b.addEventListener('click',async()=>{poView=b.dataset.poView||'AGGREGATED';selectedReceiptId=null;await drawReceipts()}));
+ document.querySelectorAll('[data-print-po-group]').forEach(b=>b.addEventListener('click',()=>{const g=poGroups().find(x=>x.key===b.dataset.printPoGroup);if(g)launchPoPrint([g],`Réception PO · ${g.vendor}`)}));
+ $('#printAllPo')?.addEventListener('click',()=>launchPoPrint(poGroups(),'PO ouverts à réceptionner'));
+ $('#printReceiptBtn')?.addEventListener('click',()=>{const r=currentReceipt();if(r)launchPoPrint(aggregatePoRows([r]),`PO ${r.po_number}`)});
  $('#receiptBack')?.addEventListener('click',async()=>{selectedReceiptId=null;await drawReceipts()});
  $('#syncReceiptsBtn')?.addEventListener('click',syncReceipts);
 }
@@ -60,7 +77,17 @@ async function drawReceipts(errors={}){
 function documentList(rows,error){
  if(error)return'<div class="empty">Impossible de charger les documents. Le dernier cache n’est pas exploitable.</div>';
  if(!rows.length)return`<div class="empty">Aucun ${documentType} ouvert à afficher.</div>`;
+ if(documentType==='PO'&&poView==='AGGREGATED')return aggregatePoList(rows);
  return`<div class="receipt-document-list">${rows.map(documentRow).join('')}</div>`
+}
+function aggregatePoList(rows){
+ const groups=aggregatePoRows(rows);
+ if(!groups.length)return'<div class="empty">Aucun PO ouvert à agréger.</div>';
+ return`<div class="po-aggregate-list">${groups.map(g=>`<article class="card po-aggregate-card">
+  <div class="row po-aggregate-head"><div><span class="manager-eyebrow">LOT FOURNISSEUR</span><h3>${esc(g.vendor)}</h3><div class="small muted">${g.vendorAccount?`Compte fournisseur ${esc(g.vendorAccount)} · `:''}${g.documentCount} PO · ${g.uniqueArticleCount} article(s) unique(s) · ${g.controlledLines}/${g.lineCount} ligne(s) contrôlée(s)</div></div><button class="btn soft" data-print-po-group="${esc(g.key)}">🖨 Imprimer le lot</button></div>
+  <div class="po-number-strip">${g.poNumbers.map(n=>`<span class="pill">${esc(n)}</span>`).join('')}</div>
+  <details class="po-aggregate-details"><summary>Voir les ${g.uniqueArticleCount} article(s) consolidés <span>⌄</span></summary><div class="table-wrap"><table class="table po-aggregate-table"><thead><tr><th>Article</th><th>PO source</th><th>Commandé</th><th>Reste</th><th>Unité</th></tr></thead><tbody>${g.lines.map(l=>`<tr><td><strong>${esc(l.productName)}</strong><div class="small muted">${esc(l.productNumber||l.ean||'—')}</div></td><td>${esc(l.poNumbers.join(', '))}</td><td>${l.orderedQty??'—'}</td><td>${l.remainingQty??'—'}</td><td>${esc(l.unit||'—')}</td></tr>`).join('')}</tbody></table></div></details>
+ </article>`).join('')}</div>`
 }
 function documentRow(r){
  const type=r.document_type||documentType,controlled=(r.lines||[]).filter(l=>l.quality_control_id).length,lineCount=Number(r.line_count??r.lines?.length??0);
@@ -75,7 +102,7 @@ function receiptDetail(r,ro){
  const meta=type==='PO'
   ?`Fournisseur ${esc(r.vendor||'—')}${r.source_vendor_account?` · ${esc(r.source_vendor_account)}`:''} · Créé le ${dt(r.source_created_date||r.eta)} · Livraison ${dt(r.eta)} · Entrepôt ${esc(r.source_warehouse_id||'—')}`
   :`Warehouse expéditeur ${esc(r.source_origin||origin||'—')} · Destination ${esc(r.source_destination||r.source_warehouse_id||'—')} · Réception ${dt(r.eta)}`;
- return`<div style="margin:12px 0"><button class="btn ghost" id="receiptBack">← Retour aux ${type}</button></div><div class="card"><div class="row"><div><strong>${esc(type)} ${esc(r.po_number)} · ${esc(origin||'—')}</strong><div class="small muted">${meta} · ${r.lines.length} ligne(s) · ${controlled}/${r.lines.length} contrôlée(s)${d365?' · D365':''}</div></div>${status(r.status==='POSTED'?'Réceptionnée':controlled===r.lines.length?'Prête à réceptionner':'À contrôler',r.status==='POSTED'?'ok':controlled===r.lines.length?'ok':'warn')}</div><div class="stack" style="margin-top:12px">${r.lines.map(l=>line(r,l,ro)).join('')}</div>${!ro&&r.status!=='POSTED'&&d365?`<div class="banner ban-info" style="margin-top:12px"><strong>Contrôle StoreOps uniquement</strong><div class="small" style="margin-top:4px">Le posting de réception dans Dynamics reste désactivé. Les contrôles qualité et quantités sont enregistrés dans StoreOps.</div></div>`:''}</div>`
+ return`<div style="margin:12px 0" class="receipt-detail-toolbar"><button class="btn ghost" id="receiptBack">← Retour aux ${type}</button>${type==='PO'?'<button class="btn brand" id="printReceiptBtn">🖨 Imprimer ce PO</button>':''}</div><div class="card"><div class="row"><div><strong>${esc(type)} ${esc(r.po_number)} · ${esc(origin||'—')}</strong><div class="small muted">${meta} · ${r.lines.length} ligne(s) · ${controlled}/${r.lines.length} contrôlée(s)${d365?' · D365':''}</div></div>${status(r.status==='POSTED'?'Réceptionnée':controlled===r.lines.length?'Prête à réceptionner':'À contrôler',r.status==='POSTED'?'ok':controlled===r.lines.length?'ok':'warn')}</div><div class="stack" style="margin-top:12px">${r.lines.map(l=>line(r,l,ro)).join('')}</div>${!ro&&r.status!=='POSTED'&&d365?`<div class="banner ban-info" style="margin-top:12px"><strong>Contrôle StoreOps uniquement</strong><div class="small" style="margin-top:4px">Le posting de réception dans Dynamics reste désactivé. Les contrôles qualité et quantités sont enregistrés dans StoreOps.</div></div>`:''}</div>`
 }
 function req(flag){return flag?' *':''}
 function qualityDescription(p,cat){if(!p)return`Profil qualité ${esc(cat||'Autre')}`;const rules=[];if(p.temperature_required)rules.push(`température ${p.temp_min} à ${p.temp_max} °C`);if(p.packaging_required)rules.push('conditionnement');if(p.appearance_required)rules.push('aspect / fraîcheur');if(p.expiry_required)rules.push('DLC/DDM');if(p.lot_required)rules.push('lot');return `${esc(p.label||cat||'Profil qualité')} · ${rules.length?rules.join(' · '):'contrôle standard'}`}
