@@ -6,7 +6,7 @@ import { config, productionMisconfig } from './config.mjs';
 import { db, ensureStoreDay, todayISO, uid, audit } from './db.mjs';
 import { sessionFromRequest } from './auth/session.mjs';
 import { canAccessStore, canManageQuality, canManageDlc, canManageStore } from './services/permissions.mjs';
-import { getProductByEan, getProductByReference, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities, searchODataServiceMetadata } from './services/dynamics.mjs';
+import { getProductByEan, getProductByReference, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { getStoreProductByEan } from './services/dynamics-stock.mjs';
 import { syncExpectedReceiptsFromDynamics, syncExpectedTransferOrdersFromDynamics, listReceiptsForStore, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
 import { getCommercialPriceChanges,getStoreTradeAgreementCatalog } from './services/dynamics-price.mjs';
@@ -83,7 +83,6 @@ async function api(req,res,url){
   if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}
   if(path==='/api/dynamics/entities'){ensureDirector(user);return json(req,res,200,await listDataEntities(url.searchParams.get('q')||''))}
-  if(path==='/api/dynamics/metadata-actions'){ensureDirector(user);return json(req,res,200,await searchODataServiceMetadata(url.searchParams.get('q')||''))}
   const openingResponse=await handleOpeningApi({req,url,user});if(openingResponse)return json(req,res,openingResponse.status,openingResponse.data);
   const lossResponse=await handleLossApi({req,url,user});if(lossResponse)return json(req,res,lossResponse.status,lossResponse.data);
   const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);
