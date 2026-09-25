@@ -40,7 +40,30 @@ async function computeManagerInboxBatch(storeId,businessDate,{force=false}={}){
  if(n(cashOpen.blocking)>0)items.push(action({id:'cash-opening',category:'OPENING',severity:'CRITICAL',title:'Caisses à préparer',detail:`${cashOpen.blocking} caisse(s) ne sont pas encore prêtes`,page:'cashOpening',blocking:true,priority:'P0'}));
 
  for(const row of commercialRows){if(row.status==='VERIFIED')continue;const mismatch=row.status==='MISMATCH';items.push(action({id:`commercial-${row.id}`,category:'COMMERCIAL',severity:mismatch?'CRITICAL':row.priority||'HIGH',title:commercialTitle(row),detail:commercialDetail(row),page:'commercial',blocking:!!row.blocking_opening,meta:mismatch?'Écart détecté':'À valider',priority:mismatch?'P0':row.priority==='CRITICAL'?'P0':'P1'}))}
- for(const receipt of receiptsRaw){if(receipt.status==='POSTED')continue;const overdue=String(receipt.eta||'').slice(0,10)<businessDate;for(const line of receipt.lines||[]){if(line.quality_control_id)continue;items.push(action({id:`receipt-${receipt.id}-${line.id}`,category:'RECEIPT',severity:'HIGH',title:`Réception · ${line.product_name||line.ean||'Article à contrôler'}`,detail:`${receipt.po_number||receipt.id} · quantité / qualité à valider${overdue?' · en retard':''}`,page:'receipts',meta:overdue?'En retard':'Article à valider',priority:overdue?'P0':'P1'}))}}
+ const pendingReceipts=receiptsRaw.filter(r=>r.status!=='POSTED');
+ if(pendingReceipts.length){
+  const pendingLines=pendingReceipts.reduce((sum,r)=>sum+(r.lines||[]).filter(x=>!x.quality_control_id).length,0);
+  const overdueDocs=pendingReceipts.filter(r=>String(r.eta||'').slice(0,10)<businessDate);
+  const typeOf=r=>{
+   const explicit=String(r.document_type||'').toUpperCase();
+   if(explicit==='PO'||explicit==='TO')return explicit;
+   return /^TO[-_]/i.test(String(r.po_number||''))?'TO':'PO'
+  };
+  const poCount=pendingReceipts.filter(r=>typeOf(r)==='PO').length,toCount=pendingReceipts.filter(r=>typeOf(r)==='TO').length;
+  const docParts=[poCount?`${poCount} PO`:null,toCount?`${toCount} TO`:null].filter(Boolean);
+  const overdueText=overdueDocs.length?` · ${overdueDocs.length} en retard`:'';
+  const lineText=pendingLines?`${pendingLines} ligne${pendingLines>1?'s':''} quantité / qualité à valider`:'Documents à finaliser';
+  items.push(action({
+   id:'receipt-summary',
+   category:'RECEIPT',
+   severity:overdueDocs.length?'CRITICAL':'HIGH',
+   title:`${pendingReceipts.length} réception${pendingReceipts.length>1?'s':''} à traiter`,
+   detail:`${lineText} · ${docParts.join(' · ')||'documents réception'}${overdueText}`,
+   page:'receipts',
+   meta:overdueDocs.length?`${overdueDocs.length} en retard`:`${pendingLines} ligne${pendingLines>1?'s':''} restante${pendingLines>1?'s':''}`,
+   priority:overdueDocs.length?'P0':'P1'
+  }))
+ }
  const negativeSignals=stockSignals.filter(sig=>sig.type==='NEGATIVE'||n(sig.qty)<0),ruptureSignals=stockSignals.filter(sig=>sig.type==='OUT'),residualSignals=stockSignals.filter(sig=>sig.type==='OUTSIDE_ASSORTMENT');
  const negativeCount=n(stockData.summary?.negative)||negativeSignals.length,ruptureCount=n(stockData.summary?.outOfStock)||ruptureSignals.length,promoPreview=ruptureSignals.filter(sig=>promoEans.has(String(sig.ean||''))),topNames=rows=>rows.slice(0,3).map(x=>x.product||x.productNumber||x.ean).filter(Boolean).join(' · ');
  if(negativeCount>0)items.push(action({id:'stock-negative-summary',category:'STOCK',severity:'CRITICAL',title:negativeCount+' stock(s) négatif(s) à contrôler',detail:(topNames(negativeSignals)||'Anomalies D365')+(negativeCount>negativeSignals.length?' · +'+(negativeCount-negativeSignals.length)+' autre(s)':'')+' · lancer un comptage ciblé',page:'inventory',meta:negativeSignals.length+' prioritaire(s) affiché(s)',priority:'P0',source:stockData.source||''}));
