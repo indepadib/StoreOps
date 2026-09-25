@@ -81,7 +81,7 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
   if(config.dynamics.mode!=='live') throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
   const token=await acquireToken({force:forceToken});
   const url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
-  const timeoutMs=Math.max(5000,Math.min(60000,Number(process.env.D365_METADATA_TIMEOUT_MS)||25000)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const timeoutMs=Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   let r;
   try{r=await fetch(url,{method,headers:{authorization:`Bearer ${token}`,accept:'application/json','content-type':'application/json',...headers},body:body?JSON.stringify(body):undefined,signal:controller.signal})}
   catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT',details:{path,timeoutMs}});throw error}
@@ -94,7 +94,7 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
 async function d365FetchText(path,{headers={}}={}){
   if(config.dynamics.mode!=='live')throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
   const token=await acquireToken(),url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
-  const timeoutMs=Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const timeoutMs=Math.max(5000,Math.min(60000,Number(process.env.D365_METADATA_TIMEOUT_MS)||25000)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   let r;
   try{r=await fetch(url,{headers:{authorization:`Bearer ${token}`,accept:'application/xml,text/xml,*/*',...headers},signal:controller.signal})}
   catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT'});throw error}
