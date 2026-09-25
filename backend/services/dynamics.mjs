@@ -90,6 +90,25 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
   return r.json();
 }
 
+async function d365FetchText(path,{headers={}}={}){
+  if(config.dynamics.mode!=='live')throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
+  const token=await acquireToken(),url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
+  const timeoutMs=Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  let r;
+  try{r=await fetch(url,{headers:{authorization:`Bearer ${token}`,accept:'application/xml,text/xml,*/*',...headers},signal:controller.signal})}
+  catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT'});throw error}
+  finally{clearTimeout(timer)}
+  if(!r.ok){const text=await r.text();throw Object.assign(new Error(`Dynamics ${r.status}: ${text.slice(0,500)}`),{status:502,code:'D365_REQUEST_FAILED'})}
+  return r.text()
+}
+
+export async function searchODataServiceMetadata(query=''){
+ const q=String(query||'').trim().toLowerCase(),xml=await d365FetchText('/data/$metadata'),rows=[];
+ const patterns=[['ACTION',/<Action\s+Name="([^"]+)"/g],['FUNCTION',/<Function\s+Name="([^"]+)"/g],['ACTION_IMPORT',/<ActionImport\s+Name="([^"]+)"/g],['FUNCTION_IMPORT',/<FunctionImport\s+Name="([^"]+)"/g]];
+ for(const [kind,re] of patterns){let m;while((m=re.exec(xml))){const name=m[1];if(!q||name.toLowerCase().includes(q))rows.push({kind,name})}}
+ return{query:q,count:rows.length,items:[...new Map(rows.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,200)}
+}
+
 export async function getDynamicsDiagnostics({forceToken=false}={}){
   const base={checkedAt:now(),mode:config.dynamics.mode.toUpperCase(),configuration:configured(),expectedAudience:config.dynamics.baseUrl||null,checks:{config:{ok:false},token:{ok:false,skipped:true},metadata:{ok:false,skipped:true}}};
   if(config.dynamics.mode!=='live')return{...base,connected:false,mode:'SIMULATED',checks:{...base.checks,config:{ok:true,simulated:true}},nextAction:'La connexion Dynamics est désactivée. Activer D365_MODE uniquement quand les domaines READ sont prêts à être testés.'};
