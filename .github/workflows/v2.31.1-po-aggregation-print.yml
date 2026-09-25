@@ -13,6 +13,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Netlify site build command
+        env:
+          STOREOPS_RELEASE_BUILD: "2311"
+          STOREOPS_API_BASE: "https://storeops.ma"
+        run: |
+          cd frontend
+          ./netlify-build.sh
       - name: Syntax
         run: |
           node --check frontend/js/receipt-aggregation.js
