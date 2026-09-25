@@ -1,0 +1,44 @@
+name: V2.31.1 D365 Label Discovery
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  label-discovery:
+    if: github.head_ref == 'storeops-v2.31.1-receipt-actions-label-print'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Discover label and printer endpoints
+        env:
+          PREVIEW_URL: https://deploy-preview-${{ github.event.pull_request.number }}--franprix-storeops.netlify.app
+        run: |
+          set -euo pipefail
+          code=""
+          for i in $(seq 1 60); do
+            code=$(curl -sS -o /tmp/health.json -w "%{http_code}" "$PREVIEW_URL/api/health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          test "$code" = "200"
+
+          for q in label printer print routing; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          const rows=[];
+          for(const q of ['label','printer','print','routing']){
+            const d=JSON.parse(fs.readFileSync('/tmp/entities-'+q+'.json','utf8'));
+            const list=Array.isArray(d)?d:Array.isArray(d?.value)?d.value:[];
+            for(const x of list){
+              const name=x.PublicCollectionName||x.PublicEntityName||x.Name||x.EntityName||x.DataEntityName;
+              if(!name)continue;
+              rows.push({q,name,publicEntity:x.PublicEntityName||null,collection:x.PublicCollectionName||null,label:x.Label||x.Description||null});
+            }
+          }
+          const unique=[...new Map(rows.map(x=>[(x.collection||x.name),x])).values()];
+          console.log(JSON.stringify(unique,null,2));
+          NODE
