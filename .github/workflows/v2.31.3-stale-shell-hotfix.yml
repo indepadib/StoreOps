@@ -1,0 +1,39 @@
+name: V2.31.3 Stale Shell Hotfix
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  stale-shell-hotfix:
+    if: github.head_ref == 'storeops-v2.31.3-stale-shell-hotfix'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/staffing.js
+          node --check frontend/js/pages/cash-opening.js
+          node --check frontend/js/admin-studio-access.js
+          node --check frontend/js/boot-rescue.js
+          node --check frontend/sw.js
+      - name: Reported runtime regressions
+        run: node backend/tests/v2313-stale-shell-hotfix.mjs
+      - name: Existing access and quality contracts
+        run: |
+          node backend/tests/quality-audit-access.mjs
+          node backend/tests/v2261-access-runtime-hotfix.mjs
+      - name: Existing staffing and cash-opening engine contracts
+        run: |
+          node backend/tests/staffing-engine.mjs
+          node backend/tests/cash-opening-engine.mjs
+      - name: Release generation
+        run: |
+          grep -q "v2.31.3" frontend/index.html
+          grep -q "2313" frontend/js/auth-entry.js
+          grep -q "storeops-shell-v2.31.3" frontend/sw.js
