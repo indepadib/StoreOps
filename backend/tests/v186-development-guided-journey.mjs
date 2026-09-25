@@ -7,7 +7,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const js=readFileSync(path.join(root,'frontend/js/development.js'),'utf8');
 const css=readFileSync(path.join(root,'frontend/development.css'),'utf8');
 
-for(const label of ['Sourcing local','Étude & validation','Négociation','Contrat','Travaux','Pré-ouverture','Ouvert'])assert.match(js,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),`missing journey stage ${label}`);
+for(const label of ['Cadrage & critères','Sourcing & remontée','Qualification & visite','Négociation locative','Comité Expansion','Business Plan & validations','Sécurisation juridique & technique','Décision finale & signature','Closing & passation'])assert.match(js,new RegExp(label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')),`missing journey stage ${label}`);
 assert.match(js,/PARCOURS DÉVELOPPEMENT/,'project detail must explicitly present the guided journey');
 assert.match(js,/ÉTAPE ACTUELLE/,'current stage must be visually explicit');
 assert.match(js,/À FAIRE MAINTENANT/,'journey must expose one immediate action');
@@ -24,4 +24,8 @@ for(const klass of ['.dev-journey-rail','.dev-journey-primary','.dev-journey-che
 assert.match(css,/\.dev-journey-step\.current/,'current journey stage must have a dedicated visual state');
 assert.match(css,/\.dev-journey-check\.next/,'next required action must have a dedicated visual state');
 
-console.log('V1.86 guided Development journey contract OK');
+assert.match(js,/Comité Expansion/,'procedure governance must be visible');
+assert.match(js,/Validation Juridique/,'legal validation must be visible');
+assert.match(js,/Validation Technique/,'technical validation must be visible');
+assert.match(js,/Lien d’intérêt déclaré/,'conflict of interest control must be explicit');
+console.log('Development guided Expansion procedure journey contract OK');
