@@ -132,9 +132,9 @@ function metadataOperationRows(xml){
 }
 
 export async function searchODataServiceMetadata(query=''){
- const q=String(query||'').trim().toLowerCase(),xml=await odataMetadataXml(),rows=metadataOperationRows(xml);
- const filtered=q?rows.filter(x=>x.name.toLowerCase().includes(q)||String(x.target||'').toLowerCase().includes(q)):rows;
- return{query:q,count:filtered.length,items:[...new Map(filtered.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,300)}
+ const q=String(query||'').trim().toLowerCase(),terms=q.split(',').map(x=>x.trim()).filter(Boolean),xml=await odataMetadataXml(),rows=metadataOperationRows(xml);
+ const filtered=terms.length?rows.filter(x=>terms.some(term=>x.name.toLowerCase().includes(term)||String(x.target||'').toLowerCase().includes(term))):rows;
+ return{query:q,terms,count:filtered.length,items:[...new Map(filtered.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,300)}
 }
 
 export async function getDynamicsDiagnostics({forceToken=false}={}){
