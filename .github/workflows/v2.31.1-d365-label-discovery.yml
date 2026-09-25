@@ -27,7 +27,7 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
           done
 
-          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/metadata-actions?q=label,print,printer"             -o /tmp/actions.json
+          curl -sS -H "x-demo-user: u-admin"             "$PREVIEW_URL/api/dynamics/metadata-actions?q=customlabel,labelprint,printcustom"             -o /tmp/actions.json
 
           for entity in RetailItemLabelsToPrint DocumentRoutingPrinters PrintLayouts; do
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=25&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
