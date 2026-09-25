@@ -1,5 +1,6 @@
 import { api } from '../api.js';
-import { app,currentStore } from '../state.js';
+import { app,currentStore,canManage } from '../state.js';
+import { printProductLabel } from '../label-printing.js';
 import { $,esc,toast } from '../ui.js';
 
 let lastContext=null,lastRequest=null;
@@ -78,14 +79,25 @@ function resultHtml(c){
    ${recommendation}${requestCard(c)}${primary}
    ${!c.replenishment?.ready&&c.merchandising?.assortment?.status==='ASSORTED'?`<div class="manager-reco-pending"><strong>Commande intelligente en préparation</strong><span>${missing.length?`Il manque encore : ${esc(missing.join(', '))}.`:'Les signaux de demande ne sont pas encore suffisants.'} Aucun volume n’est inventé.</span></div>`:''}
    <details class="manager-item-details"><summary>Voir les détails article <span>⌄</span></summary><div class="manager-item-details-body"><div><span>EAN</span><strong>${esc(c.ean)}</strong></div><div><span>Physique magasin</span><strong>${qty(c.storeStock?.physicalStock)}</strong></div><div><span>Réservé</span><strong>${qty(c.storeStock?.reservedStock)}</strong></div><div><span>Lignes stock</span><strong>${c.storeStock?.rowCount??c.storeStock?.stockRowCount??'—'}</strong></div><div><span>Assortiment</span><strong>${esc(ap.label)}</strong></div><div><span>Price groups vérifiés</span><strong>${esc((c.pricing?.priceGroups||[]).join(' · ')||c.pricing?.priceGroup||'—')}</strong></div><div><span>Catégorie</span><strong>${esc(taxonomy||c.item.category||'—')}</strong></div></div></details>
-   <section class="manager-item-actions"><span class="manager-eyebrow">Actions terrain</span><div><button data-express-tool="inventory"><strong>Inventaire express</strong><span>›</span></button><button data-express-tool="losses"><strong>Démarque express</strong><span>›</span></button>${(c.actions||[]).map(a=>`<button data-manager-go="${esc(a.page)}"><strong>${esc(a.label)}</strong><span>›</span></button>`).join('')}</div></section>
+   <section class="manager-item-actions"><span class="manager-eyebrow">Actions terrain</span><div>${canManage()?`<button data-print-label="${esc(c.item.productNumber||'')}" data-print-ean="${esc(c.ean||'')}"><strong>Imprimer l’étiquette</strong><span>›</span></button>`:''}<button data-express-tool="inventory"><strong>Inventaire express</strong><span>›</span></button><button data-express-tool="losses"><strong>Démarque express</strong><span>›</span></button>${(c.actions||[]).map(a=>`<button data-manager-go="${esc(a.page)}"><strong>${esc(a.label)}</strong><span>›</span></button>`).join('')}</div></section>
   </div>`
 }
 
 export async function renderManagerScan(){
  const store=currentStore();
  $('#managerScanContent').innerHTML=`<div class="manager-scan-shell"><div class="manager-scan-head"><span class="manager-eyebrow">${esc(store?.name||'Votre magasin')}</span><h2>Que voulez-vous vérifier ?</h2><p>Scannez un article. StoreOps rassemble prix, promo, assortiment et stock pour vous dire quoi faire.</p></div><div class="manager-scan-search"><input id="managerScanEan" inputmode="numeric" autocomplete="off" placeholder="Scanner ou saisir un code-barres" aria-label="Code-barres"><button id="managerScanGo" class="btn brand">Rechercher</button></div><div id="managerScanResult">${lastContext?resultHtml(lastContext):'<div class="manager-scan-empty"><strong>Prêt à scanner</strong><span>La fiche article s’affichera ici sans vous envoyer dans plusieurs menus.</span></div>'}</div></div>`;
- $('#managerScanGo')?.addEventListener('click',lookup);$('#managerScanEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('#managerScanResult')?.addEventListener('click',e=>{const requestBtn=e.target.closest('[data-create-replenishment]');if(requestBtn)return createRequest(requestBtn);const expressBtn=e.target.closest('[data-express-tool]');if(expressBtn)return openExpressTool(expressBtn.dataset.expressTool);const historyBtn=e.target.closest('[data-price-history]');if(historyBtn)return loadPriceHistory(historyBtn)});setTimeout(()=>$('#managerScanEan')?.focus(),50)
+ $('#managerScanGo')?.addEventListener('click',lookup);$('#managerScanEan')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup()});$('#managerScanResult')?.addEventListener('click',e=>{const requestBtn=e.target.closest('[data-create-replenishment]');if(requestBtn)return createRequest(requestBtn);const printBtn=e.target.closest('[data-print-label]');if(printBtn)return printLabel(printBtn);const expressBtn=e.target.closest('[data-express-tool]');if(expressBtn)return openExpressTool(expressBtn.dataset.expressTool);const historyBtn=e.target.closest('[data-price-history]');if(historyBtn)return loadPriceHistory(historyBtn)});setTimeout(()=>$('#managerScanEan')?.focus(),50)
+}
+
+async function printLabel(btn){
+ if(btn?.disabled)return;
+ const productNumber=String(btn?.dataset.printLabel||'').trim();if(!productNumber)return toast('Code article indisponible pour le balisage.');
+ const original=btn.innerHTML;btn.disabled=true;btn.innerHTML='<strong>Préparation étiquette…</strong><span>…</span>';
+ try{
+  const result=await printProductLabel({storeId:app.storeId,productNumber,ean:btn.dataset.printEan||null,quantity:1});
+  toast(`Étiquette envoyée vers ${result.printer?.name||'l’imprimante magasin'}.`);
+  btn.innerHTML='<strong>Étiquette envoyée</strong><span>✓</span>';
+ }catch(e){toast(e.message);btn.innerHTML=original;btn.disabled=false}
 }
 
 function openExpressTool(page){
