@@ -8,6 +8,7 @@ const PRODUCTS = {
 };
 
 let tokenCache={token:null,expiresAt:0};
+let metadataXmlCache={xml:null,expiresAt:0};
 const priceGroupCache=new Map();
 const now=()=>new Date().toISOString();
 function escapeOData(v){ return String(v).replaceAll("'","''"); }
@@ -80,7 +81,7 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
   if(config.dynamics.mode!=='live') throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
   const token=await acquireToken({force:forceToken});
   const url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
-  const timeoutMs=Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const timeoutMs=Math.max(5000,Math.min(60000,Number(process.env.D365_METADATA_TIMEOUT_MS)||25000)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   let r;
   try{r=await fetch(url,{method,headers:{authorization:`Bearer ${token}`,accept:'application/json','content-type':'application/json',...headers},body:body?JSON.stringify(body):undefined,signal:controller.signal})}
   catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT',details:{path,timeoutMs}});throw error}
@@ -102,11 +103,38 @@ async function d365FetchText(path,{headers={}}={}){
   return r.text()
 }
 
+async function odataMetadataXml({force=false}={}){
+ if(!force&&metadataXmlCache.xml&&Date.now()<metadataXmlCache.expiresAt)return metadataXmlCache.xml;
+ const xml=await d365FetchText('/data/$metadata');
+ metadataXmlCache={xml,expiresAt:Date.now()+10*60*1000};
+ return xml
+}
+
+function metadataOperationRows(xml){
+ const rows=[];
+ const blockPatterns=[
+  ['ACTION',/<Action\b[^>]*Name="([^"]+)"[^>]*>([\s\S]*?)<\/Action>/g],
+  ['FUNCTION',/<Function\b[^>]*Name="([^"]+)"[^>]*>([\s\S]*?)<\/Function>/g]
+ ];
+ for(const [kind,re] of blockPatterns){
+  let m;
+  while((m=re.exec(xml))){
+   const body=m[2]||'',params=[];
+   const pr=/<Parameter\b[^>]*Name="([^"]+)"[^>]*Type="([^"]+)"[^>]*\/?>(?:<\/Parameter>)?/g;
+   let pm;while((pm=pr.exec(body)))params.push({name:pm[1],type:pm[2]});
+   const ret=body.match(/<ReturnType\b[^>]*Type="([^"]+)"/)?.[1]||null;
+   rows.push({kind,name:m[1],parameters:params,returnType:ret});
+  }
+ }
+ const importPatterns=[['ACTION_IMPORT',/<ActionImport\b[^>]*Name="([^"]+)"[^>]*(?:Action="([^"]+)")?/g],['FUNCTION_IMPORT',/<FunctionImport\b[^>]*Name="([^"]+)"[^>]*(?:Function="([^"]+)")?/g]];
+ for(const [kind,re] of importPatterns){let m;while((m=re.exec(xml)))rows.push({kind,name:m[1],target:m[2]||null,parameters:[],returnType:null})}
+ return rows
+}
+
 export async function searchODataServiceMetadata(query=''){
- const q=String(query||'').trim().toLowerCase(),xml=await d365FetchText('/data/$metadata'),rows=[];
- const patterns=[['ACTION',/<Action\s+Name="([^"]+)"/g],['FUNCTION',/<Function\s+Name="([^"]+)"/g],['ACTION_IMPORT',/<ActionImport\s+Name="([^"]+)"/g],['FUNCTION_IMPORT',/<FunctionImport\s+Name="([^"]+)"/g]];
- for(const [kind,re] of patterns){let m;while((m=re.exec(xml))){const name=m[1];if(!q||name.toLowerCase().includes(q))rows.push({kind,name})}}
- return{query:q,count:rows.length,items:[...new Map(rows.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,200)}
+ const q=String(query||'').trim().toLowerCase(),xml=await odataMetadataXml(),rows=metadataOperationRows(xml);
+ const filtered=q?rows.filter(x=>x.name.toLowerCase().includes(q)||String(x.target||'').toLowerCase().includes(q)):rows;
+ return{query:q,count:filtered.length,items:[...new Map(filtered.map(x=>[`${x.kind}:${x.name}`,x])).values()].slice(0,300)}
 }
 
 export async function getDynamicsDiagnostics({forceToken=false}={}){
