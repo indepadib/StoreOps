@@ -3,22 +3,26 @@ import {app} from './state.js';
 import {esc,status,toast} from './ui.js';
 
 const STAGE_LABELS={
-  SOURCING:'Sourcing local',
-  QUALIFICATION:'Étude & validation',
-  NEGOTIATION:'Négociation',
-  CONTRACT:'Contrat',
-  WORKS:'Travaux',
-  PREOPENING:'Pré-ouverture',
-  OPEN:'Ouvert'
+  CRITERIA:'Cadrage & critères',
+  SOURCING:'Sourcing & remontée',
+  QUALIFICATION:'Qualification & visite',
+  NEGOTIATION:'Négociation locative',
+  COMMITTEE:'Comité Expansion',
+  BUSINESS_PLAN:'Business Plan & validations',
+  LEGAL_TECHNICAL:'Sécurisation juridique & technique',
+  FINAL_DECISION:'Décision finale & signature',
+  CLOSING_HANDOVER:'Closing & passation'
 };
 const STAGE_INTENT={
-  SOURCING:'Identifier et qualifier une vraie opportunité de local.',
-  QUALIFICATION:'Valider que le site mérite un GO business et opérationnel.',
-  NEGOTIATION:'Sécuriser les conditions économiques et commerciales du projet.',
-  CONTRACT:'Sécuriser juridiquement le local avant tout engagement travaux.',
-  WORKS:'Livrer un magasin conforme, dans le budget et dans le planning.',
-  PREOPENING:'Rendre le magasin totalement prêt pour ouvrir sans risque.',
-  OPEN:'Le magasin est ouvert. Le projet passe en suivi post-ouverture.'
+  CRITERIA:'Confirmer que l’opportunité entre dans le format, la zone, la surface et les règles d’implantation validées.',
+  SOURCING:'Centraliser une opportunité traçable, documentée et sans engagement envers le bailleur.',
+  QUALIFICATION:'Qualifier objectivement le site sur dossier puis sur le terrain avant toute négociation engageante.',
+  NEGOTIATION:'Négocier les termes locatifs de façon non engageante et tracer la fiche de négociation.',
+  COMMITTEE:'Présenter un dossier standardisé et tracer l’avis du Comité Expansion ainsi que ses éventuelles réserves.',
+  BUSINESS_PLAN:'Faire établir et challenger le BP, obtenir l’avis Exploitation, la revue DAF puis l’approbation DG.',
+  LEGAL_TECHNICAL:'Sécuriser le titre, le bailleur, le projet de bail, la faisabilité technique et lever les réserves bloquantes.',
+  FINAL_DECISION:'Obtenir l’autorisation finale d’engagement, signer par le représentant habilité et déclencher QHSE.',
+  CLOSING_HANDOVER:'Finaliser le closing immobilier, la remise des clés, la passation aux équipes et l’archivage.'
 };
 const DECISION_LABELS={PENDING:'À décider',GO:'GO',HOLD:'HOLD',NO_GO:'NO GO'};
 const PRIORITY_LABELS={LOW:'Basse',NORMAL:'Normale',HIGH:'Haute',CRITICAL:'Critique'};
@@ -87,8 +91,8 @@ function decisionTone(v){return v==='GO'?'ok':v==='NO_GO'?'danger':v==='HOLD'?'w
 function summary(){
   const active=projects.filter(p=>p.status==='ACTIVE');
   const blocked=projects.filter(p=>['BLOCKED','ACTION_LATE','OPENING_LATE'].includes(p.risk?.code));
-  const soon=projects.filter(p=>p.daysToOpening!==null&&p.daysToOpening>=0&&p.daysToOpening<=90&&p.stage!=='OPEN');
-  return{active:active.length,sourcing:active.filter(p=>p.stage==='SOURCING').length,works:active.filter(p=>p.stage==='WORKS').length,blocked:blocked.length,soon:soon.length};
+  const soon=projects.filter(p=>p.daysToOpening!==null&&p.daysToOpening>=0&&p.daysToOpening<=90&&p.stage!=='CLOSING_HANDOVER');
+  return{active:active.length,sourcing:active.filter(p=>['CRITERIA','SOURCING','QUALIFICATION'].includes(p.stage)).length,committee:active.filter(p=>p.stage==='COMMITTEE').length,bp:active.filter(p=>p.stage==='BUSINESS_PLAN').length,blocked:blocked.length,soon:soon.length};
 }
 function openDevelopment(){
   if(!allowed)return;
@@ -114,7 +118,7 @@ function projectCard(p){
       <div><span>Ouverture cible</span><strong>${date(p.target_opening_date)}</strong></div>
       <div><span>Responsable</span><strong>${esc(p.owner_name||'À affecter')}</strong></div>
       <div><span>Prochaine action</span><strong>${esc(p.next_action||'À définir')}</strong><small>${p.next_action_due_date?date(p.next_action_due_date):''}</small></div>
-      <div><span>${p.stage==='WORKS'?'Avancement travaux':'CAPEX'}</span><strong>${p.stage==='WORKS'?`${Number(p.works_progress||0)}%`:money(p.capex_budget)}</strong></div>
+      <div><span>Gouvernance</span><strong>${p.stage==='BUSINESS_PLAN'?'BP & validations':p.stage==='LEGAL_TECHNICAL'?'Juridique / Technique':p.stage==='FINAL_DECISION'?'DG & signature':p.stage==='CLOSING_HANDOVER'?'Passation':money(p.capex_budget)}</strong></div>
     </div>
     ${p.blocker?`<div class="dev-blocker">⚠ ${esc(p.blocker)}</div>`:''}
     <div class="dev-progress"><span style="width:${Number(p.progress||0)}%"></span></div>
@@ -123,8 +127,8 @@ function projectCard(p){
 function renderBoard(){
   const s=summary(),rows=filtered();
   return `<div class="dev-shell">
-    <div class="dev-hero"><div><div class="label">DÉVELOPPEMENT RÉSEAU</div><h2>De l’opportunité immobilière à l’ouverture.</h2><p>Une vue unique pour sourcer les locaux, décider GO / NO GO, négocier, signer, piloter les travaux et sécuriser la pré-ouverture.</p></div><button class="btn brand" id="devNew">+ Nouveau projet</button></div>
-    <div class="dev-kpis dev-kpis-5"><div class="dev-kpi"><span>Projets actifs</span><strong>${s.active}</strong></div><div class="dev-kpi"><span>En sourcing</span><strong>${s.sourcing}</strong></div><div class="dev-kpi"><span>En travaux</span><strong>${s.works}</strong></div><div class="dev-kpi"><span>À surveiller</span><strong>${s.blocked}</strong></div><div class="dev-kpi"><span>Ouverture ≤ 90 j</span><strong>${s.soon}</strong></div></div>
+    <div class="dev-hero"><div><div class="label">DÉVELOPPEMENT & EXPANSION</div><h2>Du sourcing au bail signé, puis à la passation.</h2><p>Le parcours suit la procédure interne : qualification, négociation non engageante, Comité Expansion, Business Plan, sécurisation juridique et technique, décision DG, signature puis closing.</p></div><button class="btn brand" id="devNew">+ Nouvelle opportunité</button></div>
+    <div class="dev-kpis dev-kpis-5"><div class="dev-kpi"><span>Dossiers actifs</span><strong>${s.active}</strong></div><div class="dev-kpi"><span>Amont / qualification</span><strong>${s.sourcing}</strong></div><div class="dev-kpi"><span>Au Comité</span><strong>${s.committee}</strong></div><div class="dev-kpi"><span>BP en cours</span><strong>${s.bp}</strong></div><div class="dev-kpi"><span>À surveiller</span><strong>${s.blocked}</strong></div></div>
     <div class="dev-stage-strip"><button class="dev-stage-chip ${filter==='ALL'?'active':''}" data-dev-filter="ALL">Tous · ${projects.length}</button><button class="dev-stage-chip ${filter==='ATTENTION'?'active':''}" data-dev-filter="ATTENTION">À surveiller · ${s.blocked}</button>${(config?.stages||[]).map(x=>`<button class="dev-stage-chip ${filter===x.code?'active':''}" data-dev-filter="${esc(x.code)}">${esc(x.label)} · ${projects.filter(p=>p.stage===x.code).length}</button>`).join('')}</div>
     ${rows.length?`<div class="dev-board">${rows.map(projectCard).join('')}</div>`:'<div class="dev-empty"><strong>Aucun projet dans ce périmètre.</strong><div>Créez une première opportunité pour démarrer le pipeline.</div></div>'}
   </div>`;
@@ -146,6 +150,13 @@ function formValues(p={}){
     <label><span>CAPEX réel DH</span><input id="devCapexActual" type="number" min="0" step="1" value="${p.capex_actual??''}"></label>
     <label><span>Score emplacement /100</span><input id="devSiteScore" type="number" min="0" max="100" value="${p.site_score??''}"></label>
     <label><span>Score économique /100</span><input id="devEconomicScore" type="number" min="0" max="100" value="${p.economic_score??''}"></label>
+    <label><span>Enseigne</span><select id="devBrand"><option value="FRANPRIX" ${(p.brand||'FRANPRIX')==='FRANPRIX'?'selected':''}>Franprix</option><option value="MONOPRIX" ${p.brand==='MONOPRIX'?'selected':''}>Monoprix</option><option value="OTHER" ${p.brand==='OTHER'?'selected':''}>Autre enseigne</option></select></label>
+    <label><span>Lien d’intérêt déclaré ?</span><select id="devConflict"><option value="0" ${!p.conflict_of_interest?'selected':''}>Non</option><option value="1" ${p.conflict_of_interest?'selected':''}>Oui</option></select></label>
+    <label style="grid-column:1/-1"><span>Détail du lien d’intérêt / mitigation</span><input id="devConflictDetails" value="${esc(p.conflict_details||'')}" placeholder="À compléter uniquement si un lien d’intérêt existe"></label>
+    <label><span>Avis Comité</span><select id="devCommitteeOpinion"><option value="PENDING" ${(p.committee_opinion||'PENDING')==='PENDING'?'selected':''}>À instruire</option><option value="FAVORABLE" ${p.committee_opinion==='FAVORABLE'?'selected':''}>Favorable</option><option value="RESERVATIONS" ${p.committee_opinion==='RESERVATIONS'?'selected':''}>Avec réserves</option><option value="UNFAVORABLE" ${p.committee_opinion==='UNFAVORABLE'?'selected':''}>Défavorable</option></select></label>
+    <label><span>Statut BP</span><select id="devBpStatus"><option value="NOT_STARTED" ${(p.bp_status||'NOT_STARTED')==='NOT_STARTED'?'selected':''}>Non démarré</option><option value="IN_PROGRESS" ${p.bp_status==='IN_PROGRESS'?'selected':''}>En cours</option><option value="CONTROL_APPROVED" ${p.bp_status==='CONTROL_APPROVED'?'selected':''}>Contrôle de Gestion OK</option><option value="DAF_REVIEWED" ${p.bp_status==='DAF_REVIEWED'?'selected':''}>Revu DAF</option><option value="DG_APPROVED" ${p.bp_status==='DG_APPROVED'?'selected':''}>Approuvé DG</option><option value="REJECTED" ${p.bp_status==='REJECTED'?'selected':''}>Rejeté / à renégocier</option></select></label>
+    <label><span>Validation Juridique</span><select id="devLegalStatus"><option value="PENDING" ${(p.legal_status||'PENDING')==='PENDING'?'selected':''}>À faire</option><option value="APPROVED" ${p.legal_status==='APPROVED'?'selected':''}>Validé</option><option value="BLOCKED" ${p.legal_status==='BLOCKED'?'selected':''}>Bloquant</option></select></label>
+    <label><span>Validation Technique</span><select id="devTechnicalStatus"><option value="PENDING" ${(p.technical_status||'PENDING')==='PENDING'?'selected':''}>À faire</option><option value="APPROVED" ${p.technical_status==='APPROVED'?'selected':''}>Validé</option><option value="BLOCKED" ${p.technical_status==='BLOCKED'?'selected':''}>Bloquant</option></select></label>
     <label><span>Décision</span><select id="devDecision">${opt(config?.decisions||['PENDING','GO','HOLD','NO_GO'],p.decision||'PENDING',DECISION_LABELS)}</select></label>
     <label><span>Priorité</span><select id="devPriority">${opt(config?.priorities||['LOW','NORMAL','HIGH','CRITICAL'],p.priority||'NORMAL',PRIORITY_LABELS)}</select></label>
     <label><span>Ouverture cible</span><input id="devTarget" type="date" value="${esc(p.target_opening_date||'')}"></label>
@@ -158,12 +169,12 @@ function formValues(p={}){
   </div>`;
 }
 function renderCreate(){
-  return `<div class="dev-shell"><div class="dev-detail-head"><div><button class="btn ghost" id="devBack">← Pipeline</button><div class="label" style="margin-top:14px">NOUVEAU PROJET</div><h2>Créer une opportunité développement</h2><p class="muted">Le projet démarre en Sourcing local puis avancera étape par étape jusqu’à l’ouverture.</p></div></div><div class="dev-form">${formValues()}<div class="studio-savebar"><span class="small muted">Chaque changement d’étape est conditionné par les jalons obligatoires du parcours.</span><button class="btn brand" id="devCreateSave">Créer et démarrer le parcours</button></div></div></div>`;
+  return `<div class="dev-shell"><div class="dev-detail-head"><div><button class="btn ghost" id="devBack">← Pipeline</button><div class="label" style="margin-top:14px">NOUVEAU PROJET</div><h2>Créer une opportunité développement</h2><p class="muted">Le dossier démarre par le cadrage des critères puis suit les 9 étapes de la procédure Expansion jusqu’au closing et à la passation.</p></div></div><div class="dev-form">${formValues()}<div class="studio-savebar"><span class="small muted">Chaque changement d’étape est conditionné par les jalons obligatoires du parcours.</span><button class="btn brand" id="devCreateSave">Créer et démarrer le parcours</button></div></div></div>`;
 }
 function val(id){return document.getElementById(id)?.value?.trim()||''}
 function num(id){const v=document.getElementById(id)?.value;return v===undefined||v===''?null:Number(v)}
 function payloadFromForm(){
-  return{name:val('devName'),city:val('devCity'),address:val('devAddress'),zone:val('devZone'),sourceLead:val('devSource'),surfaceM2:num('devSurface'),landlord:val('devLandlord'),monthlyRent:num('devRent'),keyMoney:num('devKeyMoney'),capexBudget:num('devCapex'),capexCommitted:num('devCapexCommitted'),capexActual:num('devCapexActual'),siteScore:num('devSiteScore'),economicScore:num('devEconomicScore'),decision:val('devDecision')||'PENDING',priority:val('devPriority')||'NORMAL',targetOpeningDate:val('devTarget')||null,worksProgress:num('devWorksProgress')??0,ownerUserId:val('devOwner')||null,nextAction:val('devNextAction'),nextActionDueDate:val('devNextActionDue')||null,blocker:val('devBlocker'),notes:val('devNotes')};
+  return{name:val('devName'),city:val('devCity'),address:val('devAddress'),zone:val('devZone'),sourceLead:val('devSource'),surfaceM2:num('devSurface'),landlord:val('devLandlord'),monthlyRent:num('devRent'),keyMoney:num('devKeyMoney'),capexBudget:num('devCapex'),capexCommitted:num('devCapexCommitted'),capexActual:num('devCapexActual'),siteScore:num('devSiteScore'),economicScore:num('devEconomicScore'),brand:val('devBrand')||'FRANPRIX',conflictOfInterest:val('devConflict')==='1',conflictDetails:val('devConflictDetails'),committeeOpinion:val('devCommitteeOpinion')||'PENDING',bpStatus:val('devBpStatus')||'NOT_STARTED',legalStatus:val('devLegalStatus')||'PENDING',technicalStatus:val('devTechnicalStatus')||'PENDING',decision:val('devDecision')||'PENDING',priority:val('devPriority')||'NORMAL',targetOpeningDate:val('devTarget')||null,worksProgress:num('devWorksProgress')??0,ownerUserId:val('devOwner')||null,nextAction:val('devNextAction'),nextActionDueDate:val('devNextActionDue')||null,blocker:val('devBlocker'),notes:val('devNotes')};
 }
 async function fetchDetail(id){return api(`/api/development/projects/${encodeURIComponent(id)}`)}
 function milestoneButton(m,primary=false){
@@ -183,7 +194,7 @@ function currentStageChecklist(p){
 }
 function stagePrimaryCard(p,next){
   const pending=nextPendingMilestone(p),progress=stageDoneCount(p),readiness=p.stageReadiness||{ready:false,count:0,incomplete:[]};
-  if(p.stage==='OPEN')return `<div class="dev-journey-primary ready"><div class="label">PARCOURS TERMINÉ</div><h3>Le magasin est ouvert.</h3><p>Le parcours Développement est terminé. Le projet peut rester consultable dans l’historique réseau.</p></div>`;
+  if(p.stage==='CLOSING_HANDOVER'&&!pending&&readiness.ready)return `<div class="dev-journey-primary ready"><div class="label">PARCOURS DÉVELOPPEMENT TERMINÉ</div><h3>Le dossier est prêt à être passé aux équipes d’exécution.</h3><p>Closing, passation et archivage sont terminés. Les travaux et la mise en exploitation continuent dans leurs workflows respectifs.</p></div>`;
   if(pending)return `<div class="dev-journey-primary"><div><div class="label">À FAIRE MAINTENANT · ${progress.done+1} SUR ${progress.total}</div><h3>${esc(pending.label)}</h3><p>${esc(STAGE_INTENT[p.stage]||'Terminer les prérequis de cette étape.')}</p></div>${milestoneButton(pending,true)}</div>`;
   if(!readiness.ready)return `<div class="dev-journey-primary blocked"><div><div class="label">DERNIER VERROU</div><h3>${readiness.count||1} prérequis empêchent encore le passage</h3><p>${(readiness.incomplete||[]).map(x=>esc(x.label)).join(' · ')||'Compléter la décision ou les prérequis du projet.'}</p></div><button class="btn soft" id="devEditDecision">Compléter la fiche</button></div>`;
   return `<div class="dev-journey-primary ready"><div><div class="label">ÉTAPE TERMINÉE</div><h3>Prêt pour ${esc(STAGE_LABELS[next]||next)}</h3><p>Tous les prérequis obligatoires sont validés. Le projet peut avancer.</p></div><button class="btn brand" id="devNextStage">Passer à ${esc(STAGE_LABELS[next]||next)} →</button></div>`;
@@ -202,7 +213,7 @@ function renderDetail(p){
       </section>
       <aside class="dev-journey-side">
         <div class="dev-card dev-next-card"><div class="label">PROCHAINE ACTION</div><h3>${esc(p.next_action||nextPendingMilestone(p)?.label||'À définir')}</h3><small>${p.next_action_due_date?`Échéance ${date(p.next_action_due_date)}`:'Aucune échéance définie'}</small></div>
-        <div class="dev-card"><h3>Repères projet</h3><div class="dev-facts"><div><span>Ouverture cible</span><strong>${date(p.target_opening_date)}</strong></div><div><span>Responsable</span><strong>${esc(p.owner_name||'À affecter')}</strong></div><div><span>Surface</span><strong>${p.surface_m2??'—'} m²</strong></div><div><span>Loyer</span><strong>${money(p.monthly_rent)}</strong></div><div><span>CAPEX</span><strong>${money(p.capex_budget)}</strong></div><div><span>Travaux</span><strong>${Number(p.works_progress||0)}%</strong></div></div></div>
+        <div class="dev-card"><h3>Repères dossier</h3><div class="dev-facts"><div><span>Enseigne</span><strong>${esc(p.brand||'FRANPRIX')}</strong></div><div><span>Ouverture cible</span><strong>${date(p.target_opening_date)}</strong></div><div><span>Responsable</span><strong>${esc(p.owner_name||'À affecter')}</strong></div><div><span>Surface</span><strong>${p.surface_m2??'—'} m²</strong></div><div><span>Avis Comité</span><strong>${esc(p.committee_opinion||'PENDING')}</strong></div><div><span>BP</span><strong>${esc(p.bp_status||'NOT_STARTED')}</strong></div><div><span>Juridique</span><strong>${esc(p.legal_status||'PENDING')}</strong></div><div><span>Technique</span><strong>${esc(p.technical_status||'PENDING')}</strong></div></div></div>
         <details class="dev-card dev-details-collapsible"><summary>Voir le détail complet <span>⌄</span></summary><div class="dev-details-body"><h4>Business case</h4><div class="dev-facts"><div><span>Score emplacement</span><strong>${p.site_score??'—'}/100</strong></div><div><span>Score économique</span><strong>${p.economic_score??'—'}/100</strong></div><div><span>CAPEX engagé</span><strong>${money(p.capex_committed)}</strong></div><div><span>CAPEX réel</span><strong>${money(p.capex_actual)}</strong></div></div><h4>Historique</h4><div class="dev-history">${(p.history||[]).length?(p.history||[]).slice(0,12).map(h=>`<div class="dev-history-item"><strong>${esc(h.detail||h.event_type)}</strong><small>${new Date(h.created_at).toLocaleString('fr-FR')} · ${esc(h.user_name||'StoreOps')}</small></div>`).join(''):'<div class="small muted">Aucun historique.</div>'}</div></div></details>
       </aside>
     </div>
