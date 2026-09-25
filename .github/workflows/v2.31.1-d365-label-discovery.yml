@@ -27,6 +27,19 @@ jobs:
             curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/entities?q=$q" -o "/tmp/entities-$q.json"
           done
 
+          for entity in RetailItemLabelsToPrint DocumentRoutingPrinters PrintLayouts; do
+            curl -sS -H "x-demo-user: u-admin" "$PREVIEW_URL/api/dynamics/probe?entity=$entity&top=25&extra=cross-company%3Dtrue" -o "/tmp/probe-$entity.json" || true
+          done
+
+          node - <<'NODE'
+          const fs=require('fs');
+          for(const entity of ['RetailItemLabelsToPrint','DocumentRoutingPrinters','PrintLayouts']){
+            const p=JSON.parse(fs.readFileSync('/tmp/probe-'+entity+'.json','utf8'));
+            const rows=p.rows||p.value||[];
+            console.log('\nPROBE '+entity,JSON.stringify({ok:p.ok,rowCount:p.rowCount,error:p.error||p.message||null,rows:rows.slice(0,20)},null,2));
+          }
+          NODE
+
           node - <<'NODE'
           const fs=require('fs');
           const rows=[];
