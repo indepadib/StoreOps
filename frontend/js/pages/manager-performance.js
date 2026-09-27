@@ -26,7 +26,7 @@ function renderRows(){
 function unavailable(p){return `<div class="performance-shell"><div class="manager-hub-head"><span class="manager-eyebrow">Business Pulse</span><h2>Performance magasin</h2><p>Le flux de ventes n’est pas encore connecté pour ce magasin.</p></div><div class="pulse-unavailable"><strong>Ventes non connectées</strong><span>StoreOps n’affiche aucune valeur estimée. Le mapping D365 ventes doit être validé avant activation LIVE.</span></div></div>`}
 function sourceHealth(){
  const d=pulse?.diagnostics||{},stock=pulse?.stock||{},rows=Number(d.rows||0),excluded=Number(d.dataQuality?.excludedRows||0);
- return `<div class="performance-trust"><div><span>Transactions lues</span><strong>${number(rows)}</strong></div><div><span>Lignes exclues</span><strong>${number(excluded)}</strong><small>annulées / voidées</small></div><div><span>Stock & ruptures</span><strong>${stock.ruptureReady?'Prêt':'Partiel'}</strong><small>${esc(stock.supplyReadStatus||stock.assortmentState||'')}</small></div><div><span>Marge</span><strong>Masquée</strong><small>coût transactionnel en validation</small></div></div>`
+ return `<div class="performance-trust"><div><span>Transactions lues</span><strong>${number(rows)}</strong></div><div><span>Lignes exclues</span><strong>${number(excluded)}</strong><small>annulées / voidées</small></div><div><span>Stock & ruptures</span><strong>${stock.ruptureReady?'Prêt':'Partiel'}</strong><small>${esc(stock.supplyReadStatus||stock.assortmentState||'')}</small></div><div><span>Mapping ventes</span><strong>${esc(pulse?.integration?.mappingState||'—')}</strong><small>${esc(pulse?.integration?.entity||'source D365')}</small></div></div>`
 }
 
 export async function renderManagerPerformance(){
