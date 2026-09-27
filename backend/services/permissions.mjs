@@ -1,7 +1,9 @@
 export function isQualityAudit(user){return !!user&&user.permissions_profile==='quality_audit'}
 export function isPlatformAdmin(user){return !!user&&(user.permissions_profile==='platform_admin'||user.id==='u-admin')}
 export function isDevelopment(user){return !!user&&user.permissions_profile==='development'}
+export function isSupplyChain(user){return !!user&&user.permissions_profile==='supply_chain'}
 export function canAccessDevelopment(user){return isPlatformAdmin(user)||isDevelopment(user)}
+export function canAccessWarehouse(user){return !!user&&(user.role==='ops_director'||isPlatformAdmin(user)||isSupplyChain(user))}
 export function canAccessStore(user, storeId){
   if(!user) return false;
   if(user.role==='ops_director'||isQualityAudit(user)) return true;
