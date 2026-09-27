@@ -2,6 +2,7 @@ import { db,audit } from '../db.mjs';
 import { config } from '../config.mjs';
 import { probeDataEntity } from './dynamics.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
+import { probeUnitAwareTransactionMargin } from './transaction-margin.mjs';
 
 const clean=v=>String(v??'').trim();
 const validName=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
@@ -186,7 +187,10 @@ export async function smokeD365SalesMapping({actor,storeId='val-fleuri',input=nu
   probe=await probeDataEntity(mapping.entity,{top:20,filter:companyFilter,extra:config.dynamics.dataAreaId?'cross-company=true':''});
  }
  const rows=Array.isArray(probe?.rows)?probe.rows:[];
- const smoke={...evaluateD365SalesSmokeRows({rows,mapping,retailChannelId:selected.value,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok}),storeId,storeIdentifierKind:selected.kind,storeIdentifier:selected.value,retailChannelIdConfigured:retailChannelId||null};
+ const baseSmoke=evaluateD365SalesSmokeRows({rows,mapping,retailChannelId:selected.value,latencyMs:probe?.latencyMs||null,filtered:!!probe?.ok});
+ let unitAwareMargin={status:'UNAVAILABLE',displaySafe:false,reason:'TRANSACTION_MARGIN_PROBE_FAILED'};
+ try{unitAwareMargin=await probeUnitAwareTransactionMargin({storeId,rows,mapping})}catch(error){unitAwareMargin={status:'UNAVAILABLE',displaySafe:false,reason:error?.code||'TRANSACTION_MARGIN_PROBE_FAILED',message:error?.message||String(error)}}
+ const smoke={...baseSmoke,transactionMargin:unitAwareMargin,marginCandidate:unitAwareMargin.status==='CANDIDATE',storeId,storeIdentifierKind:selected.kind,storeIdentifier:selected.value,retailChannelIdConfigured:retailChannelId||null};
  const passed=!!probe?.ok&&smoke.status==='PASSED';
  if(!passed)smoke.status='FAILED';
  if(input)saveD365SalesMappingDraft({actor,input:mapping});
