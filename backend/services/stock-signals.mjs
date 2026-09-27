@@ -16,6 +16,7 @@ const stockSignalsCacheSeconds=()=>Math.max(30,Math.min(3600,Number(process.env.
 const lowCoverageDays=()=>Math.max(.5,Math.min(14,Number(process.env.STOREOPS_LOW_COVERAGE_DAYS)||2.5));
 const signalCache=new Map();
 const signalInflight=new Map();
+export function resolvedSupplyAvailability(supply,readReady){return supply?Math.round((num(supply.availableQty)+Number.EPSILON)*1000)/1000:(readReady?0:null)}
 
 function requireField(name,value){
   if(!validField(value))throw Object.assign(new Error(`${name} non configuré ou invalide`),{status:503,code:'D365_STOCK_MAPPING_REQUIRED',details:{field:name}});
@@ -108,7 +109,7 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const classified=aggregated.map(x=>({product:x,classification:classifyAvailability({storeId,productNumber:x.productNumber,availableQty:x.availableQty,businessDate,index,maxAgeHours})}));
   const allSignals=classified.map(({product,classification})=>signalFromClassification(product,warehouse,classification)).filter(Boolean);
   const salesByProduct=new Map((salesActivity?.products||[]).map(x=>[clean(x.productNumber),x]));
-  const enrich=x=>{const sale=salesByProduct.get(clean(x.productNumber)),supply=supplyByProduct.get(clean(x.productNumber)),supplier=suppliers.get(clean(x.productNumber))||{},centralStock=supply?Math.round((num(supply.availableQty)+Number.EPSILON)*1000)/1000:(supplyReadReady?0:null);return{...x,sold30d:!!sale,salesValue30d:Number(sale?.salesValue||0),salesUnits30:Number(sale?.units||0),dailySales:Number(sale?.units||0)>0?Math.round((Number(sale.units)/30+Number.EPSILON)*1000)/1000:null,lastSaleDate:sale?.lastSaleDate||null,centralStock,supplyWarehouse:supplyWarehouse||null,supplyReadStatus:supplyReadReady?'READY':supplyWarehouse?'UNAVAILABLE':'UNMAPPED',...supplier}};
+  const enrich=x=>{const sale=salesByProduct.get(clean(x.productNumber)),supply=supplyByProduct.get(clean(x.productNumber)),supplier=suppliers.get(clean(x.productNumber))||{},centralStock=resolvedSupplyAvailability(supply,supplyReadReady);return{...x,sold30d:!!sale,salesValue30d:Number(sale?.salesValue||0),salesUnits30:Number(sale?.units||0),dailySales:Number(sale?.units||0)>0?Math.round((Number(sale.units)/30+Number.EPSILON)*1000)/1000:null,lastSaleDate:sale?.lastSaleDate||null,centralStock,supplyWarehouse:supplyWarehouse||null,supplyReadStatus:supplyReadReady?'READY':supplyWarehouse?'UNAVAILABLE':'UNMAPPED',...supplier}};
   const negativeAll=allSignals.filter(x=>x.type==='NEGATIVE').map(enrich).sort((a,b)=>Number(b.sold30d)-Number(a.sold30d)||Number(b.salesValue30d)-Number(a.salesValue30d)||a.availableQty-b.availableQty);
   const residualAll=allSignals.filter(x=>x.type==='OUTSIDE_ASSORTMENT');
   const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
