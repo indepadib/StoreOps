@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config, productionMisconfig } from './config.mjs';
 import { db, ensureStoreDay, todayISO, uid, audit } from './db.mjs';
 import { sessionFromRequest } from './auth/session.mjs';
-import { canAccessStore, canManageQuality, canManageDlc, canManageStore } from './services/permissions.mjs';
+import { canAccessStore, canManageQuality, canManageDlc, canManageStore, canAccessWarehouse } from './services/permissions.mjs';
 import { getProductByEan, getProductByReference, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { getStoreProductByEan,getStoreStockByProductNumber } from './services/dynamics-stock.mjs';
 import { syncExpectedReceiptsFromDynamics, syncExpectedTransferOrdersFromDynamics, listReceiptsForStore, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
@@ -94,7 +94,7 @@ async function api(req,res,url){
 
   let p;
   if(path==='/api/stores'){const rows=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter(s=>canAccessStore(user,s.id));return json(req,res,200,rows)}
-  if(path==='/api/warehouse-control'&&req.method==='GET'){ensureDirector(user);return json(req,res,200,await warehouseControlSnapshot({businessDate:url.searchParams.get('date')||todayISO(),force:url.searchParams.get('force')==='1'}))}
+  if(path==='/api/warehouse-control'&&req.method==='GET'){if(!canAccessWarehouse(user))return json(req,res,403,{error:'Accès Supply / Entrepôt requis.'});return json(req,res,200,await warehouseControlSnapshot({businessDate:url.searchParams.get('date')||todayISO(),force:url.searchParams.get('force')==='1'}))}
   p=route(path,'/api/stores/:storeId/stock-signals');if(p&&req.method==='GET'){requireStore(user,p.storeId);return json(req,res,200,await getStockSignals(p.storeId,{businessDate:url.searchParams.get('date')||todayISO(),force:url.searchParams.get('force')==='1'}))}
   p=route(path,'/api/stores/:storeId/assignees');if(p){requireStore(user,p.storeId);ensureManage(user,p.storeId);return json(req,res,200,db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 AND (role='ops_director' OR (role='store_manager' AND store_id=?)) ORDER BY role,name`).all(p.storeId))}
 
