@@ -12,7 +12,7 @@ assert.equal(canAccessDevelopment(actor),true);
 
 let p=createDevelopmentProject({user:actor,input:{
  name:'Franprix Racine',city:'Casablanca',brand:'FRANPRIX',zone:'Racine',
- surfaceM2:430,monthlyRent:85000,targetOpeningDate:'2026-12-15',
+ surfaceM2:430,surfaceGroundFloorM2:430,monthlyRent:85000,targetOpeningDate:'2026-12-15',
  sourceLead:'Relais réseau',conflictOfInterest:false
 }});
 assert.equal(p.stage,'CRITERIA');
@@ -20,6 +20,8 @@ assert(p.milestones.some(x=>x.code==='COMMITTEE_OPINION_RECORDED'));
 assert(p.milestones.some(x=>x.code==='BP_DG_APPROVED'));
 assert(p.milestones.some(x=>x.code==='TECHNICAL_FEASIBILITY_APPROVED'));
 assert(p.milestones.some(x=>x.code==='HANDOVER_PACK_COMPLETE'));
+assert.equal(p.formatCompliance.status,'COMPLIANT');
+assert.equal(p.handover.leadDays,42);
 
 const complete=(...codes)=>{for(const code of codes)p=setDevelopmentMilestone({user:actor,id:p.id,code,status:'DONE'});};
 
@@ -33,10 +35,13 @@ p=setDevelopmentStage({user:actor,id:p.id,stage:'NEGOTIATION'});
 complete('RENTAL_TERMS_NEGOTIATED','NEGOTIATION_SHEET_COMPLETE','NO_PREMATURE_COMMITMENT');
 p=setDevelopmentStage({user:actor,id:p.id,stage:'COMMITTEE'});
 complete('COMMITTEE_PACK_COMPLETE','COMMITTEE_OPINION_RECORDED','COMMITTEE_RESERVATIONS_CLEARED');
+p=updateDevelopmentProject({user:actor,id:p.id,input:{committeeOpinion:'FAVORABLE'}});
 p=setDevelopmentStage({user:actor,id:p.id,stage:'BUSINESS_PLAN'});
 complete('BP_INPUTS_COMPLETE','OPERATIONS_OPINION_RECORDED','BP_CONTROL_APPROVED','BP_DAF_REVIEWED','BP_DG_APPROVED');
+p=updateDevelopmentProject({user:actor,id:p.id,input:{bpStatus:'DG_APPROVED'}});
 p=setDevelopmentStage({user:actor,id:p.id,stage:'LEGAL_TECHNICAL'});
 complete('LEGAL_DUE_DILIGENCE_DONE','TECHNICAL_FEASIBILITY_APPROVED','BLOCKING_RESERVATIONS_CLEARED');
+p=updateDevelopmentProject({user:actor,id:p.id,input:{legalStatus:'APPROVED',technicalStatus:'APPROVED'}});
 p=setDevelopmentStage({user:actor,id:p.id,stage:'FINAL_DECISION'});
 complete('FINAL_FILE_COMPLETE','DG_COMMITMENT_AUTHORIZED','CONTRACT_SIGNED','QHSE_NOTIFIED');
 p=updateDevelopmentProject({user:actor,id:p.id,input:{decision:'GO'}});
