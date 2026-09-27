@@ -25,3 +25,15 @@ export function calculateStoreHealth({dashboard={},staff={},cold={},cashOpen={},
  const label={EXCELLENT:'Excellent',GOOD:'Bon',WATCH:'À surveiller',RISK:'À risque',CRITICAL:'Critique'}[state];
  return{score,state,label,totalPenalty,penalties:rows};
 }
+
+export function calculateCustomerWeightedScore({operationalScore=100,identifiedSalesShare=null,recruitmentRateNonLoyalty=null,weight=.25,identifiedTarget=50,recruitmentTarget=10}={}){
+ const op=Math.min(100,Math.max(0,Number(operationalScore)||0)),requestedWeight=Math.min(.3,Math.max(.2,Number(weight)||.25));
+ const components=[];
+ const push=(key,label,value,target,componentWeight)=>{if(value===null||value===undefined||value===''||!Number.isFinite(Number(value)))return;const actual=Math.max(0,Number(value)),goal=Math.max(.01,Number(target)||1),score=Math.min(100,Math.round((actual/goal)*100));components.push({key,label,actual,target:goal,score,componentWeight})};
+ push('IDENTIFIED_CA','Poids CA encarté',identifiedSalesShare,identifiedTarget,.6);
+ push('RECRUITMENT','Recrutement / tickets non fidélité',recruitmentRateNonLoyalty,recruitmentTarget,.4);
+ if(!components.length)return{score:Math.round(op),operationalScore:Math.round(op),customerScore:null,requestedCustomerWeight:requestedWeight,appliedCustomerWeight:0,complete:false,components};
+ const availableWeight=components.reduce((a,x)=>a+x.componentWeight,0),customerScore=Math.round(components.reduce((a,x)=>a+x.score*x.componentWeight,0)/availableWeight),appliedWeight=requestedWeight*availableWeight;
+ const score=Math.round(op*(1-appliedWeight)+customerScore*appliedWeight);
+ return{score,operationalScore:Math.round(op),customerScore,requestedCustomerWeight:requestedWeight,appliedCustomerWeight:appliedWeight,complete:availableWeight>=.999,components}
+}
