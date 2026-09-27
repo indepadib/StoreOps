@@ -6,6 +6,7 @@ let pulse=null,dimension='departments';
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{minimumFractionDigits:0,maximumFractionDigits:2})+' DH';
 const pct=v=>v==null?'—':`${Number(v)>0?'+':''}${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})}%`;
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1});
+const ratio=v=>v==null?'—':`${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})}%`;
 const margin=v=>v==null?'Marge non connectée':`${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})}% marge`;
 
 function tabLabel(k){return({departments:'Rayons',categories:'Catégories',products:'Articles',hourly:'Heures'}[k]||k)}
@@ -33,6 +34,13 @@ export async function renderManagerPerformance(){
    <div class="performance-kpi"><span>Tickets</span><strong>${number(k.tickets)}</strong><small>Panier ${money(k.averageBasket)}</small></div>
    <div class="performance-kpi"><span>Articles vendus</span><strong>${number(k.units)}</strong><small>${k.outOfStockCount??0} rupture(s) assortiment</small></div>
    <div class="performance-kpi"><span>Disponibilité</span><strong>${k.availabilityRate==null?'—':pct(k.availabilityRate)}</strong><small>${pulse.stock?.assortmentReady?'Assortiment à jour':'Assortiment à vérifier'}</small></div>
+  </div>
+  <div class="network-section-title" style="margin-top:14px"><div><strong>Customer & fidélité</strong><span>Identification client et recrutement ramenés au trafic réellement non fidélisé.</span></div></div>
+  <div class="performance-hero">
+   <div class="performance-kpi"><span>Poids CA encarté</span><strong>${ratio(k.identifiedSalesShare)}</strong><small>${k.identifiedSales==null?'CA identifié indisponible':money(k.identifiedSales)+' de CA identifié'}</small></div>
+   <div class="performance-kpi"><span>Tickets identifiés</span><strong>${ratio(k.identifiedTicketRate)}</strong><small>${k.identifiedTickets==null?'—':number(k.identifiedTickets)+' ticket(s) identifiés'}</small></div>
+   <div class="performance-kpi"><span>Tickets non fidélité</span><strong>${number(k.nonLoyaltyTickets)}</strong><small>base du taux de recrutement</small></div>
+   <div class="performance-kpi"><span>Recrutement / non fidélité</span><strong>${ratio(k.recruitmentRateNonLoyalty)}</strong><small>${k.recruitmentRateNonLoyalty==null?'Source nouveaux recrutements à connecter':'nouveaux clients / tickets non fidélité'}</small></div>
   </div>
   <div class="performance-tabs">${['departments','categories','products','hourly'].map(x=>`<button data-performance-dim="${x}" class="${x===dimension?'active':''}">${tabLabel(x)}</button>`).join('')}</div>
   <div id="performanceRows" class="performance-list"></div>
