@@ -30,8 +30,8 @@ async function waitForStoreOpsUi(ms=25000){
     const meta=document.querySelector('#headerMeta');
     const storeSelect=document.querySelector('#storeSelect');
     const text=(meta?.textContent||'').trim();
-    const developmentOnly=document.body?.classList?.contains('development-only');
-    if(text&&!/^(Chargement|Démarrage)/.test(text)&&(developmentOnly||storeSelect?.options?.length>0))return true;
+    const developmentOnly=document.body?.classList?.contains('development-only'),supplyOnly=document.body?.classList?.contains('supply-chain-only');
+    if(text&&!/^(Chargement|Démarrage)/.test(text)&&(developmentOnly||supplyOnly||storeSelect?.options?.length>0))return true;
     const bodyText=(document.body?.innerText||document.body?.textContent||'').trim();
     if(bodyText.includes('Impossible de charger StoreOps')){
       const compact=bodyText.replace(/\s+/g,' ').slice(0,900);
