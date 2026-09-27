@@ -126,6 +126,24 @@ function numericStats(rows,field,sign=1){
  return{mapped:true,present,numeric,nonZero,sample}
 }
 function fieldPresence(rows,field){return{field,present:(rows||[]).filter(r=>valuePresent(r?.[field])).length}}
+function transactionMarginProbe(rows,normalized){
+ const f=normalized.fields||{},costField=f.cost,txField=f.transaction,netField=f.net,qtyField=f.quantity;
+ if(!costField||!txField||!netField)return{status:'UNAVAILABLE',displaySafe:false,reason:'TRANSACTION_COST_FIELD_REQUIRED'};
+ const basis=/amount|value|cogs/i.test(costField)?'LINE_COST_AMOUNT':(/price|unitcost/i.test(costField)&&qtyField?'UNIT_COST_X_QTY':'UNKNOWN');
+ const byTx=new Map();let rowsWithCost=0,numericCostRows=0;
+ for(const row of rows||[]){
+  const tx=clean(row?.[txField]);if(!tx)continue;
+  const rawCost=row?.[costField],rawNet=row?.[netField];if(!valuePresent(rawCost)||!valuePresent(rawNet))continue;rowsWithCost++;
+  const c0=Number(rawCost),sales0=Number(rawNet);if(!Number.isFinite(c0)||!Number.isFinite(sales0))continue;numericCostRows++;
+  const sales=sales0*normalized.salesSign,qty=qtyField&&Number.isFinite(Number(row?.[qtyField]))?Math.abs(Number(row[qtyField])*normalized.quantitySign):1;
+  const cost=(c0*normalized.costSign)*(basis==='UNIT_COST_X_QTY'?qty:1),cur=byTx.get(tx)||{transactionId:tx,sales:0,cost:0,lines:0};
+  cur.sales+=sales;cur.cost+=cost;cur.lines++;byTx.set(tx,cur)
+ }
+ const tickets=[...byTx.values()].filter(x=>Number.isFinite(x.sales)&&Number.isFinite(x.cost)&&x.sales!==0).map(x=>({...x,margin:x.sales-x.cost,marginRate:x.sales?((x.sales-x.cost)/x.sales)*100:null}));
+ const eligible=tickets.filter(x=>x.sales>0&&x.cost>=0),plausible=eligible.filter(x=>x.cost<=x.sales*1.5&&x.marginRate>=-50&&x.marginRate<=90);
+ const sales=eligible.reduce((a,x)=>a+x.sales,0),cost=eligible.reduce((a,x)=>a+x.cost,0),coverage=(rows||[]).length?numericCostRows/(rows||[]).length:null,plausibility=eligible.length?plausible.length/eligible.length:null;
+ return{status:eligible.length&&basis!=='UNKNOWN'?'CANDIDATE':'UNAVAILABLE',displaySafe:false,basis,costField,transactionCount:tickets.length,eligibleTransactions:eligible.length,rowsWithCost,numericCostRows,rowCoverage:coverage==null?null:Math.round(coverage*10000)/100,plausibleTransactionRate:plausibility==null?null:Math.round(plausibility*10000)/100,aggregate:{sales:Math.round(sales*100)/100,cost:Math.round(cost*100)/100,margin:Math.round((sales-cost)*100)/100,marginRate:sales?Math.round(((sales-cost)/sales)*10000)/100:null},sample:eligible.slice(0,5).map(x=>({transactionId:x.transactionId,sales:Math.round(x.sales*100)/100,cost:Math.round(x.cost*100)/100,margin:Math.round(x.margin*100)/100,marginRate:Math.round(x.marginRate*100)/100})),reason:'BUSINESS_VALIDATION_REQUIRED'}
+}
 
 export function evaluateD365SalesSmokeRows({rows=[],mapping,retailChannelId,latencyMs=null,filtered=false}={}){
  const normalized=validateMappingInput(mapping||{});
@@ -135,12 +153,12 @@ export function evaluateD365SalesSmokeRows({rows=[],mapping,retailChannelId,late
  const tickets=new Set(list.map(r=>clean(r?.[normalized.fields.transaction])).filter(Boolean));
  const sales=numericStats(list,normalized.fields.net,normalized.salesSign),quantity=numericStats(list,normalized.fields.quantity,normalized.quantitySign),cost=numericStats(list,normalized.fields.cost,normalized.costSign);
  const channel=clean(retailChannelId),channelMatches=channel?list.filter(r=>clean(r?.[normalized.fields.channel])===channel).length:0;
- const channelOk=!!channel&&channelMatches>0,passed=list.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0&&channelOk;
+ const channelOk=!!channel&&channelMatches>0,passed=list.length>0&&missingInPayload.length===0&&sales.numeric>0&&tickets.size>0&&channelOk,transactionMargin=transactionMarginProbe(list,normalized);
  return{
   status:passed?'PASSED':'FAILED',checkedAt:new Date().toISOString(),retailChannelId:channel||null,entity:normalized.entity,rowCount:list.length,latencyMs,
   filtered:!!filtered&&channelMatches>0,channelMatches,channelOk,uniqueTickets:tickets.size,requiredFieldsPresent:missingInPayload.length===0,missingInPayload,presence,
-  metrics:{sales,quantity,cost},marginCandidate:!!normalized.fields.cost&&cost.numeric>0,
-  note:passed?'Structure ventes exploitable. Comparaison métier CA/tickets encore recommandée avant généralisation.':'Le mapping ne satisfait pas les garde-fous techniques.'
+  metrics:{sales,quantity,cost},marginCandidate:transactionMargin.status==='CANDIDATE',transactionMargin,
+  note:passed?'Structure ventes exploitable. La marge reste masquée jusqu’à validation métier d’un coût transactionnel.':'Le mapping ne satisfait pas les garde-fous techniques.'
  }
 }
 
