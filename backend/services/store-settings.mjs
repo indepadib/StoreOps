@@ -46,11 +46,12 @@ const pilotHint=storeId=>CONFIRMED_ONE_RETAIL_PROFILE.stores[clean(storeId)]||nu
 
 export function networkOperationalSettings(){
  const row=db.prepare(`SELECT * FROM network_operational_settings WHERE id='default'`).get(),envDefault=clean(process.env.D365_DEFAULT_SUPPLY_WAREHOUSE)||null;
+ const effectiveDefault=clean(row?.default_supply_warehouse_id)||envDefault||CONFIRMED_ONE_RETAIL_PROFILE.defaultSupplyWarehouseId||null;
  return {
-  defaultSupplyWarehouseId:clean(row?.default_supply_warehouse_id)||envDefault||null,
+  defaultSupplyWarehouseId:effectiveDefault,
   suggestedSupplyWarehouseId:CONFIRMED_ONE_RETAIL_PROFILE.defaultSupplyWarehouseId,
   suggestedSupplyWarehouseName:'LVE Lakhyayata entrepôt de distribution',
-  source:row?'STOREOPS_CONFIG':envDefault?'ENV_CONFIG':'UNMAPPED',
+  source:row?'STOREOPS_CONFIG':envDefault?'ENV_CONFIG':CONFIRMED_ONE_RETAIL_PROFILE.defaultSupplyWarehouseId?'CONFIRMED_ONE_RETAIL':'UNMAPPED',
   persisted:!!row,
   updatedAt:row?.updated_at||null
  }
