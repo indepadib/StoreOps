@@ -23,6 +23,11 @@ function renderRows(){
  }).join(''):`<div class="performance-empty">Aucune donnée disponible pour ${esc(tabLabel(dimension).toLowerCase())}.</div>`;
  document.querySelectorAll('[data-performance-dim]').forEach(b=>b.classList.toggle('active',b.dataset.performanceDim===dimension));
 }
+function analysisBlock(){
+ const a=pulse?.analysis;if(!a)return'';const mechanism={TRAFFIC_AND_BASKET:'Le recul vient du trafic et du panier moyen.',TRAFFIC:'Le trafic explique l’essentiel du recul.',BASKET:'Le panier moyen explique l’essentiel du recul.',TRAFFIC_AND_BASKET_UP:'Trafic et panier progressent ensemble.',TRAFFIC_UP:'La hausse vient surtout de davantage de tickets.',BASKET_UP:'La hausse vient surtout d’un panier plus élevé.',STABLE:'Le niveau est globalement stable.'}[a.mechanism]||'Analyse automatique des principaux moteurs du CA.';
+ const drivers=(a.departmentDrivers||[]).slice(0,5);
+ return `<section class="performance-section performance-explanation"><div class="performance-section-head"><div><strong>Pourquoi le CA bouge ?</strong><span>StoreOps sépare trafic, panier et contribution des rayons.</span></div></div><div class="performance-explanation-main"><div><span>Diagnostic</span><strong>${esc(mechanism)}</strong><small>Tickets ${pct(a.trafficChangePct)} · panier ${pct(a.basketChangePct)}</small></div><div><span>CA à risque / 24h</span><strong>${money(a.salesRisk24h)}</strong><small>${a.recoverableWarehouseRisk24h?`${money(a.recoverableWarehouseRisk24h)} récupérable entrepôt`:a.supplierRisk24h?`${money(a.supplierRisk24h)} à couvrir par achat`:'selon ruptures détectées'}</small></div></div>${drivers.length?`<div class="performance-driver-list">${drivers.map(x=>`<div><span>${esc(x.label)}</span><strong class="${x.delta>=0?'up':'down'}">${x.delta>=0?'+':''}${money(x.delta)}</strong><small>${money(x.current)} aujourd’hui · ${money(x.previous)} D-7</small></div>`).join('')}</div>`:''}</section>`;
+}
 function unavailable(p){return `<div class="performance-shell"><div class="manager-hub-head"><span class="manager-eyebrow">Business Pulse</span><h2>Performance magasin</h2><p>Le flux de ventes n’est pas encore connecté pour ce magasin.</p></div><div class="pulse-unavailable"><strong>Ventes non connectées</strong><span>StoreOps n’affiche aucune valeur estimée. Le mapping D365 ventes doit être validé avant activation LIVE.</span></div></div>`}
 function sourceHealth(){
  const d=pulse?.diagnostics||{},stock=pulse?.stock||{},rows=Number(d.rows||0),excluded=Number(d.dataQuality?.excludedRows||0);
@@ -50,6 +55,8 @@ export async function renderManagerPerformance(){
     </div>
    </section>
 
+   ${analysisBlock()}
+
    <section class="performance-section">
     <div class="performance-section-head"><div><strong>Customer & fidélité</strong><span>Identification, valeur client et recrutement.</span></div></div>
     <div class="performance-hero performance-customer-grid">
@@ -68,9 +75,13 @@ export async function renderManagerPerformance(){
     <div class="performance-hero performance-stock-grid">
      ${metric('Ruptures',number(k.outOfStockCount),stock.ruptureReady?'vendu 30j · stock 0':'calcul stock incomplet',Number(k.outOfStockCount)>0?'danger':'')}
      ${metric('Proches ruptures',number(k.nearOutOfStockCount),`couverture ≤ ${stock.lowCoverageDays||'2,5'} j`,Number(k.nearOutOfStockCount)>0?'warn':'')}
+     ${metric('Stocks fantômes',number(stock.ghostStockCount),'stock positif mais ventes anormalement silencieuses',Number(stock.ghostStockCount)>0?'danger':'')}
      ${metric('Stocks négatifs',number(k.negativeStockCount),'à contrôler physiquement',Number(k.negativeStockCount)>0?'danger':'')}
+     ${metric('CA à risque / 24h',money(stock.salesRisk24h),'ruptures + stocks fantômes',Number(stock.salesRisk24h)>0?'danger':'')}
+     ${metric('Récupérable entrepôt',money(stock.recoverableWarehouseRisk24h),'CA exposé sécurisable par transfert',Number(stock.recoverableWarehouseRisk24h)>0?'warn':'')}
+     ${metric('À couvrir par achat',money(stock.supplierRisk24h),'entrepôt à 0 · PO fournisseur',Number(stock.supplierRisk24h)>0?'warn':'')}
      ${metric('Hors assortiment avec stock',number(k.residualOutsideAssortment),'stock résiduel à traiter')}
-    </div>
+    </div><button class="btn brand performance-action-btn" data-manager-go="inventory">Traiter les risques stock →</button>
    </section>
 
    <section class="performance-section">
