@@ -37,6 +37,8 @@ jobs:
         run: node backend/tests/business-pulse.mjs
       - name: Store score
         run: node backend/tests/store-health.mjs
+      - name: Unit-aware transaction margin
+        run: node backend/tests/v233-unit-aware-margin.mjs
       - name: Stock signals
         run: node backend/tests/stock-signals.mjs
       - name: Sales 30d stockouts
