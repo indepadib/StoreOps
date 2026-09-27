@@ -1,0 +1,45 @@
+name: V2.33 Store Action Engine
+
+on:
+  push:
+    branches: [main, storeops-v2.33-action-engine]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  action-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/manager-performance.js
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/manager-replenishment-v2.js
+      - name: Store Action Engine UX
+        run: node backend/tests/v233-store-action-engine.mjs
+      - name: Today concierge regression
+        run: node backend/tests/v189-manager-today-concierge.mjs
+      - name: Inbox batch regression
+        run: node backend/tests/v186-manager-inbox-batch.mjs
+      - name: Business Pulse aggregation
+        run: node backend/tests/business-pulse.mjs
+      - name: Stock signals
+        run: node backend/tests/stock-signals.mjs
+      - name: Sales 30d stockouts
+        run: node backend/tests/v221-sales30-stockouts.mjs
+      - name: Replenishment assistant
+        run: node backend/tests/manager-replenishment-assistant.mjs
+      - name: Unit-aware margin
+        run: node backend/tests/v233-unit-aware-margin.mjs
