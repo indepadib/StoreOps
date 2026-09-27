@@ -28,15 +28,25 @@ export function normalizeRetailInsights(input={}){
   refreshedAt:input.refreshedAt||new Date().toISOString(),
   kpis:{
    sales,netSales,tickets,averageBasket:tickets?round2(netSales/tickets):null,units,
-   marginValue,marginRate,target,achievementRate:target?pct(netSales,target):null,
-   comparison,changeVsComparison:comparison?pct(netSales-comparison,comparison):null,
+   itemsPerTicket:tickets?round2(units/tickets):null,salesPerUnit:units?round2(netSales/units):null,
+   marginValue:null,marginRate:null,marginStatus:'HIDDEN_UNTIL_TRANSACTION_COST_VALIDATED',
+   target,achievementRate:target?pct(netSales,target):null,
+   comparison,comparisonDelta:comparison==null?null:round2(netSales-comparison),changeVsComparison:comparison?pct(netSales-comparison,comparison):null,
    lossValue,lossRate:lossValue!=null&&netSales>0?pct(lossValue,netSales):null,
-   outOfStockCount:nullable(input.outOfStockCount)==null?null:Math.max(0,n(input.outOfStockCount)),availabilityRate:nullable(input.availabilityRate)==null?null:round2(input.availabilityRate),
+   outOfStockCount:nullable(input.outOfStockCount)==null?null:Math.max(0,n(input.outOfStockCount)),
+   nearOutOfStockCount:nullable(input.nearOutOfStockCount)==null?null:Math.max(0,n(input.nearOutOfStockCount)),
+   negativeStockCount:nullable(input.negativeStockCount)==null?null:Math.max(0,n(input.negativeStockCount)),
+   residualOutsideAssortment:nullable(input.residualOutsideAssortment)==null?null:Math.max(0,n(input.residualOutsideAssortment)),
+   availabilityRate:nullable(input.availabilityRate)==null?null:round2(input.availabilityRate),
    identifiedSales:nullable(input.loyalty?.identifiedSales)==null?null:round2(input.loyalty.identifiedSales),
    identifiedSalesShare:nullable(input.loyalty?.identifiedSalesShare)==null?null:round2(input.loyalty.identifiedSalesShare),
    identifiedTickets:nullable(input.loyalty?.identifiedTickets),
    nonLoyaltyTickets:nullable(input.loyalty?.nonLoyaltyTickets),
    identifiedTicketRate:nullable(input.loyalty?.identifiedTicketRate)==null?null:round2(input.loyalty.identifiedTicketRate),
+   identifiedAverageBasket:nullable(input.loyalty?.identifiedTickets)>0?round2(n(input.loyalty?.identifiedSales)/n(input.loyalty?.identifiedTickets)):null,
+   nonLoyaltySales:nullable(input.loyalty?.identifiedSales)==null?null:round2(netSales-n(input.loyalty?.identifiedSales)),
+   nonLoyaltyAverageBasket:nullable(input.loyalty?.nonLoyaltyTickets)>0?round2((netSales-n(input.loyalty?.identifiedSales))/n(input.loyalty?.nonLoyaltyTickets)):null,
+   basketUpliftIdentified:nullable(input.loyalty?.identifiedTickets)>0&&nullable(input.loyalty?.nonLoyaltyTickets)>0&&((netSales-n(input.loyalty?.identifiedSales))/n(input.loyalty?.nonLoyaltyTickets))?round2(((n(input.loyalty?.identifiedSales)/n(input.loyalty?.identifiedTickets))/((netSales-n(input.loyalty?.identifiedSales))/n(input.loyalty?.nonLoyaltyTickets))-1)*100):null,
    recruitments:nullable(input.loyalty?.recruitments),
    recruitmentRateNonLoyalty:nullable(input.loyalty?.recruitmentRateNonLoyalty)==null?null:round2(input.loyalty.recruitmentRateNonLoyalty)
   },
@@ -52,9 +62,9 @@ export function normalizeRetailInsights(input={}){
 export function quickPulse(snapshot={}){
  const k=snapshot.kpis||{},cards=[
   {key:'sales',label:'Ventes',value:k.netSales??0,unit:'money',priority:1},
-  {key:'margin',label:'Marge',value:k.marginRate,unit:'percent',priority:2},
-  {key:'tickets',label:'Tickets',value:k.tickets??0,unit:'number',priority:3},
-  {key:'basket',label:'Panier moyen',value:k.averageBasket,unit:'money',priority:4}
+  {key:'tickets',label:'Tickets',value:k.tickets??0,unit:'number',priority:2},
+  {key:'basket',label:'Panier moyen',value:k.averageBasket,unit:'money',priority:3},
+  {key:'identified',label:'CA encarté',value:k.identifiedSalesShare,unit:'percent',priority:4}
  ];
  if(k.target!=null)cards.push({key:'target',label:'Objectif',value:k.achievementRate,unit:'percent',priority:5});
  if(k.outOfStockCount>0)cards.push({key:'oos',label:'Ruptures',value:k.outOfStockCount,unit:'number',priority:0,tone:'danger'});
