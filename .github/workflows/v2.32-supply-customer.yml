@@ -1,0 +1,45 @@
+name: V2.32 StoreOps Supply Customer
+
+on:
+  push:
+    branches: [main, storeops-v2.32-supply-customer]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  supply-customer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/warehouse-control.mjs
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/warehouse-control.js
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/pages/commercial.js
+          node --check frontend/js/pages/manager-performance.js
+          node --check frontend/js/pages/network.js
+          node --check frontend/js/store-health.js
+      - name: V2.32 contract
+        run: node backend/tests/v232-supply-customer-ops.mjs
+      - name: Replenishment regression
+        run: node backend/tests/manager-replenishment-assistant.mjs
+      - name: Business Pulse aggregation
+        run: node backend/tests/business-pulse.mjs
+      - name: Store score
+        run: node backend/tests/store-health.mjs
+      - name: Stock signals
+        run: node backend/tests/stock-signals.mjs
+      - name: Sales 30d stockouts
+        run: node backend/tests/v221-sales30-stockouts.mjs
+      - name: Development process
+        run: node backend/tests/v186-development-guided-journey.mjs
