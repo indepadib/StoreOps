@@ -42,7 +42,8 @@ const {getStockSignals}=await import('../services/stock-signals.mjs');
 
 const result=await getStockSignals('val-fleuri',{businessDate:'2026-09-21',force:true});
 assert.equal(result.summary.ruptureReady,true);
-assert.equal(result.summary.ruptureMethod,'SALES_30D_ZERO_STOCK');
+assert.equal(result.summary.ruptureMethod,'SALES_30D_ZERO_OR_LOW_COVERAGE');
+assert.ok(Number(result.summary.lowCoverageDays)>0);
 assert.equal(result.summary.salesWindowDays,30);
 assert.equal(result.summary.salesWindowProducts,4);
 assert.equal(result.summary.outOfStock,2);
