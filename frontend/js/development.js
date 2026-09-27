@@ -93,11 +93,19 @@ function nextStage(stage){const arr=(config?.stages||[]).map(x=>x.code);const i=
 function stageIndex(stage){return (config?.stages||[]).findIndex(x=>x.code===stage)}
 function riskTone(p){return p?.risk?.severity==='danger'?'danger':p?.risk?.severity==='warn'?'warn':p?.risk?.severity==='ok'?'ok':'neutral'}
 function decisionTone(v){return v==='GO'?'ok':v==='NO_GO'?'danger':v==='HOLD'?'warn':'neutral'}
+function formatTone(p){return p?.formatCompliance?.status==='COMPLIANT'?'ok':p?.formatCompliance?.status==='OUT_OF_RANGE'?'danger':'warn'}
+function handoverTone(p){return p?.handover?.status==='COMPLETE'?'ok':p?.handover?.status==='LATE'?'danger':p?.handover?.status==='DUE_SOON'?'warn':'neutral'}
+function handoverLabel(p){const h=p?.handover||{};return h.status==='COMPLETE'?'Passation terminée':h.status==='LATE'?'Passation en retard':h.status==='DUE_SOON'?'Passation à anticiper':h.dueDate?`Passation cible ${date(h.dueDate)}`:'Échéance passation à définir'}
+function governanceAlert(p){
+ const current=STAGE_OWNER[p.stage]||'Expansion & Développement',format=p.formatCompliance||{},handover=p.handover||{};
+ const noCommit=['CRITERIA','SOURCING','QUALIFICATION','NEGOTIATION','COMMITTEE','BUSINESS_PLAN','LEGAL_TECHNICAL'].includes(p.stage);
+ return `<div class="dev-governance-card"><div class="dev-governance-head"><div><span class="label">PILOTE DE L’ÉTAPE</span><strong>${esc(current)}</strong></div>${status(format.label||'Format à contrôler',formatTone(p))}</div><div class="dev-governance-grid"><div><span>Format / implantation</span><strong>${esc(format.label||'—')}</strong><small>${esc((format.rules||[]).join(' · '))}</small></div><div><span>Passation Exploitation</span><strong>${esc(handoverLabel(p))}</strong><small>${handover.dueDate?'Échéance '+date(handover.dueDate):'Date calculée à partir de l’ouverture cible'}</small></div><div><span>Conflit d’intérêt</span><strong>${p.conflict_of_interest?'Déclaré · mitigation requise':'Aucun déclaré'}</strong><small>${esc(p.conflict_details||'Traçabilité du registre unique')}</small></div><div><span>Titre de propriété</span><strong>${esc(p.title_deed_status||'PENDING')}</strong><small>Validation juridique distincte de la prélecture Expansion</small></div></div>${noCommit?'<div class="dev-no-commit"><strong>Aucun engagement avant validation finale.</strong><span>Pas de dépôt, avance, pas-de-porte, engagement écrit/verbal ou signature engageante.</span></div>':''}${p.committee_opinion==='RESERVATIONS'?'<div class="dev-reservation-alert"><strong>Comité : avis avec réserves</strong><span>'+esc(p.committee_reservations||'Les réserves doivent être levées formellement avant poursuite.')+'</span></div>':''}</div>`
+}
 function summary(){
   const active=projects.filter(p=>p.status==='ACTIVE');
   const blocked=projects.filter(p=>['BLOCKED','ACTION_LATE','OPENING_LATE'].includes(p.risk?.code));
   const soon=projects.filter(p=>p.daysToOpening!==null&&p.daysToOpening>=0&&p.daysToOpening<=90&&p.stage!=='CLOSING_HANDOVER');
-  return{active:active.length,sourcing:active.filter(p=>['CRITERIA','SOURCING','QUALIFICATION'].includes(p.stage)).length,committee:active.filter(p=>p.stage==='COMMITTEE').length,bp:active.filter(p=>p.stage==='BUSINESS_PLAN').length,blocked:blocked.length,soon:soon.length};
+  return{active:active.length,sourcing:active.filter(p=>['CRITERIA','SOURCING','QUALIFICATION'].includes(p.stage)).length,committee:active.filter(p=>p.stage==='COMMITTEE').length,bp:active.filter(p=>p.stage==='BUSINESS_PLAN').length,blocked:blocked.length,reservations:active.filter(p=>p.committee_opinion==='RESERVATIONS'||p.legal_status==='BLOCKED'||p.technical_status==='BLOCKED').length,handoverRisk:active.filter(p=>['LATE','DUE_SOON'].includes(p.handover?.status)).length,soon:soon.length};
 }
 function openDevelopment(){
   if(!allowed)return;
@@ -125,6 +133,8 @@ function projectCard(p){
       <div><span>Prochaine action</span><strong>${esc(p.next_action||'À définir')}</strong><small>${p.next_action_due_date?date(p.next_action_due_date):''}</small></div>
       <div><span>Gouvernance</span><strong>${p.stage==='BUSINESS_PLAN'?'BP & validations':p.stage==='LEGAL_TECHNICAL'?'Juridique / Technique':p.stage==='FINAL_DECISION'?'DG & signature':p.stage==='CLOSING_HANDOVER'?'Passation':money(p.capex_budget)}</strong></div>
     </div>
+    ${p.formatCompliance?.status==='OUT_OF_RANGE'?`<div class="dev-blocker">⚠ ${esc(p.formatCompliance.label)}</div>`:''}
+    ${['LATE','DUE_SOON'].includes(p.handover?.status)?`<div class="dev-handover-alert ${p.handover.status==='LATE'?'late':''}">Passation · ${esc(handoverLabel(p))}</div>`:''}
     ${p.blocker?`<div class="dev-blocker">⚠ ${esc(p.blocker)}</div>`:''}
     <div class="dev-progress"><span style="width:${Number(p.progress||0)}%"></span></div>
   </button>`;
@@ -133,7 +143,7 @@ function renderBoard(){
   const s=summary(),rows=filtered();
   return `<div class="dev-shell">
     <div class="dev-hero"><div><div class="label">DÉVELOPPEMENT & EXPANSION</div><h2>Du sourcing au bail signé, puis à la passation.</h2><p>Le parcours suit la procédure interne : qualification, négociation non engageante, Comité Expansion, Business Plan, sécurisation juridique et technique, décision DG, signature puis closing.</p></div><button class="btn brand" id="devNew">+ Nouvelle opportunité</button></div>
-    <div class="dev-kpis dev-kpis-5"><div class="dev-kpi"><span>Dossiers actifs</span><strong>${s.active}</strong></div><div class="dev-kpi"><span>Amont / qualification</span><strong>${s.sourcing}</strong></div><div class="dev-kpi"><span>Au Comité</span><strong>${s.committee}</strong></div><div class="dev-kpi"><span>BP en cours</span><strong>${s.bp}</strong></div><div class="dev-kpi"><span>À surveiller</span><strong>${s.blocked}</strong></div></div>
+    <div class="dev-kpis dev-kpis-5"><div class="dev-kpi"><span>Dossiers actifs</span><strong>${s.active}</strong></div><div class="dev-kpi"><span>Amont / qualification</span><strong>${s.sourcing}</strong></div><div class="dev-kpi"><span>Au Comité</span><strong>${s.committee}</strong></div><div class="dev-kpi"><span>Réserves / blocages</span><strong>${s.reservations+s.blocked}</strong></div><div class="dev-kpi"><span>Passations à risque</span><strong>${s.handoverRisk}</strong></div></div>
     <div class="dev-stage-strip"><button class="dev-stage-chip ${filter==='ALL'?'active':''}" data-dev-filter="ALL">Tous · ${projects.length}</button><button class="dev-stage-chip ${filter==='ATTENTION'?'active':''}" data-dev-filter="ATTENTION">À surveiller · ${s.blocked}</button>${(config?.stages||[]).map(x=>`<button class="dev-stage-chip ${filter===x.code?'active':''}" data-dev-filter="${esc(x.code)}">${esc(x.label)} · ${projects.filter(p=>p.stage===x.code).length}</button>`).join('')}</div>
     ${rows.length?`<div class="dev-board">${rows.map(projectCard).join('')}</div>`:'<div class="dev-empty"><strong>Aucun projet dans ce périmètre.</strong><div>Créez une première opportunité pour démarrer le pipeline.</div></div>'}
   </div>`;
@@ -221,6 +231,7 @@ function renderDetail(p){
   return `<div class="dev-shell">
     <div class="dev-detail-head"><div><button class="btn ghost" id="devBack">← Projets</button><div class="label" style="margin-top:14px">PARCOURS DÉVELOPPEMENT · ${esc(PRIORITY_LABELS[p.priority]||p.priority)}</div><h2>${esc(p.name)}</h2><p class="muted">${esc([p.city,p.address].filter(Boolean).join(' · '))}</p><div class="dev-inline-status">${status(DECISION_LABELS[p.decision]||p.decision,decisionTone(p.decision))}${status(p.risk?.label||'Sous contrôle',riskTone(p))}</div></div><div class="dev-actions"><button class="btn ghost" id="devEdit">Modifier la fiche</button></div></div>
     ${journeyRail(p)}
+    ${governanceAlert(p)}
     <div class="dev-journey-layout">
       <section class="dev-journey-main">
         <div class="dev-journey-stage-head"><div><div class="label">ÉTAPE ACTUELLE</div><h3>${esc(STAGE_LABELS[p.stage]||p.stage)}</h3><p>${esc(STAGE_INTENT[p.stage]||'')}</p></div><div class="dev-stage-counter"><strong>${progress.done}/${progress.total}</strong><span>jalons validés</span></div></div>
@@ -230,7 +241,7 @@ function renderDetail(p){
       </section>
       <aside class="dev-journey-side">
         <div class="dev-card dev-next-card"><div class="label">PROCHAINE ACTION</div><h3>${esc(p.next_action||nextPendingMilestone(p)?.label||'À définir')}</h3><small>${p.next_action_due_date?`Échéance ${date(p.next_action_due_date)}`:'Aucune échéance définie'}</small></div>
-        <div class="dev-card"><h3>Repères dossier</h3><div class="dev-facts"><div><span>Enseigne</span><strong>${esc(p.brand||'FRANPRIX')}</strong></div><div><span>Ouverture cible</span><strong>${date(p.target_opening_date)}</strong></div><div><span>Responsable</span><strong>${esc(p.owner_name||'À affecter')}</strong></div><div><span>Surface</span><strong>${p.surface_m2??'—'} m²</strong></div><div><span>Avis Comité</span><strong>${esc(p.committee_opinion||'PENDING')}</strong></div><div><span>BP</span><strong>${esc(p.bp_status||'NOT_STARTED')}</strong></div><div><span>Juridique</span><strong>${esc(p.legal_status||'PENDING')}</strong></div><div><span>Technique</span><strong>${esc(p.technical_status||'PENDING')}</strong></div></div></div>
+        <div class="dev-card"><h3>Repères dossier</h3><div class="dev-facts"><div><span>Enseigne</span><strong>${esc(p.brand||'FRANPRIX')}</strong></div><div><span>Ouverture cible</span><strong>${date(p.target_opening_date)}</strong></div><div><span>Responsable</span><strong>${esc(p.owner_name||'À affecter')}</strong></div><div><span>Surface RDC</span><strong>${p.surface_ground_floor_m2??p.surface_m2??'—'} m²</strong></div><div><span>Avis Comité</span><strong>${esc(p.committee_opinion||'PENDING')}</strong></div><div><span>BP</span><strong>${esc(p.bp_status||'NOT_STARTED')}</strong></div><div><span>Juridique</span><strong>${esc(p.legal_status||'PENDING')}</strong></div><div><span>Technique</span><strong>${esc(p.technical_status||'PENDING')}</strong></div><div><span>Passation cible</span><strong>${date(p.handover?.dueDate)}</strong></div><div><span>Passation effective</span><strong>${date(p.handover_date)}</strong></div></div></div>
         <details class="dev-card dev-details-collapsible"><summary>Voir le détail complet <span>⌄</span></summary><div class="dev-details-body"><h4>Business case</h4><div class="dev-facts"><div><span>Score emplacement</span><strong>${p.site_score??'—'}/100</strong></div><div><span>Score économique</span><strong>${p.economic_score??'—'}/100</strong></div><div><span>CAPEX engagé</span><strong>${money(p.capex_committed)}</strong></div><div><span>CAPEX réel</span><strong>${money(p.capex_actual)}</strong></div></div><h4>Historique</h4><div class="dev-history">${(p.history||[]).length?(p.history||[]).slice(0,12).map(h=>`<div class="dev-history-item"><strong>${esc(h.detail||h.event_type)}</strong><small>${new Date(h.created_at).toLocaleString('fr-FR')} · ${esc(h.user_name||'StoreOps')}</small></div>`).join(''):'<div class="small muted">Aucun historique.</div>'}</div></div></details>
       </aside>
     </div>
