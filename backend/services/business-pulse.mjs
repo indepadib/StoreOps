@@ -2,6 +2,7 @@ import { config } from '../config.mjs';
 import { normalizeRetailInsights,quickPulse } from './retail-insights.mjs';
 import { readStoreSalesDay,salesComparisonDate,salesIntegrationConfig } from './dynamics-sales.mjs';
 import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
+import { readStoreLoyaltyRecruitments } from './dynamics-loyalty.mjs';
 
 const cache=new Map();
 const inflight=new Map();
@@ -19,7 +20,7 @@ async function computeBusinessPulse(storeId,businessDate){
  const comparisonDate=salesComparisonDate(businessDate,7),integration=salesIntegrationConfig(storeId),integrationView={mode:integration.mode,entity:integration.entity,retailId:integration.retailId,retailIdSource:integration.retailIdSource,missing:integration.missing,mappingSource:integration.mappingSource||null,mappingState:integration.mappingState||null};
  const stock=await stockSummary(storeId,businessDate);
  let current,comparison;
- const [currentResult,comparisonResult]=await Promise.allSettled([readStoreSalesDay(storeId,businessDate),readStoreSalesDay(storeId,comparisonDate)]);
+ const [currentResult,comparisonResult,recruitmentResult]=await Promise.allSettled([readStoreSalesDay(storeId,businessDate),readStoreSalesDay(storeId,comparisonDate),readStoreLoyaltyRecruitments(storeId,{businessDate})]);
  if(currentResult.status==='rejected'){
   const error=currentResult.reason,value={status:'DEGRADED',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null,error:{code:error?.code||'D365_SALES_READ_FAILED',message:error?.message||String(error)}};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value
  }
@@ -28,9 +29,10 @@ async function computeBusinessPulse(storeId,businessDate){
  if(current.status!=='READY'){
   const value={status:'UNAVAILABLE',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
  }
- const c=current.data||{},prior=comparison.status==='READY'?comparison.data:null;
- const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount,loyalty:c.loyalty||null,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
- const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,includedRows:c.includedRowCount??c.rowCount??0,pages:c.pages||0,truncated:!!c.truncated,dataQuality:c.dataQuality||null,comparisonRows:prior?.rowCount||0,comparisonDataQuality:prior?.dataQuality||null,comparisonStatus:comparison.status||null,comparisonError:comparison.error||null,changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
+ const c=current.data||{},prior=comparison.status==='READY'?comparison.data:null,recruitment=recruitmentResult.status==='fulfilled'?recruitmentResult.value:{status:'UNAVAILABLE',recruitments:null,error:{code:recruitmentResult.reason?.code||'D365_LOYALTY_READ_FAILED',message:recruitmentResult.reason?.message||String(recruitmentResult.reason||'')}};
+ const baseLoyalty=c.loyalty||{},recruitments=recruitment.status==='READY'?Number(recruitment.recruitments||0):null,recruitmentRateNonLoyalty=recruitments!==null&&Number(baseLoyalty.nonLoyaltyTickets||0)>0?round2((recruitments/Number(baseLoyalty.nonLoyaltyTickets))*100):null,loyalty={...baseLoyalty,recruitments,recruitmentRateNonLoyalty,recruitmentSource:recruitment.status==='READY'?recruitment.source:'UNAVAILABLE'};
+ const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount,loyalty,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
+ const value={status:'READY',storeId,businessDate,comparisonDate,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,includedRows:c.includedRowCount??c.rowCount??0,pages:c.pages||0,truncated:!!c.truncated,dataQuality:c.dataQuality||null,comparisonRows:prior?.rowCount||0,comparisonDataQuality:prior?.dataQuality||null,comparisonStatus:comparison.status||null,comparisonError:comparison.error||null,loyaltyRecruitment:{status:recruitment.status,source:recruitment.source||null,entity:recruitment.entity||null,dateMode:recruitment.dateMode||null,error:recruitment.error||null},changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
  cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
 }
 
