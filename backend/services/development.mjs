@@ -127,6 +127,34 @@ ensureColumn('development_projects','contract_signed_date','TEXT NULL');
 ensureColumn('development_projects','works_start_date','TEXT NULL');
 ensureColumn('development_projects','works_end_date','TEXT NULL');
 ensureColumn('development_projects','opening_date','TEXT NULL');
+ensureColumn('development_projects','brand',"TEXT NOT NULL DEFAULT 'FRANPRIX'");
+ensureColumn('development_projects','conflict_of_interest',"INTEGER NOT NULL DEFAULT 0");
+ensureColumn('development_projects','conflict_details','TEXT NULL');
+ensureColumn('development_projects','committee_opinion',"TEXT NOT NULL DEFAULT 'PENDING'");
+ensureColumn('development_projects','bp_status',"TEXT NOT NULL DEFAULT 'NOT_STARTED'");
+ensureColumn('development_projects','legal_status',"TEXT NOT NULL DEFAULT 'PENDING'");
+ensureColumn('development_projects','technical_status',"TEXT NOT NULL DEFAULT 'PENDING'");
+ensureColumn('development_projects','surface_ground_floor_m2','REAL NULL');
+ensureColumn('development_projects','surface_mezzanine_m2','REAL NULL');
+ensureColumn('development_projects','surface_basement_m2','REAL NULL');
+ensureColumn('development_projects','parking_available','INTEGER NULL');
+ensureColumn('development_projects','geolocation','TEXT NULL');
+ensureColumn('development_projects','monthly_charges','REAL NULL');
+ensureColumn('development_projects','lease_duration_months','REAL NULL');
+ensureColumn('development_projects','rent_free_months','REAL NULL');
+ensureColumn('development_projects','title_deed_status',"TEXT NOT NULL DEFAULT 'PENDING'");
+ensureColumn('development_projects','committee_reservations','TEXT NULL');
+ensureColumn('development_projects','legal_reservations','TEXT NULL');
+ensureColumn('development_projects','technical_reservations','TEXT NULL');
+ensureColumn('development_projects','handover_date','TEXT NULL');
+
+db.prepare(`UPDATE development_projects SET stage=CASE stage
+ WHEN 'CONTRACT' THEN 'FINAL_DECISION'
+ WHEN 'WORKS' THEN 'CLOSING_HANDOVER'
+ WHEN 'PREOPENING' THEN 'CLOSING_HANDOVER'
+ WHEN 'OPEN' THEN 'CLOSING_HANDOVER'
+ ELSE stage END
+ WHERE stage IN ('CONTRACT','WORKS','PREOPENING','OPEN')`).run();
 
 function projectRow(id){return db.prepare(`SELECT p.*,u.name owner_name FROM development_projects p LEFT JOIN users u ON u.id=p.owner_user_id WHERE p.id=?`).get(id)}
 function log(projectId,user,eventType,stage,detail){db.prepare(`INSERT INTO development_history(id,project_id,event_type,stage,detail,user_id) VALUES(?,?,?,?,?,?)`).run(uid('devhist'),projectId,eventType,stage||null,clean(detail)||null,user?.id||null)}
