@@ -107,7 +107,7 @@ async function smoke(){
   const mapping=await api('/api/admin/integrations/d365-sales-mapping/smoke',{method:'POST',body:{storeId:selectedStore(),mapping:formPayload()}});
   readiness={...(readiness||{}),savedSalesMapping:mapping};const s=mapping.smoke||{};
   if(last)renderResult(last);else await refreshMappingUi(mapping);
-  const box=document.getElementById('salesMapSmokeResult');if(box)box.innerHTML=`<div class="banner ${s.status==='PASSED'?'ban-ok':'ban-danger'}"><strong>Smoke ${esc(s.status||'—')}</strong><span>${Number(s.rowCount||0)} ligne(s) · ${Number(s.uniqueTickets||0)} ticket(s) · canal ${esc(s.retailChannelId||'—')} · coût ${s.transactionMargin?.status==='CANDIDATE'?`candidat transactionnel · couverture ${s.transactionMargin.rowCoverage??'—'}%`:'non validé'}.</span></div>`;
+  const box=document.getElementById('salesMapSmokeResult');if(box)box.innerHTML=`<div class="banner ${s.status==='PASSED'?'ban-ok':'ban-danger'}"><strong>Smoke ${esc(s.status||'—')}</strong><span>${Number(s.rowCount||0)} ligne(s) · ${Number(s.uniqueTickets||0)} ticket(s) · canal ${esc(s.retailChannelId||'—')} · coût ${s.transactionMargin?.status==='CANDIDATE'?`candidat transactionnel · couverture ${s.transactionMargin.lineCoverage??'—'}% · ${s.transactionMargin.weightedConversions??0} conversion(s) d’unité · ${s.transactionMargin.completeTransactions??0} ticket(s) complet(s)`:'non validé'}.</span></div>`;
   toast(s.status==='PASSED'?'Mapping ventes validé.':'Le mapping ventes doit être corrigé.')
  }catch(e){if(target)target.innerHTML=`<div class="banner ban-danger"><strong>Smoke impossible</strong><span>${esc(e.message)}</span></div>`;toast(e.message)}
 }
