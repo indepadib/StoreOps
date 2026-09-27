@@ -15,16 +15,19 @@ assert(Array.isArray(config.body.stores));
 const vfConfig=config.body.stores.find(x=>x.storeId==='val-fleuri');
 assert(vfConfig,'Val Fleuri stock configuration must be exposed');
 assert.equal(vfConfig.warehouseId,'FRP0001');
-assert.equal(vfConfig.supplyWarehouseId,null);
+assert.equal(vfConfig.supplyWarehouseId,'LVE Lakhya');
+assert.equal(vfConfig.supplyWarehouseSource,'NETWORK_DEFAULT');
 assert(['PILOT_FALLBACK','STOREOPS_CONFIG','ENV_CONFIG'].includes(vfConfig.settingsSource));
 const trConfig=config.body.stores.find(x=>x.storeId==='trefle');
 assert(trConfig,'Trèfle stock configuration must be exposed');
 assert.equal(trConfig.warehouseId,'FRP0002');
-assert.equal(trConfig.supplyWarehouseId,null);
+assert.equal(trConfig.supplyWarehouseId,'LVE Lakhya');
+assert.equal(trConfig.supplyWarehouseSource,'NETWORK_DEFAULT');
 assert(['PILOT_FALLBACK','CONFIRMED_PILOT','STOREOPS_CONFIG','ENV_CONFIG'].includes(trConfig.settingsSource));
 for(const row of config.body.stores.filter(x=>!['val-fleuri','trefle'].includes(x.storeId))){
   assert.equal(row.warehouseId,null,`${row.storeId} must remain unmapped until explicitly configured`);
-  assert.equal(row.supplyWarehouseId,null);
+  assert.equal(row.supplyWarehouseId,'LVE Lakhya','network supply warehouse applies even before the store warehouse itself is mapped');
+  assert.equal(row.supplyWarehouseSource,'NETWORK_DEFAULT');
   assert.equal(row.settingsSource,'UNMAPPED');
 }
 assert.equal(config.body.fields.ordered,'OrderedQuantity');
