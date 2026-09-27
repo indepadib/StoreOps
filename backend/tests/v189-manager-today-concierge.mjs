@@ -12,8 +12,10 @@ const html=read('frontend/index.html');
 
 assert.match(home,/BUSINESS PULSE/,'Today must lead with the store pulse before action detail');
 assert.match(home,/function ctaLabel/,'priority CTAs must use plain-language contextual labels');
+assert.match(home,/VENTES À SÉCURISER/,'Today must expose commercial risk as an actionable mission');
+assert.match(home,/function pulseExplanation/,'Today must explain why sales move');
 assert.match(home,/items\.slice\(0,3\)/,'Today must surface at most three immediate priorities');
-assert.match(home,/VOS PRIORITÉS/,'three-priority decision zone missing');
+assert.match(home,/MISSIONS PRIORITAIRES/,'three-mission decision zone missing');
 assert.match(home,/PARCOURS DE JOURNÉE/,'day progress must remain visible');
 assert.match(home,/Rien d’urgent pour le moment/,'clear no-priority state missing');
 assert(home.indexOf('pulseCompact(pulse,pulseLoading)')<home.indexOf('prioritiesSection(actions,detailsLoading,phase,total)'),'Business Pulse must render before the priority zone');
