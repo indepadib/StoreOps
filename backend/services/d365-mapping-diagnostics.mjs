@@ -15,6 +15,7 @@ const SALES_ROLES={
  product:['itemid','itemnumber','productnumber','product','sku'],
  net:['netamountincltax','netamount','amountincltax','grossamount','salesamount','amount'],
  quantity:['qty','quantity','salesqty'],
+ salesUnit:['salesunit','salesunitsymbol','unitid','unit','unitofmeasure','uom'],
  cost:['costamount','costprice','costvalue','cost','cogs'],
  time:['time','transactiontime','createddatetime','datetime'],
  productName:['productname','itemname','name','description'],
