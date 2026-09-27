@@ -13,7 +13,8 @@ const modules=[
   './manager-handover.js',
   './manager-control-focus.js',
   './manager-receiving-focus.js',
-  './manager-replenishment-v2.js'
+  './manager-replenishment-v2.js',
+  './warehouse-control.js'
 ];
 
 const adminEntries={
@@ -51,7 +52,7 @@ function installDirectorExperience(){
   document.body.classList.add('director-experience');
   const nav=document.getElementById('nav');if(!nav)return;
   nav.classList.add('ux191-network-nav');
-  const allowed=new Set(['today','network','development','adminStudio']);
+  const allowed=new Set(['today','network','warehouseControl','development','adminStudio']);
   nav.querySelectorAll('button[data-page]').forEach(b=>{b.hidden=!allowed.has(b.dataset.page);if(allowed.has(b.dataset.page)&&b.dataset.directorStateBound!=='1'){b.dataset.directorStateBound='1';b.addEventListener('click',clearOperationsActive)}});
   const today=nav.querySelector('[data-page="today"]');setMobileLabel(today,'Aujourd’hui');
   let ops=document.getElementById('storeopsOperationsNav');
