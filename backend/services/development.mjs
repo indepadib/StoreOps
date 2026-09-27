@@ -172,7 +172,18 @@ function stageReadiness(row,milestones,targetStage=null){
  const currentIndex=stageIndex(row.stage),targetIndex=targetStage?stageIndex(targetStage):Math.min(currentIndex+1,STAGES.length-1);
  const required=milestones.filter(m=>{const def=milestoneDefinition(m.code);return def?.required&&stageIndex(m.stage)<targetIndex});
  const incomplete=required.filter(m=>m.status!=='DONE').map(m=>({code:m.code,label:m.label,stage:m.stage,status:m.status,dueDate:m.due_date||null}));
- if(targetIndex>stageIndex('COMMITTEE')&&row.decision==='NO_GO')incomplete.unshift({code:'PROJECT_DECISION_NO_GO',label:'Le dossier est en NO GO',stage:'COMMITTEE',status:'NO_GO',dueDate:null});
+ const done=code=>milestones.some(m=>m.code===code&&m.status==='DONE');
+ if(targetIndex>stageIndex('SOURCING')&&Number(row.conflict_of_interest||0)===1&&!clean(row.conflict_details))incomplete.unshift({code:'CONFLICT_MITIGATION_REQUIRED',label:'Lien d’intérêt : analyse / mitigation obligatoire avant poursuite',stage:'SOURCING',status:'BLOCKED',dueDate:null});
+ if(targetIndex>stageIndex('COMMITTEE')){
+  if(row.decision==='NO_GO')incomplete.unshift({code:'PROJECT_DECISION_NO_GO',label:'Le dossier est en NO GO',stage:'COMMITTEE',status:'NO_GO',dueDate:null});
+  if(!['FAVORABLE','RESERVATIONS'].includes(String(row.committee_opinion||'PENDING')))incomplete.unshift({code:'COMMITTEE_FAVORABLE_REQUIRED',label:'Avis favorable du Comité Expansion requis',stage:'COMMITTEE',status:row.committee_opinion||'PENDING',dueDate:null});
+  if(row.committee_opinion==='RESERVATIONS'&&!done('COMMITTEE_RESERVATIONS_CLEARED'))incomplete.unshift({code:'COMMITTEE_RESERVATIONS_OPEN',label:'Réserves Comité à lever formellement',stage:'COMMITTEE',status:'RESERVATIONS',dueDate:null});
+ }
+ if(targetIndex>stageIndex('BUSINESS_PLAN')&&row.bp_status!=='DG_APPROVED')incomplete.unshift({code:'BP_DG_STATUS_REQUIRED',label:'BP approuvé par la Direction Générale requis',stage:'BUSINESS_PLAN',status:row.bp_status||'NOT_STARTED',dueDate:null});
+ if(targetIndex>stageIndex('LEGAL_TECHNICAL')){
+  if(row.legal_status!=='APPROVED')incomplete.unshift({code:'LEGAL_APPROVAL_REQUIRED',label:'Validation Juridique requise',stage:'LEGAL_TECHNICAL',status:row.legal_status||'PENDING',dueDate:null});
+  if(row.technical_status!=='APPROVED')incomplete.unshift({code:'TECHNICAL_APPROVAL_REQUIRED',label:'Validation Technique requise',stage:'LEGAL_TECHNICAL',status:row.technical_status||'PENDING',dueDate:null});
+ }
  if(targetIndex>stageIndex('FINAL_DECISION')&&row.decision!=='GO')incomplete.unshift({code:'PROJECT_GO_DECISION',label:'Décision projet = GO avant closing',stage:'FINAL_DECISION',status:row.decision||'PENDING',dueDate:null});
  return{ready:incomplete.length===0,targetStage:STAGES[targetIndex]||null,incomplete,count:incomplete.length}
 }
