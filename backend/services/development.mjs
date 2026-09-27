@@ -188,6 +188,17 @@ function stageReadiness(row,milestones,targetStage=null){
  return{ready:incomplete.length===0,targetStage:STAGES[targetIndex]||null,incomplete,count:incomplete.length}
 }
 function dateDiffDays(date){if(!date)return null;const ms=new Date(`${date}T12:00:00Z`).getTime()-Date.now();return Number.isFinite(ms)?Math.ceil(ms/86400000):null}
+function subtractDays(date,days){if(!date||!Number.isFinite(Number(days)))return null;const d=new Date(`${date}T12:00:00Z`);d.setUTCDate(d.getUTCDate()-Number(days));return d.toISOString().slice(0,10)}
+function formatCompliance(row){
+ const brand=String(row.brand||'FRANPRIX').toUpperCase(),ground=row.surface_ground_floor_m2??row.surface_m2,total=row.surface_m2??([row.surface_ground_floor_m2,row.surface_mezzanine_m2,row.surface_basement_m2].filter(x=>x!=null).reduce((a,b)=>a+Number(b),0)||null);
+ if(brand==='FRANPRIX'){if(ground==null)return{status:'UNKNOWN',label:'Surface RDC à renseigner',rules:['RDC 350–550 m²']};const ok=Number(ground)>=350&&Number(ground)<=550;return{status:ok?'COMPLIANT':'OUT_OF_RANGE',label:ok?'Format Franprix conforme':'Surface RDC hors cible Franprix',rules:['RDC 350–550 m²'],groundFloorM2:Number(ground)}}
+ if(brand==='MONOPRIX'){const surfaceOk=total!=null&&Number(total)>=1800&&Number(total)<=3000,parkingKnown=row.parking_available!==null&&row.parking_available!==undefined,parkingOk=Number(row.parking_available)===1;if(total==null||!parkingKnown)return{status:'UNKNOWN',label:'Surface / parking Monoprix à compléter',rules:['1 800–3 000 m²','Parking obligatoire']};return{status:surfaceOk&&parkingOk?'COMPLIANT':'OUT_OF_RANGE',label:surfaceOk&&parkingOk?'Format Monoprix conforme':'Critère Monoprix non respecté',rules:['1 800–3 000 m²','Parking obligatoire'],totalM2:Number(total),parking:parkingOk}}
+ return{status:'NOT_CONFIGURED',label:'Critères enseigne à définir par le Management',rules:[]}
+}
+function handoverView(row,milestones){
+ const brand=String(row.brand||'').toUpperCase(),leadDays=brand==='MONOPRIX'?70:brand==='FRANPRIX'?42:null,dueDate=leadDays?subtractDays(row.target_opening_date,leadDays):null,done=milestones.some(m=>m.code==='HANDOVER_PACK_COMPLETE'&&m.status==='DONE'),days=dateDiffDays(dueDate);
+ return{leadDays,dueDate,daysRemaining:days,status:done?'COMPLETE':days===null?'UNKNOWN':days<0?'LATE':days<=14?'DUE_SOON':'ON_TRACK'}
+}
 function riskView(row){
  if(row.status==='CANCELLED')return{code:'CANCELLED',label:'Annulé',severity:'neutral'};
  if(row.blocker)return{code:'BLOCKED',label:'Bloqué',severity:'danger'};
@@ -200,7 +211,7 @@ function riskView(row){
 function hydrate(row){
  if(!row)return null;seedMilestones(row.id);
  const milestones=db.prepare(`SELECT * FROM development_milestones WHERE project_id=? ORDER BY CASE stage ${STAGES.map((s,i)=>`WHEN '${s}' THEN ${i}`).join(' ')} ELSE 99 END,code`).all(row.id).filter(m=>milestoneDefinition(m.code)),history=db.prepare(`SELECT h.*,u.name user_name FROM development_history h LEFT JOIN users u ON u.id=h.user_id WHERE h.project_id=? ORDER BY h.created_at DESC LIMIT 100`).all(row.id),done=milestones.filter(x=>x.status==='DONE').length,readiness=stageReadiness(row,milestones),capexVariance=row.capex_budget===null||row.capex_actual===null?null:Number(row.capex_actual)-Number(row.capex_budget);
- return{...row,progress:milestones.length?Math.round(done*100/milestones.length):0,milestones,history,stageReadiness:readiness,risk:riskView(row),daysToOpening:dateDiffDays(row.target_opening_date),capexVariance}
+ const format=formatCompliance(row),handover=handoverView(row,milestones);return{...row,parking_available:row.parking_available==null?null:!!row.parking_available,progress:milestones.length?Math.round(done*100/milestones.length):0,milestones,history,stageReadiness:readiness,risk:riskView(row),daysToOpening:dateDiffDays(row.target_opening_date),capexVariance,formatCompliance:format,handover}
 }
 
 export function developmentConfig(){return{stages:STAGES.map(code=>({code,label:STAGE_LABELS[code]})),statuses:PROJECT_STATUSES,decisions:DECISIONS,priorities:PRIORITIES,milestones:MILESTONES}}
