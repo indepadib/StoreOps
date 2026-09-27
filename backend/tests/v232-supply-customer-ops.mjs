@@ -12,6 +12,8 @@ const pulse=read('frontend/js/pages/manager-performance.js');
 const sales=read('backend/services/dynamics-sales.mjs');
 const network=read('frontend/js/pages/network.js');
 const entry=read('frontend/js/enhancements-entry.js');
+const loyalty=read('backend/services/dynamics-loyalty.mjs');
+const permissions=read('backend/services/permissions.mjs');
 
 assert.match(repl,/function signalKey\(r\)/);
 assert.match(repl,/data-repl2-key/);
@@ -40,5 +42,9 @@ assert.match(pulse,/Poids CA encarté/);
 assert.match(pulse,/Recrutement \/ non fidélité/);
 assert.match(network,/calculateCustomerWeightedScore/);
 assert.match(network,/Customer & fidélité jusqu’à 25%/);
+assert.match(loyalty,/LoyaltyEnrollmentDate/);
+assert.match(loyalty,/OmOperatingUnitNumber/);
+assert.match(permissions,/canAccessWarehouse/);
+assert.match(permissions,/supply_chain/);
 
 console.log('V2.32 StoreOps supply, warehouse and customer operating system contract OK');
