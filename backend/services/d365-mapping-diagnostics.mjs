@@ -83,7 +83,7 @@ export async function discoverD365SalesMapping(storeId='val-fleuri'){
   const missing=['channel','businessDate','transaction','net'].filter(role=>!fields[role]);
   attempts.push({entity,ok:probe.ok,rowCount:probe.rowCount,latencyMs:probe.latencyMs,error:probe.error||null,code:probe.code||null,missing,fields});
   if(!probe.ok||!probe.rows.length||missing.length)continue;
-  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},attempts,recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:!!fields.cost&&!!fields.net},missing:[]};
+  return{status:'READY',checkedAt:new Date().toISOString(),...ready,probe:{entity:probe.entity,rowCount:probe.rowCount,latencyMs:probe.latencyMs},attempts,recommendation:{salesEntity:entity,fields,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1,costDetected:!!fields.cost,marginReady:false,marginCandidate:!!fields.cost&&!!fields.net},missing:[]};
  }
  return{status:'NO_ENTITY_RESPONDED',checkedAt:new Date().toISOString(),...ready,recommendation:null,attempts,message:'Aucune entité ventes exploitable n’a été détectée automatiquement.'}
 }
@@ -123,7 +123,7 @@ export async function diagnoseD365Mappings(storeId='val-fleuri'){
   status:salesResults.some(x=>x.ok)||priceResults.some(x=>x.ok)?'READY':'NO_ENTITY_RESPONDED',
   checkedAt:new Date().toISOString(),...ready,
   domains:{sales:salesResults,price:priceResults},
-  recommendation:{salesEntity:bestSales?.ok?bestSales.entity:null,fields:recommended,costDetected,marginReady:costDetected&&!!recommended.net,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1},
+  recommendation:{salesEntity:bestSales?.ok?bestSales.entity:null,fields:recommended,costDetected,marginReady:false,marginCandidate:costDetected&&!!recommended.net,dateFilterMode:'datetime',salesSign:-1,quantitySign:1,costSign:-1},
   safeguards:{writes:false,configurationChanged:false,unknownCostBecomesZero:false}
  }
 }
