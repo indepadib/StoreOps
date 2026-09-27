@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {calculateStoreHealth} from '../../frontend/js/store-health.js';
+import {calculateStoreHealth,calculateCustomerWeightedScore} from '../../frontend/js/store-health.js';
 
 const base={dashboard:{day:{opening_status:'OPENED',closing_status:'NOT_STARTED'},incidents:0,criticalIncidents:0,overdueIncidents:0,escalatedIncidents:0,dlc:{expired:0,critical:0,pendingActions:0},commercial:{blocking:0,mismatch:0,pending:0},inventory:{pendingRecounts:0,varianceLines:0},opening:{blockers:0},cash:{pending:0,recounts:0}},staff:{},cold:{},cashOpen:{},receipts:{},quality:{},maintenance:{},loss:{}};
 let h=calculateStoreHealth(base);assert.equal(h.score,100);assert.equal(h.state,'EXCELLENT');assert.equal(h.penalties.length,0);
@@ -11,4 +11,6 @@ h=calculateStoreHealth({...base,dashboard:{...base.dashboard,day:{opening_status
 h=calculateStoreHealth({...base,dashboard:{...base.dashboard,day:{opening_status:'OPENED',closing_status:'NOT_STARTED'},cash:{pending:4,recounts:2}}});assert.equal(h.penalties.some(x=>x.key==='CASH_CLOSING'),false);
 h=calculateStoreHealth({...base,dashboard:{...base.dashboard,day:{opening_status:'OPENED',closing_status:'IN_PROGRESS'},cash:{pending:4,recounts:2}}});assert.equal(h.penalties.find(x=>x.key==='CASH_CLOSING')?.points,10);
 h=calculateStoreHealth({dashboard:{day:{opening_status:'NOT_STARTED',closing_status:'IN_PROGRESS'},incidents:99,criticalIncidents:99,overdueIncidents:99,escalatedIncidents:99,dlc:{expired:99,critical:99,pendingActions:99},commercial:{blocking:99,mismatch:99,pending:99},inventory:{pendingRecounts:99,varianceLines:99},opening:{blockers:99},cash:{pending:99,recounts:99}},staff:{blocking:99},cold:{blocking:99,mismatch:99},cashOpen:{blocking:99,mismatch:99},receipts:{overdue:99,pendingLines:99,dueToday:99},quality:{nonConform:99,temperatureNok:99,rejected:99},maintenance:{openCount:99,critical:99,blocking:99,overdue:99},loss:{blocking:99}});assert.equal(h.score,0);assert.ok(h.penalties.every(x=>x.points>=0));
-console.log('StoreOps V1.31 Store Health V2 tests passed');
+let cs=calculateCustomerWeightedScore({operationalScore:80,identifiedSalesShare:50,recruitmentRateNonLoyalty:10});assert.equal(cs.appliedCustomerWeight,.25);assert.equal(cs.customerScore,100);assert.equal(cs.score,85);assert.equal(cs.complete,true);
+cs=calculateCustomerWeightedScore({operationalScore:80,identifiedSalesShare:50,recruitmentRateNonLoyalty:null});assert.equal(cs.appliedCustomerWeight,.15);assert.equal(cs.complete,false);assert.equal(cs.score,83);
+console.log('StoreOps V1.31 Store Health V2 + Customer score tests passed');
