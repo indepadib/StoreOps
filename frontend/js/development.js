@@ -24,6 +24,11 @@ const STAGE_INTENT={
   FINAL_DECISION:'Obtenir l’autorisation finale d’engagement, signer par le représentant habilité et déclencher QHSE.',
   CLOSING_HANDOVER:'Finaliser le closing immobilier, la remise des clés, la passation aux équipes et l’archivage.'
 };
+const STAGE_OWNER={
+ CRITERIA:'Management + Expansion',SOURCING:'Expansion & Développement',QUALIFICATION:'Expansion & Développement',
+ NEGOTIATION:'Expansion & Développement',COMMITTEE:'Comité Expansion',BUSINESS_PLAN:'Contrôle de Gestion → DAF → DG',
+ LEGAL_TECHNICAL:'Juridique + Technique',FINAL_DECISION:'Direction Générale + Juridique / DAF',CLOSING_HANDOVER:'Expansion → Projet / Travaux / Exploitation'
+};
 const DECISION_LABELS={PENDING:'À décider',GO:'GO',HOLD:'HOLD',NO_GO:'NO GO'};
 const PRIORITY_LABELS={LOW:'Basse',NORMAL:'Normale',HIGH:'Haute',CRITICAL:'Critique'};
 let allowed=false,config=null,projects=[],selectedId=null,mode='board',filter='ALL',detecting=false;
@@ -141,9 +146,17 @@ function formValues(p={}){
     <label><span>Adresse / local</span><input id="devAddress" value="${esc(p.address||'')}" placeholder="Adresse ou repère"></label>
     <label><span>Zone / quartier</span><input id="devZone" value="${esc(p.zone||'')}"></label>
     <label><span>Source du lead</span><input id="devSource" value="${esc(p.source_lead||'')}" placeholder="Agent, propriétaire, réseau..."></label>
-    <label><span>Surface m²</span><input id="devSurface" type="number" min="0" step="0.1" value="${p.surface_m2??''}"></label>
+    <label><span>Surface totale m²</span><input id="devSurface" type="number" min="0" step="0.1" value="${p.surface_m2??''}"></label>
+    <label><span>Surface RDC m²</span><input id="devSurfaceRdc" type="number" min="0" step="0.1" value="${p.surface_ground_floor_m2??''}"></label>
+    <label><span>Mezzanine m²</span><input id="devSurfaceMezz" type="number" min="0" step="0.1" value="${p.surface_mezzanine_m2??''}"></label>
+    <label><span>Cave / sous-sol m²</span><input id="devSurfaceBasement" type="number" min="0" step="0.1" value="${p.surface_basement_m2??''}"></label>
+    <label><span>Géolocalisation précise</span><input id="devGeolocation" value="${esc(p.geolocation||'')}" placeholder="Coordonnées ou lien cartographique"></label>
+    <label><span>Parking disponible ?</span><select id="devParking"><option value="" ${p.parking_available==null?'selected':''}>À confirmer</option><option value="1" ${p.parking_available===true?'selected':''}>Oui</option><option value="0" ${p.parking_available===false?'selected':''}>Non</option></select></label>
     <label><span>Propriétaire / bailleur</span><input id="devLandlord" value="${esc(p.landlord||'')}"></label>
     <label><span>Loyer mensuel DH</span><input id="devRent" type="number" min="0" step="1" value="${p.monthly_rent??''}"></label>
+    <label><span>Charges mensuelles DH</span><input id="devCharges" type="number" min="0" step="1" value="${p.monthly_charges??''}"></label>
+    <label><span>Durée bail (mois)</span><input id="devLeaseDuration" type="number" min="0" step="1" value="${p.lease_duration_months??''}"></label>
+    <label><span>Franchise négociée (mois)</span><input id="devRentFree" type="number" min="0" step="0.5" value="${p.rent_free_months??''}"></label>
     <label><span>Pas-de-porte / droit d’entrée DH</span><input id="devKeyMoney" type="number" min="0" step="1" value="${p.key_money??''}"></label>
     <label><span>Budget travaux / CAPEX DH</span><input id="devCapex" type="number" min="0" step="1" value="${p.capex_budget??''}"></label>
     <label><span>CAPEX engagé DH</span><input id="devCapexCommitted" type="number" min="0" step="1" value="${p.capex_committed??''}"></label>
@@ -151,16 +164,20 @@ function formValues(p={}){
     <label><span>Score emplacement /100</span><input id="devSiteScore" type="number" min="0" max="100" value="${p.site_score??''}"></label>
     <label><span>Score économique /100</span><input id="devEconomicScore" type="number" min="0" max="100" value="${p.economic_score??''}"></label>
     <label><span>Enseigne</span><select id="devBrand"><option value="FRANPRIX" ${(p.brand||'FRANPRIX')==='FRANPRIX'?'selected':''}>Franprix</option><option value="MONOPRIX" ${p.brand==='MONOPRIX'?'selected':''}>Monoprix</option><option value="OTHER" ${p.brand==='OTHER'?'selected':''}>Autre enseigne</option></select></label>
+    <label><span>Statut titre de propriété</span><select id="devTitleStatus"><option value="PENDING" ${(p.title_deed_status||'PENDING')==='PENDING'?'selected':''}>À collecter / vérifier</option><option value="COLLECTED" ${p.title_deed_status==='COLLECTED'?'selected':''}>Collecté · prélecture Expansion</option><option value="LEGAL_APPROVED" ${p.title_deed_status==='LEGAL_APPROVED'?'selected':''}>Validé Juridique</option><option value="ISSUE" ${p.title_deed_status==='ISSUE'?'selected':''}>Doute / anomalie</option></select></label>
     <label><span>Lien d’intérêt déclaré ?</span><select id="devConflict"><option value="0" ${!p.conflict_of_interest?'selected':''}>Non</option><option value="1" ${p.conflict_of_interest?'selected':''}>Oui</option></select></label>
     <label style="grid-column:1/-1"><span>Détail du lien d’intérêt / mitigation</span><input id="devConflictDetails" value="${esc(p.conflict_details||'')}" placeholder="À compléter uniquement si un lien d’intérêt existe"></label>
     <label><span>Avis Comité</span><select id="devCommitteeOpinion"><option value="PENDING" ${(p.committee_opinion||'PENDING')==='PENDING'?'selected':''}>À instruire</option><option value="FAVORABLE" ${p.committee_opinion==='FAVORABLE'?'selected':''}>Favorable</option><option value="RESERVATIONS" ${p.committee_opinion==='RESERVATIONS'?'selected':''}>Avec réserves</option><option value="UNFAVORABLE" ${p.committee_opinion==='UNFAVORABLE'?'selected':''}>Défavorable</option></select></label>
+    <label style="grid-column:1/-1"><span>Réserves Comité / levée</span><input id="devCommitteeReservations" value="${esc(p.committee_reservations||'')}" placeholder="Réserves, responsable de levée, preuve…"></label>
     <label><span>Statut BP</span><select id="devBpStatus"><option value="NOT_STARTED" ${(p.bp_status||'NOT_STARTED')==='NOT_STARTED'?'selected':''}>Non démarré</option><option value="IN_PROGRESS" ${p.bp_status==='IN_PROGRESS'?'selected':''}>En cours</option><option value="CONTROL_APPROVED" ${p.bp_status==='CONTROL_APPROVED'?'selected':''}>Contrôle de Gestion OK</option><option value="DAF_REVIEWED" ${p.bp_status==='DAF_REVIEWED'?'selected':''}>Revu DAF</option><option value="DG_APPROVED" ${p.bp_status==='DG_APPROVED'?'selected':''}>Approuvé DG</option><option value="REJECTED" ${p.bp_status==='REJECTED'?'selected':''}>Rejeté / à renégocier</option></select></label>
     <label><span>Validation Juridique</span><select id="devLegalStatus"><option value="PENDING" ${(p.legal_status||'PENDING')==='PENDING'?'selected':''}>À faire</option><option value="APPROVED" ${p.legal_status==='APPROVED'?'selected':''}>Validé</option><option value="BLOCKED" ${p.legal_status==='BLOCKED'?'selected':''}>Bloquant</option></select></label>
     <label><span>Validation Technique</span><select id="devTechnicalStatus"><option value="PENDING" ${(p.technical_status||'PENDING')==='PENDING'?'selected':''}>À faire</option><option value="APPROVED" ${p.technical_status==='APPROVED'?'selected':''}>Validé</option><option value="BLOCKED" ${p.technical_status==='BLOCKED'?'selected':''}>Bloquant</option></select></label>
+    <label style="grid-column:1/-1"><span>Réserves Juridique</span><input id="devLegalReservations" value="${esc(p.legal_reservations||'')}" placeholder="Servitudes, titre, urbanisme, litige…"></label>
+    <label style="grid-column:1/-1"><span>Réserves Technique</span><input id="devTechnicalReservations" value="${esc(p.technical_reservations||'')}" placeholder="Contraintes du local / travaux nécessaires…"></label>
     <label><span>Décision</span><select id="devDecision">${opt(config?.decisions||['PENDING','GO','HOLD','NO_GO'],p.decision||'PENDING',DECISION_LABELS)}</select></label>
     <label><span>Priorité</span><select id="devPriority">${opt(config?.priorities||['LOW','NORMAL','HIGH','CRITICAL'],p.priority||'NORMAL',PRIORITY_LABELS)}</select></label>
     <label><span>Ouverture cible</span><input id="devTarget" type="date" value="${esc(p.target_opening_date||'')}"></label>
-    <label><span>Avancement travaux %</span><input id="devWorksProgress" type="number" min="0" max="100" value="${p.works_progress??0}"></label>
+    <label><span>Date de passation effective</span><input id="devHandoverDate" type="date" value="${esc(p.handover_date||'')}"></label>
     <label><span>Responsable projet</span><select id="devOwner"><option value="">À affecter</option>${(config?.users||[]).map(u=>`<option value="${esc(u.id)}" ${u.id===p.owner_user_id?'selected':''}>${esc(u.name)}</option>`).join('')}</select></label>
     <label><span>Prochaine action</span><input id="devNextAction" value="${esc(p.next_action||'')}" placeholder="Ex. Obtenir projet de bail"></label>
     <label><span>Échéance prochaine action</span><input id="devNextActionDue" type="date" value="${esc(p.next_action_due_date||'')}"></label>
@@ -174,7 +191,7 @@ function renderCreate(){
 function val(id){return document.getElementById(id)?.value?.trim()||''}
 function num(id){const v=document.getElementById(id)?.value;return v===undefined||v===''?null:Number(v)}
 function payloadFromForm(){
-  return{name:val('devName'),city:val('devCity'),address:val('devAddress'),zone:val('devZone'),sourceLead:val('devSource'),surfaceM2:num('devSurface'),landlord:val('devLandlord'),monthlyRent:num('devRent'),keyMoney:num('devKeyMoney'),capexBudget:num('devCapex'),capexCommitted:num('devCapexCommitted'),capexActual:num('devCapexActual'),siteScore:num('devSiteScore'),economicScore:num('devEconomicScore'),brand:val('devBrand')||'FRANPRIX',conflictOfInterest:val('devConflict')==='1',conflictDetails:val('devConflictDetails'),committeeOpinion:val('devCommitteeOpinion')||'PENDING',bpStatus:val('devBpStatus')||'NOT_STARTED',legalStatus:val('devLegalStatus')||'PENDING',technicalStatus:val('devTechnicalStatus')||'PENDING',decision:val('devDecision')||'PENDING',priority:val('devPriority')||'NORMAL',targetOpeningDate:val('devTarget')||null,worksProgress:num('devWorksProgress')??0,ownerUserId:val('devOwner')||null,nextAction:val('devNextAction'),nextActionDueDate:val('devNextActionDue')||null,blocker:val('devBlocker'),notes:val('devNotes')};
+  return{name:val('devName'),city:val('devCity'),address:val('devAddress'),zone:val('devZone'),sourceLead:val('devSource'),surfaceM2:num('devSurface'),surfaceGroundFloorM2:num('devSurfaceRdc'),surfaceMezzanineM2:num('devSurfaceMezz'),surfaceBasementM2:num('devSurfaceBasement'),geolocation:val('devGeolocation'),parkingAvailable:val('devParking')===''?null:val('devParking')==='1',landlord:val('devLandlord'),monthlyRent:num('devRent'),monthlyCharges:num('devCharges'),leaseDurationMonths:num('devLeaseDuration'),rentFreeMonths:num('devRentFree'),keyMoney:num('devKeyMoney'),capexBudget:num('devCapex'),capexCommitted:num('devCapexCommitted'),capexActual:num('devCapexActual'),siteScore:num('devSiteScore'),economicScore:num('devEconomicScore'),brand:val('devBrand')||'FRANPRIX',titleDeedStatus:val('devTitleStatus')||'PENDING',conflictOfInterest:val('devConflict')==='1',conflictDetails:val('devConflictDetails'),committeeOpinion:val('devCommitteeOpinion')||'PENDING',committeeReservations:val('devCommitteeReservations'),bpStatus:val('devBpStatus')||'NOT_STARTED',legalStatus:val('devLegalStatus')||'PENDING',legalReservations:val('devLegalReservations'),technicalStatus:val('devTechnicalStatus')||'PENDING',technicalReservations:val('devTechnicalReservations'),decision:val('devDecision')||'PENDING',priority:val('devPriority')||'NORMAL',targetOpeningDate:val('devTarget')||null,handoverDate:val('devHandoverDate')||null,ownerUserId:val('devOwner')||null,nextAction:val('devNextAction'),nextActionDueDate:val('devNextActionDue')||null,blocker:val('devBlocker'),notes:val('devNotes')};
 }
 async function fetchDetail(id){return api(`/api/development/projects/${encodeURIComponent(id)}`)}
 function milestoneButton(m,primary=false){
