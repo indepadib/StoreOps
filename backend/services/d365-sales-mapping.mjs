@@ -6,7 +6,7 @@ import { storeOperationalSettings } from './store-settings.mjs';
 const clean=v=>String(v??'').trim();
 const validName=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
 const REQUIRED_FIELDS=['channel','businessDate','transaction','net'];
-const OPTIONAL_FIELDS=['product','quantity','cost','time','productName','department','category'];
+const OPTIONAL_FIELDS=['product','quantity','salesUnit','cost','time','productName','department','category'];
 const ALL_FIELDS=[...REQUIRED_FIELDS,...OPTIONAL_FIELDS];
 const STATES=['DRAFT','VALIDATED','LIVE','DISABLED'];
 
