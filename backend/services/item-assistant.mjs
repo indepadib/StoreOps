@@ -39,6 +39,19 @@ function safeAvailability({storeId,productNumber,availableQty,index,membership})
  if(availableQty===null||availableQty===undefined)return{state:membership.status==='UNKNOWN'?'ASSORTMENT_UNKNOWN':membership.status==='NOT_ASSORTED'?'NOT_ASSORTED':'STOCK_UNKNOWN',membership,operational:false,stockKnown:false};
  return{...classifyAvailability({storeId,productNumber,availableQty,index}),stockKnown:true}
 }
+const lowCoverageDays=()=>Math.max(.5,Math.min(14,Number(process.env.STOREOPS_LOW_COVERAGE_DAYS)||2.5));
+const ghostSilenceDays=()=>Math.max(2,Math.min(14,Number(process.env.STOREOPS_GHOST_SILENCE_DAYS)||3));
+function roundMoney(v){const n=Number(v);return Number.isFinite(n)?Math.round((n+Number.EPSILON)*100)/100:null}
+function operationalInsight({available,velocity,replenishment,price}){
+ const dailyUnits=finiteOrNull(velocity?.dailySales7)??finiteOrNull(velocity?.dailySales28),dailyValue=finiteOrNull(velocity?.dailySalesValue7)??finiteOrNull(velocity?.dailySalesValue28)??(dailyUnits!=null&&finiteOrNull(price)!=null?dailyUnits*Number(price):null),cover=finiteOrNull(replenishment?.metrics?.coverDays),lastSaleDate=velocity?.lastSaleDate||null,lastSaleDaysAgo=finiteOrNull(velocity?.lastSaleDaysAgo);
+ const ghost=available!=null&&available>0&&finiteOrNull(velocity?.dailySales28)>=1&&lastSaleDaysAgo!=null&&lastSaleDaysAgo>=ghostSilenceDays()&&(cover==null||cover>lowCoverageDays());
+ const out=available===0&&dailyUnits!=null&&dailyUnits>0,near=available!=null&&available>0&&cover!=null&&cover<=lowCoverageDays(),risk24h=dailyValue==null?null:roundMoney((out||ghost)?dailyValue:(near&&cover<1?dailyValue*(1-cover):0));
+ if(ghost)return{code:'GHOST_STOCK',tone:'danger',title:'Stock fantôme suspect',detail:`Le système affiche ${available} en stock mais aucune vente depuis ${lastSaleDaysAgo} jour(s). Vérifier rayon, réserve puis compter.`,dailySalesValue:roundMoney(dailyValue),salesRisk24h:risk24h,lastSaleDate,lastSaleDaysAgo};
+ if(out)return{code:'OUT_OF_STOCK',tone:'danger',title:'Vente à sécuriser',detail:'Article vendu récemment mais stock magasin à 0. Traiter le réapprovisionnement immédiatement.',dailySalesValue:roundMoney(dailyValue),salesRisk24h:risk24h,lastSaleDate,lastSaleDaysAgo};
+ if(near)return{code:'NEAR_OUT',tone:'warn',title:'Rupture à prévenir',detail:`Il reste environ ${cover} jour(s) de couverture. Préparer le réapprovisionnement avant la rupture.`,dailySalesValue:roundMoney(dailyValue),salesRisk24h:risk24h,lastSaleDate,lastSaleDaysAgo};
+ return{code:'NORMAL',tone:'ok',title:'Situation article maîtrisée',detail:'Aucune anomalie commerciale majeure détectée avec les données disponibles.',dailySalesValue:roundMoney(dailyValue),salesRisk24h:risk24h,lastSaleDate,lastSaleDaysAgo}
+}
+
 function healthState(ctx,p,supply,velocity,index){
  const issues=[];if(ctx.integrationErrors?.identity)issues.push('identity');if(ctx.integrationErrors?.pricing)issues.push('pricing');if(ctx.integrationErrors?.stock||p.stockUnavailable)issues.push('stock');if(supply?.source==='ERROR')issues.push('supply');if(velocity?.status==='ERROR')issues.push('sales');if(index.status!=='READY')issues.push('assortment');
  return{partial:issues.length>0||!!ctx.partial||!!p.identityFallback,issues,identity:p.identityFallback?'CACHE':p.source||'UNKNOWN',pricing:ctx.integrationErrors?.pricing?'UNAVAILABLE':'LIVE_OR_AVAILABLE',stock:p.stockUnavailable?'UNAVAILABLE':p.stockMappingRequired?'UNMAPPED':p.stockSource||'UNKNOWN',assortment:index.status,supply:supply.mappingRequired?'UNMAPPED':supply.source,sales:velocity.status,errors:ctx.integrationErrors||null}
@@ -55,7 +68,7 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
  const policyResolution=resolveReplenishmentPolicy({storeId,productNumber:p.productNumber,taxonomy,businessDate:ctx.businessDate,hasPromotion:!!ctx.promoLabel}),policy=policyResolution.policy;
  const replenishmentResult=membership.status==='ASSORTED'&&available!==null?recommendReplenishment({storeAvailable:available,supplyAvailable:supply.availableStock,confirmedInbound:finiteOrNull(p.onOrderStock)??0,dailySales7:velocity.status==='READY'?velocity.dailySales7:null,dailySales28:velocity.status==='READY'?velocity.dailySales28:null,...policy}):null;
  const replenishment=replenishmentResult?{...replenishmentResult,presentation:decisionPresentation(replenishmentResult),ready:!['NEED_SALES_DATA','NEED_SUPPLY_DATA','NEED_STOCK_DATA'].includes(replenishmentResult.decision),missingInputs:missingInputsForDecision(replenishmentResult.decision),salesVelocity:velocity,policy,policySource:policyResolution.source,appliedRules:policyResolution.appliedRules,configuredPromoFactor:policyResolution.configuredPromoFactor,promotionFactorApplied:policyResolution.promotionApplied}:{ready:false,decision:available===null?'STOCK_UNKNOWN':'NOT_APPLICABLE',missingInputs:available===null?['stock.store']:[],salesVelocity:velocity,policy,policySource:policyResolution.source,appliedRules:policyResolution.appliedRules,configuredPromoFactor:policyResolution.configuredPromoFactor,promotionFactorApplied:policyResolution.promotionApplied};
- const primary=primaryAction({availability,ctx,membership,replenishment}),integrationHealth=healthState(ctx,p,supply,velocity,index);
+ const primary=primaryAction({availability,ctx,membership,replenishment}),integrationHealth=healthState(ctx,p,supply,velocity,index),insight=operationalInsight({available,velocity,replenishment,price:ctx.expectedUnitPrice});
  return{
   storeId,businessDate:ctx.businessDate,ean:ctx.ean,
   item:{productNumber:p.productNumber,name:p.name,category:p.category,unit:p.unit,source:p.source||null,identityFallback:!!p.identityFallback,cacheSyncedAt:p.cacheSyncedAt||null},
@@ -65,6 +78,7 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
   merchandising:{assortment:membership,assortmentModel:index.model||'SNAPSHOT',assortmentState:index.status,assortmentSyncedAt:index.syncedAt||null,assortmentMaxAgeHours:age,taxonomy},
   availability,
   replenishment,
+  operationalInsight:insight,
   primaryAction:primary,
   actions:secondaryActions(),
   integrationHealth,
