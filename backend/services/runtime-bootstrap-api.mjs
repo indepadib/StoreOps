@@ -1,6 +1,6 @@
 import { db } from '../db.mjs';
 import { config } from '../config.mjs';
-import { canAccessStore,canAccessDevelopment } from './permissions.mjs';
+import { canAccessStore,canAccessDevelopment,canAccessWarehouse } from './permissions.mjs';
 
 function userView(user){return user?{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id,permissions_profile:user.permissions_profile||null}:null}
 
