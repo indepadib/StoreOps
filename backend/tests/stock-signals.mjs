@@ -1,8 +1,12 @@
 import assert from 'node:assert/strict';
 
 process.env.D365_MODE='simulated';
-const { getStockSignals }=await import('../services/stock-signals.mjs');
+const { getStockSignals,resolvedSupplyAvailability }=await import('../services/stock-signals.mjs');
 const { stockIntegrationConfig }=await import('../services/dynamics-stock.mjs');
+
+assert.equal(resolvedSupplyAvailability(null,true),0,'a complete warehouse read with no item row means warehouse stock is zero');
+assert.equal(resolvedSupplyAvailability(null,false),null,'an unavailable warehouse read must remain unknown, never fake zero');
+assert.equal(resolvedSupplyAvailability({availableQty:4.25},true),4.25);
 
 const cfg=stockIntegrationConfig();
 assert.equal(cfg.entity,'WarehousesOnHandV2');
