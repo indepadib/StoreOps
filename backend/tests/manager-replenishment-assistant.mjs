@@ -19,6 +19,9 @@ assert.match(repl,/Voir le lot/,'after staging a PO or TO the manager must be ab
 assert.match(repl,/data-repl2-remove/,'staged replenishment lines must remain removable before export');
 assert.match(repl,/INVENTORY_ADJUSTMENT/,'inventory adjustments must be included in Dynamics export staging');
 assert.match(repl,/TRANSACTION_TYPE:'LOSS'/,'loss movements must be included in Dynamics export staging');
-assert.match(repl,/template Data Management/,'UI must state that exact F&O mapping still needs validation');
+assert.match(repl,/signalKey\(r\)/,'clicked article must be carried by a stable signal key when EAN is missing');
+assert.match(repl,/groupedBatch/,'replenishment lines must be consolidated into order groups');
+assert.match(repl,/PO fournisseur/,'supplier purchase orders must be grouped and visible in StoreOps');
+assert.match(repl,/Export technique ERP/,'ERP export must remain a secondary bridge, not the operational UI');
 assert.doesNotMatch(repl,/postPurchaseOrderToDynamics|createPurchaseOrderToDynamics/,'assistant must not create supplier orders automatically');
 console.log('StoreOps guided replenishment and Dynamics export assistant contract passed');
