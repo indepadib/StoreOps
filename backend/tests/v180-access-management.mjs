@@ -3,6 +3,7 @@ import '../services/pilot-profile.mjs';
 import { db } from '../db.mjs';
 import { createEmployee,endEmployeeContract } from '../services/workforce.mjs';
 import { accessProfiles,isPlatformAdmin,createAccessAccount,updateAccessAccount,setAccessAccountActive,listAccessAccounts,deactivateAccountsForEmployee } from '../services/access-management.mjs';
+import { canAccessWarehouse } from '../services/permissions.mjs';
 
 const admin=db.prepare(`SELECT * FROM users WHERE id='u-admin'`).get();
 const director=db.prepare(`SELECT * FROM users WHERE id='u-ops'`).get();
@@ -11,6 +12,11 @@ assert.equal(isPlatformAdmin(director),false);
 assert.ok(accessProfiles().some(x=>x.code==='STORE_MANAGER'));
 assert.ok(accessProfiles().some(x=>x.code==='PLATFORM_ADMIN'));
 assert.ok(accessProfiles().some(x=>x.code==='SUPPLY_CHAIN'&&x.scope==='NETWORK'));
+assert.equal(canAccessWarehouse({role:'ops_director',permissions_profile:null}),true);
+assert.equal(canAccessWarehouse({role:'employee',permissions_profile:'supply_chain'}),true);
+assert.equal(canAccessWarehouse({role:'store_manager',permissions_profile:null}),false);
+assert.equal(canAccessWarehouse({role:'employee',permissions_profile:'quality_audit'}),false);
+assert.equal(canAccessWarehouse({role:'employee',permissions_profile:'development'}),false);
 
 const employee=createEmployee({storeId:'val-fleuri',user:admin,employeeCode:'ACC-001',firstName:'Sara',lastName:'Test',roleCode:'FLOOR',contractType:'CDI',contractStart:'2026-09-01',email:'sara.test@oneretail.ma'});
 const account=createAccessAccount({actor:admin,name:'Sara Test',emailAddress:'sara.test@oneretail.ma',profileCode:'STORE_USER',storeId:'val-fleuri',linkedEmployeeId:employee.id,identityProvider:'ENTRA'});
