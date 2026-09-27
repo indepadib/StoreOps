@@ -8,7 +8,7 @@ const round2=v=>v==null?null:Math.round((Number(v)+Number.EPSILON)*100)/100;
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function excludedStatus(v){return ['VOIDED','CANCELLED','CANCELED'].includes(clean(v).toUpperCase())}
 
-export async function probeUnitAwareTransactionMargin({storeId,rows=[],mapping={}}={}){
+export async function probeUnitAwareTransactionMargin({storeId,rows=[],mapping={},costResolver=getProductCost}={}){
  const list=Array.isArray(rows)?rows:[],f=mapping.fields||{},salesSign=Number(mapping.salesSign||-1);
  if(!f.transaction||!f.product||!f.net||!f.quantity)return{status:'UNAVAILABLE',displaySafe:false,reason:'TRANSACTION_PRODUCT_NET_QUANTITY_REQUIRED'};
  const active=list.filter(r=>!excludedStatus(f.status?r?.[f.status]:null));
@@ -18,7 +18,7 @@ export async function probeUnitAwareTransactionMargin({storeId,rows=[],mapping={
  for(const chunk of chunks){
   const settled=await Promise.allSettled(chunk.map(async sku=>{
    const row=active.find(r=>clean(r?.[f.product])===sku),day=dateOnly(f.businessDate?row?.[f.businessDate]:null)||new Date().toISOString().slice(0,10);
-   return [sku,await getProductCost(storeId,sku,{businessDate:day})]
+   return [sku,await costResolver(storeId,sku,{businessDate:day})]
   }));
   for(const x of settled)if(x.status==='fulfilled')costMap.set(x.value[0],x.value[1]);
  }
