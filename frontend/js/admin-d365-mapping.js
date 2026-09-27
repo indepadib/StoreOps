@@ -25,6 +25,7 @@ function mappingSeed(d=last){
    product:rec?.fields?.product||saved?.fields?.product||readiness?.sales?.configuredFields?.product||'',
    net:rec?.fields?.net||saved?.fields?.net||readiness?.sales?.configuredFields?.net||'',
    quantity:rec?.fields?.quantity||saved?.fields?.quantity||readiness?.sales?.configuredFields?.quantity||'',
+   salesUnit:rec?.fields?.salesUnit||saved?.fields?.salesUnit||readiness?.sales?.configuredFields?.salesUnit||'',
    cost:rec?.fields?.cost||saved?.fields?.cost||readiness?.sales?.configuredFields?.cost||'',
    time:rec?.fields?.time||saved?.fields?.time||readiness?.sales?.configuredFields?.time||'',
    productName:rec?.fields?.productName||saved?.fields?.productName||readiness?.sales?.configuredFields?.name||'',
@@ -50,6 +51,7 @@ function mappingForm(seed){
    ${input('salesMapProduct','Article',f.product)}
    ${input('salesMapNet','CA TTC / montant',f.net,true)}
    ${input('salesMapQuantity','Quantité',f.quantity)}
+   ${input('salesMapUnit','Unité vendue',f.salesUnit)}
    ${input('salesMapCost','Coût',f.cost)}
    ${input('salesMapTime','Heure',f.time)}
    ${input('salesMapName','Libellé article',f.productName)}
@@ -80,14 +82,14 @@ function renderResult(d){
  const root=document.getElementById(`${ID}Result`);if(!root)return;
  if(d.status==='DISABLED'){root.innerHTML=`<div class="banner ban-info"><strong>Diagnostic externe désactivé</strong><span>${esc(d.message||'D365_MODE non LIVE.')}</span></div>${mappingForm(mappingSeed(d))}`;bindLifecycle();return}
  const best=d.domains?.sales?.find(x=>x.entity===d.recommendation?.salesEntity)||d.domains?.sales?.find(x=>x.ok)||null,fields=best?.inference?.fields||{};
- root.innerHTML=`<div class="banner ${d.recommendation?.marginCandidate?'ban-info':'ban-warn'}"><strong>${d.recommendation?.salesEntity?`Entité ventes détectée : ${esc(d.recommendation.salesEntity)}`:'Aucune entité ventes exploitable détectée'}</strong><span>${d.recommendation?.marginCandidate?'Un champ coût existe sur les lignes de transaction. StoreOps l’analyse ticket par ticket, mais la marge reste masquée jusqu’à validation métier.':'Aucun coût transactionnel exploitable détecté : CA/tickets restent utilisables et la marge reste masquée.'}</span></div>${best?`<div class="integration-map-grid">${fieldCard('Canal / magasin',fields.channel)}${fieldCard('Business date',fields.businessDate)}${fieldCard('Ticket',fields.transaction)}${fieldCard('Article',fields.product)}${fieldCard('CA TTC / montant',fields.net)}${fieldCard('Quantité',fields.quantity)}${fieldCard('Coût',fields.cost)}${fieldCard('Heure',fields.time)}</div><details class="integration-mapping-raw"><summary>Voir les champs réellement retournés</summary><div class="small muted">${best.inference.keys.map(esc).join(' · ')||'Aucun champ'}</div></details>`:''}${mappingForm(mappingSeed(d))}<div class="integration-probe-list">${(d.domains?.price||[]).map(p=>`<div><strong>${esc(p.entity)}</strong>${status(p.ok?`${p.rowCount} ligne(s)`:'Indisponible',p.ok?'ok':'neutral')}<small>${p.error?esc(p.error):`Prix candidat : ${esc(p.inference?.fields?.price?.candidate||'non identifié')} · Début : ${esc(p.inference?.fields?.validFrom?.candidate||'—')} · Fin : ${esc(p.inference?.fields?.validTo?.candidate||'—')}`}</small></div>`).join('')}</div>`;
+ root.innerHTML=`<div class="banner ${d.recommendation?.marginCandidate?'ban-info':'ban-warn'}"><strong>${d.recommendation?.salesEntity?`Entité ventes détectée : ${esc(d.recommendation.salesEntity)}`:'Aucune entité ventes exploitable détectée'}</strong><span>${d.recommendation?.marginCandidate?'Un champ coût existe sur les lignes de transaction. StoreOps l’analyse ticket par ticket, mais la marge reste masquée jusqu’à validation métier.':'Aucun coût transactionnel exploitable détecté : CA/tickets restent utilisables et la marge reste masquée.'}</span></div>${best?`<div class="integration-map-grid">${fieldCard('Canal / magasin',fields.channel)}${fieldCard('Business date',fields.businessDate)}${fieldCard('Ticket',fields.transaction)}${fieldCard('Article',fields.product)}${fieldCard('CA TTC / montant',fields.net)}${fieldCard('Quantité',fields.quantity)}${fieldCard('Unité vendue',fields.salesUnit)}${fieldCard('Coût',fields.cost)}${fieldCard('Heure',fields.time)}</div><details class="integration-mapping-raw"><summary>Voir les champs réellement retournés</summary><div class="small muted">${best.inference.keys.map(esc).join(' · ')||'Aucun champ'}</div></details>`:''}${mappingForm(mappingSeed(d))}<div class="integration-probe-list">${(d.domains?.price||[]).map(p=>`<div><strong>${esc(p.entity)}</strong>${status(p.ok?`${p.rowCount} ligne(s)`:'Indisponible',p.ok?'ok':'neutral')}<small>${p.error?esc(p.error):`Prix candidat : ${esc(p.inference?.fields?.price?.candidate||'non identifié')} · Début : ${esc(p.inference?.fields?.validFrom?.candidate||'—')} · Fin : ${esc(p.inference?.fields?.validTo?.candidate||'—')}`}</small></div>`).join('')}</div>`;
  bindLifecycle()
 }
 function formPayload(){
  const v=id=>document.getElementById(id)?.value?.trim()||'';
  return{
   entity:v('salesMapEntity'),
-  fields:{channel:v('salesMapChannel'),businessDate:v('salesMapDate'),transaction:v('salesMapTransaction'),product:v('salesMapProduct'),net:v('salesMapNet'),quantity:v('salesMapQuantity'),cost:v('salesMapCost'),time:v('salesMapTime'),productName:v('salesMapName'),department:v('salesMapDepartment'),category:v('salesMapCategory')},
+  fields:{channel:v('salesMapChannel'),businessDate:v('salesMapDate'),transaction:v('salesMapTransaction'),product:v('salesMapProduct'),net:v('salesMapNet'),quantity:v('salesMapQuantity'),salesUnit:v('salesMapUnit'),cost:v('salesMapCost'),time:v('salesMapTime'),productName:v('salesMapName'),department:v('salesMapDepartment'),category:v('salesMapCategory')},
   dateFilterMode:v('salesMapDateMode')||'datetime',salesSign:Number(v('salesMapSalesSign')||-1),quantitySign:Number(v('salesMapQtySign')||1),costSign:Number(v('salesMapCostSign')||-1)
  }
 }
