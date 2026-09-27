@@ -2,6 +2,7 @@ import{api}from'../api.js';
 import{isDirector}from'../state.js';
 import{$,status,progress,esc,fmtMoney}from'../ui.js';
 import{dlcRisk,closingStarted,cashClosingNeedsAttention,storeBlocked,networkRisk}from'../network-risk.js';
+import{calculateCustomerWeightedScore}from'../store-health.js';
 
 const safe=async p=>{try{return{ok:true,data:await p}}catch(error){return{ok:false,data:null,error:error?.message||'Indisponible'}}};
 const known=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
@@ -13,18 +14,20 @@ export async function renderNetwork(){
  if(!isDirector())return;
  const base=await api('/api/network');
  const rows=await Promise.all(base.map(async r=>{
-  const [inc,loss,cashOpening,cold,staff]=await Promise.all([
-   safe(api(`/api/stores/${r.id}/incidents?status=OPEN`)),safe(api(`/api/stores/${r.id}/losses`)),safe(api(`/api/stores/${r.id}/cash-opening`)),safe(api(`/api/stores/${r.id}/cold-chain`)),safe(api(`/api/stores/${r.id}/staffing`))
+  const [inc,loss,cashOpening,cold,staff,pulse]=await Promise.all([
+   safe(api(`/api/stores/${r.id}/incidents?status=OPEN`)),safe(api(`/api/stores/${r.id}/losses`)),safe(api(`/api/stores/${r.id}/cash-opening`)),safe(api(`/api/stores/${r.id}/cold-chain`)),safe(api(`/api/stores/${r.id}/staffing`)),safe(api(`/api/stores/${r.id}/business-pulse`))
   ]);
-  return{...r,sla:inc.ok?inc.data?.stats:null,loss:loss.ok?loss.data?.summary:null,cashOpening:cashOpening.ok?cashOpening.data?.summary:null,coldChain:cold.ok?cold.data?.summary:null,staffing:staff.ok?staff.data?.summary:null,dataHealth:{incidents:inc.ok,losses:loss.ok,cashOpening:cashOpening.ok,coldChain:cold.ok,staffing:staff.ok}}
+  const businessPulse=pulse.ok?pulse.data:null,k=businessPulse?.snapshot?.kpis||{},storeScore=calculateCustomerWeightedScore({operationalScore:r.operationalHealth??100,identifiedSalesShare:k.identifiedSalesShare,recruitmentRateNonLoyalty:k.recruitmentRateNonLoyalty,weight:.25});
+  return{...r,sla:inc.ok?inc.data?.stats:null,loss:loss.ok?loss.data?.summary:null,cashOpening:cashOpening.ok?cashOpening.data?.summary:null,coldChain:cold.ok?cold.data?.summary:null,staffing:staff.ok?staff.data?.summary:null,businessPulse,storeScore,dataHealth:{incidents:inc.ok,losses:loss.ok,cashOpening:cashOpening.ok,coldChain:cold.ok,staffing:staff.ok,pulse:pulse.ok}}
  }));
- const ready=rows.filter(x=>x.day?.opening_status==='OPENED').length,staffBlocking=knownSum(rows,x=>x.staffing?.blocking),coldBlocking=knownSum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=knownSum(rows,x=>x.cashOpening?.blocking),commercialBlocking=knownSum(rows,x=>x.commercial?.blocking),dlcCritical=knownSum(rows,x=>x.dlc?dlcRisk(x):null),inventoryRecounts=knownSum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=knownSum(rows,x=>x.handover?.blocking),overdue=knownSum(rows,x=>x.sla?.overdue),lossBlocking=knownSum(rows,x=>x.loss?.blocking),lossValue=knownSum(rows,x=>x.loss?.retailValue),qualityControls=knownSum(rows,x=>x.qualityControls),qualityRejected=knownSum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(x=>x.cash&&cashClosingNeedsAttention(x)).length,blocked=rows.filter(storeBlocked).length,sorted=[...rows].sort((a,b)=>networkRisk(b)-networkRisk(a));
+ const ready=rows.filter(x=>x.day?.opening_status==='OPENED').length,scored=rows.filter(x=>Number.isFinite(Number(x.storeScore?.score))),networkScore=scored.length?Math.round(scored.reduce((a,x)=>a+Number(x.storeScore.score),0)/scored.length):null,staffBlocking=knownSum(rows,x=>x.staffing?.blocking),coldBlocking=knownSum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=knownSum(rows,x=>x.cashOpening?.blocking),commercialBlocking=knownSum(rows,x=>x.commercial?.blocking),dlcCritical=knownSum(rows,x=>x.dlc?dlcRisk(x):null),inventoryRecounts=knownSum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=knownSum(rows,x=>x.handover?.blocking),overdue=knownSum(rows,x=>x.sla?.overdue),lossBlocking=knownSum(rows,x=>x.loss?.blocking),lossValue=knownSum(rows,x=>x.loss?.retailValue),qualityControls=knownSum(rows,x=>x.qualityControls),qualityRejected=knownSum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(x=>x.cash&&cashClosingNeedsAttention(x)).length,blocked=rows.filter(storeBlocked).length,sorted=[...rows].sort((a,b)=>networkRisk(b)-networkRisk(a));
  $('#networkContent').innerHTML=`
  <div class="network-trust-note"><strong>Vue réseau réelle</strong><span>Un « — » signifie que la source n’a pas répondu. StoreOps ne remplace plus une donnée absente par 0 ou par un faux blocage.</span></div>
  <div class="grid g4 network-top-kpis">
   <div class="card"><div class="label">Magasins suivis</div><div class="kpi">${rows.length}</div><div class="small muted">Configuration StoreOps</div></div>
   <div class="card"><div class="label">Ouverts / prêts</div><div class="kpi">${ready}</div><div class="small muted">Parcours magasin</div></div>
   <div class="card"><div class="label">Ouvertures bloquées</div><div class="kpi">${blocked}</div><div class="small muted">Règles opérationnelles</div></div>
+  <div class="card"><div class="label">Score réseau</div><div class="kpi">${networkScore==null?'—':networkScore+'/100'}</div><div class="small muted">Customer & fidélité jusqu’à 25%</div></div>
   <div class="card"><div class="label">SLA en retard</div><div class="kpi">${metric(overdue.value)}</div><div class="small muted">${coverage(overdue)}</div></div>
  </div>
  <details class="network-secondary-kpis"><summary>Voir les indicateurs opérationnels <span>⌄</span></summary><div class="grid g4" style="margin-top:10px">
