@@ -255,21 +255,34 @@ function normalizedProjectInput(input,current={}){
   committeeOpinion:input.committeeOpinion===undefined?(current.committee_opinion||'PENDING'):clean(input.committeeOpinion||'PENDING').toUpperCase(),
   bpStatus:input.bpStatus===undefined?(current.bp_status||'NOT_STARTED'):clean(input.bpStatus||'NOT_STARTED').toUpperCase(),
   legalStatus:input.legalStatus===undefined?(current.legal_status||'PENDING'):clean(input.legalStatus||'PENDING').toUpperCase(),
-  technicalStatus:input.technicalStatus===undefined?(current.technical_status||'PENDING'):clean(input.technicalStatus||'PENDING').toUpperCase()
+  technicalStatus:input.technicalStatus===undefined?(current.technical_status||'PENDING'):clean(input.technicalStatus||'PENDING').toUpperCase(),
+  surfaceGroundFloorM2:input.surfaceGroundFloorM2===undefined?(current.surface_ground_floor_m2??null):numberOrNull(input.surfaceGroundFloorM2,{min:0}),
+  surfaceMezzanineM2:input.surfaceMezzanineM2===undefined?(current.surface_mezzanine_m2??null):numberOrNull(input.surfaceMezzanineM2,{min:0}),
+  surfaceBasementM2:input.surfaceBasementM2===undefined?(current.surface_basement_m2??null):numberOrNull(input.surfaceBasementM2,{min:0}),
+  parkingAvailable:input.parkingAvailable===undefined?(current.parking_available==null?null:Boolean(current.parking_available)):(input.parkingAvailable===null||input.parkingAvailable===''?null:Boolean(input.parkingAvailable)),
+  geolocation:input.geolocation===undefined?(current.geolocation??null):clean(input.geolocation)||null,
+  monthlyCharges:input.monthlyCharges===undefined?(current.monthly_charges??null):money(input.monthlyCharges),
+  leaseDurationMonths:input.leaseDurationMonths===undefined?(current.lease_duration_months??null):numberOrNull(input.leaseDurationMonths,{min:0}),
+  rentFreeMonths:input.rentFreeMonths===undefined?(current.rent_free_months??null):numberOrNull(input.rentFreeMonths,{min:0}),
+  titleDeedStatus:input.titleDeedStatus===undefined?(current.title_deed_status||'PENDING'):clean(input.titleDeedStatus||'PENDING').toUpperCase(),
+  committeeReservations:input.committeeReservations===undefined?(current.committee_reservations??null):clean(input.committeeReservations)||null,
+  legalReservations:input.legalReservations===undefined?(current.legal_reservations??null):clean(input.legalReservations)||null,
+  technicalReservations:input.technicalReservations===undefined?(current.technical_reservations??null):clean(input.technicalReservations)||null,
+  handoverDate:dateField('handoverDate','handover_date','Date de passation')
  }
 }
 
 export function createDevelopmentProject({user,input={}}){
  const n=normalizedProjectInput(input,{}),id=uid('devproj'),stage=requireStage(input.stage||'CRITERIA');
  db.prepare(`INSERT INTO development_projects(id,name,city,address,zone,source_lead,surface_m2,landlord,monthly_rent,key_money,capex_budget,capex_committed,capex_actual,target_opening_date,owner_user_id,stage,status,decision,priority,site_score,economic_score,works_progress,next_action,next_action_due_date,blocker,contract_signed_date,works_start_date,works_end_date,opening_date,notes,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id,n.name,n.city,n.address,n.zone,n.sourceLead,n.surfaceM2,n.landlord,n.monthlyRent,n.keyMoney,n.capexBudget,n.capexCommitted,n.capexActual,n.targetOpeningDate,n.ownerUserId,stage,n.status,n.decision,n.priority,n.siteScore,n.economicScore,n.worksProgress,n.nextAction,n.nextActionDueDate,n.blocker,n.contractSignedDate,n.worksStartDate,n.worksEndDate,n.openingDate,n.notes,user?.id||null,user?.id||null);
- db.prepare(`UPDATE development_projects SET brand=?,conflict_of_interest=?,conflict_details=?,committee_opinion=?,bp_status=?,legal_status=?,technical_status=? WHERE id=?`).run(n.brand,n.conflictOfInterest?1:0,n.conflictDetails,n.committeeOpinion,n.bpStatus,n.legalStatus,n.technicalStatus,id);
+ db.prepare(`UPDATE development_projects SET brand=?,conflict_of_interest=?,conflict_details=?,committee_opinion=?,bp_status=?,legal_status=?,technical_status=?,surface_ground_floor_m2=?,surface_mezzanine_m2=?,surface_basement_m2=?,parking_available=?,geolocation=?,monthly_charges=?,lease_duration_months=?,rent_free_months=?,title_deed_status=?,committee_reservations=?,legal_reservations=?,technical_reservations=?,handover_date=? WHERE id=?`).run(n.brand,n.conflictOfInterest?1:0,n.conflictDetails,n.committeeOpinion,n.bpStatus,n.legalStatus,n.technicalStatus,n.surfaceGroundFloorM2,n.surfaceMezzanineM2,n.surfaceBasementM2,n.parkingAvailable==null?null:(n.parkingAvailable?1:0),n.geolocation,n.monthlyCharges,n.leaseDurationMonths,n.rentFreeMonths,n.titleDeedStatus,n.committeeReservations,n.legalReservations,n.technicalReservations,n.handoverDate,id);
  seedMilestones(id);log(id,user,'PROJECT_CREATED',stage,'Projet développement créé selon la procédure Expansion 2026');return developmentProject(id)
 }
 
 export function updateDevelopmentProject({user,id,input={}}){
  const current=projectRow(id);if(!current)throw Object.assign(new Error('Projet développement introuvable.'),{status:404,code:'DEVELOPMENT_PROJECT_NOT_FOUND'});const n=normalizedProjectInput(input,current);
  db.prepare(`UPDATE development_projects SET name=?,city=?,address=?,zone=?,source_lead=?,surface_m2=?,landlord=?,monthly_rent=?,key_money=?,capex_budget=?,capex_committed=?,capex_actual=?,target_opening_date=?,owner_user_id=?,status=?,decision=?,priority=?,site_score=?,economic_score=?,works_progress=?,next_action=?,next_action_due_date=?,blocker=?,contract_signed_date=?,works_start_date=?,works_end_date=?,opening_date=?,notes=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`).run(n.name,n.city,n.address,n.zone,n.sourceLead,n.surfaceM2,n.landlord,n.monthlyRent,n.keyMoney,n.capexBudget,n.capexCommitted,n.capexActual,n.targetOpeningDate,n.ownerUserId,n.status,n.decision,n.priority,n.siteScore,n.economicScore,n.worksProgress,n.nextAction,n.nextActionDueDate,n.blocker,n.contractSignedDate,n.worksStartDate,n.worksEndDate,n.openingDate,n.notes,user?.id||null,id);
- db.prepare(`UPDATE development_projects SET brand=?,conflict_of_interest=?,conflict_details=?,committee_opinion=?,bp_status=?,legal_status=?,technical_status=? WHERE id=?`).run(n.brand,n.conflictOfInterest?1:0,n.conflictDetails,n.committeeOpinion,n.bpStatus,n.legalStatus,n.technicalStatus,id);
+ db.prepare(`UPDATE development_projects SET brand=?,conflict_of_interest=?,conflict_details=?,committee_opinion=?,bp_status=?,legal_status=?,technical_status=?,surface_ground_floor_m2=?,surface_mezzanine_m2=?,surface_basement_m2=?,parking_available=?,geolocation=?,monthly_charges=?,lease_duration_months=?,rent_free_months=?,title_deed_status=?,committee_reservations=?,legal_reservations=?,technical_reservations=?,handover_date=? WHERE id=?`).run(n.brand,n.conflictOfInterest?1:0,n.conflictDetails,n.committeeOpinion,n.bpStatus,n.legalStatus,n.technicalStatus,n.surfaceGroundFloorM2,n.surfaceMezzanineM2,n.surfaceBasementM2,n.parkingAvailable==null?null:(n.parkingAvailable?1:0),n.geolocation,n.monthlyCharges,n.leaseDurationMonths,n.rentFreeMonths,n.titleDeedStatus,n.committeeReservations,n.legalReservations,n.technicalReservations,n.handoverDate,id);
  log(id,user,'PROJECT_UPDATED',current.stage,'Fiche projet mise à jour');return developmentProject(id)
 }
 
