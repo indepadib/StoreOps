@@ -55,6 +55,7 @@ export function salesIntegrationConfig(storeId=null){
   transaction:clean(saved?.fields?.transaction)||field('D365_SALES_TRANSACTION_FIELD','transactionId'),
   net:clean(saved?.fields?.net)||field('D365_SALES_NET_FIELD','netAmountInclTax'),
   quantity:clean(saved?.fields?.quantity)||field('D365_SALES_QTY_FIELD','qty'),
+  salesUnit:clean(saved?.fields?.salesUnit)||field('D365_SALES_UNIT_FIELD',''),
   product:clean(saved?.fields?.product)||field('D365_SALES_PRODUCT_FIELD','itemId'),
   name:clean(saved?.fields?.productName)||field('D365_SALES_PRODUCT_NAME_FIELD',''),
   cost:clean(saved?.fields?.cost)||field('D365_SALES_COST_FIELD',''),
