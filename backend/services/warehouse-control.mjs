@@ -1,0 +1,59 @@
+import { db } from '../db.mjs';
+import { getStockSignals } from './stock-signals.mjs';
+
+const clean=v=>String(v??'').trim();
+const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
+const num=v=>finite(v)?Number(v):0;
+const targetDays=()=>Math.max(1,Math.min(14,Number(process.env.STOREOPS_WAREHOUSE_TARGET_DAYS)||5));
+const round=v=>Math.round((Number(v||0)+Number.EPSILON)*1000)/1000;
+
+function projectedNeed(row){
+ const daily=Math.max(0,num(row.dailySales)),available=Math.max(0,num(row.availableQty));
+ if(daily<=0)return row.type==='OUT'?1:0;
+ return Math.max(1,Math.ceil(daily*targetDays()-available));
+}
+
+function groupRows(rows,keyFn,metaFn){
+ const map=new Map();
+ for(const row of rows){
+  const key=keyFn(row);if(!key)continue;
+  const cur=map.get(key)||{key,...metaFn(row),lines:[],lineCount:0,totalQty:0};
+  cur.lines.push(row);cur.lineCount+=1;cur.totalQty=round(cur.totalQty+num(row.purchaseQty||row.transferQty||row.needQty));map.set(key,cur);
+ }
+ return [...map.values()].sort((a,b)=>b.totalQty-a.totalQty);
+}
+
+export async function warehouseControlSnapshot({businessDate=null,force=false}={}){
+ const stores=db.prepare("SELECT id,code,name FROM stores WHERE active=1 ORDER BY name").all();
+ const settled=await Promise.allSettled(stores.map(store=>getStockSignals(store.id,{businessDate,force})));
+ const lines=[],storeSummaries=[];let sourceErrors=0;
+ for(let i=0;i<stores.length;i++){
+  const store=stores[i],result=settled[i];
+  if(result.status!=='fulfilled'){sourceErrors++;storeSummaries.push({...store,status:'ERROR',error:result.reason?.message||String(result.reason||'')});continue}
+  const data=result.value,items=data?.items||[],actionable=items.filter(x=>['OUT','LOW'].includes(x.type));
+  let transfers=0,purchases=0,unknownSupply=0;
+  for(const item of actionable){
+   const needQty=projectedNeed(item),centralKnown=finite(item.centralStock),centralStock=centralKnown?Math.max(0,num(item.centralStock)):null;
+   const transferQty=centralKnown?Math.min(needQty,centralStock):0,purchaseQty=centralKnown?Math.max(0,needQty-transferQty):null;
+   const mode=!centralKnown?'SUPPLY_DATA_REQUIRED':purchaseQty>0&&transferQty>0?'TRANSFER_PLUS_PURCHASE':purchaseQty>0?'PURCHASE':'TRANSFER';
+   if(transferQty>0)transfers++;if(purchaseQty>0)purchases++;if(!centralKnown)unknownSupply++;
+   lines.push({storeId:store.id,storeCode:store.code,storeName:store.name,signalId:item.id,type:item.type,priority:item.priority,product:item.product,productNumber:item.productNumber,ean:item.ean||null,availableQty:item.availableQty,dailySales:item.dailySales??null,coverageDays:item.coverageDays??null,centralStock,supplyWarehouse:item.supplyWarehouse||data.supplyWarehouse||null,supplier:item.supplier||null,supplierAccount:item.supplierAccount||null,supplierSource:item.supplierSource||null,needQty,transferQty:round(transferQty),purchaseQty:purchaseQty==null?null:round(purchaseQty),mode,lastSaleDate:item.lastSaleDate||null,salesValue30d:item.salesValue30d??null});
+  }
+  storeSummaries.push({...store,status:'READY',ruptures:Number(data?.summary?.outOfStock||0),nearStockouts:Number(data?.summary?.nearOutOfStock||0),transfers,purchases,unknownSupply,source:data?.source||null});
+ }
+
+ const byProduct=new Map();
+ for(const row of lines){
+  const key=clean(row.productNumber)||clean(row.ean);if(!key)continue;
+  const cur=byProduct.get(key)||{productNumber:row.productNumber,ean:row.ean,product:row.product,centralStock:row.centralStock,supplyWarehouse:row.supplyWarehouse,networkNeedQty:0,transferQty:0,purchaseQty:0,stores:new Set(),supplier:row.supplier,supplierAccount:row.supplierAccount};
+  cur.networkNeedQty+=num(row.needQty);cur.transferQty+=num(row.transferQty);if(row.purchaseQty!==null)cur.purchaseQty+=num(row.purchaseQty);cur.stores.add(row.storeId);
+  if(cur.centralStock===null&&row.centralStock!==null)cur.centralStock=row.centralStock;if(!cur.supplier&&row.supplier)cur.supplier=row.supplier;if(!cur.supplierAccount&&row.supplierAccount)cur.supplierAccount=row.supplierAccount;byProduct.set(key,cur);
+ }
+ const products=[...byProduct.values()].map(x=>({...x,networkNeedQty:round(x.networkNeedQty),transferQty:round(x.transferQty),purchaseQty:round(x.purchaseQty),storeCount:x.stores.size,stores:[...x.stores]})).sort((a,b)=>b.purchaseQty-a.purchaseQty||b.networkNeedQty-a.networkNeedQty);
+ const purchaseLines=lines.filter(x=>Number(x.purchaseQty)>0);
+ const transferLines=lines.filter(x=>Number(x.transferQty)>0);
+ const supplierGroups=groupRows(purchaseLines,x=>clean(x.supplierAccount)||clean(x.supplier)||'A_AFFECTER',x=>({supplier:x.supplier||'À affecter',supplierAccount:x.supplierAccount||null}));
+ const transferGroups=groupRows(transferLines,x=>x.storeId,x=>({storeId:x.storeId,storeCode:x.storeCode,storeName:x.storeName,sourceWarehouse:x.supplyWarehouse||null}));
+ let expectedPO=0,expectedTO=0;try{expectedPO=db.prepare("SELECT COUNT(*) n FROM receipts WHERE document_type='PO' AND status='EXPECTED'").get()?.n||0;expectedTO=db.prepare("SELECT COUNT(*) n FROM receipts WHERE document_type='TO' AND status='EXPECTED'").get()?.n||0}catch{}
+ return {status:sourceErrors===stores.length&&stores.length?'DEGRADED':'READY',businessDate:businessDate||new Date().toISOString().slice(0,10),refreshedAt:new Date().toISOString(),policy:{targetDays:targetDays()},metrics:{stores:stores.length,sourceErrors,ruptures:storeSummaries.reduce((a,x)=>a+num(x.ruptures),0),nearStockouts:storeSummaries.reduce((a,x)=>a+num(x.nearStockouts),0),transferLines:transferLines.length,purchaseLines:purchaseLines.length,supplierOrders:supplierGroups.length,unknownSupply:lines.filter(x=>x.mode==='SUPPLY_DATA_REQUIRED').length,expectedPO,expectedTO},stores:storeSummaries,products,lines,supplierGroups,transferGroups};
+}
