@@ -29,6 +29,8 @@ import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
 import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
 import { handleOpeningApi } from './services/opening-api.mjs';
+import { getStockSignals } from './services/stock-signals.mjs';
+import { warehouseControlSnapshot } from './services/warehouse-control.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -92,6 +94,8 @@ async function api(req,res,url){
 
   let p;
   if(path==='/api/stores'){const rows=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter(s=>canAccessStore(user,s.id));return json(req,res,200,rows)}
+  if(path==='/api/warehouse-control'&&req.method==='GET'){ensureDirector(user);return json(req,res,200,await warehouseControlSnapshot({businessDate:url.searchParams.get('date')||todayISO(),force:url.searchParams.get('force')==='1'}))}
+  p=route(path,'/api/stores/:storeId/stock-signals');if(p&&req.method==='GET'){requireStore(user,p.storeId);return json(req,res,200,await getStockSignals(p.storeId,{businessDate:url.searchParams.get('date')||todayISO(),force:url.searchParams.get('force')==='1'}))}
   p=route(path,'/api/stores/:storeId/assignees');if(p){requireStore(user,p.storeId);ensureManage(user,p.storeId);return json(req,res,200,db.prepare(`SELECT id,name,role,store_id FROM users WHERE active=1 AND (role='ops_director' OR (role='store_manager' AND store_id=?)) ORDER BY role,name`).all(p.storeId))}
 
   p=route(path,'/api/stores/:storeId/handover');if(p){requireStore(user,p.storeId);if(req.method==='GET'){const businessDate=url.searchParams.get('date')||todayISO(),handoverStatus=(url.searchParams.get('status')||'ACTIVE').toUpperCase();return json(req,res,200,{stats:handoverStats(p.storeId,businessDate),items:listHandover(p.storeId,{businessDate,status:handoverStatus})})}if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req),day=ensureStoreDay(p.storeId,b.sourceBusinessDate||todayISO());return json(req,res,201,createHandover({storeId:p.storeId,businessDate:day.business_date,user,title:b.title,description:b.description,category:b.category,priority:b.priority,blockingOpening:!!b.blockingOpening,targetDate:b.targetDate||null}))}}
