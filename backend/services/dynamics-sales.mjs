@@ -61,6 +61,7 @@ export function salesIntegrationConfig(storeId=null){
   time:clean(saved?.fields?.time)||field('D365_SALES_TIME_FIELD','time'),
   department:clean(saved?.fields?.department)||field('D365_SALES_DEPARTMENT_FIELD',''),
   category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD',''),
+  customer:clean(saved?.fields?.customer)||field('D365_SALES_CUSTOMER_FIELD','custAccount'),
   status:field('D365_SALES_STATUS_FIELD','transactionStatus')
  };
  const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
@@ -78,8 +79,9 @@ function taxonomyLabels(productNumber){
 }
 
 export function aggregateSalesRows(rows=[],cfg={}){
- const f=cfg.fields||{},sign=Number(cfg.sign||-1),costSign=Number(cfg.costSign||-1),tickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
- let netSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0;
+ const f=cfg.fields||{},sign=Number(cfg.sign||-1),costSign=Number(cfg.costSign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
+ let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0;
+ const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
   const tx=clean(r[f.transaction]),status=clean(f.status?r[f.status]:'').toUpperCase(),rawSales=num(r[f.net]),sales=round2(rawSales*sign);
@@ -89,6 +91,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
   includedRows+=1;
   const rawQty=num(f.quantity?r[f.quantity]:0),qty=f.quantity?(rawQty===0?0:(sales===0?Math.abs(rawQty):Math.sign(sales)*Math.abs(rawQty))):0,cost=f.cost?round2(num(r[f.cost])*costSign):0;
   netSales+=sales;units+=qty;costValue+=cost;if(tx)tickets.add(tx);
+  const identified=identifiedCustomer(f.customer?r[f.customer]:'');if(identified){identifiedNetSales+=sales;if(tx)identifiedTickets.add(tx)}
   const productNumber=clean(f.product?r[f.product]:'')||'UNMAPPED',name=clean(f.name?r[f.name]:'')||productNumber,tax=taxonomyLabels(productNumber);
   add(products,productNumber,name,sales,qty,cost);
   const dep=clean(f.department?r[f.department]:'')||tax.department,cat=clean(f.category?r[f.category]:'')||tax.category;
@@ -97,7 +100,8 @@ export function aggregateSalesRows(rows=[],cfg={}){
  }
  const finish=map=>[...map.values()].map(x=>({key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null})).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
- return{sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'VOIDED_OR_CANCELLED'}};
+ const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
+ return{sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'VOIDED_OR_CANCELLED'}};
 }
 
 function literalFilters(field,value){
