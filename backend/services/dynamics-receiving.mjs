@@ -2,6 +2,7 @@ import { db,uid,todayISO } from '../db.mjs';
 import { config } from '../config.mjs';
 import { isD365ReadLive,odataGet,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
+import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v??'').replaceAll("'","''");
@@ -258,7 +259,7 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
  const poNumbers=unique(headers.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),linePayload=await purchaseOrderLinesForOrders(poNumbers),lines=linePayload.value||[];
  const headerByPo=new Map(headers.map(row=>[clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber'])),row]));
  const cutoff=headerPayload.cutoff||oneMonthAgoISO(businessDate);let hiddenOld=headerPayload.hiddenOldPo||0,hiddenClosed=0;
- const items=poNumbers.map(poNumber=>{
+ let items=poNumbers.map(poNumber=>{
   const poLines=lines.filter(row=>clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber']))===poNumber),header=headerByPo.get(poNumber)||{};
   const dates=poLines.map(row=>dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))).filter(Boolean).sort();
   const eta=dateOnly(field(header,c.headerDateField,['RequestedDeliveryDate','ConfirmedDeliveryDate']))||dates[0]||businessDate;
@@ -276,6 +277,13 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
    })
   };
  }).filter(Boolean);
+ const unresolved=unique(items.flatMap(po=>po.lines||[]).filter(line=>!clean(line.productName)||clean(line.productName)===clean(line.productNumber)).map(line=>line.productNumber)).slice(0,180);
+ if(unresolved.length){
+  try{
+   const identities=await releasedProductSourcingMany(unresolved);
+   items=items.map(po=>({...po,lines:(po.lines||[]).map(line=>{const identity=identities.get(clean(line.productNumber));return identity?.productName?{...line,productName:identity.productName}:line})}))
+  }catch{}
+ }
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
  return{mode:'LIVE',source:'D365',storeId,warehouseId,businessDate,items,diagnostics:{liveRequested:true,elapsedMs:Date.now()-startedAt,lineRows:linePayload.rowCount||0,linePages:linePayload.pages||0,lineTop:linePayload.top||null,serverOpenFilter:!!linePayload.serverOpenFilter,serverRemainingFilter:false,headerRows:headerPayload.rowCount||0,headerPages:headerPayload.pages||0,headerSkipped:false,headerError:null,hiddenOldPo:hiddenOld,hiddenClosedPo:hiddenClosed,poCutoffDate:cutoff,warehouseField:headerPayload.warehouseField||c.headerWarehouseField,serverHeaderOpenFilter:!!headerPayload.serverOpenFilter,filterFallbacks:[...(headerPayload.attempts||[]),...(linePayload.attempts||[])],truncated,authoritative:!truncated}};
 }
