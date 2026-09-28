@@ -28,28 +28,41 @@ export async function releasedProductSourcing(productNumber){
  const sku=clean(productNumber);if(!sku)return{status:'UNAVAILABLE',productNumber:null,supplyMode:null,field:null,primaryVendorAccount:null};
  if(config.dynamics.mode!=='live')return{status:'UNAVAILABLE',productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'D365_NOT_LIVE'};
  const entity=clean(process.env.D365_RELEASED_PRODUCT_ENTITY)||'ReleasedProductsV2';
- const itemField=clean(process.env.D365_RELEASED_PRODUCT_ITEM_FIELD)||'ItemNumber';
+ const itemFields=[...new Set([clean(process.env.D365_RELEASED_PRODUCT_ITEM_FIELD),clean(config.dynamics.productNumberField),'ProductNumber','ItemNumber'].filter(Boolean))];
  const vendorField=clean(process.env.D365_RELEASED_PRODUCT_VENDOR_FIELD)||'PrimaryVendorAccountNumber';
- const filters=[`${itemField} eq '${esc(sku)}'`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
- try{
-  const payload=await odataGet(entity,{filter:filters.join(' and '),top:1,extra:config.dynamics.dataAreaId?'cross-company=true':''}),row=payload?.value?.[0]||null;
-  if(!row)return{status:'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'RELEASED_PRODUCT_NOT_FOUND'};
-  const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField])||null,nameField=productNameField(row),productName=nameField?clean(row[nameField]):null;
-  return{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,productName,nameField:nameField||null,supplyMode,rawValue:raw??null,field:field||null,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'}
- }catch(error){return{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:error.message,code:error.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'}}
+ let lastError=null;
+ for(const itemField of itemFields){
+  const filters=[`${itemField} eq '${esc(sku)}'`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+  try{
+   const payload=await odataGet(entity,{filter:filters.join(' and '),top:1,extra:config.dynamics.dataAreaId?'cross-company=true':''}),row=payload?.value?.[0]||null;
+   if(!row)continue;
+   const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField]||row.PrimaryVendorAccount||row.VendorAccountNumber)||null,nameField=productNameField(row),productName=nameField?clean(row[nameField]):null,actualSku=clean(row[itemField])||sku;
+   return{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:actualSku,productName,nameField:nameField||null,supplyMode,rawValue:raw??null,field:field||null,itemField,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'}
+  }catch(error){lastError=error;if(!(error?.code==='D365_REQUEST_FAILED'&&Number(error?.details?.httpStatus)===400))break}
+ }
+ if(lastError)return{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:lastError.message,code:lastError.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'};
+ return{status:'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'RELEASED_PRODUCT_NOT_FOUND'}
 }
-
 export async function releasedProductSourcingMany(productNumbers=[]){
  const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))];if(!skus.length)return new Map();
  if(config.dynamics.mode!=='live')return new Map(skus.map(sku=>[sku,{status:'UNAVAILABLE',productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'D365_NOT_LIVE'}]));
- const entity=clean(process.env.D365_RELEASED_PRODUCT_ENTITY)||'ReleasedProductsV2',itemField=clean(process.env.D365_RELEASED_PRODUCT_ITEM_FIELD)||'ItemNumber',vendorField=clean(process.env.D365_RELEASED_PRODUCT_VENDOR_FIELD)||'PrimaryVendorAccountNumber',out=new Map();
- for(let i=0;i<skus.length;i+=35){
-  const chunk=skus.slice(i,i+35),filters=[`(${chunk.map(sku=>`${itemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+ const entity=clean(process.env.D365_RELEASED_PRODUCT_ENTITY)||'ReleasedProductsV2',itemFields=[...new Set([clean(process.env.D365_RELEASED_PRODUCT_ITEM_FIELD),clean(config.dynamics.productNumberField),'ProductNumber','ItemNumber'].filter(Boolean))],vendorField=clean(process.env.D365_RELEASED_PRODUCT_VENDOR_FIELD)||'PrimaryVendorAccountNumber',out=new Map();
+ let workingItemField=null,lastError=null;
+ for(const probeSku of skus.slice(0,4)){
+  for(const candidate of itemFields){
+   const filters=[`${candidate} eq '${esc(probeSku)}'`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+   try{const probe=await odataGet(entity,{filter:filters.join(' and '),top:1,extra:config.dynamics.dataAreaId?'cross-company=true':''});if(probe?.value?.[0]){workingItemField=candidate;break}}catch(error){lastError=error}
+  }
+  if(workingItemField)break
+ }
+ if(!workingItemField){for(const sku of skus)out.set(sku,{status:lastError?'ERROR':'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:lastError?null:'RELEASED_PRODUCT_NOT_FOUND',error:lastError?.message||null,code:lastError?.code||null});return out}
+ for(let i=0;i<skus.length;i+=30){
+  const chunk=skus.slice(i,i+30),filters=[`(${chunk.map(sku=>`${workingItemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   try{
-   const payload=await odataGetAll(entity,{filter:filters.join(' and '),extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:100,maxRows:2000});
+   const payload=await odataGetAll(entity,{filter:filters.join(' and '),extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:100,maxRows:1000});
    for(const row of payload.value||[]){
-    const sku=clean(row[itemField]);if(!sku)continue;const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField])||null,nameField=productNameField(row),productName=nameField?clean(row[nameField]):null;
-    out.set(sku,{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,productName,nameField:nameField||null,supplyMode,rawValue:raw??null,field:field||null,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'})
+    const sku=clean(row[workingItemField]);if(!sku)continue;const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField]||row.PrimaryVendorAccount||row.VendorAccountNumber)||null,nameField=productNameField(row),productName=nameField?clean(row[nameField]):null;
+    out.set(sku,{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,productName,nameField:nameField||null,supplyMode,rawValue:raw??null,field:field||null,itemField:workingItemField,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'})
    }
   }catch(error){for(const sku of chunk)if(!out.has(sku))out.set(sku,{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:error.message,code:error.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'})}
  }
