@@ -12,14 +12,14 @@ const top=k=>safeRows(k)[0]||null;
 function tabLabel(k){return({departments:'Rayons',categories:'Catégories',products:'Articles',hourly:'Heures'}[k]||k)}
 function tone(v,{goodAbove=true}={}){if(v==null)return'';const n=Number(v);return goodAbove?(n>0?'up':n<0?'down':''):(n>0?'down':n<0?'up':'')}
 function metric(label,value,small='',cls=''){return `<div class="performance-kpi ${cls}"><span>${esc(label)}</span><strong>${value}</strong><small>${small}</small></div>`}
-function insight(label,row,kind){if(!row)return `<div><span>${esc(label)}</span><strong>—</strong><small>Donnée indisponible</small></div>`;const detail=kind==='hourly'?'créneau le plus fort':`${money(row.sales)} · ${number(row.units)} u.`;return `<div><span>${esc(label)}</span><strong>${esc(row.label||row.key)}</strong><small>${detail}</small></div>`}
+function insight(label,row,kind){if(!row)return `<div><span>${esc(label)}</span><strong>—</strong><small>Donnée indisponible</small></div>`;const detail=kind==='hourly'?'créneau le plus fort':`${money(row.sales)} · ${number(row.units)} u.${row.rayonLabel?` · ${esc(row.rayonLabel)}`:''}`;return `<div><span>${esc(label)}</span><strong>${esc(row.label||row.key)}</strong><small>${detail}</small></div>`}
 function rows(){return safeRows(dimension)}
 function renderRows(){
  const host=$('#performanceRows');if(!host)return;
  const items=rows(),total=Number(pulse?.snapshot?.kpis?.netSales||0),max=Math.max(0,...items.map(x=>Math.max(0,Number(x.sales||0))));
  host.innerHTML=items.length?items.slice(0,30).map((r,i)=>{
   const sales=Math.max(0,Number(r.sales||0)),share=total?Math.max(0,(sales/total)*100):null,width=max?Math.max(2,(sales/max)*100):0;
-  return `<div class="performance-row"><div class="performance-rank">${i+1}</div><div class="performance-row-main"><div class="performance-row-head"><strong>${esc(r.label||r.key)}</strong><span>${share==null?'':ratio(share)+' du CA'}</span></div><div class="performance-bar"><i style="width:${width}%"></i></div><small>${dimension==='hourly'?'Créneau de vente':`${number(r.units)} unité(s) vendue(s)`}</small></div><div class="performance-row-value"><strong>${money(r.sales)}</strong></div></div>`;
+  const productMeta=dimension==='products'?[r.key,r.rayonLabel,r.retailScope].filter(Boolean).map(esc).join(' · '):'';return `<div class="performance-row"><div class="performance-rank">${i+1}</div><div class="performance-row-main"><div class="performance-row-head"><strong>${esc(r.label||r.key)}</strong><span>${share==null?'':ratio(share)+' du CA'}</span></div>${productMeta?`<div class="small muted">${productMeta}</div>`:''}<div class="performance-bar"><i style="width:${width}%"></i></div><small>${dimension==='hourly'?'Créneau de vente':`${number(r.units)} unité(s) vendue(s)`}</small></div><div class="performance-row-value"><strong>${money(r.sales)}</strong></div></div>`;
  }).join(''):`<div class="performance-empty">Aucune donnée disponible pour ${esc(tabLabel(dimension).toLowerCase())}.</div>`;
  document.querySelectorAll('[data-performance-dim]').forEach(b=>b.classList.toggle('active',b.dataset.performanceDim===dimension));
 }
