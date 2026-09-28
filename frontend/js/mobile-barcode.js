@@ -1,6 +1,7 @@
 import { toast } from './ui.js';
 
 const STATIC_TARGETS=[
+  {selector:'#managerScanEan',action:'#managerScanGo'},
   {selector:'#priceCheckEan',action:'#priceCheckLookup'},
   {selector:'#qualityEan',action:'#qualityLookup'},
   {selector:'#dlcEan',action:'#dlcLookup'},
@@ -70,7 +71,7 @@ function fillScanned(input,raw,afterScan){
 async function startNativeScanner(detector,input,afterScan){
   const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');reader.hidden=true;video.hidden=false;
   try{
-    activeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    activeStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1920},height:{ideal:1080},focusMode:{ideal:'continuous'}},audio:false});
     video.srcObject=activeStream;host.hidden=false;await video.play();
   }catch(e){stopScanner();toast(e?.name==='NotAllowedError'?'Autorise la caméra pour scanner, ou saisis le code manuellement.':'Impossible d’ouvrir la caméra. Saisis le code manuellement.');input.focus();return}
   const tick=async ts=>{
@@ -88,7 +89,8 @@ async function startIosFallback(input,afterScan){
   try{
     const F=window.Html5QrcodeSupportedFormats||{},formats=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','ITF'].map(k=>F[k]).filter(v=>v!==undefined);
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formats.length?{formatsToSupport:formats,verbose:false}:{verbose:false});
-    await activeHtml5.start({facingMode:'environment'},{fps:10,qrbox:{width:280,height:140},aspectRatio:1.333333},decoded=>fillScanned(input,decoded,afterScan),()=>{});
+    let camera={facingMode:'environment'};try{const cams=await window.Html5Qrcode.getCameras(),back=(cams||[]).find(c=>/back|rear|environment|arrière/i.test(c.label||''));if(back?.id)camera={deviceId:{exact:back.id}}}catch{}
+    await activeHtml5.start(camera,{fps:12,qrbox:(w,h)=>({width:Math.max(220,Math.min(340,Math.round(w*.86))),height:Math.max(100,Math.min(170,Math.round(h*.38)))}),aspectRatio:1.333333,disableFlip:true},decoded=>fillScanned(input,decoded,afterScan),()=>{});
   }catch(e){stopScanner();toast(e?.name==='NotAllowedError'?'Autorise la caméra pour scanner, ou saisis le code manuellement.':'Scan caméra indisponible. Saisis le code manuellement.');input.focus()}
 }
 async function startScanner(input,afterScan){
