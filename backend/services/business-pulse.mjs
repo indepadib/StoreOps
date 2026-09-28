@@ -19,16 +19,16 @@ async function stockSummary(storeId,businessDate){
 }
 
 async function enrichProductNames(rows=[]){
-  const out=(rows||[]).map(x=>({...x})),unresolved=[];
+  const out=(rows||[]).map(x=>({...x})),unresolved=[],generic=(label,key)=>{const v=String(label||'').trim();return !v||v===String(key||'').trim()||/^article(?:\s|$)/i.test(v)||/^item(?:\s|$)/i.test(v)||/^product(?:\s|$)/i.test(v)};
   for(const row of out){
    const key=String(row.key||'').trim(),label=String(row.label||'').trim();
-   if(!key||label&&label!==key)continue;
+   if(!key||!generic(label,key))continue;
    const cached=cachedProductByProductNumber(key);
    if(cached?.name&&cached.name!==key)row.label=cached.name;else unresolved.push(key)
   }
   if(unresolved.length){
    const refs=await releasedProductSourcingMany(unresolved.slice(0,160));
-   for(const row of out){const ref=refs.get(String(row.key||'').trim());if(ref?.productName)row.label=ref.productName}
+   for(const row of out){const key=String(row.key||'').trim(),ref=refs.get(key);if(ref?.productName&&generic(row.label,key))row.label=ref.productName}
   }
   return out
 }
