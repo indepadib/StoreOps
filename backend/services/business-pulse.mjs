@@ -28,7 +28,7 @@ async function enrichProductNames(rows=[]){
   }
   if(unresolved.length){
    const refs=await releasedProductSourcingMany(unresolved.slice(0,160));
-   for(const row of out){const key=String(row.key||'').trim(),ref=refs.get(key);if(ref?.productName&&generic(row.label,key))row.label=ref.productName}
+   for(const row of out){const key=String(row.key||'').trim(),ref=refs.get(key);if(!ref)continue;if(ref.productName&&generic(row.label,key))row.label=ref.productName;row.rayonCode=ref.rayonCode||null;row.rayonLabel=ref.rayonLabel||null;row.retailScope=ref.retailScope||null;row.supplyMode=ref.supplyMode||null}
   }
   return out
 }
