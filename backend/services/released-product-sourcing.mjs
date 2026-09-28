@@ -7,7 +7,7 @@ const normalized=v=>clean(v).toUpperCase().replace(/[\s_-]+/g,'');
 const DIRECT_VALUES=new Set(['DIRECT','DIRECTFOURNISSEUR','FOURNISSEURDIRECT','DIRECTSUPPLIER']);
 const DC_VALUES=new Set(['DC','DISTRIBUTIONCENTER','CENTREDEDISTRIBUTION','ENTREPOT','WAREHOUSE']);
 const candidateNames=['SupplyMode','SupplyType','ReplenishmentType','SourcingMode','SourcingType','DCOrDirect','DCDirect','DistributionMode','ProcurementMode'];
-const productNameCandidates=['ProductName','ProductDescription','Description','ProductSearchName','SearchName'];
+const productNameCandidates=['ProductName','ProductDescription','Description'];
 const sourcingCache=new Map();
 const sourcingCacheMs=()=>Math.max(30_000,Math.min(900_000,Number(process.env.STOREOPS_RELEASED_PRODUCT_CACHE_MS)||300_000));
 function cacheGet(sku){const x=sourcingCache.get(String(sku||''));return x&&Date.now()<x.expiresAt?x.value:null}
