@@ -34,16 +34,43 @@ function dateRangeFilter(f,startDay,endDay,configuredMode=null){
  if(mode==='date')return `${f} ge ${startDay} and ${f} le ${endDay}`;
  return `${f} ge ${startDay}T00:00:00Z and ${f} lt ${nextDate(endDay)}T00:00:00Z`;
 }
-function hourOf(v){
+export function minuteOfDay(v){
  if(v===null||v===undefined||v==='')return null;
- const s=String(v).trim();
- const iso=s.match(/T(\d{2}):/);if(iso)return Number(iso[1]);
- const hhmm=s.match(/^(\d{1,2}):/);if(hhmm)return Number(hhmm[1]);
- const n=Number(v);if(Number.isFinite(n)){
-  if(n>=0&&n<=23)return Math.floor(n);
-  const four=String(Math.trunc(n)).padStart(4,'0');const h=Number(four.slice(0,2));return h>=0&&h<=23?h:null;
+ const raw=String(v).trim();
+ const iso=raw.match(/T(\d{2}):(\d{2})/);if(iso){const h=Number(iso[1]),m=Number(iso[2]);return h<=23&&m<=59?h*60+m:null}
+ const colon=raw.match(/^(\d{1,2}):(\d{2})/);if(colon){const h=Number(colon[1]),m=Number(colon[2]);return h<=23&&m<=59?h*60+m:null}
+ if(/^\d+$/.test(raw)){
+  const digits=raw.replace(/^0+(?=\d)/,'');
+  if(digits.length<=2){const h=Number(digits);return h<=23?h*60:null}
+  const padded=digits.length===3?'0'+digits:digits;
+  if(padded.length===4||padded.length===6){
+   const h=Number(padded.slice(0,2)),m=Number(padded.slice(2,4));return h<=23&&m<=59?h*60+m:null
+  }
+  if(digits.length===5){
+   const h=Number(digits.slice(0,1)),m=Number(digits.slice(1,3));if(h<=23&&m<=59)return h*60+m
+  }
  }
- return null;
+ return null
+}
+function hourOf(v){const m=minuteOfDay(v);return m===null?null:Math.floor(m/60)}
+function zonedClock(now=new Date(),timeZone=process.env.STOREOPS_BUSINESS_TIME_ZONE||'Africa/Casablanca'){
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+ return{date:`${parts.year}-${parts.month}-${parts.day}`,hour:Number(parts.hour),minute:Number(parts.minute),timeZone}
+}
+export function salesComparisonCutoff(businessDate,{now=new Date(),timeZone=process.env.STOREOPS_BUSINESS_TIME_ZONE||'Africa/Casablanca'}={}){
+ const clock=zonedClock(now,timeZone),day=dateOnly(businessDate);
+ if(!day||day!==clock.date)return{mode:'FULL_DAY',cutoffMinute:null,cutoffLabel:null,timeZone:clock.timeZone};
+ const cutoffMinute=clock.hour*60+clock.minute;
+ return{mode:'SAME_TIME',cutoffMinute,cutoffLabel:`${String(clock.hour).padStart(2,'0')}:${String(clock.minute).padStart(2,'0')}`,timeZone:clock.timeZone}
+}
+function applyCutoff(rows,timeField,cutoffMinute){
+ const input=Array.isArray(rows)?rows:[];
+ if(cutoffMinute===null||cutoffMinute===undefined)return{rows:input,meta:{requested:false,applied:false,complete:true,cutoffMinute:null,cutoffLabel:null,totalRows:input.length,parseableRows:input.length,unparseableRows:0,reason:null}};
+ if(!timeField)return{rows:input,meta:{requested:true,applied:false,complete:false,cutoffMinute,cutoffLabel:`${String(Math.floor(cutoffMinute/60)).padStart(2,'0')}:${String(cutoffMinute%60).padStart(2,'0')}`,totalRows:input.length,parseableRows:0,unparseableRows:input.length,reason:'TIME_FIELD_UNMAPPED'}};
+ const kept=[];let parseable=0,unparseable=0;
+ for(const row of input){const minute=minuteOfDay(row?.[timeField]);if(minute===null){unparseable++;continue}parseable++;if(minute<=cutoffMinute)kept.push(row)}
+ const complete=unparseable===0;
+ return{rows:complete?kept:input,meta:{requested:true,applied:complete,complete,cutoffMinute,cutoffLabel:`${String(Math.floor(cutoffMinute/60)).padStart(2,'0')}:${String(cutoffMinute%60).padStart(2,'0')}`,totalRows:input.length,parseableRows:parseable,unparseableRows:unparseable,reason:complete?null:'TIME_PARSE_INCOMPLETE'}}
 }
 
 export function salesIntegrationConfig(storeId=null){
@@ -110,7 +137,7 @@ function literalFilters(field,value){
  if(/^-?\d+(?:\.\d+)?$/.test(raw))out.push(`${field} eq ${raw}`);
  return [...new Set(out)]
 }
-export async function readStoreSalesDay(storeId,businessDate){
+export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
  const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
@@ -122,7 +149,7 @@ export async function readStoreSalesDay(storeId,businessDate){
     if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
     try{
      const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
-     const result={status:'READY',source:`D365/${c.entity}`,storeId,businessDate,config:{entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode},data:{...aggregateSalesRows(fetched.value,c),pages:fetched.pages,truncated:!!fetched.truncated}};
+     const cutoff=applyCutoff(fetched.value,c.fields.time,cutoffMinute),result={status:'READY',source:`D365/${c.entity}`,storeId,businessDate,config:{entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode,timeField:c.fields.time||null},data:{...aggregateSalesRows(cutoff.rows,c),pages:fetched.pages,truncated:!!fetched.truncated,cutoff:cutoff.meta,rawRowCount:(fetched.value||[]).length}};
      if((fetched.value||[]).length)return result;
      firstEmpty=firstEmpty||result;
     }catch(error){lastError=error}
