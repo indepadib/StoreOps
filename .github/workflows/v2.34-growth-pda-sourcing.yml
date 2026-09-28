@@ -22,6 +22,8 @@ jobs:
           node --check backend/services/replenishment-policy.mjs
           node --check backend/services/replenishment-engine.mjs
           node --check backend/services/item-assistant.mjs
+          node --check backend/services/replenishment-requests.mjs
+          node --check backend/services/replenishment-request-api.mjs
           node --check backend/services/stock-signals.mjs
           node --check backend/services/warehouse-control.mjs
           node --check backend/services/dynamics-stock.mjs
