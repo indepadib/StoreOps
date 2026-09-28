@@ -7,7 +7,7 @@ const env=readFileSync(new URL('../../.env.example',import.meta.url),'utf8');
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const frontendApi=readFileSync(new URL('../../frontend/js/api.js',import.meta.url),'utf8');
 const showcaseApi=readFileSync(new URL('../../frontend/js/api-showcase.js',import.meta.url),'utf8');
-assert.equal(pkg.version,'2.37.0');
+assert.equal(pkg.version,'2.37.1');
 assert.match(config,/STOREOPS_VERSION \|\| '2\.37\.0'/);
 assert.match(env,/STOREOPS_VERSION=2\.37\.0/);
 assert.match(server,/version:config\.appVersion/g);
