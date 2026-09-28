@@ -7,7 +7,7 @@ import { mockColdChainApi,coldChainShowcaseSummary,markColdChainShowcaseOpened }
 import { mockStaffingApi,staffingShowcaseSummary,markStaffingShowcaseOpened } from './mock-staffing.js';
 import { mockPriceCheckApi } from './mock-price-check.js';
 const BASE=(window.STOREOPS_CONFIG?.apiBase||'').replace(/\/$/,'');
-const SHOWCASE_VERSION='2.37.1-showcase';
+const SHOWCASE_VERSION='2.38.0-showcase';
 const bootConsumed=new Set();
 function apiUrl(path){return `${BASE}${path}`}
 function cashPath(path){return /^\/api\/(cash(?:\/|$)|stores\/[^/]+\/cash-closing(?:\/|$))/.test(path.split('?')[0])}
