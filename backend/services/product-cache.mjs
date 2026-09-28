@@ -17,7 +17,18 @@ CREATE TABLE IF NOT EXISTS product_identity_cache(
  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS ix_product_identity_product ON product_identity_cache(product_number);
+CREATE TABLE IF NOT EXISTS product_identity_cache_meta(
+ key TEXT PRIMARY KEY,
+ value TEXT NOT NULL
+);
 `);
+const displayNameCacheVersion='2';
+const displayNameVersionRow=db.prepare("SELECT value FROM product_identity_cache_meta WHERE key='display_name_policy_version'").get();
+if(displayNameVersionRow?.value!==displayNameCacheVersion){
+ db.exec('DELETE FROM product_identity_cache');
+ db.prepare("INSERT INTO product_identity_cache_meta(key,value) VALUES('display_name_policy_version',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(displayNameCacheVersion);
+}
+
 
 function hasTable(name){return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name)}
 
