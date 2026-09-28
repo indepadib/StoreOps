@@ -166,7 +166,7 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
  if(!c.ready||!c.fields.product)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate:end,windowDays,startDay:start,endDay:end,products:[],missing:[...new Set([...(c.missing||[]),!c.fields.product?'productField':null].filter(Boolean))]};
  const cacheSeconds=Math.max(300,Math.min(86400,Number(process.env.STOREOPS_SALES_ACTIVITY_CACHE_SECONDS)||21600)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`;
  const cached=salesActivityCache.get(cacheKey);if(!force&&cached&&Date.now()<cached.expiresAt)return cached.value;
- const select=[c.fields.product,c.fields.net,c.fields.quantity,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[c.fields.product,c.fields.name,c.fields.net,c.fields.quantity,c.fields.salesUnit,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
  let firstEmpty=null,lastError=null;
  for(const identifier of identifiers){
@@ -190,8 +190,8 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
       const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
       const productNumber=clean(row[c.fields.product]);if(!productNumber)continue;
       const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;
-      const current=byProduct.get(productNumber)||{productNumber,name:productNumber,saleRows:0,salesValue:0,units:0,lastSaleDate:null};
-      current.saleRows+=1;current.salesValue+=saleValue;if(c.fields.quantity)current.units+=Math.abs(num(row[c.fields.quantity]));const saleDay=dateOnly(c.fields.date?row[c.fields.date]:null);if(saleDay&&(!current.lastSaleDate||saleDay>current.lastSaleDate))current.lastSaleDate=saleDay;
+      const current=byProduct.get(productNumber)||{productNumber,name:clean(c.fields.name?row[c.fields.name]:'')||productNumber,saleRows:0,salesValue:0,units:0,salesUnit:clean(c.fields.salesUnit?row[c.fields.salesUnit]:'')||null,lastSaleDate:null};
+      current.saleRows+=1;current.salesValue+=saleValue;if(current.name===productNumber&&c.fields.name&&clean(row[c.fields.name]))current.name=clean(row[c.fields.name]);if(!current.salesUnit&&c.fields.salesUnit&&clean(row[c.fields.salesUnit]))current.salesUnit=clean(row[c.fields.salesUnit]);if(c.fields.quantity)current.units+=Math.abs(num(row[c.fields.quantity]));const saleDay=dateOnly(c.fields.date?row[c.fields.date]:null);if(saleDay&&(!current.lastSaleDate||saleDay>current.lastSaleDate))current.lastSaleDate=saleDay;
       byProduct.set(productNumber,current);
      }
      const products=[...byProduct.values()].map(x=>({...x,salesValue:round2(x.salesValue),units:round3(x.units)})).sort((a,b)=>b.salesValue-a.salesValue||a.productNumber.localeCompare(b.productNumber));
