@@ -1,6 +1,7 @@
 import {readStoreStockSnapshot} from './dynamics-stock.mjs';
 import {readStoreSalesActivityWindow} from './dynamics-sales.mjs';
 import {assortmentIndex,productTaxonomy} from './assortment.mjs';
+import {releasedProductSourcingMany} from './released-product-sourcing.mjs';
 
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const clean=v=>String(v??'').trim();
@@ -27,12 +28,17 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
   if(assortment.status==='READY'&&!assortment.included.has(productNumber))continue;
   const sale=salesMap.get(productNumber)||null,salesUnits=n(sale?.units),salesValue=n(sale?.salesValue),daily=salesUnits>0?round(salesUnits/days,3):0,coverage=daily>0?round(available/daily,1):null,category=taxonomyLabel(productNumber);
   if(!sale||salesUnits<=0){
-   items.push({id:`dead-${productNumber}`,type:'DEAD',priority:'HIGH',productNumber,name:row.name||productNumber,ean:row.ean||null,category,availableStock:available,salesUnitsWindow:0,salesValueWindow:0,dailySales:0,coverageDays:null,noSaleDays:days,reason:`Aucune vente sur les ${days} derniers jours malgré un stock disponible.`,suggestedActions:['CHECK_FACING','MERCHANDISE','COOL_SAVE','TRANSFER']});
+   items.push({id:`dead-${productNumber}`,type:'DEAD',priority:'HIGH',productNumber,name:(sale?.name&&sale.name!==productNumber?sale.name:row.name)||productNumber,ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:0,salesValueWindow:0,dailySales:0,coverageDays:null,noSaleDays:days,reason:`Aucune vente sur les ${days} derniers jours malgré un stock disponible.`,suggestedActions:['CHECK_FACING','MERCHANDISE','COOL_SAVE','TRANSFER']});
    continue
   }
   if(coverage!==null&&coverage>=SLOW_COVERAGE()){
-   items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:row.name||productNumber,ean:row.ean||null,category,availableStock:available,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
+   items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(sale?.name&&sale.name!==productNumber?sale.name:row.name)||productNumber,ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
   }
+ }
+ const unresolved=items.filter(x=>!x.name||x.name===x.productNumber).map(x=>x.productNumber);
+ if(unresolved.length){
+  const released=await releasedProductSourcingMany(unresolved);
+  for(const item of items){const name=released.get(item.productNumber)?.productName;if(name)item.name=name}
  }
  items.sort((a,b)=>(a.type==='DEAD'?0:1)-(b.type==='DEAD'?0:1)||(Number(b.coverageDays||999)-Number(a.coverageDays||999))||Number(b.availableStock)-Number(a.availableStock));
  const dead=items.filter(x=>x.type==='DEAD'),slow=items.filter(x=>x.type==='SLOW');
