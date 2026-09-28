@@ -6,7 +6,7 @@ const {releasedProductDisplayName,normalizeReleasedProductSupplyMode}=await impo
 const {promoExpectedPrice}=await import('../services/dynamics.mjs');
 
 assert.deepEqual(releasedProductDisplayName({ProductName:'Lait frais 1L'}),{field:'ProductName',name:'Lait frais 1L'});
-assert.deepEqual(releasedProductDisplayName({SearchName:'YAOURT NATURE 4X'}),{field:'SearchName',name:'YAOURT NATURE 4X'});
+assert.deepEqual(releasedProductDisplayName({ProductDescription:'YAOURT NATURE 4X',SearchName:'DANONE'}),{field:'ProductDescription',name:'YAOURT NATURE 4X'});
 assert.equal(normalizeReleasedProductSupplyMode('DC'),'WAREHOUSE');
 assert.equal(normalizeReleasedProductSupplyMode('Direct'),'DIRECT_SUPPLIER');
 assert.equal(normalizeReleasedProductSupplyMode('LVE Lakhyayta'),'WAREHOUSE');
@@ -32,7 +32,7 @@ const cool=read('frontend/js/pages/cool-save.js');
 const glovo=read('backend/services/glovo-availability.mjs');
 
 assert.match(released,/ProductNumber','ItemNumber/,'ReleasedProducts lookup must support ProductNumber and ItemNumber');
-assert.match(released,/ProductSearchName','SearchName/,'ReleasedProducts lookup must have a display-name fallback');
+assert.match(released,/ProductName','ProductDescription','Description/,'ReleasedProducts lookup must use business-safe display-name fields');
 assert.match(released,/cachePut\(sku,\{status:supplyMode/,'batch product identities must be cached');
 assert.match(stock,/releasedProductSourcingMany\(items\.map/,'all action rows including negative stock must be identity-enriched');
 assert.match(stock,/sourcing\.productName\|\|clean\(sale\?\.name\)/,'stock signals must prefer real product names');
