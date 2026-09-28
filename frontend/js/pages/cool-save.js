@@ -19,7 +19,7 @@ function draw(){
  host.querySelectorAll('[data-cs-select]').forEach(x=>x.onchange=()=>toggleSuggestion(x));
  host.querySelectorAll('[data-cs-qty]').forEach(x=>x.onchange=()=>updateQty(x));
  $('#createCoolSave')?.addEventListener('click',createBasket);
- host.querySelectorAll('[data-cs-action]').forEach(b=>b.onclick=()=>basketAction(b));
+ host.querySelectorAll('[data-cs-action]').forEach(b=>b.onclick=e=>basketAction(b,e));
 }
 function suggestion(id){return (payload?.suggestions?.items||[]).find(x=>x.id===id)}
 function toggleSuggestion(input){
@@ -29,14 +29,26 @@ function toggleSuggestion(input){
 function updateQty(input){
  const x=selected.get(input.dataset.csQty);if(!x)return;const q=Number(input.value);if(Number.isFinite(q)&&q>0)selected.set(x.id,{...x,quantity:q})
 }
-async function createBasket(){
- const price=Number($('#csPrice')?.value);if(!Number.isFinite(price)||price<0)return toast('Saisis le prix de vente du panier.');
+async function createBasket(event){
+ event?.preventDefault?.();event?.stopPropagation?.();if(createBusy)return;
+ const price=Number($('#csPrice')?.value);if(!Number.isFinite(price)||price<0)return toast('Saisis le prix de vente du panier.');if(!selected.size)return toast('Sélectionne au moins un article.');
  const items=[...selected.values()].map(x=>({productNumber:x.productNumber,ean:x.ean,productName:x.name,quantity:x.quantity,unit:x.unit,referenceUnitPrice:x.referenceUnitPrice,sourceType:x.sourceType,sourceId:x.sourceId}));
- try{await api(`/api/stores/${app.storeId}/cool-save`,{method:'POST',body:JSON.stringify({title:$('#csTitle')?.value||'Panier Cool & Save',salePrice:price,items})});selected.clear();toast('Panier créé. Il reste en brouillon tant qu’il n’est pas publié.');await renderCoolSave()}catch(e){toast(e.message)}
+ const button=$('#createCoolSave'),requestId=draftRequestId;createBusy=true;if(button){button.disabled=true;button.textContent='Création…'}
+ try{
+  const created=await api(`/api/stores/${app.storeId}/cool-save`,{method:'POST',body:{title:$('#csTitle')?.value||'Panier Cool & Save',salePrice:price,items,clientRequestId:requestId}});
+  selected.clear();draftRequestId=(globalThis.crypto?.randomUUID?.()||('cs-'+Date.now()+'-'+Math.random().toString(36).slice(2)));
+  toast(`${created?.code||'Panier'} créé en brouillon.`);await renderCoolSave()
+ }catch(e){toast(e.message)}finally{createBusy=false}
 }
-async function basketAction(btn){
- const action=btn.dataset.csAction,id=btn.dataset.csId;if(!action||!id)return;btn.disabled=true;
- try{await api(`/api/cool-save/${encodeURIComponent(id)}/${action}`,{method:'POST',body:JSON.stringify({})});toast(action==='publish'?'Panier publié.':action==='sold'?'Panier marqué vendu.':'Panier annulé.');await renderCoolSave()}catch(e){toast(e.message);btn.disabled=false}
+async function basketAction(btn,event){
+ event?.preventDefault?.();event?.stopPropagation?.();const action=btn.dataset.csAction,id=btn.dataset.csId,key=`${id}:${action}`;if(!action||!id||actionBusy.has(key))return;
+ actionBusy.add(key);btn.disabled=true;const old=btn.textContent;btn.textContent=action==='publish'?'Publication…':action==='sold'?'Validation…':'Annulation…';
+ try{
+  const updated=await api(`/api/cool-save/${encodeURIComponent(id)}/${action}`,{method:'POST',body:{}});
+  if(payload?.items&&updated?.id)payload.items=payload.items.map(x=>x.id===updated.id?updated:x);
+  toast(action==='publish'?`${updated?.code||'Panier'} publié.`:action==='sold'?`${updated?.code||'Panier'} marqué vendu.`:`${updated?.code||'Panier'} annulé.`);
+  await renderCoolSave()
+ }catch(e){toast(e.message);btn.disabled=false;btn.textContent=old}finally{actionBusy.delete(key)}
 }
 function applyPrefill(){
  let sku='';try{sku=sessionStorage.getItem('storeops_coolsave_prefill')||'';sessionStorage.removeItem('storeops_coolsave_prefill')}catch{}
