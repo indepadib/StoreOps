@@ -1,7 +1,7 @@
 import {config} from '../config.mjs';
 import {odataGetAll,probeDataEntity} from './dynamics.mjs';
 import {salesIntegrationConfig} from './dynamics-sales.mjs';
-import {readStoreLoyaltyRecruitmentsByStaff} from './dynamics-loyalty.mjs';
+import {readStoreLoyaltyRecruitmentsByStaff,readStoreLoyaltyEnrollments} from './dynamics-loyalty.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v).replaceAll("'","''");
@@ -44,6 +44,29 @@ async function resolveWorkers(staffIds=[]){
  }catch(error){return{status:'ERROR',map:out,schema,error:{code:error?.code||'D365_WORKER_READ_FAILED',message:error?.message||String(error)}}}
 }
 
+
+function minuteRank(v){
+ const raw=clean(v);if(!raw)return 9999;const m=raw.match(/^(\d{1,2}):(\d{2})/);if(m){const h=Number(m[1]),mi=Number(m[2]);return h*60+mi}
+ if(/^\d+$/.test(raw)){const d=raw.padStart(4,'0'),h=Number(d.slice(0,2)),mi=Number(d.slice(2,4));if(h<=23&&mi<=59)return h*60+mi}
+ return 9999
+}
+export function attributeRecruitmentsToStaff(rows=[],enrollments=[],{
+ staffField='StaffId',customerField='custAccount',transactionField='transactionId',dateField='businessDate',timeField='time',statusField='transactionStatus',netField='netAmountInclTax',salesSign=-1
+}={}){
+ const enrolled=new Map((enrollments||[]).map(x=>[clean(x.customerAccount),{...x,enrollmentDay:dateOnly(x.enrollmentDate)}]).filter(([k])=>identifiedCustomer(k))),firstByCustomer=new Map();
+ for(const row of rows||[]){
+  const status=clean(statusField?row?.[statusField]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(status))continue;
+  const sales=round2(num(row?.[netField])*Number(salesSign||-1));if(!(sales>0))continue;
+  const customer=clean(customerField?row?.[customerField]:'');if(!identifiedCustomer(customer)||!enrolled.has(customer))continue;
+  const staffId=clean(row?.[staffField]),day=dateOnly(dateField?row?.[dateField]:null);if(!staffId||!day)continue;
+  const enrollment=enrolled.get(customer);if(enrollment.enrollmentDay&&day<enrollment.enrollmentDay)continue;
+  const candidate={customerAccount:customer,staffId,transactionId:clean(transactionField?row?.[transactionField]:''),businessDate:day,time:clean(timeField?row?.[timeField]:''),minute:minuteRank(timeField?row?.[timeField]:'')};
+  const current=firstByCustomer.get(customer);
+  if(!current||candidate.businessDate<current.businessDate||(candidate.businessDate===current.businessDate&&candidate.minute<current.minute))firstByCustomer.set(customer,candidate)
+ }
+ const byStaff=new Map();for(const x of firstByCustomer.values())byStaff.set(x.staffId,(byStaff.get(x.staffId)||0)+1);
+ return{byStaff,matchedCustomers:firstByCustomer.size,totalEnrollments:enrolled.size,unmatchedCustomers:Math.max(0,enrolled.size-firstByCustomer.size),items:[...firstByCustomer.values()]}
+}
 export function aggregateCashierRows(rows=[],{
  staffField='StaffId',transactionField='transactionId',netField='netAmountInclTax',customerField='custAccount',dateField='businessDate',statusField='transactionStatus',salesSign=-1
 }={}){
@@ -65,7 +88,7 @@ export async function readStoreCashierPerformance(storeId,{businessDate=new Date
  const hit=cache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
  const c=salesIntegrationConfig(storeId),staffField=clean(c.fields?.staff)||clean(process.env.D365_SALES_STAFF_FIELD)||'StaffId';
  if(!c.ready)return{status:'UNAVAILABLE',storeId,businessDate:end,windowDays,items:[],source:'D365_SALES_UNAVAILABLE',missing:c.missing||[]};
- const select=[staffField,c.fields.transaction,c.fields.net,c.fields.customer,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[staffField,c.fields.transaction,c.fields.net,c.fields.customer,c.fields.date,c.fields.time,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],modes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
  let rows=null,selected=null,lastError=null;
  outer:for(const identifier of identifiers){for(const mode of [...new Set(modes)]){
@@ -76,8 +99,8 @@ export async function readStoreCashierPerformance(storeId,{businessDate=new Date
   }catch(error){lastError=error}
  }}
  if(!rows)return{status:'UNAVAILABLE',storeId,businessDate:end,windowDays,items:[],source:`D365/${c.entity}`,staffField,error:{code:lastError?.code||'D365_STAFF_SALES_READ_FAILED',message:lastError?.message||String(lastError||'Lecture StaffId impossible')}};
- const aggregated=aggregateCashierRows(rows,{staffField,transactionField:c.fields.transaction,netField:c.fields.net,customerField:c.fields.customer,dateField:c.fields.date,statusField:c.fields.status,salesSign:c.sign}),[worker,loyaltyStaff]=await Promise.all([resolveWorkers(aggregated.items.map(x=>x.staffId)),readStoreLoyaltyRecruitmentsByStaff(storeId,{startDate:start,endDate:end}).catch(error=>({status:'UNAVAILABLE',items:[],error:{message:error?.message||String(error)}}))]),recruitmentsByStaff=new Map((loyaltyStaff.items||[]).map(x=>[clean(x.staffId),Number(x.recruitments||0)])),minRateTickets=Math.max(5,Math.min(200,Number(process.env.STOREOPS_CASHIER_RATE_MIN_TICKETS)||20)),items=aggregated.items.map(x=>{const w=worker.map.get(x.staffId),recruitments=loyaltyStaff.status==='READY'?(recruitmentsByStaff.get(x.staffId)||0):null;return{...x,name:w?.name||x.staffId,firstName:w?.firstName||null,lastName:w?.lastName||null,rateEligible:x.tickets>=minRateTickets,recruitments,recruitmentRateNonLoyalty:recruitments!=null&&x.nonLoyaltyTickets>0?round2(recruitments/x.nonLoyaltyTickets*100):recruitments===0&&x.nonLoyaltyTickets>0?0:null,recruitmentStatus:loyaltyStaff.status==='READY'?'EXACT_D365_ENROLLMENT_STAFF':'EXACT_STAFF_ENROLLMENT_SOURCE_REQUIRED'}}).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets),unassigned=aggregated.unassigned;
- const leaders={topSales:[...items].sort((a,b)=>b.sales-a.sales)[0]||null,topTickets:[...items].sort((a,b)=>b.tickets-a.tickets)[0]||null,topIdentification:[...items].filter(x=>x.rateEligible&&x.identifiedTicketRate!=null).sort((a,b)=>b.identifiedTicketRate-a.identifiedTicketRate||b.tickets-a.tickets)[0]||null,topRecruitment:loyaltyStaff.status==='READY'?[...items].sort((a,b)=>Number(b.recruitments||0)-Number(a.recruitments||0)||b.nonLoyaltyTickets-a.nonLoyaltyTickets)[0]||null:null};
- const value={status:selected?.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,startDate:start,endDate:end,windowDays,staffField,items,leaders,summary:{cashiers:items.length,sales:round2(items.reduce((s,x)=>s+x.sales,0)),tickets:items.reduce((s,x)=>s+x.tickets,0),unassignedRows:unassigned.rows,unassignedSales:round2(unassigned.sales),rateEligibilityMinTickets:minRateTickets,workerDirectoryStatus:worker.status,recruitmentStatus:loyaltyStaff.status==='READY'?'EXACT_D365_ENROLLMENT_STAFF':'EXACT_STAFF_ENROLLMENT_SOURCE_REQUIRED',loyaltyStaffField:loyaltyStaff.staffField||null},diagnostics:{entity:c.entity,storeIdentifierKind:selected?.identifier?.kind||null,storeIdentifier:selected?.identifier?.value||null,dateFilterMode:selected?.mode||null,rowCount:selected?.rowCount||rows.length,pages:selected?.pages||0,truncated:!!selected?.truncated,workerEntity:worker.schema?.entity||null,workerPersonnelField:worker.schema?.personnel||null,loyaltyStaffSource:loyaltyStaff.source||null,loyaltyStaffStatus:loyaltyStaff.status||null}};
+ const aggregated=aggregateCashierRows(rows,{staffField,transactionField:c.fields.transaction,netField:c.fields.net,customerField:c.fields.customer,dateField:c.fields.date,statusField:c.fields.status,salesSign:c.sign}),[worker,enrollments,loyaltyStaff]=await Promise.all([resolveWorkers(aggregated.items.map(x=>x.staffId)),readStoreLoyaltyEnrollments(storeId,{startDate:start,endDate:end}).catch(error=>({status:'UNAVAILABLE',items:[],error:{message:error?.message||String(error)}})),readStoreLoyaltyRecruitmentsByStaff(storeId,{startDate:start,endDate:end}).catch(error=>({status:'UNAVAILABLE',items:[],error:{message:error?.message||String(error)}}))]),txAttribution=enrollments.status==='READY'?attributeRecruitmentsToStaff(rows,enrollments.items||[],{staffField,customerField:c.fields.customer,transactionField:c.fields.transaction,dateField:c.fields.date,timeField:c.fields.time,statusField:c.fields.status,netField:c.fields.net,salesSign:c.sign}):null,fallbackByStaff=new Map((loyaltyStaff.items||[]).map(x=>[clean(x.staffId),Number(x.recruitments||0)])),recruitmentMode=txAttribution?'ENROLLMENT_CUSTOMER_X_TRANSACTION_STAFF':loyaltyStaff.status==='READY'?'ENROLLMENT_DIRECT_STAFF':'UNAVAILABLE',minRateTickets=Math.max(5,Math.min(200,Number(process.env.STOREOPS_CASHIER_RATE_MIN_TICKETS)||20)),items=aggregated.items.map(x=>{const w=worker.map.get(x.staffId),recruitments=txAttribution?(txAttribution.byStaff.get(x.staffId)||0):loyaltyStaff.status==='READY'?(fallbackByStaff.get(x.staffId)||0):null;return{...x,name:w?.name||x.staffId,firstName:w?.firstName||null,lastName:w?.lastName||null,rateEligible:x.tickets>=minRateTickets,recruitments,recruitmentRateNonLoyalty:recruitments!=null&&x.nonLoyaltyTickets>0?round2(recruitments/x.nonLoyaltyTickets*100):recruitments===0&&x.nonLoyaltyTickets>0?0:null,recruitmentStatus:recruitmentMode}}).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets),unassigned=aggregated.unassigned;
+ const leaders={topSales:[...items].sort((a,b)=>b.sales-a.sales)[0]||null,topTickets:[...items].sort((a,b)=>b.tickets-a.tickets)[0]||null,topIdentification:[...items].filter(x=>x.rateEligible&&x.identifiedTicketRate!=null).sort((a,b)=>b.identifiedTicketRate-a.identifiedTicketRate||b.tickets-a.tickets)[0]||null,topRecruitment:recruitmentMode!=='UNAVAILABLE'?[...items].sort((a,b)=>Number(b.recruitments||0)-Number(a.recruitments||0)||b.nonLoyaltyTickets-a.nonLoyaltyTickets)[0]||null:null};
+ const value={status:selected?.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,startDate:start,endDate:end,windowDays,staffField,items,leaders,summary:{cashiers:items.length,sales:round2(items.reduce((s,x)=>s+x.sales,0)),tickets:items.reduce((s,x)=>s+x.tickets,0),unassignedRows:unassigned.rows,unassignedSales:round2(unassigned.sales),rateEligibilityMinTickets:minRateTickets,workerDirectoryStatus:worker.status,recruitmentStatus:recruitmentMode,loyaltyStaffField:loyaltyStaff.staffField||null,enrollmentCustomerField:enrollments.customerField||null,matchedRecruitments:txAttribution?.matchedCustomers??null,unmatchedRecruitments:txAttribution?.unmatchedCustomers??null},diagnostics:{entity:c.entity,storeIdentifierKind:selected?.identifier?.kind||null,storeIdentifier:selected?.identifier?.value||null,dateFilterMode:selected?.mode||null,rowCount:selected?.rowCount||rows.length,pages:selected?.pages||0,truncated:!!selected?.truncated,workerEntity:worker.schema?.entity||null,workerPersonnelField:worker.schema?.personnel||null,loyaltyStaffSource:loyaltyStaff.source||null,loyaltyStaffStatus:loyaltyStaff.status||null,enrollmentSource:enrollments.source||null,enrollmentStatus:enrollments.status||null,recruitmentAttributionMode:recruitmentMode}};
  cache.set(cacheKey,{value,expiresAt:Date.now()+cacheMs()});return{...value,cache:{status:'MISS'}}
 }
