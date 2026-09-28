@@ -295,6 +295,23 @@ export function commercialOfferFilter(field,values=[]){const rows=[...new Set((v
 function commercialChunks(values,size=12){const out=[];for(let i=0;i<values.length;i+=size)out.push(values.slice(i,i+size));return out}
 function commercialLimits(){return{pageSize:Math.max(50,Math.min(500,Number(process.env.D365_COMMERCIAL_PAGE_SIZE)||200)),maxGroups:Math.max(200,Math.min(5000,Number(process.env.D365_COMMERCIAL_MAX_GROUPS)||2000)),maxLines:Math.max(500,Math.min(15000,Number(process.env.D365_COMMERCIAL_MAX_LINES)||6000))}}
 
+async function commercialBasePriceMap(itemNumbers=[]){
+  const items=[...new Set((itemNumbers||[]).map(x=>String(x||'').trim()).filter(Boolean))],out=new Map();if(!items.length)return out;
+  const entity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',fields=[...new Set([config.dynamics.productNumberField,'ProductNumber','ItemNumber'].filter(Boolean))],company=config.dynamics.dataAreaId,extra=company?'cross-company=true':'';
+  for(const itemField of fields){
+    try{
+      const local=new Map();
+      for(const batch of commercialChunks(items,20)){
+        const filter=[commercialOfferFilter(itemField,batch),company?`${config.dynamics.dataAreaField} eq '${escapeOData(company)}'`:null].filter(Boolean).join(' and ');
+        const select=[itemField,'SalesPrice','SalesPriceQuantity','SalesUnitSymbol',company?config.dynamics.dataAreaField:null].filter(Boolean).join(',');
+        const payload=await odataGetAll(entity,{filter,select,extra,pageSize:100,maxRows:2000});
+        for(const row of payload.value||[]){const item=String(row?.[itemField]||'').trim(),price=Number(row?.SalesPrice),qty=Number(row?.SalesPriceQuantity||1)||1;if(item&&Number.isFinite(price))local.set(item,{unitPrice:Number((price/qty).toFixed(6)),price,priceQuantity:qty,unit:String(row?.SalesUnitSymbol||'').trim()||null})}
+      }
+      if(local.size){for(const [k,v] of local)out.set(k,v);return out}
+    }catch{}
+  }
+  return out
+}
 export async function getCommercialChanges(storeId,businessDate){
   if(!(isD365ReadLive('price')&&isD365ReadLive('promotion')))return[{sourceKey:`PROMO-NUT750-${businessDate}`,actionType:'PROMO_START',ean:'3017620422003',productNumber:'NUT750',productName:'Nutella 750g',category:'Épicerie',oldPrice:64.90,expectedPrice:59.90,promoLabel:'Promo lancement · 59,90 DH',signageAction:'INSTALL',priority:'HIGH',blockingOpening:true},{sourceKey:`PRICE-LAIT1L-${businessDate}`,actionType:'PRICE_CHANGE',ean:'6111040001111',productNumber:'LAIT1L',productName:'Lait frais entier 1L',category:'Frais',oldPrice:11.90,expectedPrice:12.90,promoLabel:null,signageAction:'VERIFY',priority:'HIGH',blockingOpening:true},{sourceKey:`PROMOEND-YAOURT4-${businessDate}`,actionType:'PROMO_END',ean:'3274080005003',productNumber:'YAOURT4',productName:'Yaourt nature 4x110g',category:'Frais',oldPrice:15.90,expectedPrice:18.50,promoLabel:'Fin promo 15,90 DH',signageAction:'REMOVE',priority:'HIGH',blockingOpening:true}].map(x=>({...x,storeId,source:'SIMULATED_D365'}));
 
@@ -331,14 +348,15 @@ export async function getCommercialChanges(storeId,businessDate){
     return odataGetAll(lineEntity,{filter,select:'OfferId,LineNum,LineType,ItemId,Name,CategoryName,OfferDiscountMethod,OfferDiscountPercentage,OfferDiscountAmount,OfferPrice,MixAndMatchNumberOfItemsNeeded',extra,pageSize:limits.pageSize,maxRows:limits.maxLines});
   }));
   if(linePayloads.some(x=>x.truncated))throw Object.assign(new Error('Les lignes promotionnelles actives dépassent la limite de sécurité StoreOps.'),{status:503,code:'D365_COMMERCIAL_LINES_TRUNCATED',details:{offerCount:eligibleIds.length,maxLines:limits.maxLines}});
+  const promoItemNumbers=[...new Set(linePayloads.flatMap(x=>x.value||[]).map(line=>String(line?.ItemId||'').trim()).filter(Boolean))],basePrices=await commercialBasePriceMap(promoItemNumbers).catch(()=>new Map());
 
   const changes=[],categorySeen=new Set();
   for(const payload of linePayloads)for(const line of (payload.value||[])){
     const offerId=String(line.OfferId||''),header=headerById.get(offerId);if(!header||line.LineType==='Exclude')continue;
-    const item=String(line.ItemId||'').trim(),category=String(line.CategoryName||'').trim()||null,presentation=promoPresentation(header,line),ended=offerEndedYesterday(header,day),startsToday=!ended&&dateOnly(header.ValidFrom)===day,startedYesterday=!ended&&offerStartedYesterday(header,day),catchUp=startedYesterday&&!startsToday,promoPrice=promoExpectedPrice(null,header,line);
+    const item=String(line.ItemId||'').trim(),category=String(line.CategoryName||'').trim()||null,presentation=promoPresentation(header,line),ended=offerEndedYesterday(header,day),startsToday=!ended&&dateOnly(header.ValidFrom)===day,startedYesterday=!ended&&offerStartedYesterday(header,day),catchUp=startedYesterday&&!startsToday,basePriceInfo=basePrices.get(item)||null,baseUnitPrice=basePriceInfo?.unitPrice??null,promoPrice=promoExpectedPrice(baseUnitPrice,header,line);
     if(item){
       const promoLabel=ended?['Fin de promotion',header.Name||null,presentation.label,'Retirer la signalétique promotionnelle'].filter(Boolean).join(' · '):[catchUp?'Contrôle de rattrapage · promotion démarrée hier':null,header.Name||null,presentation.label,presentation.warning].filter(Boolean).join(' · ');
-      changes.push({sourceKey:ended?`D365-PROMO-END-${offerId}-${line.LineNum}-${day}`:`D365-PROMO-${offerId}-${line.LineNum}-${day}`,actionType:ended?'PROMO_END':(startsToday||startedYesterday)?'PROMO_START':'VERIFY',ean:`ITEM:${item}`,productNumber:item,productName:line.Name||item,category,oldPrice:ended&&Number.isFinite(promoPrice)?promoPrice:null,expectedPrice:ended?null:(Number.isFinite(promoPrice)?promoPrice:null),promoLabel,signageAction:ended?'REMOVE':(startsToday||startedYesterday)?'INSTALL':'VERIFY',priority:ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup:[...(offerGroups.get(offerId)||[])][0]||priceGroups[0]||null,priceGroups:[...(offerGroups.get(offerId)||[])],retailChannelId:priceGroupContext.retailChannelId,validFrom:header.ValidFrom||null,validTo:header.ValidTo||null,source:'D365_RETAIL_PRICING'});
+      changes.push({sourceKey:ended?`D365-PROMO-END-${offerId}-${line.LineNum}-${day}`:`D365-PROMO-${offerId}-${line.LineNum}-${day}`,actionType:ended?'PROMO_END':(startsToday||startedYesterday)?'PROMO_START':'VERIFY',ean:`ITEM:${item}`,productNumber:item,productName:line.Name||item,category,oldPrice:ended?(Number.isFinite(promoPrice)?promoPrice:null):(Number.isFinite(baseUnitPrice)?baseUnitPrice:null),expectedPrice:ended?(Number.isFinite(baseUnitPrice)?baseUnitPrice:null):(Number.isFinite(promoPrice)?promoPrice:null),promoLabel,signageAction:ended?'REMOVE':(startsToday||startedYesterday)?'INSTALL':'VERIFY',priority:ended?'HIGH':presentation.warning?'CRITICAL':'HIGH',blockingOpening:true,storeId,priceGroup:[...(offerGroups.get(offerId)||[])][0]||priceGroups[0]||null,priceGroups:[...(offerGroups.get(offerId)||[])],retailChannelId:priceGroupContext.retailChannelId,validFrom:header.ValidFrom||null,validTo:header.ValidTo||null,source:'D365_RETAIL_PRICING',sourceDetails:{type:'RETAIL_PROMOTION',offerId,lineNum:line.LineNum||null,basePrice:baseUnitPrice,promoPrice:Number.isFinite(promoPrice)?promoPrice:null,basePriceUnit:basePriceInfo?.unit||null,discountMethod:line.OfferDiscountMethod||null,discountPercentage:line.OfferDiscountPercentage??header?.DiscountPercentValue??null,discountAmount:line.OfferDiscountAmount??null,offerPrice:line.OfferPrice??null}});
     }else if(category){
       const key=`${offerId}|${category}`;if(categorySeen.has(key))continue;categorySeen.add(key);
       const promoLabel=ended?['Fin de promotion',header.Name||null,presentation.label,'Retirer la signalétique promotionnelle de la catégorie'].filter(Boolean).join(' · '):[catchUp?'Contrôle de rattrapage · promotion démarrée hier':null,header.Name||null,presentation.label,presentation.warning,'Contrôle catégorie : vérifier la signalétique et la mécanique en rayon'].filter(Boolean).join(' · ');
