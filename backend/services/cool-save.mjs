@@ -38,6 +38,10 @@ CREATE TABLE IF NOT EXISTS cool_save_lines(
 CREATE INDEX IF NOT EXISTS ix_coolsave_store_status ON cool_save_baskets(store_id,status,business_date);
 CREATE INDEX IF NOT EXISTS ix_coolsave_lines_basket ON cool_save_lines(basket_id);
 `);
+function ensureColumn(table,name,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(x=>x.name===name))db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${definition}`)}
+ensureColumn('cool_save_baskets','client_request_id','TEXT NULL');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_coolsave_client_request ON cool_save_baskets(store_id,client_request_id) WHERE client_request_id IS NOT NULL");
+
 
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const round=v=>Math.round((n(v)+Number.EPSILON)*100)/100;
@@ -56,18 +60,19 @@ export async function coolSaveSuggestions(storeId,{businessDate=todayISO()}={}){
  const rotationItems=(sell.items||[]).slice(0,50).map(x=>({id:`rotation:${x.productNumber}`,sourceType:x.type==='DEAD'?'DEAD_STOCK':'SLOW_MOVER',sourceId:x.productNumber,productNumber:x.productNumber,ean:x.ean||null,name:x.name||x.productNumber,quantity:n(x.availableStock),unit:'pièce',referenceUnitPrice:null,reason:x.reason,priority:x.priority,eligibility:'REVIEW_REQUIRED'}));
  return{status:'READY',storeId,businessDate,items:[...dlcItems,...rotationItems],summary:{dlc:dlcItems.length,dead:rotationItems.filter(x=>x.sourceType==='DEAD_STOCK').length,slow:rotationItems.filter(x=>x.sourceType==='SLOW_MOVER').length},policy:{expiredDlcExcluded:true,manualReviewForSlowMovers:true}}
 }
-export function createCoolSaveBasket({storeId,user,title='Panier Cool & Save',salePrice,expiresAt=null,items=[]}){
+export function createCoolSaveBasket({storeId,user,title='Panier Cool & Save',salePrice,expiresAt=null,items=[],clientRequestId=null}){
  const price=Number(salePrice);if(!Number.isFinite(price)||price<0)throw Object.assign(new Error('Prix du panier invalide.'),{status:400});
+ const requestId=String(clientRequestId||'').trim()||null;if(requestId){const existing=db.prepare('SELECT * FROM cool_save_baskets WHERE store_id=? AND client_request_id=?').get(storeId,requestId);if(existing)return coolSaveBasket(existing.id)}
  const cleanItems=(items||[]).map(x=>({...x,quantity:Number(x.quantity)})).filter(x=>x.productName||x.name).filter(x=>Number.isFinite(x.quantity)&&x.quantity>0);
  if(!cleanItems.length)throw Object.assign(new Error('Ajoute au moins un article au panier.'),{status:400});
  const id=uid('cs'),basketCode=code(),reference=cleanItems.every(x=>x.referenceUnitPrice!=null)?round(cleanItems.reduce((s,x)=>s+n(x.quantity)*n(x.referenceUnitPrice),0)):null;
  db.exec('BEGIN');try{
-  db.prepare(`INSERT INTO cool_save_baskets(id,store_id,business_date,code,title,sale_price,reference_value,status,expires_at,created_by) VALUES(?,?,?,?,?,?,?,'DRAFT',?,?)`).run(id,storeId,todayISO(),basketCode,String(title||'Panier Cool & Save').trim(),price,reference,expiresAt||null,user.id);
+  db.prepare(`INSERT INTO cool_save_baskets(id,store_id,business_date,code,title,sale_price,reference_value,status,expires_at,created_by,client_request_id) VALUES(?,?,?,?,?,?,?,'DRAFT',?,?,?)`).run(id,storeId,todayISO(),basketCode,String(title||'Panier Cool & Save').trim(),price,reference,expiresAt||null,user.id,requestId);
   const ins=db.prepare('INSERT INTO cool_save_lines(id,basket_id,product_number,ean,product_name,quantity,unit,reference_unit_price,source_type,source_id) VALUES(?,?,?,?,?,?,?,?,?,?)');
   for(const x of cleanItems)ins.run(uid('csl'),id,x.productNumber||null,x.ean||null,x.productName||x.name,x.quantity,x.unit||'pièce',x.referenceUnitPrice==null?null:n(x.referenceUnitPrice),x.sourceType||null,x.sourceId||null);
   db.exec('COMMIT')
  }catch(e){db.exec('ROLLBACK');throw e}
- audit({storeId,userId:user.id,action:'COOL_SAVE_BASKET_CREATED',entityType:'COOL_SAVE',entityId:id,details:{code:basketCode,salePrice:price,referenceValue:reference,lines:cleanItems.length}});
+ audit({storeId,userId:user.id,action:'COOL_SAVE_BASKET_CREATED',entityType:'COOL_SAVE',entityId:id,details:{code:basketCode,salePrice:price,referenceValue:reference,lines:cleanItems.length,clientRequestId:requestId}});
  return coolSaveBasket(id)
 }
 export function publishCoolSaveBasket({id,user}){
