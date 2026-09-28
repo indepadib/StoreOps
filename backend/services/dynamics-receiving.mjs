@@ -278,11 +278,11 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
    })
   };
  }).filter(Boolean);
- const unresolved=unique(items.flatMap(po=>po.lines||[]).filter(line=>!clean(line.productName)||clean(line.productName)===clean(line.productNumber)).map(line=>line.productNumber)).slice(0,180);
- if(unresolved.length){
+ const profileSkus=unique(items.flatMap(po=>po.lines||[]).map(line=>line.productNumber)).slice(0,240);
+ if(profileSkus.length){
   try{
-   const identities=await releasedProductSourcingMany(unresolved);
-   items=items.map(po=>({...po,lines:(po.lines||[]).map(line=>{const identity=identities.get(clean(line.productNumber));return identity?.productName?{...line,productName:identity.productName}:line})}))
+   const identities=await releasedProductSourcingMany(profileSkus);
+   items=items.map(po=>({...po,lines:(po.lines||[]).map(line=>{const identity=identities.get(clean(line.productNumber));if(!identity)return line;const genericName=!clean(line.productName)||clean(line.productName)===clean(line.productNumber)||/^article(?:\s|$)/i.test(clean(line.productName)),rayon=[identity.rayonLabel,identity.retailScope].filter(Boolean).join(' · ');return{...line,productName:genericName&&identity.productName?identity.productName:line.productName,category:rayon||line.category||'Autre',rayonCode:identity.rayonCode||null,rayonLabel:identity.rayonLabel||null,retailScope:identity.retailScope||null,supplyMode:identity.supplyMode||null}})}))
   }catch{}
  }
  const truncated=!!linePayload.truncated||!!headerPayload.truncated;
@@ -333,14 +333,14 @@ export async function listExpectedTransferOrders(storeId,{businessDate=todayISO(
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',documentType:'TO',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
  const startedAt=Date.now(),headersPayload=await transferHeadersForWarehouse(warehouseId),allHeaders=headersPayload.value||[],cutoff=oneMonthAgoISO(businessDate),headers=allHeaders.filter(h=>{const d=dateOnly(h?.[t.headerDateField]);return !d||d>=cutoff}),hiddenOldTo=allHeaders.length-headers.length,numbers=unique(headers.map(r=>r?.[t.numberField]));
  const linesPayload=await transferLinesForOrders(numbers),lines=linesPayload.value||[],withLines=new Set(lines.map(r=>clean(r?.[t.numberField]))),activeHeaders=headers.filter(h=>withLines.has(clean(h?.[t.numberField])));
- const itemNumbers=unique(lines.map(r=>r?.[t.productField])),names=await transferProductNames(itemNumbers);
+ const itemNumbers=unique(lines.map(r=>r?.[t.productField])),profiles=await releasedProductSourcingMany(itemNumbers).catch(()=>new Map());
  const items=activeHeaders.map(header=>{
   const number=clean(header?.[t.numberField]),orderLines=lines.filter(r=>clean(r?.[t.numberField])===number),origin=clean(header?.[t.fromWarehouseField])||'Origine D365',eta=dateOnly(header?.[t.headerDateField])||businessDate,sourceStatus=clean(header?.[t.statusField])||'Open';
   return{
    documentType:'TO',poNumber:number,documentNumber:number,vendor:origin,vendorAccount:null,origin,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:orderLines.map(row=>{
     const productNumber=clean(row?.[t.productField]),remaining=transferRemaining(row,t),ordered=finite(row?.[t.transferQtyField])??0,received=finite(row?.[t.receivedQtyField])??0;
-    return{sourceLineNumber:clean(row?.[t.lineNumberField])||productNumber,productNumber,ean:productNumber,productName:names.get(productNumber)||productNumber||'Article',category:'Autre',orderedQty:ordered,receivedQty:received,remainingQty:remaining,unit:clean(row?.[t.unitField])||null,requestedDeliveryDate:dateOnly(row?.[t.lineDateField])||eta,warehouseId,temperatureRequired:0}
+    const profile=profiles.get(productNumber)||null,rayon=[profile?.rayonLabel,profile?.retailScope].filter(Boolean).join(' · ');return{sourceLineNumber:clean(row?.[t.lineNumberField])||productNumber,productNumber,ean:productNumber,productName:profile?.productName||productNumber||'Article',category:rayon||'Autre',rayonCode:profile?.rayonCode||null,rayonLabel:profile?.rayonLabel||null,retailScope:profile?.retailScope||null,supplyMode:profile?.supplyMode||null,orderedQty:ordered,receivedQty:received,remainingQty:remaining,unit:clean(row?.[t.unitField])||profile?.inventoryUnit||null,requestedDeliveryDate:dateOnly(row?.[t.lineDateField])||eta,warehouseId,temperatureRequired:0}
    })
   }
  });
