@@ -1,7 +1,7 @@
 import { app } from './state.js';
 
 const managerRoots=new Set(['today','managerScan','managerTeam','managerMore']);
-const labels={today:'Aujourd’hui',managerScan:'Scanner',managerTeam:'Équipe',managerMore:'Plus',opening:'Ouverture',handover:'Passation',staffing:'Équipe',coldChain:'Chaîne du froid',cashOpening:'Préparation caisses',commercial:'Prix & promos',dlc:'DLC / DDM',receipts:'Réception',inventory:'Stock & inventaire',losses:'Démarque & pertes',quality:'Qualité',maintenance:'Maintenance',incidents:'Incidents',cash:'Caisses',closing:'Fermeture',managerJourney:'Parcours de journée',managerControls:'À valider',managerPerformance:'Performance'};
+const labels={today:'Aujourd’hui',managerScan:'Scanner',managerTeam:'Équipe',managerMore:'Plus',opening:'Ouverture',handover:'Passation',staffing:'Équipe',coldChain:'Chaîne du froid',cashOpening:'Préparation caisses',commercial:'Prix & promos',dlc:'DLC / DDM',receipts:'Réception',inventory:'Stock & inventaire',sellThrough:'Invendus & rotation',coolSave:'Cool & Save',channelAvailability:'Glovo',losses:'Démarque & pertes',quality:'Qualité',maintenance:'Maintenance',incidents:'Incidents',cash:'Caisses',closing:'Fermeture',managerJourney:'Parcours de journée',managerControls:'À valider',managerPerformance:'Performance'};
 const stack=[];let lastPage=null,suppress=false;
 
 function activePage(){const el=document.querySelector('.page.active');return el?.id?.replace(/Page$/,'')||null}
