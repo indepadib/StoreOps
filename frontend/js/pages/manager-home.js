@@ -26,9 +26,10 @@ const phaseShort={OPENING:'Ouvrir',DAY:'Piloter',CLOSING:'Fermer'};
 
 function actionUrgency(item){
  if(!item)return'';
- if(item.blocking||item.priority==='P0'||item.severity==='CRITICAL')return'À faire maintenant';
- if(item.priority==='P1'||item.severity==='HIGH')return'À faire aujourd’hui';
- return'À suivre';
+ if(item.dueBucket==='NOW'||item.blocking||item.priority==='P0'||item.severity==='CRITICAL')return'À faire maintenant';
+ if(item.dueBucket==='NEXT')return'Prochaine priorité';
+ if(item.dueBucket==='TODAY'||item.priority==='P1'||item.severity==='HIGH')return'À faire aujourd’hui';
+ return'À surveiller';
 }
 function ctaLabel(item,phase){
  if(!item)return'Scanner un article';
@@ -73,8 +74,8 @@ function impactBadge(item){
 }
 function priorityCard(item,index,phase){
  if(!item)return'';
- const critical=item.blocking||item.priority==='P0'||item.severity==='CRITICAL';
- return `<button class="today-priority-card ${index===0?'primary':''} ${critical?'urgent':''}" data-manager-go="${esc(item.page||'managerMore')}" data-manager-action-id="${esc(item.id||'')}"><span class="today-priority-rank">${index+1}</span><span class="today-priority-copy"><small>${esc(categoryLabel(item.category||'OTHER'))} · ${esc(actionUrgency(item))}</small><strong>${esc(item.title||'Action à traiter')} ${impactBadge(item)}</strong><span>${esc(item.detail||'Ouvrez cette action pour continuer.')}</span></span><span class="today-priority-cta">${esc(ctaLabel(item,phase))} ›</span></button>`;
+ const critical=item.blocking||item.priority==='P0'||item.severity==='CRITICAL',owner=item.ownerLabel||'Responsable magasin',recommended=item.recommendedAction||ctaLabel(item,phase);
+ return `<button class="today-priority-card ${index===0?'primary':''} ${critical?'urgent':''}" data-manager-go="${esc(item.page||'managerMore')}" data-manager-action-id="${esc(item.id||'')}"><span class="today-priority-rank">${index+1}</span><span class="today-priority-copy"><small>${esc(categoryLabel(item.category||'OTHER'))} · ${esc(actionUrgency(item))}</small><strong>${esc(item.title||'Action à traiter')} ${impactBadge(item)}</strong><span>${esc(item.detail||'Ouvrez cette action pour continuer.')}</span><em class="today-action-meta">${esc(owner)} · ${esc(recommended)}</em></span><span class="today-priority-cta">${esc(ctaLabel(item,phase))} ›</span></button>`;
 }
 function prioritiesSection(items=[],loading=false,phase='DAY',total=0){
  if(loading)return `<section class="today-priorities"><div class="today-section-head"><div><span class="today-kicker">MISSIONS PRIORITAIRES</span><h3>Ce qui demande votre attention</h3></div></div><div class="today-priority-list"><div class="today-priority-skeleton"></div><div class="today-priority-skeleton"></div><div class="today-priority-skeleton"></div></div></section>`;
