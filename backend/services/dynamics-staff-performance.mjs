@@ -43,6 +43,22 @@ async function resolveWorkers(staffIds=[]){
  }catch(error){return{status:'ERROR',map:out,schema,error:{code:error?.code||'D365_WORKER_READ_FAILED',message:error?.message||String(error)}}}
 }
 
+export function aggregateCashierRows(rows=[],{
+ staffField='StaffId',transactionField='transactionId',netField='netAmountInclTax',customerField='custAccount',dateField='businessDate',statusField='transactionStatus',salesSign=-1
+}={}){
+ const map=new Map(),unassigned={rows:0,sales:0};
+ for(const row of rows||[]){
+  const rowStatus=clean(statusField?row?.[statusField]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
+  const sales=round2(num(row?.[netField])*Number(salesSign||-1));if(!(sales>0))continue;
+  const staffId=clean(row?.[staffField]);if(!staffId){unassigned.rows++;unassigned.sales+=sales;continue}
+  const tx=clean(row?.[transactionField]),identified=identifiedCustomer(customerField?row?.[customerField]:'');
+  const cur=map.get(staffId)||{staffId,sales:0,rowCount:0,tickets:new Set(),identifiedTickets:new Set(),identifiedSales:0,activeDays:new Set()};
+  cur.sales+=sales;cur.rowCount++;if(tx)cur.tickets.add(tx);if(identified){cur.identifiedSales+=sales;if(tx)cur.identifiedTickets.add(tx)}const d=dateOnly(dateField?row?.[dateField]:null);if(d)cur.activeDays.add(d);map.set(staffId,cur)
+ }
+ const items=[...map.values()].map(x=>{const tickets=x.tickets.size,identifiedTickets=x.identifiedTickets.size;return{staffId:x.staffId,sales:round2(x.sales),tickets,averageBasket:tickets?round2(x.sales/tickets):null,identifiedSales:round2(x.identifiedSales),identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,identifiedTickets,identifiedTicketRate:tickets?round2(identifiedTickets/tickets*100):null,nonLoyaltyTickets:Math.max(0,tickets-identifiedTickets),activeDays:x.activeDays.size,rowCount:x.rowCount,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentStatus:'EXACT_STAFF_ENROLLMENT_SOURCE_REQUIRED'}}).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets);
+ return{items,unassigned:{rows:unassigned.rows,sales:round2(unassigned.sales)}}
+}
+
 export async function readStoreCashierPerformance(storeId,{businessDate=new Date().toISOString().slice(0,10),days=30,force=false}={}){
  const end=dateOnly(businessDate)||new Date().toISOString().slice(0,10),windowDays=Math.max(1,Math.min(90,Number(days)||30)),start=nextDate(end,-(windowDays-1)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`;
  const hit=cache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
@@ -59,16 +75,7 @@ export async function readStoreCashierPerformance(storeId,{businessDate=new Date
   }catch(error){lastError=error}
  }}
  if(!rows)return{status:'UNAVAILABLE',storeId,businessDate:end,windowDays,items:[],source:`D365/${c.entity}`,staffField,error:{code:lastError?.code||'D365_STAFF_SALES_READ_FAILED',message:lastError?.message||String(lastError||'Lecture StaffId impossible')}};
- const map=new Map(),unassigned={rows:0,sales:0};
- for(const row of rows){
-  const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
-  const sales=round2(num(row[c.fields.net])*Number(c.sign||-1));if(!(sales>0))continue;
-  const staffId=clean(row[staffField]);if(!staffId){unassigned.rows++;unassigned.sales+=sales;continue}
-  const tx=clean(row[c.fields.transaction]),identified=identifiedCustomer(c.fields.customer?row[c.fields.customer]:'');
-  const cur=map.get(staffId)||{staffId,sales:0,rowCount:0,tickets:new Set(),identifiedTickets:new Set(),identifiedSales:0,activeDays:new Set()};
-  cur.sales+=sales;cur.rowCount++;if(tx)cur.tickets.add(tx);if(identified){cur.identifiedSales+=sales;if(tx)cur.identifiedTickets.add(tx)}const d=dateOnly(row[c.fields.date]);if(d)cur.activeDays.add(d);map.set(staffId,cur)
- }
- const worker=await resolveWorkers([...map.keys()]),items=[...map.values()].map(x=>{const w=worker.map.get(x.staffId),tickets=x.tickets.size,identifiedTickets=x.identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets-identifiedTickets);return{staffId:x.staffId,name:w?.name||x.staffId,firstName:w?.firstName||null,lastName:w?.lastName||null,sales:round2(x.sales),tickets,averageBasket:tickets?round2(x.sales/tickets):null,identifiedSales:round2(x.identifiedSales),identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,identifiedTickets,identifiedTicketRate:tickets?round2(identifiedTickets/tickets*100):null,nonLoyaltyTickets,activeDays:x.activeDays.size,rowCount:x.rowCount,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentStatus:'EXACT_STAFF_ENROLLMENT_SOURCE_REQUIRED'}}).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets);
+ const aggregated=aggregateCashierRows(rows,{staffField,transactionField:c.fields.transaction,netField:c.fields.net,customerField:c.fields.customer,dateField:c.fields.date,statusField:c.fields.status,salesSign:c.sign}),worker=await resolveWorkers(aggregated.items.map(x=>x.staffId)),items=aggregated.items.map(x=>{const w=worker.map.get(x.staffId);return{...x,name:w?.name||x.staffId,firstName:w?.firstName||null,lastName:w?.lastName||null}}).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets),unassigned=aggregated.unassigned;
  const value={status:selected?.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,startDate:start,endDate:end,windowDays,staffField,items,summary:{cashiers:items.length,sales:round2(items.reduce((s,x)=>s+x.sales,0)),tickets:items.reduce((s,x)=>s+x.tickets,0),unassignedRows:unassigned.rows,unassignedSales:round2(unassigned.sales),workerDirectoryStatus:worker.status,recruitmentStatus:'EXACT_STAFF_ENROLLMENT_SOURCE_REQUIRED'},diagnostics:{entity:c.entity,storeIdentifierKind:selected?.identifier?.kind||null,storeIdentifier:selected?.identifier?.value||null,dateFilterMode:selected?.mode||null,rowCount:selected?.rowCount||rows.length,pages:selected?.pages||0,truncated:!!selected?.truncated,workerEntity:worker.schema?.entity||null,workerPersonnelField:worker.schema?.personnel||null}};
  cache.set(cacheKey,{value,expiresAt:Date.now()+cacheMs()});return{...value,cache:{status:'MISS'}}
 }
