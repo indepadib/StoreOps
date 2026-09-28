@@ -10,6 +10,7 @@ const performance=read('backend/services/business-pulse.mjs');
 const sellThrough=read('backend/services/sell-through.mjs');
 const cool=read('backend/services/cool-save.mjs');
 const coolUi=read('frontend/js/pages/cool-save.js');
+const growthApi=read('backend/services/store-growth-api.mjs');
 const model=read('docs/cool-save-operating-model.md');
 
 assert.match(stock,/sourcing\.productName/,'rupture/stock signals must resolve a business label');
@@ -23,6 +24,8 @@ assert.match(sellThrough,/releasedProductSourcingMany/,'sell-through must backfi
 assert.match(cool,/client_request_id/,'Cool Save create must be idempotent');
 assert.match(coolUi,/type="button"/,'Cool Save actions must never submit an enclosing form');
 assert.match(coolUi,/clientRequestId/,'Cool Save UI must send creation idempotency key');
+assert.doesNotMatch(coolUi,/Marquer vendu/,'StoreOps must not manually mark an offer sold');
+assert.match(growthApi,/COOL_SAVE_SALE_MUST_ORIGINATE_APP/,'sale origin must be the Cool Save app');
 assert.match(model,/RECEIVED_PAID/);
 assert.match(model,/ERP_READY/);
 assert.match(model,/PICKED_UP/);
