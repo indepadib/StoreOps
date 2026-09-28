@@ -18,7 +18,7 @@ export function releasedProductDisplayName(row){const field=productNameField(row
 export function normalizeReleasedProductSupplyMode(value){
  const v=normalized(value);if(!v)return null;
  if(DIRECT_VALUES.has(v)||v.includes('DIRECT'))return'DIRECT_SUPPLIER';
- if(DC_VALUES.has(v)||v==='LVELAKHYATA'||v==='LVELAKHYA')return'WAREHOUSE';
+ if(DC_VALUES.has(v)||['LVELAKHYATA','LVELAKHYAYTA','LVELAKHYA','LVELKHAYTA','LVELKHAYYATA'].includes(v))return'WAREHOUSE';
  return null
 }
 function inferField(row){
