@@ -28,6 +28,8 @@ jobs:
           node --check backend/services/released-product-sourcing.mjs
           node --check frontend/js/pages/cool-save.js
           node --check frontend/js/pages/sell-through.js
+          node --check backend/services/cool-save-orders.mjs
+          node --check backend/services/cool-save-integration-api.mjs
       - name: Same-time comparison contract
         run: node backend/tests/v235-same-time-pulse.mjs
       - name: Cool Save publish/idempotency
@@ -36,6 +38,8 @@ jobs:
         run: node backend/tests/v235-product-labels.mjs
       - name: Article identity and Cool Save model
         run: node backend/tests/v235-product-identity-cool-save.mjs
+      - name: Cool Save external order lifecycle
+        run: node backend/tests/v235-cool-save-external-orders.mjs
       - name: Business Pulse regression
         run: node backend/tests/business-pulse.mjs
       - name: Store Action Engine regression
