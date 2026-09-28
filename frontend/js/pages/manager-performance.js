@@ -23,10 +23,15 @@ function renderRows(){
  }).join(''):`<div class="performance-empty">Aucune donnée disponible pour ${esc(tabLabel(dimension).toLowerCase())}.</div>`;
  document.querySelectorAll('[data-performance-dim]').forEach(b=>b.classList.toggle('active',b.dataset.performanceDim===dimension));
 }
+function comparisonDescriptor(){
+ const c=pulse?.comparison||{};
+ if(c.mode==='SAME_TIME')return{label:c.cutoffLabel?`D-7 à ${c.cutoffLabel}`:'D-7 même heure',detail:c.available?'Même heure de vente':'Comparatif intrajournalier indisponible'};
+ return{label:'D-7',detail:'Journée complète'}
+}
 function analysisBlock(){
- const a=pulse?.analysis;if(!a)return'';const mechanism={TRAFFIC_AND_BASKET:'Le recul vient du trafic et du panier moyen.',TRAFFIC:'Le trafic explique l’essentiel du recul.',BASKET:'Le panier moyen explique l’essentiel du recul.',TRAFFIC_AND_BASKET_UP:'Trafic et panier progressent ensemble.',TRAFFIC_UP:'La hausse vient surtout de davantage de tickets.',BASKET_UP:'La hausse vient surtout d’un panier plus élevé.',STABLE:'Le niveau est globalement stable.'}[a.mechanism]||'Analyse automatique des principaux moteurs du CA.';
+ const a=pulse?.analysis;if(!a)return'';const comparison=comparisonDescriptor();const mechanism={TRAFFIC_AND_BASKET:'Le recul vient du trafic et du panier moyen.',TRAFFIC:'Le trafic explique l’essentiel du recul.',BASKET:'Le panier moyen explique l’essentiel du recul.',TRAFFIC_AND_BASKET_UP:'Trafic et panier progressent ensemble.',TRAFFIC_UP:'La hausse vient surtout de davantage de tickets.',BASKET_UP:'La hausse vient surtout d’un panier plus élevé.',STABLE:'Le niveau est globalement stable.'}[a.mechanism]||'Analyse automatique des principaux moteurs du CA.';
  const drivers=(a.departmentDrivers||[]).slice(0,5);
- return `<section class="performance-section performance-explanation"><div class="performance-section-head"><div><strong>Pourquoi le CA bouge ?</strong><span>StoreOps sépare trafic, panier et contribution des rayons.</span></div></div><div class="performance-explanation-main"><div><span>Diagnostic</span><strong>${esc(mechanism)}</strong><small>Tickets ${pct(a.trafficChangePct)} · panier ${pct(a.basketChangePct)}</small></div><div><span>CA à risque / 24h</span><strong>${money(a.salesRisk24h)}</strong><small>${a.recoverableWarehouseRisk24h?`${money(a.recoverableWarehouseRisk24h)} récupérable entrepôt`:a.supplierRisk24h?`${money(a.supplierRisk24h)} à couvrir par achat`:'selon ruptures détectées'}</small></div></div>${drivers.length?`<div class="performance-driver-list">${drivers.map(x=>`<div><span>${esc(x.label)}</span><strong class="${x.delta>=0?'up':'down'}">${x.delta>=0?'+':''}${money(x.delta)}</strong><small>${money(x.current)} aujourd’hui · ${money(x.previous)} D-7</small></div>`).join('')}</div>`:''}</section>`;
+ return `<section class="performance-section performance-explanation"><div class="performance-section-head"><div><strong>Pourquoi le CA bouge ?</strong><span>Trafic, panier et rayons comparés à période strictement équivalente.</span></div></div><div class="performance-explanation-main"><div><span>Diagnostic</span><strong>${esc(mechanism)}</strong><small>Tickets ${pct(a.trafficChangePct)} · panier ${pct(a.basketChangePct)}</small></div><div><span>CA à risque / 24h</span><strong>${money(a.salesRisk24h)}</strong><small>${a.recoverableWarehouseRisk24h?`${money(a.recoverableWarehouseRisk24h)} récupérable entrepôt`:a.supplierRisk24h?`${money(a.supplierRisk24h)} à couvrir par achat`:'selon ruptures détectées'}</small></div></div>${drivers.length?`<div class="performance-driver-list">${drivers.map(x=>`<div><span>${esc(x.label)}</span><strong class="${x.delta>=0?'up':'down'}">${x.delta>=0?'+':''}${money(x.delta)}</strong><small>${money(x.current)} aujourd’hui · ${money(x.previous)} ${comparison.label}</small></div>`).join('')}</div>`:''}</section>`;
 }
 function unavailable(p){return `<div class="performance-shell"><div class="manager-hub-head"><span class="manager-eyebrow">Business Pulse</span><h2>Performance magasin</h2><p>Le flux de ventes n’est pas encore connecté pour ce magasin.</p></div><div class="pulse-unavailable"><strong>Ventes non connectées</strong><span>StoreOps n’affiche aucune valeur estimée. Le mapping D365 ventes doit être validé avant activation LIVE.</span></div></div>`}
 function sourceHealth(){
@@ -39,19 +44,19 @@ export async function renderManagerPerformance(){
   pulse=await api(`/api/stores/${app.storeId}/business-pulse`);
   const host=$('#managerPerformanceContent');if(!host)return;
   if(pulse.status!=='READY'||!pulse.snapshot){host.innerHTML=unavailable(pulse);return}
-  const k=pulse.snapshot.kpis||{},change=k.changeVsComparison,delta=k.comparisonDelta,stock=pulse.stock||{},dep=top('departments'),cat=top('categories'),prod=top('products'),hour=top('hourly');
+  const k=pulse.snapshot.kpis||{},change=k.changeVsComparison,delta=k.comparisonDelta,comparison=comparisonDescriptor(),stock=pulse.stock||{},dep=top('departments'),cat=top('categories'),prod=top('products'),hour=top('hourly');
   host.innerHTML=`<div class="performance-shell performance-dashboard">
    <div class="manager-hub-head performance-title"><div><span class="manager-eyebrow">BUSINESS PULSE · PILOTAGE</span><h2>Les chiffres du magasin</h2><p>Ventes, clients et disponibilité dans une seule lecture opérationnelle.</p></div><button class="btn soft" id="refreshPerformance">Actualiser</button></div>
 
    <section class="performance-section">
     <div class="performance-section-head"><div><strong>Ventes aujourd’hui</strong><span>Ce qui se passe réellement en caisse.</span></div><span class="performance-live">LIVE</span></div>
     <div class="performance-hero performance-sales-grid">
-     ${metric('CA aujourd’hui',money(k.netSales),change==null?'Comparatif D-7 indisponible':`${pct(change)} vs D-7 · ${delta==null?'—':money(delta)}`,'sales')}
-     ${metric('CA D-7',money(k.comparison),'Même jour semaine précédente')}
+     ${metric('CA aujourd’hui',money(k.netSales),change==null?comparison.detail:`${pct(change)} vs ${comparison.label} · ${delta==null?'—':money(delta)}`,'sales')}
+     ${metric(`CA ${comparison.label}`,money(k.comparison),comparison.detail)}
      ${metric('Tickets',number(k.tickets),`Panier moyen ${money(k.averageBasket)}`)}
      ${metric('Panier moyen',money(k.averageBasket),`${number(k.itemsPerTicket)} article(s) / ticket`)}
      ${metric('Articles vendus',number(k.units),k.salesPerUnit==null?'':`CA / article ${money(k.salesPerUnit)}`)}
-     ${metric('Évolution CA',pct(change),delta==null?'—':`${Number(delta)>=0?'+':''}${money(delta)} vs D-7`,`trend ${tone(change)}`)}
+     ${metric('Évolution CA',pct(change),delta==null?comparison.detail:`${Number(delta)>=0?'+':''}${money(delta)} vs ${comparison.label}`,`trend ${tone(change)}`)}
     </div>
    </section>
 
