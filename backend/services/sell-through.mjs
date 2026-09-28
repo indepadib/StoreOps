@@ -40,9 +40,12 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
    items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(!genericName(sale?.name)&&sale.name!==productNumber?sale.name:!genericName(row.name)&&row.name!==productNumber?row.name:productNumber),ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
   }
  }
- const unresolved=items.filter(x=>genericName(x.name)||x.name===x.productNumber).map(x=>x.productNumber).slice(0,80);
- if(unresolved.length){
-  let timer=null;try{const released=await Promise.race([releasedProductSourcingMany(unresolved),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('IDENTITY_TIMEOUT')),1800)})]);for(const item of items){const name=released.get(item.productNumber)?.productName;if(name)item.name=name}}catch{}finally{if(timer)clearTimeout(timer)}
+ const profileSkus=items.slice(0,160).map(x=>x.productNumber).filter(Boolean);
+ if(profileSkus.length){
+  let timer=null;try{
+   const released=await Promise.race([releasedProductSourcingMany(profileSkus),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('IDENTITY_TIMEOUT')),2200)})]);
+   for(const item of items){const profile=released.get(item.productNumber);if(!profile)continue;if(profile.productName&&(genericName(item.name)||item.name===item.productNumber))item.name=profile.productName;item.rayonCode=profile.rayonCode||null;item.rayonLabel=profile.rayonLabel||null;item.retailScope=profile.retailScope||null;item.supplyMode=profile.supplyMode||null}
+  }catch{}finally{if(timer)clearTimeout(timer)}
  }
  items.sort((a,b)=>(a.type==='DEAD'?0:1)-(b.type==='DEAD'?0:1)||(Number(b.coverageDays||999)-Number(a.coverageDays||999))||Number(b.availableStock)-Number(a.availableStock));
  const dead=items.filter(x=>x.type==='DEAD'),slow=items.filter(x=>x.type==='SLOW');
