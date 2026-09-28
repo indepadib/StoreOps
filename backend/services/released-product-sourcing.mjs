@@ -7,7 +7,6 @@ const normalized=v=>clean(v).toUpperCase().replace(/[\s_-]+/g,'');
 const DIRECT_VALUES=new Set(['DIRECT','DIRECTFOURNISSEUR','FOURNISSEURDIRECT','DIRECTSUPPLIER']);
 const DC_VALUES=new Set(['DC','DISTRIBUTIONCENTER','CENTREDEDISTRIBUTION','ENTREPOT','WAREHOUSE']);
 const candidateNames=['SupplyMode','SupplyType','ReplenishmentType','SourcingMode','SourcingType','DCOrDirect','DCDirect','DistributionMode','ProcurementMode'];
-const productNameCandidates=['ProductName','ItemName','SearchName','ProductSearchName','Name'];
 const productNameCandidates=['ProductName','SearchName','ProductSearchName','ItemName','Name','Description'];
 function productNameField(row){const configured=clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD);if(configured&&Object.prototype.hasOwnProperty.call(row||{},configured))return configured;const keys=Object.keys(row||{});for(const name of productNameCandidates){const found=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(found&&clean(row[found]))return found}return null}
 
@@ -17,7 +16,6 @@ export function normalizeReleasedProductSupplyMode(value){
  if(DC_VALUES.has(v)||v==='LVELAKHYATA'||v==='LVELAKHYA')return'WAREHOUSE';
  return null
 }
-function productNameFromRow(row){const configured=clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD);if(configured&&clean(row?.[configured]))return clean(row[configured]);for(const name of productNameCandidates){const key=Object.keys(row||{}).find(k=>k.toLowerCase()===name.toLowerCase());if(key&&clean(row[key]))return clean(row[key])}return null}
 function inferField(row){
  const configured=clean(process.env.D365_RELEASED_PRODUCT_SUPPLY_MODE_FIELD);if(configured)return configured;
  const keys=Object.keys(row||{});
