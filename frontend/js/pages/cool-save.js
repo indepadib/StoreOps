@@ -16,7 +16,7 @@ function suggestRow(x){
  return `<label class="coolsave-suggest ${checked?'selected':''}"><input type="checkbox" data-cs-select="${esc(x.id)}" ${checked?'checked':''}><span class="coolsave-suggest-main"><b>${esc(x.name)}</b><small>${esc(x.reason)}</small><em>${x.eligibility==='ELIGIBLE_DLC'?'DLC courte':'Revue magasin'} · stock ${n(x.quantity)} ${esc(x.unit||'')}</em></span><input class="coolsave-qty" data-cs-qty="${esc(x.id)}" type="number" min="0.001" step="0.001" value="${qty}" ${checked?'':'disabled'}></label>`
 }
 function basketCard(x){
- return `<article class="coolsave-basket ${x.status==='SOLD'?'sold':''}"><div class="coolsave-basket-head"><div><span class="growth-chip">${esc(stateLabel[x.status]||x.status)}</span><strong>${esc(x.title)}</strong><small>${esc(x.code)} · ${x.lines?.length||0} article(s)</small></div><div class="coolsave-price"><b>${money(x.sale_price)}</b><span>${x.reference_value!=null?`valeur ${money(x.reference_value)}`:'valeur partielle'}</span></div></div><div class="coolsave-lines">${(x.lines||[]).map(l=>`<span>${n(l.quantity)} ${esc(l.unit)} · ${esc(l.product_name)}</span>`).join('')}</div><div class="coolsave-actions">${x.status==='DRAFT'?`<button type="button" class="btn brand" data-cs-action="publish" data-cs-id="${esc(x.id)}">Publier</button>`:''}${['PUBLISHED','RESERVED'].includes(x.status)?`<button type="button" class="btn brand" data-cs-action="sold" data-cs-id="${esc(x.id)}">Marquer vendu</button>`:''}${!['SOLD','CANCELLED'].includes(x.status)?`<button type="button" class="btn soft" data-cs-action="cancel" data-cs-id="${esc(x.id)}">Annuler</button>`:''}${x.status==='SOLD'?`<span class="erp-pill">${x.erpBridge?.status==='READY_FOR_BRIDGE'?'Prêt ERP':'ERP à configurer'}</span>`:''}</div></article>`
+ return `<article class="coolsave-basket ${x.status==='SOLD'?'sold':''}"><div class="coolsave-basket-head"><div><span class="growth-chip">${esc(stateLabel[x.status]||x.status)}</span><strong>${esc(x.title)}</strong><small>${esc(x.code)} · ${x.lines?.length||0} article(s)</small></div><div class="coolsave-price"><b>${money(x.sale_price)}</b><span>${x.reference_value!=null?`valeur ${money(x.reference_value)}`:'valeur partielle'}</span></div></div><div class="coolsave-lines">${(x.lines||[]).map(l=>`<span>${n(l.quantity)} ${esc(l.unit)} · ${esc(l.product_name)}</span>`).join('')}</div><div class="coolsave-actions">${x.status==='DRAFT'?`<button type="button" class="btn brand" data-cs-action="publish" data-cs-id="${esc(x.id)}">Publier</button>`:''}${!['SOLD','CANCELLED'].includes(x.status)?`<button type="button" class="btn soft" data-cs-action="cancel" data-cs-id="${esc(x.id)}">Annuler</button>`:''}${x.status==='SOLD'?`<span class="erp-pill">${x.erpBridge?.status==='READY_FOR_BRIDGE'?'Prêt ERP':'ERP à configurer'}</span>`:''}</div></article>`
 }
 function draw(){
  const host=$('#coolSaveContent');if(!host||!payload)return;const {summary={},items=[],suggestions={},externalOrders=[],externalOrderSummary={}}=payload;
@@ -47,11 +47,11 @@ async function createBasket(event){
 }
 async function basketAction(btn,event){
  event?.preventDefault?.();event?.stopPropagation?.();const action=btn.dataset.csAction,id=btn.dataset.csId,key=`${id}:${action}`;if(!action||!id||actionBusy.has(key))return;
- actionBusy.add(key);btn.disabled=true;const old=btn.textContent;btn.textContent=action==='publish'?'Publication…':action==='sold'?'Validation…':'Annulation…';
+ actionBusy.add(key);btn.disabled=true;const old=btn.textContent;btn.textContent=action==='publish'?'Publication…':'Annulation…';
  try{
   const updated=await api(`/api/cool-save/${encodeURIComponent(id)}/${action}`,{method:'POST',body:{}});
   if(payload?.items&&updated?.id)payload.items=payload.items.map(x=>x.id===updated.id?updated:x);
-  toast(action==='publish'?`${updated?.code||'Panier'} publié.`:action==='sold'?`${updated?.code||'Panier'} marqué vendu.`:`${updated?.code||'Panier'} annulé.`);
+  toast(action==='publish'?`${updated?.code||'Panier'} publié.`:`${updated?.code||'Panier'} annulé.`);
   await renderCoolSave()
  }catch(e){toast(e.message);btn.disabled=false;btn.textContent=old}finally{actionBusy.delete(key)}
 }
