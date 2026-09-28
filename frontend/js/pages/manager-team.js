@@ -2,7 +2,7 @@ import { api } from '../api.js';
 import { app,currentStore } from '../state.js';
 import { $,esc,toast } from '../ui.js';
 
-let teamData=null;
+let teamData=null,cashierData=null;
 const today=()=>new Date().toISOString().slice(0,10);
 const roleLabel=x=>({MANAGER:'Responsable',CASHIER:'Caisse',FLOOR:'Surface',OTHER:'Autre'}[x]||x||'Autre');
 const contractLabel=x=>({CDI:'CDI',CDD:'CDD',INTERIM:'Intérim',STAGE:'Stage',PRESTATAIRE:'Prestataire',OTHER:'Autre'}[x]||x);
@@ -11,9 +11,20 @@ const employeeOptions=()=>`<option value="">Choisir…</option>${(teamData?.empl
 function employeeCard(e){return`<article class="manager-team-person"><div class="manager-avatar">${esc((e.first_name||'?').slice(0,1)+(e.last_name||'').slice(0,1))}</div><div><strong>${esc(e.display_name)}</strong><span>${esc(roleLabel(e.role_code))} · ${esc(contractLabel(e.contract_type))}</span><small>${esc(e.employee_code)} · depuis ${esc(e.contract_start)}${e.contract_end?` · fin ${esc(e.contract_end)}`:''}</small></div><div class="manager-team-person-actions"><span class="manager-team-status ${e.status==='NOTICE'?'warn':'ok'}">${e.status==='NOTICE'?'Préavis':'Actif'}</span><button class="btn ghost" data-end-employee="${esc(e.id)}">Fin contrat</button></div></article>`}
 function shiftCard(s){return`<article class="manager-shift-card"><div><strong>${esc(s.start_time)}–${esc(s.end_time)}</strong><span>${esc(s.employee_name)}</span><small>${esc(roleLabel(s.role_code))}</small></div><div>${s.status==='PUBLISHED'?'<span class="manager-team-status ok">Publié</span>':s.status==='DRAFT'?`<button class="btn soft" data-publish-shift="${esc(s.id)}">Publier</button>`:'<span class="manager-team-status">Annulé</span>'}</div></article>`}
 function objectiveCard(o){const progress=o.target_value?Math.min(100,Math.round((Number(o.progress_value||0)/Number(o.target_value))*100)):null;return`<article class="manager-objective-card"><div><strong>${esc(o.title)}</strong><span>${esc(o.employee_name||roleLabel(o.role_code)||'Magasin')}</span><small>jusqu’au ${esc(o.period_end)}</small></div><div>${o.target_value!=null?`<strong>${o.progress_value??0}/${o.target_value} ${esc(o.unit||'')}</strong>${progress!=null?`<span>${progress}%</span>`:''}`:'<span>Objectif actif</span>'}</div></article>`}
+const money=v=>v==null?'—':Number(v).toLocaleString('fr-MA',{maximumFractionDigits:0})+' DH';
+const pct=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})+'%';
+function cashierCard(x,i){
+ const recruitment=x.recruitments==null?'<span class="manager-team-status">Recrutement à connecter</span>':`<span class="manager-team-status ok">${x.recruitments} recrutement(s)</span>`;
+ return `<article class="manager-team-person cashier-performance-card"><div class="manager-avatar">${esc(String(i+1))}</div><div><strong>${esc(x.name||x.staffId)}</strong><span>Staff ID ${esc(x.staffId)} · ${x.tickets} ticket(s) · panier ${money(x.averageBasket)}</span><small>CA ${money(x.sales)} · CA identifié ${pct(x.identifiedSalesShare)} · tickets identifiés ${pct(x.identifiedTicketRate)}</small></div><div class="manager-team-person-actions">${recruitment}</div></article>`
+}
+function cashierPerformanceSection(){
+ const rows=cashierData?.items||[],summary=cashierData?.summary||{};
+ if(cashierData?.status==='UNAVAILABLE')return `<section class="manager-team-section"><div class="manager-team-section-head"><div><h3>Performance caisse Dynamics</h3><span>StaffId non encore lisible sur la source ventes.</span></div></div><div class="manager-team-empty">La vue sera activée dès que le champ StaffId est disponible dans le flux ventes.</div></section>`;
+ return `<section class="manager-team-section"><div class="manager-team-section-head"><div><h3>Performance caisse · ${cashierData?.windowDays||30} jours</h3><span>Données transactionnelles D365 rattachées au StaffId. Aucun score composite artificiel.</span></div><span class="manager-team-status ${summary.unassignedRows?'warn':'ok'}">${summary.unassignedRows||0} ligne(s) sans StaffId</span></div><div class="manager-team-kpis"><div><strong>${rows.length}</strong><span>collaborateurs vus en caisse</span></div><div><strong>${money(summary.sales)}</strong><span>CA rattaché StaffId</span></div><div><strong>${summary.tickets||0}</strong><span>tickets</span></div></div><div class="manager-team-list">${rows.length?rows.map(cashierCard).join(''):'<div class="manager-team-empty">Aucune transaction staff sur la période.</div>'}</div><div class="small muted" style="margin-top:9px">Le recrutement individuel restera vide tant que la source d’enrôlement fidélité ne fournit pas un StaffId exact. On ne l’estime pas à partir d’un ticket.</div></section>`
+}
 
 export async function renderManagerTeam(){
- const date=today();teamData=await api(`/api/stores/${app.storeId}/workforce?date=${date}`);const s=teamData.summary||{},store=currentStore();
+ const date=today(),storeId=app.storeId,[workforceResult,cashierResult]=await Promise.allSettled([api(`/api/stores/${storeId}/workforce?date=${date}`),api(`/api/stores/${storeId}/cashier-performance?date=${date}&days=30`)]);if(workforceResult.status!=='fulfilled')throw workforceResult.reason;teamData=workforceResult.value;cashierData=cashierResult.status==='fulfilled'?cashierResult.value:{status:'UNAVAILABLE',items:[],summary:{},error:cashierResult.reason?.message||'Performance caisse indisponible'};const s=teamData.summary||{},store=currentStore();
  $('#managerTeamContent').innerHTML=`<div class="manager-team-shell">
   <header class="manager-team-head"><span class="manager-eyebrow">${esc(store?.name||'Votre magasin')}</span><h2>Votre équipe</h2><p>Collaborateurs, planning et objectifs. Les accès StoreOps restent gérés séparément.</p></header>
   <section class="manager-team-kpis"><div><strong>${s.activeEmployees||0}</strong><span>collaborateurs actifs</span></div><div><strong>${s.publishedShifts||0}/${s.shifts||0}</strong><span>shifts publiés aujourd’hui</span></div><div><strong>${s.activeObjectives||0}</strong><span>objectifs actifs</span></div></section>
@@ -26,6 +37,7 @@ export async function renderManagerTeam(){
 
   <section class="manager-team-section"><div class="manager-team-section-head"><div><h3>Planning aujourd’hui</h3><span>Publiez le planning avant le pointage.</span></div><button class="btn ghost" data-manager-go="staffing">Pointage →</button></div><div class="manager-shift-list">${teamData.shifts?.length?teamData.shifts.map(shiftCard).join(''):'<div class="manager-team-empty">Aucun shift aujourd’hui.</div>'}</div></section>
   <section class="manager-team-section"><div class="manager-team-section-head"><div><h3>Collaborateurs</h3><span>Les fins de contrat conservent tout l’historique.</span></div></div><div class="manager-team-list">${teamData.employees?.length?teamData.employees.map(employeeCard).join(''):'<div class="manager-team-empty">Aucun collaborateur actif.</div>'}</div></section>
+  ${cashierPerformanceSection()}
   <section class="manager-team-section"><div class="manager-team-section-head"><div><h3>Objectifs actifs</h3><span>Individuels, rôle ou magasin.</span></div></div><div class="manager-objective-list">${teamData.objectives?.length?teamData.objectives.map(objectiveCard).join(''):'<div class="manager-team-empty">Aucun objectif actif.</div>'}</div></section>
  </div>`;
  bindTeam()
