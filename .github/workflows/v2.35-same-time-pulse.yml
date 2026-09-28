@@ -1,0 +1,30 @@
+name: V2.35 Same-Time Business Pulse
+
+on:
+  push:
+    branches: [main, storeops-v2.35-same-time-pulse]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  same-time-pulse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/manager-performance.js
+      - name: Same-time comparison contract
+        run: node backend/tests/v235-same-time-pulse.mjs
+      - name: Business Pulse regression
+        run: node backend/tests/business-pulse.mjs
+      - name: Store Action Engine regression
+        run: node backend/tests/v233-store-action-engine.mjs
