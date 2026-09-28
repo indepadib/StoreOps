@@ -10,6 +10,7 @@ import { getProductByEan, getProductByReference, getDynamicsHealth, postReceiptT
 import { getStoreProductByEan,getStoreStockByProductNumber } from './services/dynamics-stock.mjs';
 import { syncExpectedReceiptsFromDynamics, syncExpectedTransferOrdersFromDynamics, listReceiptsForStore, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
 import { getCommercialPriceChanges,getStoreTradeAgreementCatalog } from './services/dynamics-price.mjs';
+import { releasedProductSourcingMany } from './services/released-product-sourcing.mjs';
 import { processProgress, takeOwnership, validateProcess } from './services/workflow.mjs';
 import { getTaskForm, submitTaskForm } from './services/task-forms.mjs';
 import { evaluateQuality, qualityProfileFor } from './services/quality.mjs';
@@ -73,7 +74,8 @@ async function refreshCommercial(storeId,businessDate,{required=false}={}){
   const error=Object.assign(new Error('Dynamics n’a retourné aucune source prix/promo exploitable.'),{status:502,code:'COMMERCIAL_SYNC_ALL_SOURCES_FAILED',details:{sources}});
   if(required)throw error;return{ok:false,deferred:false,error:error.message,code:error.code,sources}
  }
- const preserveExisting=sources.some(x=>x.status==='ERROR');return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes,preserveExisting}),sources}
+ const skus=[...new Set(changes.map(x=>String(x.productNumber||'').trim()).filter(Boolean))],profiles=skus.length?await releasedProductSourcingMany(skus):new Map(),enrichedChanges=changes.map(c=>{const p=profiles.get(String(c.productNumber||'').trim());if(!p)return c;const generic=!c.productName||c.productName===c.productNumber||/^article(?:\s|$)/i.test(String(c.productName));return{...c,productName:generic&&p.productName?p.productName:c.productName,category:c.category||p.rayonLabel||null,sourceDetails:{...(c.sourceDetails||{}),rayonCode:p.rayonCode||null,rayonLabel:p.rayonLabel||null,retailScope:p.retailScope||null,supplyMode:p.supplyMode||null,financialDimension:p.financialDimension||null}}});
+ const preserveExisting=sources.some(x=>x.status==='ERROR');return{ok:true,deferred:false,...syncCommercialControls({storeId,businessDate,changes:enrichedChanges,preserveExisting}),sources}
 }
 async function refreshCash(storeId,businessDate,{required=false}={}){try{const snapshot=await getCashClosingSnapshot(storeId,businessDate);const closing=syncCashClosing({storeId,businessDate,snapshot});return {ok:true,closing}}catch(e){if(required)throw e;return {ok:false,error:e.message,code:e.code||'CASH_SYNC_FAILED'}}}
 
