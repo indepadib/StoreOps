@@ -1,0 +1,33 @@
+name: V2.39 Actionable Store
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  actionable-store:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/manager-inbox-batch.mjs
+          node --check frontend/js/pages/manager-home.js
+          node --check frontend/js/pages/manager-hubs.js
+          node --check frontend/js/pages/network.js
+          node --check frontend/js/app.js
+      - name: Actionable mission board
+        run: node backend/tests/v239-actionable-store.mjs
+      - name: Store Action Engine regression
+        run: node backend/tests/v233-store-action-engine.mjs
+      - name: Manager inbox regression
+        run: node backend/tests/v186-manager-inbox-batch.mjs
+      - name: Version contract
+        run: node backend/tests/version-contract.mjs
