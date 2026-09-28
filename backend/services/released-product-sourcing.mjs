@@ -7,9 +7,8 @@ const normalized=v=>clean(v).toUpperCase().replace(/[\s_-]+/g,'');
 const DIRECT_VALUES=new Set(['DIRECT','DIRECTFOURNISSEUR','FOURNISSEURDIRECT','DIRECTSUPPLIER']);
 const DC_VALUES=new Set(['DC','DISTRIBUTIONCENTER','CENTREDEDISTRIBUTION','ENTREPOT','WAREHOUSE']);
 const candidateNames=['SupplyMode','SupplyType','ReplenishmentType','SourcingMode','SourcingType','DCOrDirect','DCDirect','DistributionMode','ProcurementMode'];
-const productNameCandidates=['ProductName','ProductDescription','Description'];
-const forbiddenDisplayNameFields=new Set(['searchname','productsearchname']);
-function productNameField(row){const configured=clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD),keys=Object.keys(row||{});if(configured&&!forbiddenDisplayNameFields.has(configured.toLowerCase())&&Object.prototype.hasOwnProperty.call(row||{},configured)&&clean(row[configured]))return configured;for(const name of productNameCandidates){const found=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(found&&clean(row[found]))return found}return null}
+const productNameCandidates=['ProductName','ProductDescription','Description','ProductSearchName','SearchName'];
+function productNameField(row){const configured=clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD||config.dynamics.productNameField),keys=Object.keys(row||{});if(configured){const found=keys.find(k=>k.toLowerCase()===configured.toLowerCase());if(found&&clean(row[found]))return found}for(const name of productNameCandidates){const found=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(found&&clean(row[found]))return found}return null}
 export function releasedProductDisplayName(row){const field=productNameField(row);return{field:field||null,name:field?clean(row?.[field]):null}}
 
 export function normalizeReleasedProductSupplyMode(value){
@@ -19,7 +18,7 @@ export function normalizeReleasedProductSupplyMode(value){
  return null
 }
 function inferField(row){
- const configured=clean(process.env.D365_RELEASED_PRODUCT_SUPPLY_MODE_FIELD);if(configured)return configured;
+ const configured=clean(process.env.D365_RELEASED_PRODUCT_SUPPLY_MODE_FIELD);if(configured){const found=Object.keys(row||{}).find(k=>k.toLowerCase()===configured.toLowerCase());if(found)return found}
  const keys=Object.keys(row||{});
  const exact=candidateNames.find(name=>keys.some(k=>k.toLowerCase()===name.toLowerCase()));if(exact)return keys.find(k=>k.toLowerCase()===exact.toLowerCase());
  const valued=keys.find(k=>normalizeReleasedProductSupplyMode(row?.[k]));if(valued)return valued;
