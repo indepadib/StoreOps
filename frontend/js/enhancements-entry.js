@@ -62,6 +62,8 @@ function installDirectorExperience(){
   const network=nav.querySelector('[data-page="network"]');if(network)network.textContent='Réseau';setMobileLabel(network,'Réseau');
   const admin=nav.querySelector('[data-page="adminStudio"]');if(admin)admin.textContent='Admin';setMobileLabel(admin,'Admin');
   const development=nav.querySelector('[data-page="development"]');if(development)development.textContent='Développement';setMobileLabel(development,'Dév.');
+  const ensureDynamicNavLabels=()=>nav.querySelectorAll('button').forEach(button=>{if(!button.dataset.mobileLabel){const text=(button.textContent||'').trim();button.dataset.mobileLabel=text||'Ouvrir'}});
+  ensureDynamicNavLabels();new MutationObserver(ensureDynamicNavLabels).observe(nav,{childList:true,subtree:true});
   const refresh=document.getElementById('refreshBtn');if(refresh){refresh.title='Actualiser';refresh.setAttribute('aria-label','Actualiser')}
   const logout=document.getElementById('logoutBtn');if(logout){logout.title='Déconnexion';logout.setAttribute('aria-label','Déconnexion')}
 }
