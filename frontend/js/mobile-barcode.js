@@ -59,7 +59,7 @@ function loadHtml5Qrcode(){
   html5Loader=new Promise(resolve=>{
     const existing=document.querySelector('script[data-storeops-html5-qrcode]');
     if(existing){existing.addEventListener('load',()=>resolve(!!window.Html5Qrcode),{once:true});existing.addEventListener('error',()=>resolve(false),{once:true});return}
-    const s=document.createElement('script');s.src=HTML5_QRCODE_URL;s.async=true;s.crossOrigin='anonymous';s.dataset.storeopsHtml5Qrcode='1';s.onload=()=>resolve(!!window.Html5Qrcode);s.onerror=()=>resolve(false);document.head.appendChild(s);
+    const s=document.createElement('script');s.src=HTML5_QRCODE_URL;s.async=true;s.crossOrigin='anonymous';s.dataset.storeopsHtml5Qrcode='1';s.onload=()=>resolve(!!window.Html5Qrcode);s.onerror=()=>{html5Loader=null;s.remove();resolve(false)};document.head.appendChild(s);
   });
   return html5Loader;
 }
