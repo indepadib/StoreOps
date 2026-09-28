@@ -9,6 +9,7 @@ const round=(v,d=2)=>{const p=10**d;return Math.round((Number(v||0)+Number.EPSIL
 const DEAD_DAYS=()=>Math.max(7,Math.min(180,Number(process.env.STOREOPS_DEAD_STOCK_DAYS)||30));
 const SLOW_COVERAGE=()=>Math.max(7,Math.min(365,Number(process.env.STOREOPS_SLOW_COVERAGE_DAYS)||30));
 const MIN_STOCK=()=>Math.max(0,Number(process.env.STOREOPS_SELLTHROUGH_MIN_STOCK)||0);
+const genericName=v=>{const x=clean(v);return !x||/^article(?:\s|$)/i.test(x)||/^item(?:\s|$)/i.test(x)||/^product(?:\s|$)/i.test(x)};
 const snapshotCache=new Map(),snapshotInflight=new Map();
 const snapshotCacheMs=()=>Math.max(30_000,Math.min(900_000,Number(process.env.STOREOPS_SELLTHROUGH_CACHE_MS)||120_000));
 
@@ -32,14 +33,14 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
   if(assortment.status==='READY'&&!assortment.included.has(productNumber))continue;
   const sale=salesMap.get(productNumber)||null,salesUnits=n(sale?.units),salesValue=n(sale?.salesValue),daily=salesUnits>0?round(salesUnits/days,3):0,coverage=daily>0?round(available/daily,1):null,category=taxonomyLabel(productNumber);
   if(!sale||salesUnits<=0){
-   items.push({id:`dead-${productNumber}`,type:'DEAD',priority:'HIGH',productNumber,name:(sale?.name&&sale.name!==productNumber?sale.name:row.name)||productNumber,ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:0,salesValueWindow:0,dailySales:0,coverageDays:null,noSaleDays:days,reason:`Aucune vente sur les ${days} derniers jours malgré un stock disponible.`,suggestedActions:['CHECK_FACING','MERCHANDISE','COOL_SAVE','TRANSFER']});
+   items.push({id:`dead-${productNumber}`,type:'DEAD',priority:'HIGH',productNumber,name:(!genericName(sale?.name)&&sale.name!==productNumber?sale.name:!genericName(row.name)&&row.name!==productNumber?row.name:productNumber),ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:0,salesValueWindow:0,dailySales:0,coverageDays:null,noSaleDays:days,reason:`Aucune vente sur les ${days} derniers jours malgré un stock disponible.`,suggestedActions:['CHECK_FACING','MERCHANDISE','COOL_SAVE','TRANSFER']});
    continue
   }
   if(coverage!==null&&coverage>=SLOW_COVERAGE()){
-   items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(sale?.name&&sale.name!==productNumber?sale.name:row.name)||productNumber,ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
+   items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(!genericName(sale?.name)&&sale.name!==productNumber?sale.name:!genericName(row.name)&&row.name!==productNumber?row.name:productNumber),ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
   }
  }
- const unresolved=items.filter(x=>!x.name||x.name===x.productNumber).map(x=>x.productNumber).slice(0,80);
+ const unresolved=items.filter(x=>genericName(x.name)||x.name===x.productNumber).map(x=>x.productNumber).slice(0,80);
  if(unresolved.length){
   let timer=null;try{const released=await Promise.race([releasedProductSourcingMany(unresolved),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('IDENTITY_TIMEOUT')),1800)})]);for(const item of items){const name=released.get(item.productNumber)?.productName;if(name)item.name=name}}catch{}finally{if(timer)clearTimeout(timer)}
  }
