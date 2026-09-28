@@ -76,6 +76,26 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
   return {warehouseId,dataAreaId:rows[0]?.[config.dynamics.dataAreaField]||rows[0]?.dataAreaId||config.dynamics.dataAreaId||null,rowCount:rows.length,pages:fetched.pages,complete:true,onHandQuantity:sum(fields.onHand),availableOnHandQuantity:sum(fields.availableOnHand),reservedOnHandQuantity:sum('ReservedOnHandQuantity'),orderedQuantity:sum('OrderedQuantity'),availableOrderedQuantity:sum('AvailableOrderedQuantity'),reservedOrderedQuantity:sum('ReservedOrderedQuantity'),onOrderQuantity:sum('OnOrderQuantity'),totalAvailableQuantity:sum('TotalAvailableQuantity'),batches:aggregateDimensionRows(rows,fields),source:`D365/${entity}`,mappingType}
 }
 
+export async function readStoreStockSnapshot(storeId){
+ const warehouseId=mappedWarehouseForStore(storeId),entity=stockEntity(),fields=stockFields();
+ if(!warehouseId)return{status:'UNMAPPED',storeId,warehouseId:null,items:[],complete:false,source:'D365',mappingRequired:true};
+ if(!stockLive())return{status:'SIMULATED',storeId,warehouseId,items:[],complete:false,source:'SIMULATED_D365'};
+ const nameField=clean(config.dynamics.stock.nameField),eanField=clean(config.dynamics.stock.eanField),filters=[`${fields.warehouse} eq '${escapeOData(warehouseId)}'`];
+ if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+ const select=[fields.item,fields.warehouse,fields.onHand,fields.availableOnHand,nameField,eanField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
+ const map=new Map();
+ for(const row of fetched.value||[]){
+  const productNumber=clean(row[fields.item]);if(!productNumber)continue;
+  const cur=map.get(productNumber)||{productNumber,name:clean(nameField?row[nameField]:'')||productNumber,ean:clean(eanField?row[eanField]:'')||null,onHandQuantity:0,availableOnHandQuantity:0,rowCount:0};
+  cur.onHandQuantity+=n(row[fields.onHand]);cur.availableOnHandQuantity+=n(row[fields.availableOnHand]);cur.rowCount+=1;
+  if(cur.name===productNumber&&nameField&&clean(row[nameField]))cur.name=clean(row[nameField]);
+  if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
+  map.set(productNumber,cur)
+ }
+ return{status:fetched.truncated?'TRUNCATED':'READY',storeId,warehouseId,items:[...map.values()],rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,complete:!fetched.truncated,source:`D365/${entity}`}
+}
+
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
 
