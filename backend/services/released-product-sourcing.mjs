@@ -1,5 +1,5 @@
 import {config} from '../config.mjs';
-import {odataGet} from './dynamics.mjs';
+import {odataGet,odataGetAll} from './dynamics.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v).replaceAll("'","''");
@@ -34,4 +34,22 @@ export async function releasedProductSourcing(productNumber){
   const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField])||null;
   return{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,supplyMode,rawValue:raw??null,field:field||null,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'}
  }catch(error){return{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:error.message,code:error.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'}}
+}
+
+export async function releasedProductSourcingMany(productNumbers=[]){
+ const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))];if(!skus.length)return new Map();
+ if(config.dynamics.mode!=='live')return new Map(skus.map(sku=>[sku,{status:'UNAVAILABLE',productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'D365_NOT_LIVE'}]));
+ const entity=clean(process.env.D365_RELEASED_PRODUCT_ENTITY)||'ReleasedProductsV2',itemField=clean(process.env.D365_RELEASED_PRODUCT_ITEM_FIELD)||'ItemNumber',vendorField=clean(process.env.D365_RELEASED_PRODUCT_VENDOR_FIELD)||'PrimaryVendorAccountNumber',out=new Map();
+ for(let i=0;i<skus.length;i+=35){
+  const chunk=skus.slice(i,i+35),filters=[`(${chunk.map(sku=>`${itemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+  try{
+   const payload=await odataGetAll(entity,{filter:filters.join(' and '),extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:100,maxRows:2000});
+   for(const row of payload.value||[]){
+    const sku=clean(row[itemField]);if(!sku)continue;const field=inferField(row),raw=field?row[field]:null,supplyMode=normalizeReleasedProductSupplyMode(raw),primaryVendorAccount=clean(row[vendorField])||null;
+    out.set(sku,{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,supplyMode,rawValue:raw??null,field:field||null,primaryVendorAccount,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:field?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'})
+   }
+  }catch(error){for(const sku of chunk)if(!out.has(sku))out.set(sku,{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:error.message,code:error.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'})}
+ }
+ for(const sku of skus)if(!out.has(sku))out.set(sku,{status:'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'RELEASED_PRODUCT_NOT_FOUND'});
+ return out
 }
