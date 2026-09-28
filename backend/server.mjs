@@ -31,6 +31,7 @@ import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
 import { handleOpeningApi } from './services/opening-api.mjs';
 import { getStockSignals } from './services/stock-signals.mjs';
 import { warehouseControlSnapshot } from './services/warehouse-control.mjs';
+import { handleStoreGrowthApi } from './services/store-growth-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -91,6 +92,7 @@ async function api(req,res,url){
   const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
   const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return json(req,res,storeSettingsResponse.status,storeSettingsResponse.data);
+  const growthResponse=await handleStoreGrowthApi({req,url,user});if(growthResponse)return json(req,res,growthResponse.status,growthResponse.data);
 
   let p;
   if(path==='/api/stores'){const rows=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter(s=>canAccessStore(user,s.id));return json(req,res,200,rows)}
