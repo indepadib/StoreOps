@@ -1,8 +1,8 @@
-name: V2.35 Same-Time Business Pulse
+name: V2.36 Operational Stability
 
 on:
   push:
-    branches: [main, storeops-v2.35-same-time-pulse]
+    branches: [main, storeops-v2.36-operational-stability]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -30,6 +30,18 @@ jobs:
           node --check frontend/js/pages/sell-through.js
           node --check backend/services/cool-save-orders.mjs
           node --check backend/services/cool-save-integration-api.mjs
+          node --check backend/services/released-product-sourcing.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/sell-through.mjs
+          node --check backend/services/glovo-availability.mjs
+          node --check backend/services/dynamics.mjs
+          node --check backend/services/commercial.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/business-pulse.mjs
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/warehouse-control.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/pages/channel-availability.js
       - name: Same-time comparison contract
         run: node backend/tests/v235-same-time-pulse.mjs
       - name: Cool Save publish/idempotency
@@ -40,6 +52,8 @@ jobs:
         run: node backend/tests/v235-product-identity-cool-save.mjs
       - name: Cool Save external order lifecycle
         run: node backend/tests/v235-cool-save-external-orders.mjs
+      - name: Operational identity UX and performance
+        run: node backend/tests/v236-operational-stability.mjs
       - name: Business Pulse regression
         run: node backend/tests/business-pulse.mjs
       - name: Store Action Engine regression
