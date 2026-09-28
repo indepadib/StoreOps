@@ -50,6 +50,8 @@ CREATE INDEX IF NOT EXISTS ix_commercial_source_state_store ON commercial_source
 db.prepare(`INSERT OR IGNORE INTO commercial_policies(id,price_tolerance) VALUES('default',0.01)`).run();
 function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA table_info(${table})`).all();if(!cols.some(x=>x.name===column))db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)}
 ensureColumn('commercial_controls','source_details_json','TEXT NULL');
+ensureColumn('commercial_policies','recheck_days','INTEGER NOT NULL DEFAULT 7');
+ensureColumn('commercial_source_state','last_verified_at','TEXT NULL');
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
 export function commercialPolicy(){return db.prepare(`SELECT * FROM commercial_policies WHERE id='default'`).get()}
@@ -68,7 +70,8 @@ export function commercialConfig(){
    {code:'VERIFY',label:'Vérifier la signalétique'},
    {code:'NONE',label:'Aucune signalétique'}
   ],
-  policy:commercialPolicy()
+  policy:commercialPolicy(),
+  semantics:{verifiedRecheckDays:Number(commercialPolicy().recheck_days||7),verifiedMessage:'Un contrôle conforme ne revient pas chaque jour. Il réapparaît si Dynamics change ou à échéance du recontrôle.'}
  };
 }
 function hydrate(row){
@@ -99,12 +102,13 @@ function materializeCommercialDeltas(storeId,businessDate,changes=[]){
   const previous=get.get(storeId,stableKey),historical=history.get(storeId,`${stableKey}-%`),changed=!!previous&&previous.fingerprint!==fingerprint;
   const historicalFingerprint=historical?fingerprintFor({productNumber:historical.product_number,ean:historical.ean,expectedPrice:historical.expected_price,oldPrice:historical.old_price,promoLabel:historical.promo_label,signageAction:historical.signage_action}):null,changedFromHistory=!!historical&&historicalFingerprint!==fingerprint;
   if(c.oldPrice==null&&historical?.expected_price!=null&&Number(historical.expected_price)!==Number(c.expectedPrice))c.oldPrice=Number(historical.expected_price);
-  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen);
+  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen),recheckDays=Math.max(1,Number(commercialPolicy().recheck_days||7)),sinceVerified=previous?.last_verified_at?dayDistance(previous.last_verified_at,businessDate):null,periodicRecheck=c.actionType==='VERIFY'&&!changed&&!changedFromHistory&&!deltaFirstSeen&&sinceVerified!==null&&sinceVerified>=recheckDays;
   let actionDate=null;
   if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen)){
     const deltaActionType=c.deltaActionType||'PROMO_START',priceDelta=deltaActionType==='PRICE_CHANGE';
     c={...c,actionType:deltaActionType,signageAction:c.deltaSignageAction|| (priceDelta?'VERIFY':'INSTALL'),priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed||changedFromHistory?(priceDelta?'Accord tarifaire modifié dans Dynamics':'Promotion modifiée dans Dynamics'):(priceDelta?'Nouvel accord tarifaire détecté':'Promotion récente détectée'),c.promoLabel].filter(Boolean).join(' · ')};
     actionDate=businessDate
+  }else if(periodicRecheck){c={...c,scheduledRecheck:true,priority:'HIGH',promoLabel:[`Recontrôle périodique après ${recheckDays} jours`,c.promoLabel].filter(Boolean).join(' · ')};actionDate=businessDate
   }else if(c.actionType!=='VERIFY')actionDate=businessDate;
   if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
   upsert.run(storeId,stableKey,fingerprint,actionDate);
@@ -116,7 +120,7 @@ function isActionableChange(c){
  if(!c?.sourceKey||!c?.ean||!c?.productName)return false;
  const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL',label=String(c.promoLabel||'');
  if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&label.includes('le contrôle StoreOps suit le DealPrice Dynamics'))return false;
- if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&priority!=='CRITICAL')return false;
+ if(c.source==='D365_RETAIL_PRICING'&&actionType==='VERIFY'&&priority!=='CRITICAL'&&c.scheduledRecheck!==true)return false;
  return true;
 }
 function offerIdFromSourceKey(sourceKey){
@@ -196,7 +200,8 @@ export function submitCommercialControl({id,user,observedPrice=null,signageOk=nu
  const next=issues.length?'MISMATCH':'VERIFIED';
  db.prepare(`UPDATE commercial_controls SET status=?,observed_price=?,signage_ok=?,execution_ok=?,note=?,controlled_by=?,controlled_at=CURRENT_TIMESTAMP,last_issues_json=? WHERE id=?`)
   .run(next,observed,row.signage_action==='NONE'?1:(signageOk===true?1:0),executionOk===true?1:0,note||null,user.id,issues.length?JSON.stringify(issues):null,id);
- audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:issues.length?'COMMERCIAL_MISMATCH':'COMMERCIAL_VERIFIED',entityType:'COMMERCIAL_CONTROL',entityId:id,details:{ean:row.ean,observedPrice:observed,expectedPrice:row.expected_price,signageOk,executionOk,issues}});
+ if(!issues.length){const stableKey=stableKeyFor({sourceKey:row.source_key});if(stableKey)db.prepare(`UPDATE commercial_source_state SET last_verified_at=CURRENT_TIMESTAMP WHERE store_id=? AND stable_key=?`).run(row.store_id,stableKey)}
+  audit({storeId:row.store_id,businessDate:row.business_date,userId:user.id,action:issues.length?'COMMERCIAL_MISMATCH':'COMMERCIAL_VERIFIED',entityType:'COMMERCIAL_CONTROL',entityId:id,details:{ean:row.ean,observedPrice:observed,expectedPrice:row.expected_price,signageOk,executionOk,issues}});
  return{control:hydrate(db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(id)),issues};
 }
 export function updateCommercialPolicy({user,priceTolerance}){
