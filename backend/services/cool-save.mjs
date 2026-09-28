@@ -54,11 +54,25 @@ export function listCoolSaveBaskets(storeId,{status='ALL'}={}){
  return rows.map(hydrate)
 }
 export function coolSaveBasket(id){return hydrate(db.prepare('SELECT * FROM cool_save_baskets WHERE id=?').get(id))}
+function allocatedQuantities(storeId,businessDate){
+ const rows=db.prepare(`SELECT l.product_number,l.source_type,l.source_id,SUM(l.quantity) allocated
+ FROM cool_save_lines l JOIN cool_save_baskets b ON b.id=l.basket_id
+ WHERE b.store_id=? AND b.business_date=? AND b.status IN ('DRAFT','PUBLISHED','RESERVED','SOLD')
+ GROUP BY l.product_number,l.source_type,l.source_id`).all(storeId,businessDate);
+ const byProduct=new Map(),bySource=new Map();
+ for(const row of rows){const q=n(row.allocated),sku=String(row.product_number||'').trim(),source=`${row.source_type||''}:${row.source_id||''}`;if(sku)byProduct.set(sku,n(byProduct.get(sku))+q);if(row.source_type&&row.source_id)bySource.set(source,n(bySource.get(source))+q)}
+ return{byProduct,bySource}
+}
+function remainingSuggestionQty(alloc,{productNumber,sourceType,sourceId,quantity}){
+ const sourceKey=`${sourceType||''}:${sourceId||''}`,usedSource=alloc.bySource.get(sourceKey)||0,usedProduct=productNumber?(alloc.byProduct.get(String(productNumber))||0):0,used=Math.max(usedSource,usedProduct);
+ return Math.max(0,round(n(quantity)-used))
+}
+
 export async function coolSaveSuggestions(storeId,{businessDate=todayISO()}={}){
- const dlc=listDlc(storeId,'ACTIVE').filter(x=>n(x.remaining_quantity)>0&&n(x.risk?.daysRemaining)>=0&&['CRITICAL','ALERT','WATCH','CONFORM'].includes(x.risk?.stage)),sell=await sellThroughSnapshot(storeId,{businessDate});
- const dlcItems=dlc.slice(0,40).map(x=>({id:`dlc:${x.id}`,sourceType:'DLC',sourceId:x.id,productNumber:x.product_number||null,ean:x.ean||null,name:x.product_name,quantity:n(x.remaining_quantity),unit:x.unit||'pièce',referenceUnitPrice:x.unit_retail_value==null?null:n(x.unit_retail_value),reason:`${x.risk.label} · ${x.risk.daysRemaining} jour(s) restant(s)`,priority:x.risk.severity,eligibility:'ELIGIBLE_DLC'}));
- const rotationItems=(sell.items||[]).slice(0,50).map(x=>({id:`rotation:${x.productNumber}`,sourceType:x.type==='DEAD'?'DEAD_STOCK':'SLOW_MOVER',sourceId:x.productNumber,productNumber:x.productNumber,ean:x.ean||null,name:x.name||x.productNumber,quantity:n(x.availableStock),unit:'pièce',referenceUnitPrice:null,reason:x.reason,priority:x.priority,eligibility:'REVIEW_REQUIRED'}));
- return{status:'READY',storeId,businessDate,items:[...dlcItems,...rotationItems],summary:{dlc:dlcItems.length,dead:rotationItems.filter(x=>x.sourceType==='DEAD_STOCK').length,slow:rotationItems.filter(x=>x.sourceType==='SLOW_MOVER').length},policy:{expiredDlcExcluded:true,manualReviewForSlowMovers:true}}
+ const alloc=allocatedQuantities(storeId,businessDate),dlc=listDlc(storeId,'ACTIVE').filter(x=>n(x.remaining_quantity)>0&&n(x.risk?.daysRemaining)>=0&&['CRITICAL','ALERT','WATCH','CONFORM'].includes(x.risk?.stage)),sell=await sellThroughSnapshot(storeId,{businessDate});
+ const dlcItems=dlc.slice(0,40).map(x=>{const base={id:`dlc:${x.id}`,sourceType:'DLC',sourceId:x.id,productNumber:x.product_number||null,ean:x.ean||null,name:x.product_name,quantity:n(x.remaining_quantity),unit:x.unit||'pièce',referenceUnitPrice:x.unit_retail_value==null?null:n(x.unit_retail_value),reason:`${x.risk.label} · ${x.risk.daysRemaining} jour(s) restant(s)`,priority:x.risk.severity,eligibility:'ELIGIBLE_DLC'};return{...base,quantity:remainingSuggestionQty(alloc,base)}}).filter(x=>x.quantity>0);
+ const rotationItems=(sell.items||[]).slice(0,50).map(x=>{const base={id:`rotation:${x.productNumber}`,sourceType:x.type==='DEAD'?'DEAD_STOCK':'SLOW_MOVER',sourceId:x.productNumber,productNumber:x.productNumber,ean:x.ean||null,name:x.name||x.productNumber,quantity:n(x.availableStock),unit:x.salesUnit||'pièce',referenceUnitPrice:null,reason:x.reason,priority:x.priority,eligibility:'REVIEW_REQUIRED'};return{...base,quantity:remainingSuggestionQty(alloc,base)}}).filter(x=>x.quantity>0);
+ return{status:'READY',storeId,businessDate,items:[...dlcItems,...rotationItems],summary:{dlc:dlcItems.length,dead:rotationItems.filter(x=>x.sourceType==='DEAD_STOCK').length,slow:rotationItems.filter(x=>x.sourceType==='SLOW_MOVER').length},policy:{expiredDlcExcluded:true,manualReviewForSlowMovers:true,excludeAlreadyAllocated:true}}
 }
 export function createCoolSaveBasket({storeId,user,title='Panier Cool & Save',salePrice,expiresAt=null,items=[],clientRequestId=null}){
  const price=Number(salePrice);if(!Number.isFinite(price)||price<0)throw Object.assign(new Error('Prix du panier invalide.'),{status:400});
