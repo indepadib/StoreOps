@@ -20,6 +20,7 @@ function primaryAction({availability,ctx,membership,replenishment}){
  if(replenishment?.decision==='REPLENISH')return{code:'REPLENISH',label:`Préparer transfert ${replenishment.actionQty}`,page:'inventory',tone:'brand'};
  if(replenishment?.decision==='DIRECT_ORDER')return{code:'DIRECT_ORDER',label:`Préparer commande fournisseur ${replenishment.actionQty}`,page:'inventory',tone:'brand'};
  if(replenishment?.decision==='PARTIAL')return{code:'REPLENISH_PARTIAL',label:`Demander ${replenishment.actionQty}`,page:'inventory',tone:'warn'};
+ if(replenishment?.decision==='DC_BACKORDER')return{code:'DC_BACKORDER',label:`Transmettre besoin DC ${replenishment.actionQty}`,page:'inventory',tone:'danger'};
  if(replenishment?.decision==='WAREHOUSE_OUT')return{code:'WAREHOUSE_OUT',label:'Signaler la rupture entrepôt',page:'incidents',tone:'danger'};
  if(replenishment?.decision==='NEED_SUPPLY_DATA')return{code:'SUPPLY_UNMAPPED',label:'Connecter le stock LVE Lakhyayta',page:'managerMore',tone:'neutral'};
  if(replenishment?.decision==='NEED_SOURCING_DATA')return{code:'SOURCING_UNKNOWN',label:'Vérifier DC / Direct dans Dynamics',page:'managerMore',tone:'neutral'};
