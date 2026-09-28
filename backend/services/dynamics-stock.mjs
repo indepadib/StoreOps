@@ -6,6 +6,8 @@ import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure }
 // Pilot fallback only. Other stores must be explicitly mapped in configuration.
 export const STORE_WAREHOUSES=Object.freeze({'val-fleuri':'FRP0001'});
 export const STOCK_ENTITY='WarehousesOnHandV2';
+const stockSnapshotCache=new Map(),stockSnapshotInflight=new Map();
+const stockSnapshotCacheMs=()=>Math.max(10_000,Math.min(300_000,Number(process.env.STOREOPS_STOCK_SNAPSHOT_CACHE_MS)||45_000));
 
 function escapeOData(v){return String(v).replaceAll("'","''")}
 function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
@@ -76,26 +78,31 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
   return {warehouseId,dataAreaId:rows[0]?.[config.dynamics.dataAreaField]||rows[0]?.dataAreaId||config.dynamics.dataAreaId||null,rowCount:rows.length,pages:fetched.pages,complete:true,onHandQuantity:sum(fields.onHand),availableOnHandQuantity:sum(fields.availableOnHand),reservedOnHandQuantity:sum('ReservedOnHandQuantity'),orderedQuantity:sum('OrderedQuantity'),availableOrderedQuantity:sum('AvailableOrderedQuantity'),reservedOrderedQuantity:sum('ReservedOrderedQuantity'),onOrderQuantity:sum('OnOrderQuantity'),totalAvailableQuantity:sum('TotalAvailableQuantity'),batches:aggregateDimensionRows(rows,fields),source:`D365/${entity}`,mappingType}
 }
 
-export async function readStoreStockSnapshot(storeId){
- const warehouseId=mappedWarehouseForStore(storeId),entity=stockEntity(),fields=stockFields();
- if(!warehouseId)return{status:'UNMAPPED',storeId,warehouseId:null,items:[],complete:false,source:'D365',mappingRequired:true};
- if(!stockLive())return{status:'SIMULATED',storeId,warehouseId,items:[],complete:false,source:'SIMULATED_D365'};
- const nameField=clean(config.dynamics.stock.nameField),eanField=clean(config.dynamics.stock.eanField),filters=[`${fields.warehouse} eq '${escapeOData(warehouseId)}'`];
- if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
- const select=[fields.item,fields.warehouse,fields.onHand,fields.availableOnHand,nameField,eanField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
- const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
- const map=new Map();
- for(const row of fetched.value||[]){
-  const productNumber=clean(row[fields.item]);if(!productNumber)continue;
-  const cur=map.get(productNumber)||{productNumber,name:clean(nameField?row[nameField]:'')||productNumber,ean:clean(eanField?row[eanField]:'')||null,onHandQuantity:0,availableOnHandQuantity:0,rowCount:0};
-  cur.onHandQuantity+=n(row[fields.onHand]);cur.availableOnHandQuantity+=n(row[fields.availableOnHand]);cur.rowCount+=1;
-  if(cur.name===productNumber&&nameField&&clean(row[nameField]))cur.name=clean(row[nameField]);
-  if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
-  map.set(productNumber,cur)
- }
- return{status:fetched.truncated?'TRUNCATED':'READY',storeId,warehouseId,items:[...map.values()],rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,complete:!fetched.truncated,source:`D365/${entity}`}
+export async function readStoreStockSnapshot(storeId,{force=false}={}){
+ const warehouseId=mappedWarehouseForStore(storeId),entity=stockEntity(),fields=stockFields(),cacheKey=`${storeId}|${warehouseId||'UNMAPPED'}`;
+ const hit=stockSnapshotCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT',ageMs:Date.now()-hit.storedAt}};
+ if(!force&&stockSnapshotInflight.has(cacheKey))return stockSnapshotInflight.get(cacheKey);
+ const task=(async()=>{
+  if(!warehouseId)return{status:'UNMAPPED',storeId,warehouseId:null,items:[],complete:false,source:'D365',mappingRequired:true};
+  if(!stockLive())return{status:'SIMULATED',storeId,warehouseId,items:[],complete:false,source:'SIMULATED_D365'};
+  const nameField=clean(config.dynamics.stock.nameField),eanField=clean(config.dynamics.stock.eanField),filters=[`${fields.warehouse} eq '${escapeOData(warehouseId)}'`];
+  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+  const select=[fields.item,fields.warehouse,fields.onHand,fields.availableOnHand,nameField,eanField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+  const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
+  const map=new Map();
+  for(const row of fetched.value||[]){
+   const productNumber=clean(row[fields.item]);if(!productNumber)continue;
+   const cur=map.get(productNumber)||{productNumber,name:clean(nameField?row[nameField]:'')||productNumber,ean:clean(eanField?row[eanField]:'')||null,onHandQuantity:0,availableOnHandQuantity:0,rowCount:0};
+   cur.onHandQuantity+=n(row[fields.onHand]);cur.availableOnHandQuantity+=n(row[fields.availableOnHand]);cur.rowCount+=1;
+   if(cur.name===productNumber&&nameField&&clean(row[nameField]))cur.name=clean(row[nameField]);
+   if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
+   map.set(productNumber,cur)
+  }
+  const value={status:fetched.truncated?'TRUNCATED':'READY',storeId,warehouseId,items:[...map.values()],rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,complete:!fetched.truncated,source:`D365/${entity}`};
+  stockSnapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+stockSnapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}
+ })();
+ if(!force)stockSnapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&stockSnapshotInflight.get(cacheKey)===task)stockSnapshotInflight.delete(cacheKey)}
 }
-
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
 
