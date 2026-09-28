@@ -20,7 +20,9 @@ const SALES_ROLES={
  time:['time','transactiontime','createddatetime','datetime'],
  productName:['productname','itemname','name','description'],
  department:['department','departmentname','rayon'],
- category:['category','categoryname','family','famille']
+ category:['category','categoryname','family','famille'],
+ customer:['custaccount','customeraccount','customer','loyaltycustomer'],
+ staff:['staffid','staff','workerid','personnelnumber','employeeid','cashierid','operatorid']
 };
 const PRICE_ROLES={
  product:['itemid','itemnumber','productnumber','product','sku'],
