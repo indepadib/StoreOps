@@ -41,6 +41,8 @@ jobs:
           node --check frontend/js/warehouse-control.js
       - name: V2.34 contract
         run: node backend/tests/v234-sourcing-growth-pda.mjs
+      - name: DC store to Supply workflow
+        run: node backend/tests/v234-dc-supply-flow.mjs
       - name: Replenishment engine regression
         run: node backend/tests/replenishment-engine.mjs
       - name: Replenishment assistant regression
