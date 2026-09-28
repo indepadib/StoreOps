@@ -172,12 +172,11 @@ export async function resolveStorePriceGroups(storeId,{force=false}={}){
 }
 
 function productDisplayName(row,configuredField,fallback){
-  const primary=[configuredField,'ProductName','Name','Description','ItemName'].filter(Boolean);
+  const configured=String(configuredField||'').trim(),forbidden=new Set(['searchname','productsearchname']);
+  const primary=[...new Set([!forbidden.has(configured.toLowerCase())?configured:null,'ProductName','ProductDescription','Description'].filter(Boolean))];
   for(const field of primary){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
   const fb=String(fallback??'').trim(),productNumber=String(row?.ProductNumber??row?.ItemNumber??'').trim();
-  if(fb&&fb!==productNumber&&!/^HS-[0-9]+$/i.test(fb))return fb;
-  for(const field of ['ProductSearchName','SearchName']){const value=row?.[field];if(String(value??'').trim())return String(value).trim()}
-  return fb||null
+  return fb&&fb!==productNumber&&!/^HS-[0-9]+$/i.test(fb)?fb:(productNumber||fb||null)
 }
 function productSearchName(row){return String(row?.ProductSearchName??row?.SearchName??'').trim()||null}
 function productCategory(row,barcodeRow){
