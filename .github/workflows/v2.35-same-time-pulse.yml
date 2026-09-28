@@ -22,8 +22,14 @@ jobs:
           node --check backend/services/business-pulse.mjs
           node --check frontend/js/pages/manager-home.js
           node --check frontend/js/pages/manager-performance.js
+          node --check backend/services/cool-save.mjs
+          node --check backend/services/store-growth-api.mjs
+          node --check frontend/js/pages/cool-save.js
+          node --check frontend/js/pages/sell-through.js
       - name: Same-time comparison contract
         run: node backend/tests/v235-same-time-pulse.mjs
+      - name: Cool Save publish/idempotency
+        run: node backend/tests/v235-cool-save-flow.mjs
       - name: Business Pulse regression
         run: node backend/tests/business-pulse.mjs
       - name: Store Action Engine regression
