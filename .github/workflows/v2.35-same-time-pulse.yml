@@ -20,6 +20,10 @@ jobs:
         run: |
           node --check backend/services/dynamics-sales.mjs
           node --check backend/services/business-pulse.mjs
+          node --check backend/services/dynamics-staff-performance.mjs
+          node --check backend/services/dynamics-loyalty.mjs
+          node --check frontend/js/pages/manager-team.js
+          node --check frontend/js/pages/inventory.js
           node --check frontend/js/pages/manager-home.js
           node --check frontend/js/pages/manager-performance.js
           node --check backend/services/cool-save.mjs
@@ -54,6 +58,10 @@ jobs:
         run: node backend/tests/v235-cool-save-external-orders.mjs
       - name: Operational identity UX and performance
         run: node backend/tests/v236-operational-stability.mjs
+      - name: StaffId and customer recruitment attribution
+        run: node backend/tests/v236-cashier-recruitment-attribution.mjs
+      - name: Inventory unit counting regression
+        run: node backend/tests/v230-inventory-unit-policy.mjs
       - name: Business Pulse regression
         run: node backend/tests/business-pulse.mjs
       - name: Store Action Engine regression
