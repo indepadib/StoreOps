@@ -17,7 +17,7 @@ export async function handleStoreGrowthApi({req,url,user}){
  p=route(path,'/api/stores/:storeId/cool-save');if(p){
   requireStore(user,p.storeId);
   if(req.method==='GET')return{status:200,data:{summary:coolSaveSummary(p.storeId),items:listCoolSaveBaskets(p.storeId,{status:(url.searchParams.get('status')||'ALL').toUpperCase()})}};
-  if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return{status:201,data:createCoolSaveBasket({storeId:p.storeId,user,title:b.title,salePrice:b.salePrice,expiresAt:b.expiresAt,items:b.items||[]})}}
+  if(req.method==='POST'){ensureManage(user,p.storeId);const b=await body(req);return{status:201,data:createCoolSaveBasket({storeId:p.storeId,user,title:b.title,salePrice:b.salePrice,expiresAt:b.expiresAt,items:b.items||[],clientRequestId:b.clientRequestId||null})}}
  }
  p=route(path,'/api/cool-save/:basketId/:action');if(p&&req.method==='POST'){
   const basket=coolSaveBasket(p.basketId);if(!basket)return{status:404,data:{error:'Panier Cool & Save introuvable.'}};requireStore(user,basket.store_id);ensureManage(user,basket.store_id);const b=await body(req);
