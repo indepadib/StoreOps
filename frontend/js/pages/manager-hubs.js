@@ -26,10 +26,11 @@ async function loadManagerInbox(){
 }
 
 const navCard=(page,title,detail,meta='',attrs='')=>`<button class="manager-hub-card" data-manager-go="${page}" ${attrs}><div><strong>${esc(title)}</strong><p>${esc(detail)}</p>${meta?`<small>${esc(meta)}</small>`:''}</div><span>›</span></button>`;
+const dueLabel=b=>({NOW:'Maintenant',NEXT:'Prochaine priorité',TODAY:'Aujourd’hui',WATCH:'À surveiller'}[b]||'Aujourd’hui');
 
 function actionCard(i){
-  const kind=actionKind(i),pclass=i.priority==='P0'?'priority-p0':i.priority==='P1'?'priority-p1':'';
-  return`<button class="manager-action-card ${i.priority==='P0'?'critical':''}" data-manager-go="${esc(i.page)}"><div><div class="chips"><span class="chip ${pclass}">${esc(priorityLabel(i.priority))}</span><span class="chip ${kind}">${esc(categoryLabel(i.category))}</span>${i.blocking?'<span class="chip danger">Bloquant</span>':''}${i.meta?`<span class="chip">${esc(i.meta)}</span>`:''}</div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small></div><span class="arrow">›</span></button>`;
+  const kind=actionKind(i),pclass=i.priority==='P0'?'priority-p0':i.priority==='P1'?'priority-p1':'',owner=i.ownerLabel||'Responsable magasin',next=i.recommendedAction||'Ouvrir et traiter';
+  return`<button class="manager-action-card ${i.dueBucket==='NOW'||i.priority==='P0'?'critical':''}" data-manager-go="${esc(i.page)}"><div><div class="chips"><span class="chip ${pclass}">${esc(dueLabel(i.dueBucket))}</span><span class="chip ${kind}">${esc(categoryLabel(i.category))}</span>${i.blocking?'<span class="chip danger">Bloquant</span>':''}${i.meta?`<span class="chip">${esc(i.meta)}</span>`:''}</div><strong>${esc(i.title)}</strong><small>${esc(i.detail)}</small><small><strong>${esc(owner)}</strong> · ${esc(next)}${i.evidence?` · preuve : ${esc(i.evidence)}`:''}</small></div><span class="arrow">›</span></button>`;
 }
 
 function guidedCopy(phase,d){
@@ -60,18 +61,18 @@ export async function renderManagerJourney(){
 
 export async function renderManagerControls(){
   const inbox=await loadManagerInbox();syncManagerNav(inbox);
-  const priorityGroups=[
-    ['P0','À traiter immédiatement','Sécurité, stock négatif, rupture promo ou non-conformité critique.'],
-    ['P1','Prioritaire','Ruptures, recomptages, prix/promos et retards à traiter rapidement.'],
-    ['P2','À faire aujourd’hui','Validations restantes du parcours opérationnel.'],
-    ['P3','À surveiller','Sujets non urgents à garder sous contrôle.']
+  const dueGroups=[
+    ['NOW','Maintenant','Ce qui bloque, met le magasin à risque ou demande une intervention immédiate.'],
+    ['NEXT','Prochaines priorités','À traiter dès que les urgences sont sécurisées.'],
+    ['TODAY','Aujourd’hui','À clôturer avant la fin de journée.'],
+    ['WATCH','À surveiller','À garder sous contrôle sans détourner l’équipe des priorités.']
   ];
   const stockSource=inbox.stockData?.source?`${inbox.stockData.source}${inbox.stockData.warehouse?` · ${inbox.stockData.warehouse}`:''}`:'';
   $('#managerControlsContent').innerHTML=`
     <div class="manager-inbox-head"><span class="manager-eyebrow">File de travail Responsable</span><h2>À valider</h2><p>Une seule liste, triée par impact magasin. Les plus urgents sont toujours en haut.</p></div>
-    <div class="manager-inbox-stats"><div class="manager-inbox-stat ${inbox.summary.p0?'danger':''}"><strong>${inbox.summary.p0}</strong><span>Immédiats</span></div><div class="manager-inbox-stat ${inbox.summary.p1?'danger':''}"><strong>${inbox.summary.p1}</strong><span>Prioritaires</span></div><button class="manager-inbox-stat ${inbox.summary.alertCritical?'danger':''}" data-manager-go="incidents"><strong>${inbox.summary.alerts}</strong><span>Alertes</span></button></div>
+    <div class="manager-inbox-stats"><div class="manager-inbox-stat ${inbox.summary?.due?.now?'danger':''}"><strong>${inbox.summary?.due?.now??inbox.summary.p0??0}</strong><span>Maintenant</span></div><div class="manager-inbox-stat ${inbox.summary?.due?.next?'danger':''}"><strong>${inbox.summary?.due?.next??inbox.summary.p1??0}</strong><span>Ensuite</span></div><button class="manager-inbox-stat ${inbox.summary.alertCritical?'danger':''}" data-manager-go="incidents"><strong>${inbox.summary.alerts}</strong><span>Alertes</span></button></div>
     ${stockSource?`<div class="small muted" style="margin:-3px 2px 12px">Stock : ${esc(stockSource)}</div>`:''}
-    ${inbox.items.length?priorityGroups.map(([key,label,detail])=>{const rows=inbox.items.filter(x=>x.priority===key);return rows.length?`<section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>${esc(label)}</h3><span>${esc(detail)}</span></div><strong>${rows.length}</strong></div><div class="manager-action-list">${rows.map(actionCard).join('')}</div></section>`:''}).join(''):'<div class="manager-all-good"><strong>Tout est validé.</strong><span>Aucune action en attente pour ce magasin.</span></div>'}
+    ${inbox.items.length?dueGroups.map(([key,label,detail])=>{const rows=inbox.items.filter(x=>(x.dueBucket||({P0:'NOW',P1:'NEXT',P2:'TODAY',P3:'WATCH'}[x.priority]||'TODAY'))===key);return rows.length?`<section class="manager-inbox-section"><div class="manager-inbox-section-head"><div><h3>${esc(label)}</h3><span>${esc(detail)}</span></div><strong>${rows.length}</strong></div><div class="manager-action-list">${rows.map(actionCard).join('')}</div></section>`:''}).join(''):'<div class="manager-all-good"><strong>Tout est validé.</strong><span>Aucune action en attente pour ce magasin.</span></div>'}
     ${inbox.alerts.length?`<section class="manager-alert-strip"><div><strong>${inbox.alerts.length} alerte(s) à traiter séparément</strong><small>Problèmes / incidents avec action corrective, preuve et clôture.</small></div><button data-manager-go="incidents">Ouvrir</button></section>`:''}`;
 }
 
