@@ -33,7 +33,8 @@ assert.match(warehouseBackend,/warehouseControlSnapshot/);
 assert.match(warehouseBackend,/supplierGroups/);
 assert.match(warehouseBackend,/transferGroups/);
 assert.match(warehouse,/ENTREPÔT & APPROVISIONNEMENT/);
-assert.match(warehouse,/Achats fournisseurs consolidés/);
+assert.match(warehouse,/Achats pour le DC · LVE Lakhyayta/);
+assert.match(warehouse,/Commandes directes fournisseurs → magasins/);
 assert.match(entry,/warehouse-control\.js/);
 
 assert.match(sales,/identifiedSalesShare/);
