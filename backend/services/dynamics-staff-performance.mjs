@@ -46,7 +46,7 @@ async function resolveWorkers(staffIds=[]){
 export async function readStoreCashierPerformance(storeId,{businessDate=new Date().toISOString().slice(0,10),days=30,force=false}={}){
  const end=dateOnly(businessDate)||new Date().toISOString().slice(0,10),windowDays=Math.max(1,Math.min(90,Number(days)||30)),start=nextDate(end,-(windowDays-1)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`;
  const hit=cache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
- const c=salesIntegrationConfig(storeId),staffField=clean(process.env.D365_SALES_STAFF_FIELD)||'StaffId';
+ const c=salesIntegrationConfig(storeId),staffField=clean(c.fields?.staff)||clean(process.env.D365_SALES_STAFF_FIELD)||'StaffId';
  if(!c.ready)return{status:'UNAVAILABLE',storeId,businessDate:end,windowDays,items:[],source:'D365_SALES_UNAVAILABLE',missing:c.missing||[]};
  const select=[staffField,c.fields.transaction,c.fields.net,c.fields.customer,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],modes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
