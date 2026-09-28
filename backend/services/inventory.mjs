@@ -61,6 +61,11 @@ CREATE INDEX IF NOT EXISTS ix_inventory_session_store ON inventory_sessions(stor
 CREATE INDEX IF NOT EXISTS ix_inventory_lines_session ON inventory_lines(session_id,status);
 `);
 const inventoryLineColumns=db.prepare(`PRAGMA table_info(inventory_lines)`).all();if(!inventoryLineColumns.some(x=>x.name==='unit'))db.exec(`ALTER TABLE inventory_lines ADD COLUMN unit TEXT NULL`);
+for(const [name,definition] of [
+ ['count1_input_qty','REAL NULL'],['count1_input_unit','TEXT NULL'],['count2_input_qty','REAL NULL'],['count2_input_unit','TEXT NULL']
+])if(!inventoryLineColumns.some(x=>x.name===name))db.exec(`ALTER TABLE inventory_lines ADD COLUMN ${name} ${definition}`);
+const inventorySessionColumns=db.prepare(`PRAGMA table_info(inventory_sessions)`).all();
+for(const [name,definition] of [['source_type',"TEXT NOT NULL DEFAULT 'STOREOPS_UNSCHEDULED'"],['source_reference','TEXT NULL']])if(!inventorySessionColumns.some(x=>x.name===name))db.exec(`ALTER TABLE inventory_sessions ADD COLUMN ${name} ${definition}`);
 db.prepare(`INSERT OR IGNORE INTO inventory_policies(id,recount_qty_threshold,incident_qty_threshold) VALUES('default',2,5)`).run();
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
@@ -81,7 +86,7 @@ export function inventoryVariancePolicyForUnit(unit,policy=inventoryPolicy()){
 }
 function varianceUnitKey(unit){return normalizeUnit(unit)?.label||String(unit||'unité').trim()||'unité'}
 
-export function inventoryConfig(){return{types:[{code:'CYCLE',label:'Inventaire tournant'},{code:'TARGETED',label:'Inventaire ciblé'},{code:'FULL',label:'Inventaire complet'}],reasons:INVENTORY_REASON_CODES,policy:inventoryPolicy(),policySemantics:{recount:'Seuil exprimé en unité métier : pièce, kg ou L puis converti dans l’unité de stock.',incident:'Même règle pour le seuil incident.'}}}
+export function inventoryConfig(){return{types:[{code:'CYCLE',label:'Inventaire tournant'},{code:'TARGETED',label:'Inventaire ciblé'},{code:'FULL',label:'Inventaire complet'}],reasons:INVENTORY_REASON_CODES,policy:inventoryPolicy(),countingPolicy:{blindCount:true,independentRecount:true,scanFirst:true,naturalUnitInput:true},d365Model:{scheduled:'Journal de comptage D365/HQ',unscheduled:'Comptage magasin initié dans StoreOps',posting:'Validation/posting D365 volontairement désactivé',inventoryUnitAsCanonical:true},policySemantics:{recount:'Seuil exprimé en unité métier : pièce, kg ou L puis converti dans l’unité de stock.',incident:'Même règle pour le seuil incident.'}}}
 function hydrateLine(row){return row?{...row,count1_by_name:userName(row.count1_by),count2_by_name:userName(row.count2_by),variance_abs:row.final_variance==null?null:Math.abs(Number(row.final_variance)),variancePolicy:inventoryVariancePolicyForUnit(row.unit)}:null}
 function hydrateSession(row){
  if(!row)return null;
@@ -103,10 +108,10 @@ export function inventorySummary(storeId){
  const units=Object.keys(varianceByUnit);
  return{openSessions:active.length,readyToPost:active.filter(x=>x.status==='READY_TO_POST').length,pendingRecounts:active.reduce((s,x)=>s+x.metrics.recounts,0),varianceLines:active.reduce((s,x)=>s+x.metrics.varianceLines,0),absoluteVarianceQty:units.length===1?varianceByUnit[units[0]]:null,varianceByUnit,mixedVarianceUnits:units.length>1};
 }
-export function createInventorySession({storeId,user,type='CYCLE',zone='',comment=''}) {
+export function createInventorySession({storeId,user,type='CYCLE',zone='',comment='',sourceType='STOREOPS_UNSCHEDULED',sourceReference=null}) {
  if(!['CYCLE','TARGETED','FULL'].includes(type))throw Object.assign(new Error('Type d’inventaire invalide.'),{status:400});
  const id=uid('inv');
- db.prepare(`INSERT INTO inventory_sessions(id,store_id,business_date,inventory_type,zone,comment,status,created_by) VALUES(?,?,?,?,?,?,'COUNTING',?)`).run(id,storeId,todayISO(),type,zone||null,comment||null,user.id);
+ db.prepare(`INSERT INTO inventory_sessions(id,store_id,business_date,inventory_type,zone,comment,status,created_by,source_type,source_reference) VALUES(?,?,?,?,?,?,'COUNTING',?,?,?)`).run(id,storeId,todayISO(),type,zone||null,comment||null,user.id,String(sourceType||'STOREOPS_UNSCHEDULED'),sourceReference||null);
  audit({storeId,userId:user.id,action:'INVENTORY_STARTED',entityType:'INVENTORY_SESSION',entityId:id,details:{type,zone}});
  return inventorySession(id);
 }
@@ -132,22 +137,30 @@ export function addInventoryLine({sessionId,user,product}){
  return hydrateLine(db.prepare(`SELECT * FROM inventory_lines WHERE id=?`).get(id));
 }
 function validReason(code){return !code||INVENTORY_REASON_CODES.some(x=>x.code===code)}
-export function countInventoryLine({lineId,user,quantity,reasonCode=null,note='',recount=false}){
+function normalizeInventoryCount(quantity,inputUnit,inventoryUnit){
+ const rawQty=Number(quantity);if(!Number.isFinite(rawQty)||rawQty<0)throw Object.assign(new Error('Quantité comptée invalide.'),{status:400});
+ const target=String(inventoryUnit||'').trim(),source=String(inputUnit||target||'').trim();
+ if(!target||!source||normalizeUnit(source)?.label===normalizeUnit(target)?.label)return{quantity:rawQty,inputQuantity:rawQty,inputUnit:source||target||null,inventoryUnit:target||source||null,converted:false};
+ const converted=convertQuantity(rawQty,source,target);
+ if(converted.status!=='READY')throw Object.assign(new Error(`Conversion impossible de ${source} vers ${target}. Utilise l’unité de stock Dynamics.`),{status:400,code:'INVENTORY_COUNT_UNIT_INCOMPATIBLE',details:{inputUnit:source,inventoryUnit:target}});
+ return{quantity:Number(converted.quantity),inputQuantity:rawQty,inputUnit:source,inventoryUnit:target,converted:true}
+}
+export function countInventoryLine({lineId,user,quantity,countUnit=null,reasonCode=null,note='',recount=false}){
  const line=db.prepare(`SELECT l.*,s.store_id,s.status session_status FROM inventory_lines l JOIN inventory_sessions s ON s.id=l.session_id WHERE l.id=?`).get(lineId);if(!line)throw Object.assign(new Error('Ligne d’inventaire introuvable.'),{status:404});
  if(!['COUNTING','REVIEW'].includes(line.session_status))throw Object.assign(new Error('Cet inventaire n’est plus modifiable.'),{status:409});
- const qty=Number(quantity);if(!Number.isFinite(qty)||qty<0)throw Object.assign(new Error('Quantité comptée invalide.'),{status:400});
+ const normalizedCount=normalizeInventoryCount(quantity,countUnit,line.unit),qty=normalizedCount.quantity;
  if(!validReason(reasonCode))throw Object.assign(new Error('Motif d’écart invalide.'),{status:400});
  const policy=inventoryPolicy(),variancePolicy=inventoryVariancePolicyForUnit(line.unit,policy);
  if(recount){
    if(!line.requires_recount)throw Object.assign(new Error('Cette ligne ne nécessite pas de recomptage.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),finalReason=reasonCode||line.reason_code||null;
-   db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,user.id,qty,variance,finalReason,note||line.note||null,lineId);
-   audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,reasonCode:reasonCode||line.reason_code||null}});
+   db.prepare(`UPDATE inventory_lines SET count2_qty=?,count2_input_qty=?,count2_input_unit=?,count2_by=?,count2_at=CURRENT_TIMESTAMP,final_qty=?,final_variance=?,reason_code=?,note=?,requires_recount=0,status='COUNTED' WHERE id=?`).run(qty,normalizedCount.inputQuantity,normalizedCount.inputUnit,user.id,qty,variance,finalReason,note||line.note||null,lineId);
+   audit({storeId:line.store_id,userId:user.id,action:'INVENTORY_RECOUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,inputQuantity:normalizedCount.inputQuantity,inputUnit:normalizedCount.inputUnit,inventoryUnit:line.unit,converted:normalizedCount.converted,variance,reasonCode:reasonCode||line.reason_code||null}});
  }else{
    if(line.count1_qty!=null)throw Object.assign(new Error('Le premier comptage existe déjà. Utilise le recomptage si nécessaire.'),{status:409});
    const variance=qty-Number(line.theoretical_qty),needs=Math.abs(variance)>=Number(variancePolicy.recountThreshold);
-   db.prepare(`UPDATE inventory_lines SET count1_qty=?,count1_by=?,count1_at=CURRENT_TIMESTAMP,variance1=?,requires_recount=?,final_qty=?,final_variance=?,reason_code=?,note=?,status=? WHERE id=?`).run(qty,user.id,variance,needs?1:0,needs?null:qty,needs?null:variance,reasonCode||null,note||null,needs?'RECOUNT':'COUNTED',lineId);
-   audit({storeId:line.store_id,userId:user.id,action:needs?'INVENTORY_RECOUNT_REQUIRED':'INVENTORY_COUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,variance,unit:line.unit,requiresRecount:needs,recountThreshold:variancePolicy.recountThreshold,thresholdBasisUnit:variancePolicy.basisUnit,reasonCode}});
+   db.prepare(`UPDATE inventory_lines SET count1_qty=?,count1_input_qty=?,count1_input_unit=?,count1_by=?,count1_at=CURRENT_TIMESTAMP,variance1=?,requires_recount=?,final_qty=?,final_variance=?,reason_code=?,note=?,status=? WHERE id=?`).run(qty,normalizedCount.inputQuantity,normalizedCount.inputUnit,user.id,variance,needs?1:0,needs?null:qty,needs?null:variance,reasonCode||null,note||null,needs?'RECOUNT':'COUNTED',lineId);
+   audit({storeId:line.store_id,userId:user.id,action:needs?'INVENTORY_RECOUNT_REQUIRED':'INVENTORY_COUNTED',entityType:'INVENTORY_LINE',entityId:lineId,details:{quantity:qty,inputQuantity:normalizedCount.inputQuantity,inputUnit:normalizedCount.inputUnit,inventoryUnit:line.unit,converted:normalizedCount.converted,variance,unit:line.unit,requiresRecount:needs,recountThreshold:variancePolicy.recountThreshold,thresholdBasisUnit:variancePolicy.basisUnit,reasonCode}});
  }
  db.prepare(`UPDATE inventory_sessions SET status=CASE WHEN status='COUNTING' THEN 'REVIEW' ELSE status END WHERE id=?`).run(line.session_id);
  return inventorySession(line.session_id);
@@ -162,14 +175,14 @@ export function explainInventoryLine({lineId,user,reasonCode,note=''}) {
  return inventorySession(line.session_id)
 }
 
-export function expressInventoryCount({storeId,user,product,quantity,reasonCode=null,note=''}) {
+export function expressInventoryCount({storeId,user,product,quantity,countUnit=null,reasonCode=null,note=''}) {
  const session=getOrCreateExpressInventory({storeId,user});
  let line=db.prepare(`SELECT * FROM inventory_lines WHERE session_id=? AND ean=?`).get(session.id,product.ean);
  if(!line)line=addInventoryLine({sessionId:session.id,user,product});
  else line=hydrateLine(line);
  if(line.status==='COUNTED')throw Object.assign(new Error('Cet article est déjà compté dans l’inventaire express en cours.'),{status:409,code:'INVENTORY_EXPRESS_ALREADY_COUNTED',details:{sessionId:session.id,lineId:line.id,ean:line.ean}});
  const recount=line.status==='RECOUNT';
- const updated=countInventoryLine({lineId:line.id,user,quantity,reasonCode,note,recount});
+ const updated=countInventoryLine({lineId:line.id,user,quantity,countUnit,reasonCode,note,recount});
  const current=updated.lines.find(x=>x.id===line.id);
  return{
   session:updated,
