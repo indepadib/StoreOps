@@ -52,3 +52,11 @@ export function noteProductIdentityFailure(ean,error){
 export function productCacheStats(){
  const row=db.prepare(`SELECT COUNT(*) total,MAX(synced_at) last_synced_at FROM product_identity_cache`).get();return{total:Number(row?.total||0),lastSyncedAt:row?.last_synced_at||null}
 }
+
+
+export function cachedProductByProductNumber(productNumber){
+ const sku=clean(productNumber);if(!sku)return null;
+ const row=db.prepare(`SELECT * FROM product_identity_cache WHERE product_number=? ORDER BY synced_at DESC LIMIT 1`).get(sku);
+ if(!row)return null;
+ return{ean:row.ean,productNumber:row.product_number||sku,name:row.product_name||sku,category:row.category||'Autre',unit:row.unit||null,source:'STOREOPS_CACHE',cacheSyncedAt:row.synced_at,identityStale:true,lastLiveSource:row.last_live_source||null}
+}
