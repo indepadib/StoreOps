@@ -32,6 +32,7 @@ import { handleOpeningApi } from './services/opening-api.mjs';
 import { getStockSignals } from './services/stock-signals.mjs';
 import { warehouseControlSnapshot } from './services/warehouse-control.mjs';
 import { handleStoreGrowthApi } from './services/store-growth-api.mjs';
+import { handleCoolSaveIntegrationApi } from './services/cool-save-integration-api.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -80,6 +81,7 @@ async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
   if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:config.appVersion,authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  const coolSaveIngress=await handleCoolSaveIntegrationApi({req,url});if(coolSaveIngress)return json(req,res,coolSaveIngress.status,coolSaveIngress.data);
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id,permissions_profile:user.permissions_profile||null},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users WHERE active=1 ORDER BY role,name`).all():[]});
   if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
