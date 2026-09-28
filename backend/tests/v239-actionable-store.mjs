@@ -13,7 +13,8 @@ assert.match(batch,/dueBucketFor/,'manager missions must expose an operational d
 assert.match(batch,/ownerLabel/,'manager missions must expose a human owner');
 assert.match(batch,/recommendedAction/,'manager missions must expose the next action');
 assert.match(batch,/evidence/,'manager missions must expose supporting evidence');
-assert.match(batch,/due:\{now:/,'manager inbox summary must expose due-bucket counts');
+assert.match(batch,/const due=\{now:/,'manager inbox summary must compute due-bucket counts');
+assert.match(batch,/summary:\{total:sorted\.length,critical,blocking,p0,p1,due,/,'manager inbox summary must expose due-bucket counts');
 
 assert.match(home,/item\.dueBucket==='NOW'/,'Today must prioritize explicit operational deadlines');
 assert.match(home,/today-action-meta/,'Today mission cards must show owner and expected action');
