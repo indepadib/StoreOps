@@ -24,12 +24,16 @@ jobs:
           node --check frontend/js/pages/manager-performance.js
           node --check backend/services/cool-save.mjs
           node --check backend/services/store-growth-api.mjs
+          node --check backend/services/product-cache.mjs
+          node --check backend/services/released-product-sourcing.mjs
           node --check frontend/js/pages/cool-save.js
           node --check frontend/js/pages/sell-through.js
       - name: Same-time comparison contract
         run: node backend/tests/v235-same-time-pulse.mjs
       - name: Cool Save publish/idempotency
         run: node backend/tests/v235-cool-save-flow.mjs
+      - name: Product labels
+        run: node backend/tests/v235-product-labels.mjs
       - name: Article identity and Cool Save model
         run: node backend/tests/v235-product-identity-cool-save.mjs
       - name: Business Pulse regression
