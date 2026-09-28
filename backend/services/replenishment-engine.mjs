@@ -26,10 +26,10 @@ export function recommendReplenishment(input={}){
  else if(recommendedQty>0&&supplyMode==='UNKNOWN'){decision='NEED_SOURCING_DATA';reason='Besoin détecté mais le mode DC / Direct n’est pas lisible sur ReleasedProductsV2.'}
  else if(recommendedQty>0&&direct){decision='DIRECT_ORDER';actionQty=recommendedQty;reason=input.supplierName||input.supplierAccount?'Réapprovisionnement direct fournisseur recommandé.':'Réapprovisionnement direct fournisseur recommandé · fournisseur principal à confirmer.'}
  else if(recommendedQty>0&&!supplyKnown){decision='NEED_SUPPLY_DATA';reason='Article DC : besoin détecté mais stock LVE Lakhyayta indisponible.'}
- else if(recommendedQty>0&&supplyAvailable<=0){decision='WAREHOUSE_OUT';reason='Réapprovisionnement nécessaire mais entrepôt sans stock disponible.'}
+ else if(recommendedQty>0&&supplyAvailable<=0){decision='DC_BACKORDER';actionQty=recommendedQty;reason='Article DC : LVE Lakhyayta est à 0. Le besoin magasin doit être transmis à l’approvisionnement ; le magasin ne commande pas le fournisseur directement.'}
  else if(recommendedQty>0&&supplyAvailable<recommendedQty){decision='PARTIAL';const packs=Math.floor(supplyAvailable/packSize);actionQty=round3(packs>0?packs*packSize:supplyAvailable);reason='Besoin supérieur au stock entrepôt disponible : transfert partiel recommandé.'}
  else if(recommendedQty>0){decision='REPLENISH';actionQty=recommendedQty;reason='Le magasin est sous la couverture cible et l’entrepôt peut couvrir le besoin.'}
- const remainingSupply=supplyKnown?round3(Math.max(0,supplyAvailable-actionQty)):null;
+ const remainingSupply=direct?null:supplyKnown?round3(Math.max(0,supplyAvailable-actionQty)):null;
  return{
   decision,
   recommendedQty:recommendedQty??null,
@@ -55,6 +55,7 @@ export function decisionPresentation(result={}){
   REPLENISH:{tone:'warn',title:'Transfert entrepôt recommandé',cta:'Préparer le transfert'},
   DIRECT_ORDER:{tone:'warn',title:'Commande directe fournisseur',cta:'Préparer la commande'},
   PARTIAL:{tone:'warn',title:'Stock entrepôt insuffisant',cta:'Commander le disponible'},
+  DC_BACKORDER:{tone:'danger',title:'Besoin DC à remonter',cta:'Transmettre à l’approvisionnement'},
   WAREHOUSE_OUT:{tone:'danger',title:'Entrepôt en rupture',cta:'Signaler la rupture'},
   CHECK_STOCK:{tone:'danger',title:'Stock à contrôler',cta:'Lancer un contrôle stock'},
   NEED_STOCK_DATA:{tone:'neutral',title:'Stock magasin à connecter',cta:'Voir l’intégration'},
