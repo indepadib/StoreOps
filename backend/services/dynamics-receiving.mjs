@@ -3,6 +3,7 @@ import { config } from '../config.mjs';
 import { isD365ReadLive,odataGet,odataGetAll } from './dynamics.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
+import { cachedProductByProductNumber } from './product-cache.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v??'').replaceAll("'","''");
@@ -431,7 +432,7 @@ export function listReceiptsForStore(storeId,{documentType='PO'}={}){
   AND (document_type<>'PO' OR source<>'D365' OR COALESCE(source_created_date,eta)>=?)
   AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL))
   ORDER BY CASE WHEN document_type='PO' THEN COALESCE(source_created_date,eta) ELSE eta END DESC,po_number DESC`).all(...args,cutoff);
- return receipts.map(r=>{const lines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id);return{...r,line_count:lines.length,remaining_total:lines.reduce((s,x)=>s+Number(x.remaining_qty??x.ordered_qty??0),0),lines}});
+ return receipts.map(r=>{const rawLines=db.prepare(`SELECT * FROM receipt_lines WHERE receipt_id=? AND (source_active=1 OR quality_control_id IS NOT NULL) ORDER BY COALESCE(source_line_number,''),id`).all(r.id),lines=rawLines.map(line=>{const sku=clean(line.product_number),cached=sku?cachedProductByProductNumber(sku):null,name=clean(line.product_name);return cached?.name&&(!name||name===sku)?{...line,product_name:cached.name,ean:line.ean||cached.ean||null,purchase_unit:line.purchase_unit||cached.unit||null}:line});return{...r,line_count:lines.length,remaining_total:lines.reduce((sum,x)=>sum+Number(x.remaining_qty??x.ordered_qty??0),0),lines}});
 }
 
 export function receivingStoreReadiness(storeId){return receivingStateForStore(storeId)}
