@@ -30,6 +30,8 @@ jobs:
         run: node backend/tests/v235-same-time-pulse.mjs
       - name: Cool Save publish/idempotency
         run: node backend/tests/v235-cool-save-flow.mjs
+      - name: Article identity and Cool Save model
+        run: node backend/tests/v235-product-identity-cool-save.mjs
       - name: Business Pulse regression
         run: node backend/tests/business-pulse.mjs
       - name: Store Action Engine regression
