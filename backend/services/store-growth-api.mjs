@@ -23,7 +23,7 @@ export async function handleStoreGrowthApi({req,url,user}){
  p=route(path,'/api/cool-save/:basketId/:action');if(p&&req.method==='POST'){
   const basket=coolSaveBasket(p.basketId);if(!basket)return{status:404,data:{error:'Panier Cool & Save introuvable.'}};requireStore(user,basket.store_id);ensureManage(user,basket.store_id);const b=await body(req);
   if(p.action==='publish')return{status:200,data:publishCoolSaveBasket({id:p.basketId,user})};
-  if(p.action==='sold')return{status:200,data:markCoolSaveSold({id:p.basketId,user,settlementReference:b.settlementReference||null})};
+  if(p.action==='sold')return{status:409,data:{error:'La vente Cool & Save doit provenir de l’application cliente. StoreOps ne permet plus de marquer manuellement une offre comme vendue.',code:'COOL_SAVE_SALE_MUST_ORIGINATE_APP'}};
   if(p.action==='cancel')return{status:200,data:cancelCoolSaveBasket({id:p.basketId,user})};
  }
  return null
