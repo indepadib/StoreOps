@@ -21,7 +21,9 @@ assert.equal(r.decision,'REPLENISH');
 assert.equal(r.actionQty,10);
 
 r=recommendReplenishment({storeAvailable:0,dailySales7:5,dailySales28:5,leadTimeDays:1,safetyDays:1,supplyMode:'WAREHOUSE',supplyAvailable:0});
-assert.equal(r.decision,'WAREHOUSE_OUT');
+assert.equal(r.decision,'DC_BACKORDER');
+assert.equal(r.actionQty,10);
+assert.equal(r.metrics.remainingSupply,0);
 
 r=recommendReplenishment({storeAvailable:0,dailySales7:5,dailySales28:5,leadTimeDays:1,safetyDays:1,supplyMode:null});
 assert.equal(r.decision,'NEED_SOURCING_DATA');
@@ -48,6 +50,7 @@ assert.match(warehouse,/DIRECT_PURCHASE/);
 assert.match(warehouse,/DC_PURCHASE/);
 assert.match(warehouse,/directSupplierGroups/);
 assert.match(req,/DIRECT_ORDER/);
+assert.match(req,/DC_BACKORDER/);
 assert.match(req,/primaryVendorAccount/);
 assert.match(glovo,/privacyMode:'AVAILABILITY_ONLY'/);
 assert.match(glovo,/products=snapshot\.items\.map\(x=>\(\{sku:x\.sku,active:x\.active\}\)\)/);
@@ -65,5 +68,9 @@ assert.match(mgrMore,/Invendus & rotation/);
 assert.match(mgrMore,/Cool & Save/);
 assert.match(managerScan,/DC · LVE Lakhyayta/);
 assert.match(managerScan,/Direct fournisseur/);
+const managerRepl=read('frontend/js/manager-replenishment-v2.js');
+assert.match(managerRepl,/recommendation:'DC_REQUEST'/);
+assert.match(managerRepl,/Transmettre le besoin à l’approvisionnement/);
+assert.doesNotMatch(managerRepl,/warehousePurchase:true,reason:`Article DC[^\n]*recommendation:'PO'/);
 
 console.log('V2.34 sourcing + growth + PDA UX contract: OK');
