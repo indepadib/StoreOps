@@ -9,6 +9,7 @@ import { handleStoreSettingsApi } from './store-settings-api.mjs';
 import { handlePriceHistoryApi } from './price-history-api.mjs';
 import { handleAccessManagementApi } from './access-management-api.mjs';
 import { deactivateAccountsForEmployee } from './access-management.mjs';
+import { readStoreCashierPerformance } from './dynamics-staff-performance.mjs';
 import { handleDevelopmentApi } from './development-api.mjs';
 import { handleIntegrationRegistryApi } from './integration-registry-api.mjs';
 import { handleTenantProfileApi } from './tenant-profile-api.mjs';
@@ -45,7 +46,13 @@ export async function handleWorkforceApi({req,url,user}){
   const employees=listEmployees(p.storeId,{includeEnded}),shifts=listShifts(p.storeId,{date}),objectives=listObjectives(p.storeId,{activeOn:date});
   return{status:200,data:{storeId:p.storeId,date,summary:{activeEmployees:employees.filter(x=>x.status==='ACTIVE').length,noticeEmployees:employees.filter(x=>x.status==='NOTICE').length,shifts:shifts.filter(x=>x.status!=='CANCELLED').length,publishedShifts:shifts.filter(x=>x.status==='PUBLISHED').length,activeObjectives:objectives.filter(x=>x.status==='ACTIVE').length},employees,shifts,objectives,config:workforceConfig()}}
  }
- p=route(path,'/api/stores/:storeId/employees');
+ p=route(path,'/api/stores/:storeId/cashier-performance');
+ if(p&&req.method==='GET'){
+  if(!ownStore(user,p.storeId))return forbidden('Accès interdit à ce magasin.');
+  const days=Math.max(1,Math.min(90,Number(url.searchParams.get('days'))||30)),date=url.searchParams.get('date')||todayISO();
+  return{status:200,data:await readStoreCashierPerformance(p.storeId,{businessDate:date,days})}
+ }
+  p=route(path,'/api/stores/:storeId/employees');
  if(p&&req.method==='POST'){
   if(!manageStore(user,p.storeId))return forbidden('Gestion équipe réservée au Responsable magasin ou à la Direction.');
   const b=await body(req);return{status:201,data:createEmployee({storeId:p.storeId,user,employeeCode:b.employeeCode,firstName:b.firstName,lastName:b.lastName,roleCode:b.roleCode,contractType:b.contractType,contractStart:b.contractStart,contractEnd:b.contractEnd,email:b.email,phone:b.phone})}
