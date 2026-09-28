@@ -1,0 +1,51 @@
+name: V2.34 Retail Growth PDA Sourcing
+
+on:
+  push:
+    branches: [main, storeops-v2.34-growth]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  v234:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/released-product-sourcing.mjs
+          node --check backend/services/replenishment-policy.mjs
+          node --check backend/services/replenishment-engine.mjs
+          node --check backend/services/item-assistant.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/warehouse-control.mjs
+          node --check backend/services/dynamics-stock.mjs
+          node --check backend/services/sell-through.mjs
+          node --check backend/services/glovo-availability.mjs
+          node --check backend/services/cool-save.mjs
+          node --check backend/services/store-growth-api.mjs
+          node --check frontend/js/pages/sell-through.js
+          node --check frontend/js/pages/cool-save.js
+          node --check frontend/js/pages/channel-availability.js
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/mobile-barcode.js
+          node --check frontend/js/pda-mode.js
+          node --check frontend/js/manager-more-simplified.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/warehouse-control.js
+      - name: V2.34 contract
+        run: node backend/tests/v234-sourcing-growth-pda.mjs
+      - name: Replenishment engine regression
+        run: node backend/tests/replenishment-engine.mjs
+      - name: Replenishment assistant regression
+        run: node backend/tests/manager-replenishment-assistant.mjs
+      - name: V2.33 action engine regression
+        run: node backend/tests/v233-store-action-engine.mjs
+      - name: Stock signals regression
+        run: node backend/tests/stock-signals.mjs
