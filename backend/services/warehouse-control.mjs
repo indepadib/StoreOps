@@ -1,11 +1,13 @@
 import { db } from '../db.mjs';
-import { getStockSignals } from './stock-signals.mjs';
+import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
 
 const clean=v=>String(v??'').trim();
 const finite=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
 const num=v=>finite(v)?Number(v):0;
 const targetDays=()=>Math.max(1,Math.min(14,Number(process.env.STOREOPS_WAREHOUSE_TARGET_DAYS)||5));
 const round=v=>Math.round((Number(v||0)+Number.EPSILON)*1000)/1000;
+const sourceTimeoutMs=()=>Math.max(3000,Math.min(15000,Number(process.env.STOREOPS_WAREHOUSE_SOURCE_TIMEOUT_MS)||8000));
+async function boundedStockSignals(store,{businessDate,force}){const cached=!force?peekStockSignals(store.id,{businessDate,allowStale:true}):null;if(cached?.cache?.status==='HIT')return cached;let timer;try{return await Promise.race([getStockSignals(store.id,{businessDate,force}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Object.assign(new Error('Lecture Dynamics trop longue pour le cockpit.'),{code:'WAREHOUSE_SOURCE_TIMEOUT'})),sourceTimeoutMs())})])}catch(error){if(cached)return{...cached,cache:{...(cached.cache||{}),status:'STALE_FALLBACK'},degradedReason:error.code||'WAREHOUSE_SOURCE_TIMEOUT'};throw error}finally{if(timer)clearTimeout(timer)}}
 
 function projectedNeed(row){
  const daily=Math.max(0,num(row.dailySales)),available=Math.max(0,num(row.availableQty));
@@ -25,7 +27,7 @@ function groupRows(rows,keyFn,metaFn){
 
 export async function warehouseControlSnapshot({businessDate=null,force=false}={}){
  const stores=db.prepare("SELECT id,code,name FROM stores WHERE active=1 ORDER BY name").all();
- const settled=await Promise.allSettled(stores.map(store=>getStockSignals(store.id,{businessDate,force})));
+ const settled=await Promise.allSettled(stores.map(store=>boundedStockSignals(store,{businessDate,force})));
  const lines=[],storeSummaries=[];let sourceErrors=0;
  for(let i=0;i<stores.length;i++){
   const store=stores[i],result=settled[i];
