@@ -1,9 +1,10 @@
 const groups=[
- {id:'article',icon:'⌕',title:'Article & rayon',detail:'Prix, stock, DLC et disponibilité d’un article.',actions:[['managerScan','Scanner un article','Commencer ici pour toute question article.'],['commercial','Prix & promotions','Vérifier un prix ou une promotion.'],['inventory','Stock & inventaire','Contrôler stock, rupture ou écart.'],['dlc','DLC / DDM','Traiter dates et lots à risque.']]},
- {id:'goods',icon:'▦',title:'Marchandises',detail:'Réceptionner, contrôler et tracer les sorties.',actions:[['receipts','Réception','Contrôler une livraison article par article.'],['losses','Démarque & pertes','Déclarer casse, périmé, vol ou autre sortie.']]},
+ {id:'article',icon:'⌕',title:'Article & stock',detail:'Scanner, contrôler et comprendre ce qui se passe en rayon.',actions:[['managerScan','Scanner un article','Prix, promo, ventes, stock et action recommandée.'],['inventory','Stock & inventaire','Compter, traiter une rupture ou expliquer un écart.'],['sellThrough','Invendus & rotation','Voir les articles sans vente et les surstocks.']]},
+ {id:'sell',icon:'↗',title:'Vendre & sauver',detail:'Accélérer la vente et réduire le gaspillage.',actions:[['coolSave','Cool & Save','Composer et publier les paniers anti-gaspi.'],['commercial','Prix & promotions','Contrôler l’exécution commerciale.'],['channelAvailability','Glovo','Disponibilité uniquement, sans partager les quantités.']]},
+ {id:'goods',icon:'▦',title:'Marchandises',detail:'Réceptionner, contrôler et tracer les sorties.',actions:[['receipts','Réception','Contrôler une livraison article par article.'],['dlc','DLC / DDM','Traiter les dates et lots à risque.'],['losses','Démarque & pertes','Déclarer casse, périmé, vol ou autre sortie.']]},
  {id:'quality',icon:'✓',title:'Qualité & incidents',detail:'Contrôles, pannes et problèmes à résoudre.',actions:[['quality','Qualité','Réaliser ou revoir un contrôle.'],['maintenance','Maintenance','Signaler et suivre une panne.'],['incidents','Incidents','Traiter une anomalie jusqu’à sa clôture.']]},
  {id:'day',icon:'◷',title:'Journée & caisse',detail:'Passation, parcours du jour et clôture caisse.',actions:[['managerJourney','Parcours de journée','Voir où vous en êtes et la prochaine étape.'],['handover','Passation','Transmettre ou reprendre un sujet.'],['cash','Caisses & clôture','Rapprocher les shifts et moyens de paiement.']]}
-];
+]
 let openGroup=null;
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function render(){
