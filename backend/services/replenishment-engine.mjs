@@ -12,7 +12,7 @@ export function weightedDailyVelocity({dailySales7=null,dailySales28=null,fallba
 }
 
 export function recommendReplenishment(input={}){
- const storeKnown=known(input.storeAvailable),supplyMode=String(input.supplyMode||'WAREHOUSE').trim().toUpperCase(),direct=supplyMode==='DIRECT_SUPPLIER',supplyKnown=direct?true:known(input.supplyAvailable);
+ const storeKnown=known(input.storeAvailable),supplyMode=String(input.supplyMode||'UNKNOWN').trim().toUpperCase(),direct=supplyMode==='DIRECT_SUPPLIER',warehouse=supplyMode==='WAREHOUSE',supplyKnown=direct?true:warehouse?known(input.supplyAvailable):false;
  const storeAvailable=storeKnown?num(input.storeAvailable,0):null,supplyAvailable=direct?null:(supplyKnown?Math.max(0,num(input.supplyAvailable,0)):null),confirmedInbound=Math.max(0,num(input.confirmedInbound,0));
  const velocity=weightedDailyVelocity(input),leadTimeDays=Math.max(0,num(input.leadTimeDays,1)),safetyDays=Math.max(0,num(input.safetyDays,1));
  const promoFactor=Math.max(.1,num(input.promoFactor,1)),dayFactor=Math.max(.1,num(input.dayOfWeekFactor,1)),packSize=Math.max(.001,positive(input.packSize,1)||1),minOrderQty=Math.max(0,positive(input.minOrderQty,0));
@@ -23,8 +23,9 @@ export function recommendReplenishment(input={}){
  if(!storeKnown){decision='NEED_STOCK_DATA';reason='Stock magasin indisponible : impossible de calculer une recommandation fiable.'}
  else if(storeAvailable<0){decision='CHECK_STOCK';reason='Stock négatif ou incohérent : contrôler le stock avant de commander.'}
  else if(velocity===null){decision='NEED_SALES_DATA';reason='Historique de ventes insuffisant pour calculer une recommandation fiable.'}
- else if(recommendedQty>0&&direct){decision='DIRECT_ORDER';actionQty=recommendedQty;reason=input.supplierName||input.supplierAccount?'Réapprovisionnement direct fournisseur recommandé.':'Réapprovisionnement direct fournisseur recommandé · fournisseur à confirmer dans la règle d’approvisionnement.'}
- else if(recommendedQty>0&&!supplyKnown){decision='NEED_SUPPLY_DATA';reason='Besoin détecté mais stock entrepôt/source non connecté.'}
+ else if(recommendedQty>0&&supplyMode==='UNKNOWN'){decision='NEED_SOURCING_DATA';reason='Besoin détecté mais le mode DC / Direct n’est pas lisible sur ReleasedProductsV2.'}
+ else if(recommendedQty>0&&direct){decision='DIRECT_ORDER';actionQty=recommendedQty;reason=input.supplierName||input.supplierAccount?'Réapprovisionnement direct fournisseur recommandé.':'Réapprovisionnement direct fournisseur recommandé · fournisseur principal à confirmer.'}
+ else if(recommendedQty>0&&!supplyKnown){decision='NEED_SUPPLY_DATA';reason='Article DC : besoin détecté mais stock LVE Lakhyayta indisponible.'}
  else if(recommendedQty>0&&supplyAvailable<=0){decision='WAREHOUSE_OUT';reason='Réapprovisionnement nécessaire mais entrepôt sans stock disponible.'}
  else if(recommendedQty>0&&supplyAvailable<recommendedQty){decision='PARTIAL';const packs=Math.floor(supplyAvailable/packSize);actionQty=round3(packs>0?packs*packSize:supplyAvailable);reason='Besoin supérieur au stock entrepôt disponible : transfert partiel recommandé.'}
  else if(recommendedQty>0){decision='REPLENISH';actionQty=recommendedQty;reason='Le magasin est sous la couverture cible et l’entrepôt peut couvrir le besoin.'}
@@ -57,7 +58,8 @@ export function decisionPresentation(result={}){
   WAREHOUSE_OUT:{tone:'danger',title:'Entrepôt en rupture',cta:'Signaler la rupture'},
   CHECK_STOCK:{tone:'danger',title:'Stock à contrôler',cta:'Lancer un contrôle stock'},
   NEED_STOCK_DATA:{tone:'neutral',title:'Stock magasin à connecter',cta:'Voir l’intégration'},
-  NEED_SUPPLY_DATA:{tone:'neutral',title:'Entrepôt/source à connecter',cta:'Voir l’intégration'},
+  NEED_SUPPLY_DATA:{tone:'neutral',title:'Stock LVE Lakhyayta à connecter',cta:'Voir l’intégration'},
+  NEED_SOURCING_DATA:{tone:'neutral',title:'Mode DC / Direct à lire',cta:'Vérifier la fiche article'},
   NEED_SALES_DATA:{tone:'neutral',title:'Recommandation à confirmer',cta:'Commander manuellement'}
  };
  return map[result.decision]||map.NEED_SALES_DATA
