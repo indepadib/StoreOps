@@ -1,0 +1,36 @@
+name: V2.37 Inventory PDA Workforce
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  inventory-pda-workforce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax
+        run: |
+          node --check backend/services/inventory.mjs
+          node --check backend/services/dynamics-staff-performance.mjs
+          node --check backend/services/workforce-api.mjs
+          node --check backend/services/d365-sales-mapping.mjs
+          node --check backend/services/d365-mapping-diagnostics.mjs
+          node --check backend/services/dynamics-sales.mjs
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/pages/manager-team.js
+          node --check frontend/js/admin-d365-mapping.js
+      - name: Inventory PDA and StaffId analytics
+        run: node backend/tests/v237-inventory-workforce.mjs
+      - name: Inventory privacy regression
+        run: node backend/tests/inventory-privacy.mjs
+      - name: Inventory counting regression
+        run: node backend/tests/v227-inventory-counting.mjs
+      - name: Inventory unit regression
+        run: node backend/tests/v230-inventory-unit-policy.mjs
+      - name: Workforce API regression
+        run: node backend/tests/workforce-api.mjs
