@@ -289,7 +289,7 @@ function promoPresentation(header,line){
   if(Number(line?.OfferPrice||0))return{label:`Prix promo ${Number(line.OfferPrice).toFixed(2)} DH`,warning:null};
   return{label:name||type||'Promotion',warning:null};
 }
-function promoExpectedPrice(base,header,line){if(Number(line?.OfferPrice||0))return Number(line.OfferPrice);const b=base==null||base===''?null:Number(base);if(!Number.isFinite(b))return null;if(header?.PeriodicDiscountType==='MixAndMatch')return b;if(line?.OfferDiscountMethod==='PercentOff'){const p=Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0);return Number((b*(1-p/100)).toFixed(2))}if(Number(line?.OfferDiscountAmount||0))return Number(Math.max(0,b-Number(line.OfferDiscountAmount)).toFixed(2));return b}
+export function promoExpectedPrice(base,header,line){if(Number(line?.OfferPrice||0))return Number(line.OfferPrice);const b=base==null||base===''?null:Number(base);if(!Number.isFinite(b))return null;if(header?.PeriodicDiscountType==='MixAndMatch')return b;if(line?.OfferDiscountMethod==='PercentOff'){const p=Number(line.OfferDiscountPercentage||header?.DiscountPercentValue||0);return Number((b*(1-p/100)).toFixed(2))}if(Number(line?.OfferDiscountAmount||0))return Number(Math.max(0,b-Number(line.OfferDiscountAmount)).toFixed(2));return b}
 
 export function commercialOfferFilter(field,values=[]){const rows=[...new Set((values||[]).map(x=>String(x||'').trim()).filter(Boolean))];return rows.length?`(${rows.map(v=>`${field} eq '${escapeOData(v)}'`).join(' or ')})`:''}
 function commercialChunks(values,size=12){const out=[];for(let i=0;i<values.length;i+=size)out.push(values.slice(i,i+size));return out}
