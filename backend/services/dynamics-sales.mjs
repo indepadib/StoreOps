@@ -90,6 +90,7 @@ export function salesIntegrationConfig(storeId=null){
   department:clean(saved?.fields?.department)||field('D365_SALES_DEPARTMENT_FIELD',''),
   category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD',''),
   customer:clean(saved?.fields?.customer)||field('D365_SALES_CUSTOMER_FIELD','custAccount'),
+  staff:clean(saved?.fields?.staff)||field('D365_SALES_STAFF_FIELD',''),
   status:field('D365_SALES_STATUS_FIELD','transactionStatus')
  };
  const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
