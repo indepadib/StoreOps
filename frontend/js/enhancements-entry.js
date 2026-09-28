@@ -3,7 +3,6 @@ import {isDirector} from './state.js';
 const BUILD='2330';
 
 const modules=[
-  './pda-mode.js',
   './pwa.js',
   './navigation-polish.js',
   './scanner-resilience.js',
@@ -68,9 +67,11 @@ function installDirectorExperience(){
 }
 
 export async function loadEnhancements(){
+  try{await import(`./pda-mode.js?v=${BUILD}`)}catch(e){console.warn('Mode PDA indisponible',e)}
+  const pda=document.body.classList.contains('pda-mode');
   bindAdminLazyRuntime();
   installDirectorExperience();
-  const paths=[...modules];
+  const paths=modules.filter(path=>!pda||!['./pwa.js','./mobile-barcode.js','./scanner-resilience.js'].includes(path));
   if(isDirector())paths.push('./director-exception-first.js');
   const results=await Promise.allSettled(paths.map(path=>import(`${path}?v=${BUILD}`)));
   const failed=results.filter(x=>x.status==='rejected');
