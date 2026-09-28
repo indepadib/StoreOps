@@ -13,3 +13,31 @@
 }
 @keyframes directorMetricsReveal{from{opacity:.2;transform:translateY(-4px)}to{opacity:1;transform:none}}
 @media(prefers-reduced-motion:reduce){body.director-experience .today-metrics-grid:not(.director-metrics-collapsed){animation:none}}
+
+@media(max-width:900px){
+  body.director-experience{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))}
+  body.director-experience .app-shell{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px))!important}
+  body.director-experience main{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))!important}
+  body.director-experience #nav.ux191-network-nav{
+    background:#fff!important;
+    -webkit-backdrop-filter:none!important;
+    backdrop-filter:none!important;
+    transform:translateZ(0);
+    -webkit-transform:translateZ(0);
+    backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
+    isolation:isolate;
+    box-shadow:0 -8px 24px rgba(39,25,31,.10)!important
+  }
+  body.manager-mode .app-shell{padding-bottom:calc(124px + env(safe-area-inset-bottom,0px))!important}
+  body.manager-mode main{padding-bottom:calc(112px + env(safe-area-inset-bottom,0px))!important}
+  body.manager-mode .manager-nav{
+    background:#fff!important;
+    transform:translateZ(0);
+    -webkit-transform:translateZ(0);
+    backface-visibility:hidden;
+    -webkit-backface-visibility:hidden;
+    isolation:isolate;
+    box-shadow:0 -8px 24px rgba(39,25,31,.10)!important
+  }
+}
