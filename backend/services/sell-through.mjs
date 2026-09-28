@@ -9,6 +9,8 @@ const round=(v,d=2)=>{const p=10**d;return Math.round((Number(v||0)+Number.EPSIL
 const DEAD_DAYS=()=>Math.max(7,Math.min(180,Number(process.env.STOREOPS_DEAD_STOCK_DAYS)||30));
 const SLOW_COVERAGE=()=>Math.max(7,Math.min(365,Number(process.env.STOREOPS_SLOW_COVERAGE_DAYS)||30));
 const MIN_STOCK=()=>Math.max(0,Number(process.env.STOREOPS_SELLTHROUGH_MIN_STOCK)||0);
+const snapshotCache=new Map(),snapshotInflight=new Map();
+const snapshotCacheMs=()=>Math.max(30_000,Math.min(900_000,Number(process.env.STOREOPS_SELLTHROUGH_CACHE_MS)||120_000));
 
 function taxonomyLabel(productNumber){
  const rows=productTaxonomy(productNumber)||[],path=rows.find(x=>x.path)?.path,leaf=[...rows].sort((a,b)=>(b.level??-1)-(a.level??-1))[0]?.category_name;
@@ -16,8 +18,10 @@ function taxonomyLabel(productNumber){
 }
 
 export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISOString().slice(0,10),force=false}={}){
- const days=DEAD_DAYS(),[stock,sales]=await Promise.all([
-  readStoreStockSnapshot(storeId),
+ const days=DEAD_DAYS(),cacheKey=`${storeId}|${businessDate}|${days}`,hit=snapshotCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT',ageMs:Date.now()-hit.storedAt}};
+ if(!force&&snapshotInflight.has(cacheKey))return snapshotInflight.get(cacheKey);
+ const task=(async()=>{const [stock,sales]=await Promise.all([
+  readStoreStockSnapshot(storeId,{force}),
   readStoreSalesActivityWindow(storeId,{businessDate,days,force})
  ]);
  const complete=stock.status==='READY'&&sales.status==='READY'&&!stock.truncated&&!sales.truncated;
@@ -35,12 +39,12 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
    items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(sale?.name&&sale.name!==productNumber?sale.name:row.name)||productNumber,ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
   }
  }
- const unresolved=items.filter(x=>!x.name||x.name===x.productNumber).map(x=>x.productNumber);
+ const unresolved=items.filter(x=>!x.name||x.name===x.productNumber).map(x=>x.productNumber).slice(0,80);
  if(unresolved.length){
-  const released=await releasedProductSourcingMany(unresolved);
-  for(const item of items){const name=released.get(item.productNumber)?.productName;if(name)item.name=name}
+  let timer=null;try{const released=await Promise.race([releasedProductSourcingMany(unresolved),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('IDENTITY_TIMEOUT')),1800)})]);for(const item of items){const name=released.get(item.productNumber)?.productName;if(name)item.name=name}}catch{}finally{if(timer)clearTimeout(timer)}
  }
  items.sort((a,b)=>(a.type==='DEAD'?0:1)-(b.type==='DEAD'?0:1)||(Number(b.coverageDays||999)-Number(a.coverageDays||999))||Number(b.availableStock)-Number(a.availableStock));
  const dead=items.filter(x=>x.type==='DEAD'),slow=items.filter(x=>x.type==='SLOW');
- return{status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}}
+ const value={status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}};snapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+snapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}})();
+ if(!force)snapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&snapshotInflight.get(cacheKey)===task)snapshotInflight.delete(cacheKey)}
 }
