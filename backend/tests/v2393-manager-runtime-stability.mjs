@@ -33,4 +33,4 @@ const app=await readFile(new URL('../../frontend/js/app.js',import.meta.url),'ut
 assert.match(app,/\$\('#managerNav'\)\.hidden=!manager/,'Le core StoreOps doit gérer la visibilité du menu manager sans surcouche.');
 assert.match(app,/document\.querySelectorAll\('#managerNav button\[data-page\]'/,'Le core StoreOps doit gérer la navigation manager.');
 
-console.log('v2.39.3 manager runtime stability: OK');
+// Push marker: run the branch-only stability workflow before production.\nconsole.log('v2.39.3 manager runtime stability: OK');
