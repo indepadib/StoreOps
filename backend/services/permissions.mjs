@@ -6,7 +6,7 @@ export function canAccessDevelopment(user){return isPlatformAdmin(user)||isDevel
 export function canAccessWarehouse(user){return !!user&&(user.role==='ops_director'||isPlatformAdmin(user)||isSupplyChain(user))}
 export function canAccessStore(user, storeId){
   if(!user) return false;
-  if(user.role==='ops_director'||isQualityAudit(user)) return true;
+  if(user.role==='ops_director'||isPlatformAdmin(user)||isQualityAudit(user)) return true;
   return user.store_id===storeId;
 }
 export function canManageQuality(user, storeId){
