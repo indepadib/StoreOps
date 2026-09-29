@@ -22,7 +22,7 @@ assert.ok(director.includes('./director-exception-first.js'),'La vue Direction d
 assert.ok(director.includes('./warehouse-control.js'),'Le cockpit réseau/entrepôt doit rester disponible hors profil manager.');
 
 const pwa=await readFile(new URL('../../frontend/js/pwa.js',import.meta.url),'utf8');
-assert.match(pwa,/import '\.\/mobile-barcode\.js'/,'Le scanner caméra doit rester chargé dans le runtime manager minimal.');
+assert.match(pwa,/import '\.\/mobile-barcode\.js(?:\?v=\d+)?'/,'Le scanner caméra doit rester chargé dans le runtime manager minimal.');
 
 const hubs=await readFile(new URL('../../frontend/js/pages/manager-hubs.js',import.meta.url),'utf8');
 for(const route of ['commercial','inventory','receipts','dlc','handover','quality','maintenance','losses','cash']){
