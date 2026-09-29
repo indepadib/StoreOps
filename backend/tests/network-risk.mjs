@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {cashClosingNeedsAttention,closingStarted,storeBlocked,networkRisk} from '../../frontend/js/network-risk.js';
 
 const base={day:{opening_status:'OPENED',closing_status:'NOT_STARTED'},opening:{blockers:0},closing:{done:0},staffing:{blocking:0,gaps:{managers:0}},coldChain:{blocking:0,mismatch:0},cashOpening:{blocking:0,mismatch:0},commercial:{blocking:0},dlc:{expired:0,critical:0},inventory:{pendingRecounts:0},handover:{blocking:0},sla:{escalated:0,overdue:0},loss:{blocking:0},criticalIncidents:0,qualityRejected:0,cash:{blocking:1,recounts:2,pending:3}};
@@ -16,4 +17,8 @@ assert.equal(networkRisk(qualityCap)-networkRisk({...qualityCap,qualityRejected:
 assert.equal(storeBlocked({...base,day:{...base.day,opening_status:'NOT_STARTED'},commercial:{blocking:2}}),true,'commercial blockers must block opening');
 assert.equal(storeBlocked({...base,day:{...base.day,opening_status:'NOT_STARTED'},handover:{blocking:1}}),true,'blocking handover must block opening');
 assert.equal(storeBlocked({...base,day:{...base.day,opening_status:'OPENED'},staffing:{blocking:9,gaps:{managers:1}}}),false,'opening blockers must not relabel an already-open store as blocked opening');
+const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+const networkStart=server.indexOf("if(path==='/api/network')"),networkEnd=server.indexOf("return json(req,res,404",networkStart),networkRoute=server.slice(networkStart,networkEnd);
+assert.ok(networkStart>=0&&networkEnd>networkStart,'network API route must exist');
+assert.doesNotMatch(networkRoute,/refreshCommercial\(/,'network snapshot must never wait on Dynamics price/promo refresh before rendering');
 console.log('StoreOps V1.27 network risk tests passed');

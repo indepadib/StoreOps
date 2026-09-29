@@ -20,6 +20,7 @@ const hubs=readFileSync(new URL('../../frontend/js/pages/manager-hubs.js',import
 const index=readFileSync(new URL('../../frontend/index.html',import.meta.url),'utf8');
 const enhancements=readFileSync(new URL('../../frontend/js/enhancements-entry.js',import.meta.url),'utf8');
 const auth=readFileSync(new URL('../../frontend/js/auth.js',import.meta.url),'utf8');
+const coreApp=readFileSync(new URL('../../frontend/js/app.js',import.meta.url),'utf8');
 assert.match(process,/Question \$\{activeFieldIndex\+1\} sur \$\{total\}/,'manager controls must be rendered as one-question flow');
 assert.match(process,/activeFieldIndex<activeTask\.fields\.length-1/,'manager wizard must progress one field at a time');
 assert.match(process,/data-value="true">Oui<\/button>/,'boolean manager choice must use simple Oui/Non language');
@@ -72,4 +73,5 @@ for(const asset of ['/guided-day.css','/manager-alerts.css','/manager-incident-f
 for(const module of ['./manager-polish.js','./manager-alerts.js','./manager-incident-flow.js','./manager-handover.js','./manager-control-focus.js','./manager-receiving-focus.js'])assert.ok(enhancements.includes(module),`deferred manager module missing ${module}`);
 for(const eager of ['/js/manager-polish.js','/js/manager-alerts.js','/js/manager-incident-flow.js','/js/manager-handover.js','/js/manager-control-focus.js','/js/manager-receiving-focus.js'])assert.ok(!index.includes(`src="${eager}`),`manager module must not be eagerly double-loaded ${eager}`);
 assert.match(auth,/Votre magasin\. Simplement\./,'pilot fallback login copy must remain minimal');
+assert.match(coreApp,/nextUserId[\s\S]{0,260}localStorage\.setItem\('storeops_user',nextUserId\);location\.reload\(\)/,'demo role changes must reload the runtime so old profile observers cannot survive');
 console.log('StoreOps V1.51/V1.94 simple manager guided-flow contract passed');

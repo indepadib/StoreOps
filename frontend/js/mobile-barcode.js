@@ -150,7 +150,7 @@ async function startHtml5Candidate(input,afterScan,token){
       disableFlip:false
     },decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
     if(token!==scanToken)return;
-    const suffix=activeCameraCandidates.length>1?` · objectif ${activeCameraIndex+1}/${activeCameraCandidates.length}`:'';
+    const suffix=candidate?.virtual?' · caméra arrière auto':activeCameraCandidates.length>1?` · objectif ${activeCameraIndex+1}/${activeCameraCandidates.length}`:'';
     setScanStatus(`EAN prêt à être lu${suffix} · garde les barres nettes dans le cadre.`,'ready');
     try{await activeHtml5.applyVideoConstraints?.({advanced:[{focusMode:'continuous'}]})}catch{}
     activeFallbackTimer=setTimeout(async()=>{
@@ -177,10 +177,12 @@ async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={
   setScanStatus(reason==='native-timeout'?'Passage au décodeur EAN renforcé…':'Chargement du décodeur EAN optimisé iPhone…','switching');
   const loaded=await loadHtml5Qrcode();if(token!==scanToken)return;
   if(!loaded){setScanStatus('Le moteur live n’a pas pu se charger. Utilise « Photo du code » ou saisis l’EAN.','photo');scannerShell().querySelector('.barcode-photo-action')?.classList.add('recommended');return}
+  let physicalCameras=[];
   try{
     const cams=await window.Html5Qrcode.getCameras();
-    activeCameraCandidates=cameraCandidates(cams);
-  }catch{activeCameraCandidates=[]}
+    physicalCameras=cameraCandidates(cams);
+  }catch{physicalCameras=[]}
+  activeCameraCandidates=[{id:null,label:'Caméra arrière automatique',virtual:true},...physicalCameras];
   activeCameraIndex=0;
   await startHtml5Candidate(input,afterScan,token);
 }

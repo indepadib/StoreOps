@@ -18,6 +18,7 @@ assert.ok(scanner.includes('BarcodeDetector'),'native barcode detection engine m
 assert.ok(scanner.includes('html5-qrcode@2.3.8'),'iOS/Safari fallback scanner must be pinned to a fixed version');
 assert.ok(scanner.includes('unpkg.com/html5-qrcode@2.3.8'),'scanner must keep a second CDN source if the primary CDN is unavailable');
 assert.ok(scanner.includes('isAppleMobile'),'Apple mobile devices must use the hardened retail barcode path');
+assert.ok(scanner.includes("Caméra arrière automatique")&&scanner.includes("virtual:true"),'iPhone live scan must try the OS-managed rear camera before forcing a physical lens');
 assert.ok(scanner.includes('native-timeout'),'native decoding must automatically fall back instead of leaving the camera open forever');
 assert.ok(scanner.includes('/ultra|0\\.5|0,5|tele|telephoto|zoom/')&&scanner.includes('/front|avant|frontal|user|selfie/'),'rear-camera selection must de-prioritize ultra-wide/zoom and front cameras');
 assert.ok(scanner.includes('Html5Qrcode'),'iOS/Safari fallback implementation missing');
