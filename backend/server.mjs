@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { config, productionMisconfig } from './config.mjs';
 import { db, ensureStoreDay, todayISO, uid, audit } from './db.mjs';
 import { sessionFromRequest } from './auth/session.mjs';
-import { canAccessStore, canManageQuality, canManageDlc, canManageStore, canAccessWarehouse } from './services/permissions.mjs';
+import { canAccessStore, canManageQuality, canManageDlc, canManageStore, canAccessWarehouse, isPlatformAdmin } from './services/permissions.mjs';
 import { getProductByEan, getProductByReference, getDynamicsHealth, postReceiptToDynamics, postInventoryAdjustmentToDynamics, getCommercialChanges, getCashClosingSnapshot, listDataEntities } from './services/dynamics.mjs';
 import { getStoreProductByEan,getStoreStockByProductNumber } from './services/dynamics-stock.mjs';
 import { syncExpectedReceiptsFromDynamics, syncExpectedTransferOrdersFromDynamics, listReceiptsForStore, receivingIntegrationConfig } from './services/dynamics-receiving.mjs';
@@ -53,7 +53,7 @@ function route(path,pattern){const a=path.split('/').filter(Boolean),b=pattern.s
 function ensureManage(user,storeId){if(!canManageStore(user,storeId))throw Object.assign(new Error('Réservé au Responsable magasin ou Directeur d’exploitation'),{status:403})}
 function ensureQuality(user,storeId){if(!canManageQuality(user,storeId))throw Object.assign(new Error('Qualité réservée au Responsable magasin, à la Qualité réseau ou à la Direction'),{status:403})}
 function ensureDlc(user,storeId){if(!canManageDlc(user,storeId))throw Object.assign(new Error('DLC réservée au Responsable magasin, à la Qualité réseau ou à la Direction'),{status:403})}
-function ensureDirector(user){if(user.role!=='ops_director')throw Object.assign(new Error('Réservé au Directeur d’exploitation'),{status:403})}
+function ensureDirector(user){if(user.role!=='ops_director'&&!isPlatformAdmin(user))throw Object.assign(new Error('Réservé à la Direction ou à l’administration StoreOps'),{status:403})}
 function dlcDepartmentForCategory(category){return category==='Frais'?'Crémerie / PLS':category==='Surgelé'?'Surgelés':category==='F&L'?'Fruits & Légumes':null}
 async function refreshCommercial(storeId,businessDate,{required=false}={}){
  const liveHeavy=config.dynamics.mode==='live'&&(config.dynamics.read?.price==='live'||config.dynamics.read?.promotion==='live');
