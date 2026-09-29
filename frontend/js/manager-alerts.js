@@ -76,15 +76,21 @@ function simplifyAlertsPage(){
   if(!MANAGER())return;
   const page=document.querySelector('#incidentsPage');
   if(!page?.classList.contains('active'))return;
-  const title=page.querySelector('.page-title h1');if(title)title.textContent='Alertes';
-  const copy=page.querySelector('.page-title p');if(copy)copy.textContent='Ce qui demande une action.';
+  const title=page.querySelector('.page-title h1');if(title&&title.textContent!=='Alertes')title.textContent='Alertes';
+  const copy=page.querySelector('.page-title p');if(copy&&copy.textContent!=='Ce qui demande une action.')copy.textContent='Ce qui demande une action.';
   let btn=page.querySelector('#managerReportAlert');
   if(!btn){btn=document.createElement('button');btn.id='managerReportAlert';btn.className='btn soft';btn.textContent='Signaler un problème';page.querySelector('.page-title')?.appendChild(btn);btn.addEventListener('click',()=>{draft={title:'',category:'',impact:''};step=0;render()})}
-  const openTitle=[...page.querySelectorAll('.network-section-title strong')].find(x=>x.textContent.includes('Incidents ouverts'));if(openTitle)openTitle.textContent='À traiter';
+  const openTitle=[...page.querySelectorAll('.network-section-title strong')].find(x=>x.textContent.includes('Incidents ouverts'));if(openTitle&&openTitle.textContent!=='À traiter')openTitle.textContent='À traiter';
 }
 
 export function initManagerAlerts(){
-  const observer=new MutationObserver(simplifyAlertsPage);
+  let alertsQueued=false;
+  const scheduleAlerts=()=>{
+    if(alertsQueued)return;
+    alertsQueued=true;
+    requestAnimationFrame(()=>{alertsQueued=false;simplifyAlertsPage()});
+  };
+  const observer=new MutationObserver(scheduleAlerts);
   observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
   simplifyAlertsPage();
 }
