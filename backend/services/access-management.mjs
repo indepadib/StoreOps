@@ -42,11 +42,11 @@ export const isNetworkDirector=user=>!!user&&user.role==='ops_director';
 function profileFromUser(row){
  if(!row)return null;
  if(row.permissions_profile==='platform_admin'||row.id==='u-admin')return PROFILE_DEFS.PLATFORM_ADMIN;
- if(row.role==='ops_director')return PROFILE_DEFS.OPS_DIRECTOR;
- if(row.permissions_profile==='quality_audit')return PROFILE_DEFS.QUALITY_AUDIT;
- if(row.permissions_profile==='development')return PROFILE_DEFS.DEVELOPMENT;
- if(row.permissions_profile==='supply_chain')return PROFILE_DEFS.SUPPLY_CHAIN;
  if(row.role==='store_manager')return PROFILE_DEFS.STORE_MANAGER;
+ if(row.role==='ops_director')return PROFILE_DEFS.OPS_DIRECTOR;
+ if(row.permissions_profile==='quality_audit'&&row.role==='employee')return PROFILE_DEFS.QUALITY_AUDIT;
+ if(row.permissions_profile==='development'&&row.role==='employee')return PROFILE_DEFS.DEVELOPMENT;
+ if(row.permissions_profile==='supply_chain'&&row.role==='employee')return PROFILE_DEFS.SUPPLY_CHAIN;
  return PROFILE_DEFS.STORE_USER
 }
 function userRow(id){return db.prepare(`SELECT * FROM users WHERE id=?`).get(id)}
