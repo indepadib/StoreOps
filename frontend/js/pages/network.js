@@ -15,8 +15,9 @@ export async function renderNetwork(){
  if(!isDirector())return;
  const host=$('#networkContent');if(!host)return;
  host.innerHTML='<div class="network-loading card"><strong>Chargement de la vue Réseau…</strong><span>Les magasins apparaissent immédiatement, puis StoreOps enrichit la vue avec les sources disponibles.</span></div>';
- let base;
- try{base=await api('/api/network')}catch(error){host.innerHTML=`<div class="banner ban-danger"><strong>Vue Réseau temporairement indisponible</strong><div class="small">${esc(error?.message||'Impossible de charger le réseau.')}</div><button class="btn soft" type="button" onclick="location.reload()">Réessayer</button></div>`;return}
+ const baseLoad=await safe(api('/api/network'),7000);
+ if(!baseLoad.ok){host.innerHTML=`<div class="banner ban-danger"><strong>Vue Réseau temporairement indisponible</strong><div class="small">${esc(baseLoad.error||'Impossible de charger le réseau dans le délai prévu.')}</div><button class="btn soft" type="button" data-network-retry>Réessayer</button></div>`;host.querySelector('[data-network-retry]')?.addEventListener('click',()=>renderNetwork());return}
+ const base=baseLoad.data;
  if(!Array.isArray(base)){host.innerHTML='<div class="banner ban-danger"><strong>Réponse Réseau invalide</strong><div class="small">StoreOps a reçu un format inattendu. Aucune donnée n’est inventée.</div></div>';return}
  host.innerHTML=`<div class="network-trust-note"><strong>Vue Réseau chargée</strong><span>${base.length} magasin(s) · enrichissement des ventes, équipes et contrôles en cours…</span></div><div class="network-store-grid">${base.map(r=>card({...r,dataHealth:{}})).join('')}</div>`;
  ensureTrustCss();
