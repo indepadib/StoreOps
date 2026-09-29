@@ -73,7 +73,10 @@ export async function loadEnhancements(){
   const pda=document.body.classList.contains('pda-mode');
   bindAdminLazyRuntime();
   installDirectorExperience();
-  const paths=modules.filter(path=>!pda||!['./pwa.js','./mobile-barcode.js','./scanner-resilience.js'].includes(path));
+  const manager=!!document.body.classList.contains('manager-mode');
+  const paths=manager
+    ? ['./pwa.js']
+    : modules.filter(path=>!pda||!['./pwa.js','./mobile-barcode.js','./scanner-resilience.js'].includes(path));
   if(isDirector())paths.push('./director-exception-first.js');
   const results=await Promise.allSettled(paths.map(path=>import(`${path}?v=${BUILD}`)));
   const failed=results.filter(x=>x.status==='rejected');
