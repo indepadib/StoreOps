@@ -1,0 +1,30 @@
+name: V2.39.2 Manager Inventory Hotfix
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  manager-inventory-hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/server.mjs
+          node --check backend/services/permissions.mjs
+          node --check backend/services/access-management.mjs
+          node --check frontend/js/app.js
+          node --check frontend/js/state.js
+          node --check frontend/js/pages/inventory.js
+          node --check frontend/js/pages/network.js
+          node --check frontend/js/pages/manager-hubs.js
+      - name: Manager mobile inventory contract
+        run: node backend/tests/v2392-manager-mobile-inventory.mjs
