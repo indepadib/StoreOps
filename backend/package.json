@@ -1,6 +1,6 @@
 {
   "name":"franprix-storeops-api",
-  "version":"2.39.2",
+  "version":"2.39.5",
   "private":true,
   "type":"module",
   "scripts":{
