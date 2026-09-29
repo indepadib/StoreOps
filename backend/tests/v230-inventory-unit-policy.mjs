@@ -18,6 +18,15 @@ assert.equal(inventoryVariancePolicyForUnit('kg').recountThreshold,2);
 assert.equal(inventoryVariancePolicyForUnit('mL').recountThreshold,2000);
 assert.equal(inventoryVariancePolicyForUnit('L').incidentThreshold,5);
 
+ // A stale mobile UI may still send its visual placeholder. The Dynamics unit remains canonical.
+ const autoUnitSession=createInventorySession({storeId:'val-fleuri',user:manager,type:'TARGETED',zone:'Auto unit'});
+ const autoUnitLine=addInventoryLine({sessionId:autoUnitSession.id,user:manager,product:{ean:'V2395-PC',productNumber:'V2395-PC',name:'Produit pièce auto',stock:5,inventoryUnit:'PC'}});
+ const autoUnitResult=countInventoryLine({lineId:autoUnitLine.id,user:manager,quantity:5,countUnit:'—'});
+ const autoUnitCounted=autoUnitResult.lines.find(x=>x.id===autoUnitLine.id);
+ assert.equal(autoUnitCounted.status,'COUNTED');
+ assert.equal(autoUnitCounted.final_qty,5);
+ assert.equal(autoUnitCounted.count1_input_unit,'PC');
+
 // A 2 g difference must not behave like a 2-piece difference.
 const grams=createInventorySession({storeId:'val-fleuri',user:manager,type:'TARGETED',zone:'Fruits & légumes'});
 const g1=addInventoryLine({sessionId:grams.id,user:manager,product:{ean:'V230-G1',productNumber:'V230-G1',name:'Melon test',stock:10000,inventoryUnit:'g'}});
