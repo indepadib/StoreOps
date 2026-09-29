@@ -3,7 +3,7 @@
 set -eu
 if [ -n "${STOREOPS_API_BASE:-}" ]; then MODE="api"; else MODE="showcase"; fi
 export STOREOPS_RUNTIME_MODE="$MODE"
-export STOREOPS_RELEASE_BUILD="${STOREOPS_RELEASE_BUILD:-2390}"
+export STOREOPS_RELEASE_BUILD="${STOREOPS_RELEASE_BUILD:-2391}"
 node <<'NODE' > runtime-config.js
 const clientId=process.env.STOREOPS_ENTRA_CLIENT_ID||process.env.STOREOPS_ENTRA_SPA_CLIENT_ID||'';
 const tenantId=process.env.STOREOPS_ENTRA_TENANT_ID||'';
