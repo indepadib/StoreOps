@@ -139,7 +139,7 @@ export function addInventoryLine({sessionId,user,product}){
 function validReason(code){return !code||INVENTORY_REASON_CODES.some(x=>x.code===code)}
 function normalizeInventoryCount(quantity,inputUnit,inventoryUnit){
  const rawQty=Number(quantity);if(!Number.isFinite(rawQty)||rawQty<0)throw Object.assign(new Error('Quantité comptée invalide.'),{status:400});
- const target=String(inventoryUnit||'').trim(),source=String(inputUnit||target||'').trim();
+ const target=String(inventoryUnit||'').trim(),requested=String(inputUnit||'').trim(),source=/^[—–-]+$/.test(requested)?target:String(requested||target).trim();
  if(!target||!source||normalizeUnit(source)?.label===normalizeUnit(target)?.label)return{quantity:rawQty,inputQuantity:rawQty,inputUnit:source||target||null,inventoryUnit:target||source||null,converted:false};
  const converted=convertQuantity(rawQty,source,target);
  if(converted.status!=='READY')throw Object.assign(new Error(`Conversion impossible de ${source} vers ${target}. Utilise l’unité de stock Dynamics.`),{status:400,code:'INVENTORY_COUNT_UNIT_INCOMPATIBLE',details:{inputUnit:source,inventoryUnit:target}});
