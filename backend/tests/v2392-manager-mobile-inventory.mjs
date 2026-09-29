@@ -25,7 +25,7 @@ const enhancements=readFileSync(new URL('../../frontend/js/enhancements-entry.js
 const authEntry=readFileSync(new URL('../../frontend/js/auth-entry.js',import.meta.url),'utf8');
 
 assert.match(app,/isDevelopmentOnly\(\)/,'frontend must resolve development-only explicitly');
-assert.match(app,/await loadStores\(\);await detectDevelopmentAccess\(\);updateHeader\(\);setPage\('today'\)/,'profile switch must recalculate permissions');
+assert.match(app,/localStorage\.setItem\('storeops_user',nextUserId\);location\.reload\(\)/,'profile switch must restart the runtime so permissions and role-specific observers are recalculated cleanly');
 assert.match(index,/id="managerNav"[\s\S]*data-page="inventory"[\s\S]*data-page="losses"/,'manager mobile nav must expose inventory and losses');
 assert.match(server,/summaryOnly=url\.searchParams\.get\('summary'\)==='1'/,'inventory API must support lightweight session listing');
 assert.match(inventory,/inventory\?status=ALL&summary=1/,'inventory frontend must use lightweight listing');
