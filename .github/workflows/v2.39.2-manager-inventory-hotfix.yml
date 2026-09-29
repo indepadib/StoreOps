@@ -28,6 +28,8 @@ jobs:
           node --check frontend/js/pages/inventory.js
           node --check frontend/js/pages/network.js
           node --check frontend/js/pages/manager-hubs.js
+      - name: Inventory unit contract
+        run: node backend/tests/v230-inventory-unit-policy.mjs
       - name: Manager mobile inventory contract
         run: node backend/tests/v2392-manager-mobile-inventory.mjs
       - name: Manager runtime stability contract
