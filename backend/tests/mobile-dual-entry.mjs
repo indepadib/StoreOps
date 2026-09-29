@@ -16,6 +16,10 @@ assert.ok(scanner.includes('receiptMobileFinder'),'receiving scan/manual finder 
 assert.ok(scanner.includes('getUserMedia'),'camera scanning must use the phone camera');
 assert.ok(scanner.includes('BarcodeDetector'),'native barcode detection engine missing');
 assert.ok(scanner.includes('html5-qrcode@2.3.8'),'iOS/Safari fallback scanner must be pinned to a fixed version');
+assert.ok(scanner.includes('unpkg.com/html5-qrcode@2.3.8'),'scanner must keep a second CDN source if the primary CDN is unavailable');
+assert.ok(scanner.includes('isAppleMobile'),'Apple mobile devices must use the hardened retail barcode path');
+assert.ok(scanner.includes('native-timeout'),'native decoding must automatically fall back instead of leaving the camera open forever');
+assert.ok(scanner.includes('/ultra|tele|front|avant/'),'rear-camera selection must de-prioritize ultra-wide/front cameras');
 assert.ok(scanner.includes('Html5Qrcode'),'iOS/Safari fallback implementation missing');
 assert.ok(scanner.includes('EAN_13')&&scanner.includes('CODE_128'),'fallback must support retail 1D barcodes');
 assert.ok(scanner.includes('saisie manuelle'),'manual fallback must remain explicit');
