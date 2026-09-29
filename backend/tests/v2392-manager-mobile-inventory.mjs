@@ -30,6 +30,10 @@ assert.match(index,/id="managerNav"[\s\S]*data-page="inventory"[\s\S]*data-page=
 assert.match(server,/summaryOnly=url\.searchParams\.get\('summary'\)==='1'/,'inventory API must support lightweight session listing');
 assert.match(inventory,/inventory\?status=ALL&summary=1/,'inventory frontend must use lightweight listing');
 assert.match(inventory,/data-open-inventory-session/,'inventory details must load on demand');
+assert.doesNotMatch(inventory,/id="invQuickUnit"/,'express inventory must not expose a manual unit selector');
+assert.doesNotMatch(inventory,/data-count-unit/,'advanced inventory must use the Dynamics unit automatically');
+assert.match(inventory,/countUnit:null/,'inventory count payload must defer to the canonical Dynamics unit');
+assert.match(server,/ensureDirector\(user\).*isPlatformAdmin\(user\)/,'platform admin must be accepted by director-only network endpoints');
 assert.match(network,/safe\(api\('\/api\/network'\),7000\)/,'network bootstrap must have a timeout');
 
 console.log('v2.39.2 manager/mobile inventory hotfix contract: OK');
