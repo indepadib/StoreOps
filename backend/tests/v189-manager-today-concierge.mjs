@@ -29,7 +29,7 @@ assert.match(home,/manager-today-v185\.css/,'Today preview stylesheet must be lo
 const nav=html.match(/<nav class="manager-nav" id="managerNav"[\s\S]*?<\/nav>/)?.[0]||'';
 assert(nav,'manager nav missing');
 const buttons=[...nav.matchAll(/<button[^>]*data-page="([^"]+)"[^>]*>([^<]+)/g)].map(x=>({page:x[1],label:x[2]}));
-assert.deepEqual(buttons.map(x=>x.page),['today','managerScan','managerTeam','managerMore']);
+assert.deepEqual(buttons.map(x=>x.page),['today','managerScan','inventory','losses','managerMore']);
 assert.deepEqual(buttons.map(x=>x.label),['Aujourd’hui','Scanner','Équipe','Plus']);
 
 console.log('V1.89/V1.85 approved manager Today regression: OK');
