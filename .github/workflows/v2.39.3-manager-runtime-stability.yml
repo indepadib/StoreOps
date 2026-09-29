@@ -1,0 +1,31 @@
+name: V2.39.3 Manager Runtime Stability
+
+on:
+  push:
+    branches: [stability-manager-p0]
+  workflow_dispatch:
+
+jobs:
+  manager-runtime-stability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/mobile-barcode.js
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/manager-hubs.js
+          node --check frontend/js/manager-polish.js
+          node --check frontend/js/manager-alerts.js
+      - name: Lean manager runtime contract
+        run: node backend/tests/v2393-manager-runtime-stability.mjs
+      - name: Existing manager contracts
+        run: |
+          node backend/tests/v239-actionable-store.mjs
+          node backend/tests/v2392-manager-mobile-inventory.mjs
+          node backend/tests/manager-simple-flow.mjs
