@@ -6,6 +6,8 @@ import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inven
 const INVENTORY_ENTRY_KEY='storeops_inventory_entry_mode';
 const FOCUS_INVENTORY_KEY='storeops_focus_inventory_session';
 let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null;
+function focusedInventorySessionId(){try{return sessionStorage.getItem(FOCUS_INVENTORY_KEY)||''}catch{return''}}
+function setFocusedInventorySession(id=''){try{id?sessionStorage.setItem(FOCUS_INVENTORY_KEY,id):sessionStorage.removeItem(FOCUS_INVENTORY_KEY)}catch{}}
 function applyInventoryEntryIntent(){try{const focus=sessionStorage.getItem(FOCUS_INVENTORY_KEY),requested=sessionStorage.getItem(INVENTORY_ENTRY_KEY);if(focus)inventoryView='SESSIONS';else if(requested==='NEW')inventoryView='SESSIONS';else if(['COUNT','SESSIONS','HISTORY'].includes(requested))inventoryView=requested;if(requested)sessionStorage.removeItem(INVENTORY_ENTRY_KEY)}catch{}}
 const countingPolicy=()=>({...DEFAULT_INVENTORY_COUNTING_POLICY,...(cfg?.countingPolicy||{})});
 const reasonLabel=code=>cfg?.reasons?.find(x=>x.code===code)?.label||code||'—';
@@ -27,8 +29,20 @@ function varianceGroups(metrics){const rows=Object.entries(metrics?.varianceByUn
 
 export async function renderInventory(){
   applyInventoryEntryIntent();
-  [cfg,data]=await Promise.all([api('/api/inventory/config'),api(`/api/stores/${app.storeId}/inventory?status=ALL`)]);
-  const s=data.summary||{},items=data.items||[],express=activeExpress(items),policy=countingPolicy(),active=items.filter(x=>['COUNTING','REVIEW'].includes(x.status)&&!isExpress(x)),history=items.filter(x=>['READY_TO_POST','POSTED','CANCELLED'].includes(x.status));
+  [cfg,data]=await Promise.all([api('/api/inventory/config'),api(`/api/stores/${app.storeId}/inventory?status=ALL&summary=1`)]);
+  let items=data.items||[],focusId=focusedInventorySessionId();
+  if(!focusId&&inventoryView==='COUNT')focusId=activeExpress(items)?.id||'';
+  if(focusId){
+    try{
+      const full=await api(`/api/inventory/${encodeURIComponent(focusId)}`);
+      const found=items.some(x=>x.id===focusId);
+      items=found?items.map(x=>x.id===focusId?full:x):[full,...items];
+      data={...data,items};
+    }catch{
+      if(focusedInventorySessionId()===focusId)setFocusedInventorySession('');
+    }
+  }
+  const s=data.summary||{},express=activeExpress(items),policy=countingPolicy(),active=items.filter(x=>['COUNTING','REVIEW'].includes(x.status)&&!isExpress(x)),history=items.filter(x=>['READY_TO_POST','POSTED','CANCELLED'].includes(x.status));
   const tabs=`<div class="card" style="margin-bottom:14px"><div class="row"><div><strong>Inventaire & comptage</strong><div class="small muted">Une seule étape à la fois : compter → traiter les écarts → exporter.</div></div><div class="row"><button class="btn ${inventoryView==='COUNT'?'brand':'soft'}" data-inventory-view="COUNT">Compter maintenant</button><button class="btn ${inventoryView==='SESSIONS'?'brand':'soft'}" data-inventory-view="SESSIONS">Inventaires en cours</button><button class="btn ${inventoryView==='HISTORY'?'brand':'soft'}" data-inventory-view="HISTORY">Historique & export</button></div></div></div>`;
   const overview=`<div class="inventory-overview">
       ${miniKpi('Ouverts',s.openSessions||0)}
@@ -84,16 +98,17 @@ function policyCard(){return`<div class="card inventory-policy"><div class="labe
 function createPanel(){return`<div class="card inventory-create" style="margin-top:14px"><div class="row"><div><strong>Inventaire avancé</strong><div class="small muted">Pour un inventaire complet, tournant ou sur une zone précise.</div></div><span class="pill">Optionnel</span></div><div class="form-grid" style="margin-top:10px"><div class="field"><label>Type</label><select id="invType">${cfg.types.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select></div><div class="field"><label>Zone / périmètre</label><input id="invZone" placeholder="Ex. PLS, Réserve, Allée 3"></div><div class="field full"><label>Commentaire</label><input id="invComment" placeholder="Objectif du comptage / anomalie déclencheuse"></div></div><button class="btn soft" id="createInventory" style="margin-top:10px">Créer l’inventaire avancé</button></div>`}
 
 function sessionCard(inv){
- const editable=canManage()&&['COUNTING','REVIEW'].includes(inv.status),ready=inv.status==='READY_TO_POST',pending=Number(inv.metrics?.pending||0),unexplained=Number(inv.metrics?.unexplained||0),blocking=pending+unexplained,pct=inv.metrics?.lines?Math.round((Number(inv.metrics.counted||0)/Number(inv.metrics.lines))*100):0;
+ const editable=canManage()&&['COUNTING','REVIEW'].includes(inv.status),ready=inv.status==='READY_TO_POST',pending=Number(inv.metrics?.pending||0),unexplained=Number(inv.metrics?.unexplained||0),blocking=pending+unexplained,pct=inv.metrics?.lines?Math.round((Number(inv.metrics.counted||0)/Number(inv.metrics.lines))*100):0,expanded=focusedInventorySessionId()===inv.id,lines=Array.isArray(inv.lines)?inv.lines:[];
  const title=isExpress(inv)?'Comptage express':`${sessionLabel(inv.inventory_type)}${inv.zone?` · ${inv.zone}`:''}`,sourceLabel=inv.source_type==='D365_COUNTING_JOURNAL'?`Journal D365${inv.source_reference?` · ${inv.source_reference}`:''}`:'Comptage magasin StoreOps';
+ const detail=expanded?`${editable&&!isExpress(inv)?addLinePanel(inv):''}<div class="table-wrap inventory-table-wrap" style="margin-top:10px"><table class="table inventory-table"><thead><tr><th>Article</th><th>Théorique</th><th>1er comptage</th><th>Écart</th><th>Recomptage / final</th><th>Motif</th><th>Action</th></tr></thead><tbody>${lines.map(lineRow).join('')||'<tr><td colspan="7"><div class="empty compact">Aucun article.</div></td></tr>'}</tbody></table></div>`:'';
+ const controls=expanded?`<button class="btn ghost" data-close-inventory-session="${esc(inv.id)}">Fermer le détail</button>`:`<button class="btn soft" data-open-inventory-session="${esc(inv.id)}">Ouvrir le détail</button>`;
  return`<article class="card inventory-session ${ready?'inventory-ready':''}" data-inventory-session-id="${esc(inv.id)}">
    <div class="row"><div><div class="small muted">${isExpress(inv)?'Scan libre':esc(inv.zone||'Périmètre magasin')} · ${esc(sourceLabel)}</div><h3>${esc(title)}</h3><div class="small muted">ID ${esc(inv.id)} · Créé par ${esc(inv.created_by_name||'—')} · ${dt(inv.created_at)}</div></div>${status(sessionStatus(inv.status),statusKind(inv.status))}</div>
    <div class="inventory-session-kpis"><div><span>Articles</span><strong>${inv.metrics.lines}</strong></div><div><span>Comptés</span><strong>${inv.metrics.counted}</strong></div><div><span>Recomptages</span><strong>${inv.metrics.recounts}</strong></div><div><span>Lignes en écart</span><strong>${inv.metrics.varianceLines}</strong></div></div><div class="small muted inventory-progress-line">Écarts cumulés par unité : ${varianceGroups(inv.metrics)}</div>
    ${editable&&inv.metrics.lines?`<div class="small muted inventory-progress-line">Progression ${pct}% · ${pending} à compter · ${unexplained} écart(s) à expliquer</div>`:''}
-   ${editable&&!isExpress(inv)?addLinePanel(inv):''}
-   <div class="table-wrap inventory-table-wrap" style="margin-top:10px"><table class="table inventory-table"><thead><tr><th>Article</th><th>Théorique</th><th>1er comptage</th><th>Écart</th><th>Recomptage / final</th><th>Motif</th><th>Action</th></tr></thead><tbody>${inv.lines.map(lineRow).join('')||'<tr><td colspan="7"><div class="empty compact">Aucun article.</div></td></tr>'}</tbody></table></div>
+   ${detail}
    <div class="inventory-footer"><div class="small muted">${inv.status==='POSTED'?`Traité · ${dt(inv.posted_at)}`:inv.status==='READY_TO_POST'?`Validé par ${esc(inv.reviewed_by_name||'—')} · ${dt(inv.reviewed_at)} · prêt pour Excel`:pending?`${pending} ligne(s) restent à compter ou recomptabiliser.`:'Tous les écarts sont comptés.'}</div>
-   <div class="row">${editable?`<button class="btn soft" data-finalize-inventory="${inv.id}" ${!inv.lines.length||blocking?'disabled':''}>Valider la session</button>`:''}${ready&&canManage()?`<button class="btn brand" data-export-inventory="${inv.id}">Exporter Excel</button>`:''}</div></div>
+   <div class="row">${controls}${expanded&&editable?`<button class="btn soft" data-finalize-inventory="${inv.id}" ${!lines.length||blocking?'disabled':''}>Valider la session</button>`:''}${ready&&canManage()?`<button class="btn brand" data-export-inventory="${inv.id}">Exporter Excel</button>`:''}</div></div>
  </article>`}
 function addLinePanel(inv){return`<div class="inventory-add-line"><div><strong>Ajouter un article</strong><div class="small muted">EAN scanné → snapshot Dynamics enregistré.</div></div><div class="row"><input data-inv-ean="${inv.id}" inputmode="numeric" autocomplete="off" placeholder="Scanner / saisir EAN"><button class="btn soft" data-add-inv-line="${inv.id}">Ajouter</button></div></div>`}
 function hiddenValue(label='Masqué'){return`<span class="inventory-hidden" title="Comptage aveugle">${esc(label)}</span>`}
@@ -111,6 +126,8 @@ function countForm(l,recount){return`<div class="inventory-count-form"><div clas
 function explainForm(l){return`<div class="inventory-count-form"><select data-explain-reason="${l.id}"><option value="">Expliquer l’écart</option>${cfg.reasons.map(x=>`<option value="${x.code}">${esc(x.label)}</option>`).join('')}</select><button class="btn soft" data-explain-line="${l.id}">Valider motif</button></div>`}
 
 function bindInventory(){
+ document.querySelectorAll('[data-open-inventory-session]').forEach(b=>b.addEventListener('click',()=>{setFocusedInventorySession(b.dataset.openInventorySession);renderInventory()}));
+ document.querySelectorAll('[data-close-inventory-session]').forEach(b=>b.addEventListener('click',()=>{setFocusedInventorySession('');renderInventory()}));
  $('#invQuickEan')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();lookupQuickInventoryProduct()}});
  $('#invQuickEan')?.addEventListener('change',()=>lookupQuickInventoryProduct().catch(()=>{}));
  $('#invQuickQty')?.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();quickCount()}});
