@@ -20,6 +20,9 @@ const inventory=readFileSync(new URL('../../frontend/js/pages/inventory.js',impo
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const network=readFileSync(new URL('../../frontend/js/pages/network.js',import.meta.url),'utf8');
 const barcode=readFileSync(new URL('../../frontend/js/mobile-barcode.js',import.meta.url),'utf8');
+const pda=readFileSync(new URL('../../frontend/js/pda-mode.js',import.meta.url),'utf8');
+const enhancements=readFileSync(new URL('../../frontend/js/enhancements-entry.js',import.meta.url),'utf8');
+const authEntry=readFileSync(new URL('../../frontend/js/auth-entry.js',import.meta.url),'utf8');
 
 assert.match(app,/isDevelopmentOnly\(\)/,'frontend must resolve development-only explicitly');
 assert.match(app,/await loadStores\(\);await detectDevelopmentAccess\(\);updateHeader\(\);setPage\('today'\)/,'profile switch must recalculate permissions');
