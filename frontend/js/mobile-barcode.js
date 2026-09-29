@@ -2,6 +2,7 @@ import { toast } from './ui.js';
 
 const STATIC_TARGETS=[
   {selector:'#managerScanEan',action:'#managerScanGo'},
+  {selector:'#invQuickEan',action:null},
   {selector:'#priceCheckEan',action:'#priceCheckLookup'},
   {selector:'#qualityEan',action:'#qualityLookup'},
   {selector:'#dlcEan',action:'#dlcLookup'},
@@ -76,7 +77,7 @@ function loadHtml5Qrcode(){
 function fillScanned(input,raw,afterScan){
   const value=String(raw||'').trim();if(!value)return;
   input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
-  stopScanner();toast(`Article scanné : ${value}`);if(typeof afterScan==='function')setTimeout(()=>afterScan(value),80);
+  stopScanner();try{navigator.vibrate?.(55)}catch{}toast(`Article scanné : ${value}`);if(typeof afterScan==='function')setTimeout(()=>afterScan(value),80);
 }
 async function startNativeScanner(detector,input,afterScan){
   const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');reader.hidden=true;video.hidden=false;
@@ -107,7 +108,7 @@ async function startIosFallback(input,afterScan,{reason='ios'}={}){
       const score=c=>{const l=String(c.label||'').toLowerCase();let s=0;if(/back|rear|environment|arrière/.test(l))s+=20;if(/wide|dual|main|camera$|caméra$/.test(l))s+=6;if(/ultra|tele|front|avant/.test(l))s-=15;return s};
       const ranked=[...(cams||[])].sort((a,b)=>score(b)-score(a)),back=ranked[0];if(back?.id)camera=back.id;
     }catch{}
-    await activeHtml5.start(camera,{fps:15,qrbox:(w,h)=>({width:Math.max(240,Math.min(430,Math.round(w*.92))),height:Math.max(110,Math.min(210,Math.round(h*.34)))}),disableFlip:false},decoded=>fillScanned(input,decoded,afterScan),()=>{});
+    await activeHtml5.start(camera,{fps:15,qrbox:(w,h)=>({width:Math.max(240,Math.min(430,Math.round(w*.92))),height:Math.max(170,Math.min(340,Math.round(h*.58)))}),disableFlip:false},decoded=>fillScanned(input,decoded,afterScan),()=>{});
     setScanStatus('EAN prêt à être lu · garde les barres nettes dans le cadre.','ready');
     try{await activeHtml5.applyVideoConstraints?.({advanced:[{focusMode:'continuous'}]})}catch{}
   }catch(e){stopScanner();toast(e?.name==='NotAllowedError'?'Autorise la caméra pour scanner, ou saisis le code manuellement.':'Scan caméra indisponible. Saisis le code manuellement.');input.focus()}
