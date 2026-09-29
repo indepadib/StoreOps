@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='2392';
+const BUILD='2393';
 
 const modules=[
   './pwa.js',
@@ -68,13 +68,21 @@ function installDirectorExperience(){
   const logout=document.getElementById('logoutBtn');if(logout){logout.title='Déconnexion';logout.setAttribute('aria-label','Déconnexion')}
 }
 
+export function runtimeModulesFor({manager=false,pda=false,director=false}={}){
+  const paths=manager
+    ? ['./pwa.js']
+    : modules.filter(path=>!pda||!['./pwa.js','./mobile-barcode.js','./scanner-resilience.js'].includes(path));
+  if(director)paths.push('./director-exception-first.js');
+  return [...new Set(paths)];
+}
+
 export async function loadEnhancements(){
   try{await import(`./pda-mode.js?v=${BUILD}`)}catch(e){console.warn('Mode PDA indisponible',e)}
   const pda=document.body.classList.contains('pda-mode');
   bindAdminLazyRuntime();
   installDirectorExperience();
-  const paths=modules.filter(path=>!pda||!['./pwa.js','./mobile-barcode.js','./scanner-resilience.js'].includes(path));
-  if(isDirector())paths.push('./director-exception-first.js');
+  const manager=!!document.body.classList.contains('manager-mode');
+  const paths=runtimeModulesFor({manager,pda,director:isDirector()});
   const results=await Promise.allSettled(paths.map(path=>import(`${path}?v=${BUILD}`)));
   const failed=results.filter(x=>x.status==='rejected');
   if(failed.length)console.warn(`${failed.length} module(s) StoreOps différé(s) non chargés`,failed.map(x=>x.reason));

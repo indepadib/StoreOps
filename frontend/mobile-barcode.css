@@ -4,3 +4,13 @@
 .manager-scan-search:has(.mobile-scan-btn){grid-template-columns:minmax(0,1fr) auto auto}.manager-scan-search:has(.mobile-scan-btn) .scan-manual-hint{grid-column:1/-1;margin:0 4px 2px}.manager-scan-search .mobile-scan-btn{min-height:50px;border-radius:14px;padding-inline:15px}.manager-scan-search #managerScanGo{min-height:50px}
 @media(max-width:700px){.manager-scan-search:has(.mobile-scan-btn){grid-template-columns:1fr 1fr}.manager-scan-search:has(.mobile-scan-btn) #managerScanEan{grid-column:1/-1}.manager-scan-search:has(.mobile-scan-btn) .mobile-scan-btn,.manager-scan-search:has(.mobile-scan-btn) #managerScanGo{width:100%}.manager-scan-search:has(.mobile-scan-btn) .scan-manual-hint{grid-column:1/-1;text-align:center}}
 @media(max-width:390px){.manager-scan-search:has(.mobile-scan-btn){grid-template-columns:1fr}.manager-scan-search:has(.mobile-scan-btn) #managerScanEan,.manager-scan-search:has(.mobile-scan-btn) .scan-manual-hint{grid-column:auto}}
+
+
+/* iPhone scanner recovery */
+.barcode-scanner-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.barcode-scanner-actions .btn,.barcode-photo-action{min-height:46px;text-align:center;display:flex;align-items:center;justify-content:center}
+.barcode-photo-action.recommended{background:var(--brand)!important;color:#fff!important;border-color:var(--brand)!important;box-shadow:0 0 0 4px var(--brand-soft)}
+#storeopsBarcodeStatus[data-tone="switching"]{color:#8a5a00;font-weight:800}
+#storeopsBarcodeStatus[data-tone="ready"]{color:#176b45;font-weight:800}
+#storeopsBarcodeStatus[data-tone="photo"]{color:var(--brand);font-weight:900}
+@media(max-width:430px){.barcode-scanner-actions{grid-template-columns:1fr}.barcode-video-wrap{max-height:58vh}}

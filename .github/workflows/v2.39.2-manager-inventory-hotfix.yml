@@ -22,9 +22,13 @@ jobs:
           node --check backend/services/permissions.mjs
           node --check backend/services/access-management.mjs
           node --check frontend/js/app.js
+          node --check frontend/js/enhancements-entry.js
+          node --check frontend/js/mobile-barcode.js
           node --check frontend/js/state.js
           node --check frontend/js/pages/inventory.js
           node --check frontend/js/pages/network.js
           node --check frontend/js/pages/manager-hubs.js
       - name: Manager mobile inventory contract
         run: node backend/tests/v2392-manager-mobile-inventory.mjs
+      - name: Manager runtime stability contract
+        run: node backend/tests/v2393-manager-runtime-stability.mjs

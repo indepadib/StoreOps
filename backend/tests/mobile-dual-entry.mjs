@@ -19,12 +19,12 @@ assert.ok(scanner.includes('html5-qrcode@2.3.8'),'iOS/Safari fallback scanner mu
 assert.ok(scanner.includes('unpkg.com/html5-qrcode@2.3.8'),'scanner must keep a second CDN source if the primary CDN is unavailable');
 assert.ok(scanner.includes('isAppleMobile'),'Apple mobile devices must use the hardened retail barcode path');
 assert.ok(scanner.includes('native-timeout'),'native decoding must automatically fall back instead of leaving the camera open forever');
-assert.ok(scanner.includes('/ultra|tele|front|avant/'),'rear-camera selection must de-prioritize ultra-wide/front cameras');
+assert.ok(scanner.includes('/ultra|0\\.5|0,5|tele|telephoto|zoom/')&&scanner.includes('/front|avant|frontal|user|selfie/'),'rear-camera selection must de-prioritize ultra-wide/zoom and front cameras');
 assert.ok(scanner.includes('Html5Qrcode'),'iOS/Safari fallback implementation missing');
 assert.ok(scanner.includes('EAN_13')&&scanner.includes('CODE_128'),'fallback must support retail 1D barcodes');
 assert.ok(scanner.includes('saisie manuelle'),'manual fallback must remain explicit');
 assert.ok(scanner.includes("facingMode:'environment'")||scanner.includes("facingMode:{ideal:'environment'}"),'rear camera must be preferred');
-assert.ok(pwa.includes("import './mobile-barcode.js'"),'mobile scan layer must load with StoreOps');
+assert.ok(pwa.includes("import './mobile-barcode.js?v=2393'"),'mobile scan layer must load with a cache-busted StoreOps runtime');
 assert.ok(sw.includes("'/js/mobile-barcode.js'"),'scanner JS must be available in the PWA shell');
 assert.ok(sw.includes("'/mobile-barcode.css'"),'scanner CSS must be available in the PWA shell');
 
