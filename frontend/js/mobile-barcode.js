@@ -16,7 +16,7 @@ const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
 
-function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2393';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2395';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
   if(host)return host;
@@ -144,7 +144,7 @@ async function startHtml5Candidate(input,afterScan,token){
   try{
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formatConfig());
     await activeHtml5.start(camera,{
-      fps:12,
+      fps:15,
       aspectRatio:4/3,
       qrbox:(w,h)=>({width:Math.max(120,Math.min(520,Math.round(w*.94))),height:Math.max(90,Math.min(240,Math.round(h*.42)))}),
       disableFlip:false
@@ -163,7 +163,7 @@ async function startHtml5Candidate(input,afterScan,token){
         setScanStatus('Le live n’arrive pas à faire une mise au point fiable. Appuie sur « Photo du code » : l’iPhone utilisera son appareil photo natif.','photo');
         host.querySelector('.barcode-photo-action')?.classList.add('recommended');
       }
-    },4300);
+    },3200);
   }catch(e){
     if(token!==scanToken)return;
     if(activeCameraIndex<activeCameraCandidates.length-1){activeCameraIndex+=1;return startHtml5Candidate(input,afterScan,token)}
@@ -182,7 +182,7 @@ async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={
     const cams=await window.Html5Qrcode.getCameras();
     physicalCameras=cameraCandidates(cams);
   }catch{physicalCameras=[]}
-  activeCameraCandidates=[{id:null,label:'Caméra arrière automatique',virtual:true},...physicalCameras];
+  activeCameraCandidates=physicalCameras.length?physicalCameras:[{id:null,label:'Caméra arrière automatique',virtual:true}];
   activeCameraIndex=0;
   await startHtml5Candidate(input,afterScan,token);
 }
