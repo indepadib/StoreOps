@@ -36,6 +36,8 @@ function dateRangeFilter(f,startDay,endDay,configuredMode=null){
 }
 export function minuteOfDay(v){
  if(v===null||v===undefined||v==='')return null;
+ // D365 Finance & Operations timeOfDay / Commerce TransTime is an integer count of seconds since midnight.
+ if(typeof v==='number'&&Number.isFinite(v)&&Number.isInteger(v)&&v>=0&&v<=86399)return Math.floor(v/60);
  const raw=String(v).trim();
  const iso=raw.match(/T(\d{2}):(\d{2})/);if(iso){const h=Number(iso[1]),m=Number(iso[2]);return h<=23&&m<=59?h*60+m:null}
  const colon=raw.match(/^(\d{1,2}):(\d{2})/);if(colon){const h=Number(colon[1]),m=Number(colon[2]);return h<=23&&m<=59?h*60+m:null}
