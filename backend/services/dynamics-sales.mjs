@@ -211,14 +211,33 @@ export async function readStoreProductSalesVelocity(storeId,productNumber,{busin
  const c=salesIntegrationConfig(storeId),windowDays=Math.max(7,Math.min(90,Number(days)||28)),sku=clean(productNumber),end=dateOnly(businessDate)||new Date().toISOString().slice(0,10);
  if(!c.ready||!sku||!c.fields.product||!c.fields.quantity)return{status:'UNAVAILABLE',source:'D365',storeId,productNumber:sku,businessDate:end,dailySales7:null,dailySales28:null,missing:[...new Set([...(c.missing||[]),!c.fields.product?'productField':null,!c.fields.quantity?'quantityField':null].filter(Boolean))]};
  const cacheSeconds=Math.max(30,Math.min(3600,Number(process.env.STOREOPS_SALES_VELOCITY_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${sku}|${end}|${windowDays}`;const cached=velocityCache.get(cacheKey);if(cached&&Date.now()<cached.expiresAt)return cached.value;
- const start=nextDate(end,-(windowDays-1)),start7=nextDate(end,-6),filters=[`${c.fields.store} eq '${esc(c.retailId)}'`,dateRangeFilter(c.fields.date,start,end,c.dateFilterMode),`${c.fields.product} eq '${esc(sku)}'`];
- if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
- const select=[c.fields.date,c.fields.quantity,c.fields.net,c.fields.status,c.fields.product,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
- const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
- if(fetched.truncated){const value={status:'TRUNCATED',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,dailySales7:null,dailySales28:null,rowCount:fetched.rowCount,pages:fetched.pages};velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value}
- let units7=0,unitsWindow=0,sales7=0,salesWindow=0,lastSaleDate=null;for(const row of fetched.value||[]){const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;const day=dateOnly(row[c.fields.date]),qty=Math.abs(num(row[c.fields.quantity]));unitsWindow+=qty;salesWindow+=saleValue;if(day&&(!lastSaleDate||day>lastSaleDate))lastSaleDate=day;if(day&&day>=start7&&day<=end){units7+=qty;sales7+=saleValue}}
- const lastSaleDaysAgo=lastSaleDate?Math.max(0,Math.round((Date.parse(`${end}T00:00:00Z`)-Date.parse(`${lastSaleDate}T00:00:00Z`))/86400000)):null;const value={status:'READY',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,windowDays,dailySales7:round3(Math.max(0,units7)/7),dailySales28:round3(Math.max(0,unitsWindow)/windowDays),dailySalesValue7:round2(Math.max(0,sales7)/7),dailySalesValue28:round2(Math.max(0,salesWindow)/windowDays),lastSaleDate,lastSaleDaysAgo,rowCount:fetched.rowCount,pages:fetched.pages,quantitySign:c.quantitySign};
- velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value
+ const start=nextDate(end,-(windowDays-1)),start7=nextDate(end,-6),identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])],select=[c.fields.date,c.fields.quantity,c.fields.net,c.fields.status,c.fields.product,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ let firstEmpty=null,lastError=null;
+ for(const identifier of identifiers){
+  for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
+   for(const mode of dateModes){
+    const filters=[storeFilter,dateRangeFilter(c.fields.date,start,end,mode),`${c.fields.product} eq '${esc(sku)}'`];
+    if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+    try{
+     const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
+     if(fetched.truncated){const value={status:'TRUNCATED',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,dailySales7:null,dailySales28:null,rowCount:fetched.rowCount,pages:fetched.pages,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode};velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value}
+     let units7=0,unitsWindow=0,sales7=0,salesWindow=0,lastSaleDate=null,saleRows=0;
+     for(const row of fetched.value||[]){
+      const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
+      const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;
+      saleRows+=1;const day=dateOnly(row[c.fields.date]),qty=Math.abs(num(row[c.fields.quantity]));unitsWindow+=qty;salesWindow+=saleValue;
+      if(day&&(!lastSaleDate||day>lastSaleDate))lastSaleDate=day;if(day&&day>=start7&&day<=end){units7+=qty;sales7+=saleValue}
+     }
+     const lastSaleDaysAgo=lastSaleDate?Math.max(0,Math.round((Date.parse(`${end}T00:00:00Z`)-Date.parse(`${lastSaleDate}T00:00:00Z`))/86400000)):null;
+     const value={status:'READY',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,windowDays,dailySales7:round3(Math.max(0,units7)/7),dailySales28:round3(Math.max(0,unitsWindow)/windowDays),dailySalesValue7:round2(Math.max(0,sales7)/7),dailySalesValue28:round2(Math.max(0,salesWindow)/windowDays),lastSaleDate,lastSaleDaysAgo,rowCount:fetched.rowCount,pages:fetched.pages,saleRows,quantitySign:c.quantitySign,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode};
+     if(saleRows>0){velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value}
+     firstEmpty=firstEmpty||value;
+    }catch(error){lastError=error}
+   }
+  }
+ }
+ if(firstEmpty){velocityCache.set(cacheKey,{value:firstEmpty,expiresAt:Date.now()+cacheSeconds*1000});return firstEmpty}
+ throw lastError||Object.assign(new Error('Lecture vitesse de vente D365 impossible.'),{code:'D365_SALES_VELOCITY_READ_FAILED'});
 }
 
 export function salesComparisonDate(day,days=7){return nextDate(day,-Math.abs(Number(days)||7))}
