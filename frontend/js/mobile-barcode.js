@@ -147,7 +147,7 @@ async function startHtml5Candidate(input,afterScan,token){
     await activeHtml5.start(camera,{
       fps:apple?20:15,
       aspectRatio:apple?3/4:4/3,
-      qrbox:(w,h)=>({width:Math.max(140,Math.min(620,Math.round(w*.92))),height:Math.max(140,Math.min(520,Math.round(h*(apple?.72:.58))))}),
+      qrbox:(w,h)=>({width:Math.max(140,Math.min(620,Math.round(w*.92))),height:Math.max(140,Math.min(520,Math.round(h*(apple?0.72:0.58))))}),
       disableFlip:false
     },decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
     if(token!==scanToken)return;
