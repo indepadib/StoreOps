@@ -17,3 +17,6 @@
 
 /* Small-iPhone live scanner: preserve enough room for native photo/retry fallbacks. */
 @media(max-width:430px){.barcode-scanner-sheet{max-height:100dvh;overflow-y:auto}.barcode-video-wrap{max-height:48vh}.barcode-scanner-actions{position:sticky;bottom:0;background:#fff;padding-top:8px;z-index:2}}
+
+/* v2.40 iPhone: visible guide matches the larger portrait decode area so vertical EANs are not clipped. */
+@media(max-width:430px){.barcode-frame{inset:18% 8%}.barcode-frame:after{left:6%;right:6%}}
