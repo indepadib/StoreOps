@@ -49,6 +49,10 @@ assert.match(dock,/position:fixed!important/);
 assert.match(app,/RELEASE_BUILD='2400'/);
 assert.match(app,/La vue Réseau n’a pas pu se charger/);
 
+const inventory=read('frontend/js/pages/inventory.js');
+assert.match(inventory,/import\('\.\.\/manager-replenishment-v2\.js\?v=2400'\)/,'Le manager doit charger le réappro uniquement à l ouverture de l inventaire.');
+assert.match(read('frontend/js/enhancements-entry.js'),/const BUILD='2400'/,'Les modules Direction doivent utiliser le cache v2.40.');
+
 const barcode=read('frontend/js/mobile-barcode.js');
 assert.match(barcode,/apple\?0\.72:0\.58/);
 assert.match(barcode,/horizontal ou vertical/);
