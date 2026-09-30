@@ -1,0 +1,36 @@
+name: Glovo Integration Readiness
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/services/glovo-availability.mjs'
+      - 'backend/services/store-growth-api.mjs'
+      - 'frontend/js/pages/channel-availability.js'
+      - 'netlify/functions/api.mts'
+      - '.env.example'
+      - 'docs/GLOVO-INTEGRATION.md'
+      - 'backend/tests/glovo-integration-readiness.mjs'
+      - '.github/workflows/glovo-integration-readiness.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  glovo-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/glovo-availability.mjs
+          node --check backend/services/store-growth-api.mjs
+          node --check frontend/js/pages/channel-availability.js
+      - name: Glovo integration contract
+        run: node backend/tests/glovo-integration-readiness.mjs
+      - name: Existing V2.40 Glovo contract
+        run: node backend/tests/v240-store-truth-glovo.mjs
