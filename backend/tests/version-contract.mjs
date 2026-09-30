@@ -10,13 +10,13 @@ const showcaseApi=readFileSync(new URL('../../frontend/js/api-showcase.js',impor
 const netlifyBuild=readFileSync(new URL('../../frontend/netlify-build.sh',import.meta.url),'utf8');
 const bootClassic=readFileSync(new URL('../../frontend/js/boot-classic.js',import.meta.url),'utf8');
 assert.equal(pkg.version,'2.40.0');
-assert.match(config,/STOREOPS_VERSION \|\| '2\.39\.2'/);
-assert.match(env,/STOREOPS_VERSION=2\.39\.2/);
+assert.match(config,/STOREOPS_VERSION \|\| '2\.40\.0'/);
+assert.match(env,/STOREOPS_VERSION=2\.40\.0/);
 assert.match(server,/version:config\.appVersion/g);
 assert.doesNotMatch(server,/version:'1\.10'|StoreOps V1\.10/);
-assert.match(showcaseApi,/SHOWCASE_VERSION='2\.39\.2-showcase'/);
+assert.match(showcaseApi,/SHOWCASE_VERSION='2\.40\.0-showcase'/);
 assert.match(netlifyBuild,/STOREOPS_RELEASE_BUILD="\$\{STOREOPS_RELEASE_BUILD:-2400\}"/,'Netlify build fallback must use V2.40 cache key');
-assert.match(bootClassic,/var BUILD='2\.39\.2'/,'early boot watchdog must expose V2.39');
+assert.match(bootClassic,/var BUILD='2\.40\.0'/,'early boot watchdog must expose V2.40');
 assert.match(frontendApi,/import\('\.\/api-showcase\.js'\)/,'live API facade must lazily load the versioned showcase runtime');
 assert.doesNotMatch(frontendApi,/SHOWCASE_VERSION=/,'live API facade must stay free of showcase implementation constants');
 console.log('StoreOps V2.40.0 version contract tests passed');
