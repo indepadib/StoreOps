@@ -1,0 +1,6 @@
+/* Store manager navigation: same compact dock on phone and desktop. */
+body.manager-mode .app-shell{padding-bottom:112px}
+body.manager-mode #managerNav{position:fixed!important;left:50%!important;right:auto!important;bottom:max(10px,env(safe-area-inset-bottom))!important;top:auto!important;transform:translateX(-50%);z-index:120;width:min(720px,calc(100vw - 24px));margin:0!important;padding:7px!important;display:flex!important;gap:6px;border:1px solid color-mix(in srgb,var(--line) 88%,transparent);border-radius:22px;background:rgba(255,255,255,.96);box-shadow:0 18px 48px rgba(44,22,32,.18);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
+body.manager-mode #managerNav button{min-height:48px;padding:9px 8px!important;font-size:11px;white-space:nowrap}
+body.manager-mode #managerNav button.active{background:var(--brand-soft);color:var(--brand)}
+@media(max-width:520px){body.manager-mode .app-shell{padding-bottom:104px}body.manager-mode #managerNav{width:calc(100vw - 16px);bottom:max(6px,env(safe-area-inset-bottom));border-radius:20px}body.manager-mode #managerNav button{font-size:10px;min-width:0;padding:8px 4px!important}}
