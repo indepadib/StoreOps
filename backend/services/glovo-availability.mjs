@@ -47,7 +47,8 @@ export async function resolveGlovoBearerToken({fetchImpl=fetch}={}){
 }
 
 export function glovoCatalogPayload(snapshot){
- return{products:(snapshot?.items||[]).map(x=>({sku:x.sku,active:!!x.active}))};
+ const products=snapshot.items.map(x=>({sku:x.sku,active:x.active}));
+ return{products};
 }
 
 export async function buildGlovoAvailability(storeId,{businessDate=new Date().toISOString().slice(0,10),force=false}={}){
