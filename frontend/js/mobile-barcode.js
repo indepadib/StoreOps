@@ -16,7 +16,7 @@ const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
 
-function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2395';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2400';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
   if(host)return host;
@@ -27,7 +27,7 @@ function scannerShell(){
   host.innerHTML=`<div class="barcode-scanner-sheet" role="dialog" aria-modal="true" aria-label="Scanner un code-barres">
     <div class="barcode-scanner-head"><div><strong>Scanner l’article</strong><small>Place le code-barres dans le cadre.</small></div><button class="btn ghost" type="button" data-close-barcode-scanner>Fermer</button></div>
     <div class="barcode-video-wrap"><video id="storeopsBarcodeVideo" playsinline muted></video><div id="storeopsHtml5Reader" class="barcode-html5-reader" hidden></div><div class="barcode-frame"><span></span></div></div>
-    <div class="barcode-scanner-foot"><strong>Scan caméra</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>Cadre l’EAN à 15–25 cm, évite les reflets et garde les barres nettes. Si l’iPhone ne fait pas la mise au point, utilise « Photo du code ».</span>
+    <div class="barcode-scanner-foot"><strong>Scan caméra</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>Cadre l’EAN à 15–25 cm, évite les reflets et garde les barres nettes. Le code peut être horizontal ou vertical. Si l’iPhone ne fait pas la mise au point, utilise « Photo du code ».</span>
       <div class="barcode-scanner-actions"><label class="btn soft barcode-photo-action" for="storeopsBarcodePhoto">Photo du code</label><button class="btn ghost" type="button" data-barcode-retry>Relancer le live</button></div>
       <input id="storeopsBarcodePhoto" type="file" accept="image/*" capture="environment" hidden>
     </div>
@@ -143,10 +143,11 @@ async function startHtml5Candidate(input,afterScan,token){
   const camera=candidate?.id||{facingMode:'environment'};
   try{
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formatConfig());
+    const apple=isAppleMobile();
     await activeHtml5.start(camera,{
-      fps:15,
-      aspectRatio:4/3,
-      qrbox:(w,h)=>({width:Math.max(120,Math.min(520,Math.round(w*.94))),height:Math.max(90,Math.min(240,Math.round(h*.42)))}),
+      fps:apple?20:15,
+      aspectRatio:apple?3/4:4/3,
+      qrbox:(w,h)=>({width:Math.max(140,Math.min(620,Math.round(w*.92))),height:Math.max(140,Math.min(520,Math.round(h*(apple?.72:.58))))}),
       disableFlip:false
     },decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
     if(token!==scanToken)return;
