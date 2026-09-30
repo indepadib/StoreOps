@@ -16,7 +16,7 @@ const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
 
-function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2400';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2402';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
   if(host)return host;
