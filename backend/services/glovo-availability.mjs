@@ -13,7 +13,7 @@ const availabilityCacheMs=()=>Math.max(15_000,Math.min(300_000,Number(process.en
 function vendorMap(){try{return JSON.parse(process.env.GLOVO_VENDOR_IDS_JSON||'{}')}catch{return{}}}
 function glovoConfig(storeId){
  const chainId=clean(process.env.GLOVO_CHAIN_ID),vendorId=clean(vendorMap()[storeId]),token=clean(process.env.GLOVO_CATALOG_BEARER_TOKEN);
- return{chainId:chainId||null,vendorId:vendorId||null,tokenConfigured:!!token,ready:!!(chainId&&vendorId&&token)}
+ return{chainId:chainId||null,vendorId:vendorId||null,tokenConfigured:!!token,ready:!!(chainId&&vendorId&&token),partnerPullConfigured:!!clean(process.env.GLOVO_READ_API_KEY),partnerEndpoint:`/api/partners/glovo/stores/${encodeURIComponent(storeId)}/availability`}
 }
 export async function buildGlovoAvailability(storeId,{businessDate=new Date().toISOString().slice(0,10),force=false}={}){
  const cacheKey=`${storeId}|${businessDate}`,hit=availabilityCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT',ageMs:Date.now()-hit.storedAt}};
