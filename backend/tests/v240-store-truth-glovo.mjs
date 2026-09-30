@@ -44,7 +44,7 @@ assert.ok(glovoHook>0&&sessionHook>glovoHook,'L API partenaire doit utiliser son
 
 const html=read('frontend/index.html'),dock=read('frontend/manager-dock-v240.css'),app=read('frontend/js/app.js');
 assert.match(html,/manager-dock-v240\.css/);
-assert.match(html,/data-page="managerControls">Actions/);
+assert.match(html,/data-page="inventory">Inventaire[\s\S]*data-page="losses">Démarque/);
 assert.match(dock,/position:fixed!important/);
 assert.match(app,/RELEASE_BUILD='2400'/);
 assert.match(app,/La vue Réseau n’a pas pu se charger/);
