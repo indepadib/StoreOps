@@ -7,7 +7,9 @@ const {minuteOfDay,salesComparisonCutoff}=await import('../services/dynamics-sal
 assert.equal(minuteOfDay('09:15'),555);
 assert.equal(minuteOfDay('18:30:45'),1110);
 assert.equal(minuteOfDay('2026-09-28T21:07:00'),1267);
-assert.equal(minuteOfDay(930),570);
+assert.equal(minuteOfDay(930),15); // D365 timeOfDay integer = seconds since midnight
+assert.equal(minuteOfDay('930'),570); // textual HHMM remains supported
+assert.equal(minuteOfDay(30600),510); // 08:30 in Dynamics Commerce TransTime
 assert.equal(minuteOfDay(183045),1110);
 assert.equal(minuteOfDay('invalid'),null);
 
