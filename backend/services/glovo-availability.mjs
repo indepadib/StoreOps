@@ -51,7 +51,7 @@ export async function handleGlovoPartnerApi({req,url}){
  if(!expected)return{status:503,data:{error:'API Glovo non activée.',code:'GLOVO_PARTNER_API_NOT_CONFIGURED'}};
  if(!secureEqual(provided,expected))return{status:401,data:{error:'Authentification Glovo requise.',code:'GLOVO_PARTNER_UNAUTHORIZED'}};
  if(!partnerStores().has(storeId))return{status:403,data:{error:'Magasin non autorisé pour ce partenaire.',code:'GLOVO_PARTNER_STORE_FORBIDDEN'}};
- const snapshot=await buildGlovoAvailability(storeId,{businessDate:url.searchParams.get('date')||undefined,force:url.searchParams.get('force')==='1'});
+ const snapshot=await buildGlovoAvailability(storeId);
  if(snapshot.status!=='READY')return{status:503,data:{error:'Disponibilité temporairement indisponible.',code:'GLOVO_AVAILABILITY_NOT_READY',storeId,catalogVersion:GLOVO_CATALOG_VERSION}};
  return{status:200,data:{apiVersion:'1',storeId,businessDate:snapshot.businessDate,refreshedAt:new Date().toISOString(),catalogVersion:GLOVO_CATALOG_VERSION,privacyMode:'AVAILABILITY_ONLY',summary:snapshot.summary,items:snapshot.items.map(x=>({sku:x.sku,active:!!x.active}))}};
 }
