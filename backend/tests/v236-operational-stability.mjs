@@ -41,7 +41,8 @@ assert.match(released,/BatchNumberGroupCode/,'ReleasedProducts sourcing must use
 assert.match(released,/DEFAULTLEDGERDIMENSIONDISPLAYVALUE/,'ReleasedProducts profile must parse the retail financial dimension');
 assert.match(released,/cachePut\(sku,\{status:supplyMode/,'batch product identities must be cached');
 assert.match(stock,/releasedProductSourcingMany\(items\.map/,'all action rows including negative stock must be identity-enriched');
-assert.match(stock,/sourcing\.productName\|\|clean\(sale\?\.name\)/,'stock signals must prefer real product names');
+assert.match(stock,/releasedName=clean\(sourcing\.productName\)/,'stock signals must resolve ReleasedProducts names first');
+assert.match(stock,/productNameSource:nameSource/,'stock signals must expose the authoritative identity source');
 assert.match(pulse,/generic=.*article/,'Business Pulse must treat generic Article labels as unresolved');
 assert.match(sell,/genericName/,'sell-through must reject generic article names');
 assert.match(sell,/snapshotCache/,'sell-through must cache expensive snapshots');
