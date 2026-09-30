@@ -5,7 +5,12 @@ import{DEFAULT_INVENTORY_COUNTING_POLICY,inventoryLinePresentation}from'../inven
 
 const INVENTORY_ENTRY_KEY='storeops_inventory_entry_mode';
 const FOCUS_INVENTORY_KEY='storeops_focus_inventory_session';
-let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null;
+let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null,replenishmentLazyStarted=false;
+function ensureManagerReplenishment(){
+ if(app.user?.role!=='store_manager'||replenishmentLazyStarted)return;
+ replenishmentLazyStarted=true;
+ import('../manager-replenishment-v2.js?v=2400').catch(e=>{replenishmentLazyStarted=false;console.warn('Assistant réapprovisionnement indisponible',e)});
+}
 function focusedInventorySessionId(){try{return sessionStorage.getItem(FOCUS_INVENTORY_KEY)||''}catch{return''}}
 function setFocusedInventorySession(id=''){try{id?sessionStorage.setItem(FOCUS_INVENTORY_KEY,id):sessionStorage.removeItem(FOCUS_INVENTORY_KEY)}catch{}}
 function applyInventoryEntryIntent(){try{const focus=sessionStorage.getItem(FOCUS_INVENTORY_KEY),requested=sessionStorage.getItem(INVENTORY_ENTRY_KEY);if(focus)inventoryView='SESSIONS';else if(requested==='NEW')inventoryView='SESSIONS';else if(['COUNT','SESSIONS','HISTORY'].includes(requested))inventoryView=requested;if(requested)sessionStorage.removeItem(INVENTORY_ENTRY_KEY)}catch{}}
@@ -55,6 +60,7 @@ export async function renderInventory(){
   else body=`${isDirector()?policyCard():conceptCard()}<div class="network-section-title"><div><strong>Historique & exports</strong><span>Sessions validées, prêtes à exporter ou déjà traitées.</span></div><span class="pill">${history.length}</span></div><div class="inventory-session-list">${history.length?history.map(sessionCard).join(''):'<div class="card empty">Aucune session terminée.</div>'}</div>`;
   $('#inventoryContent').innerHTML=`${tabs}${overview}${body}`;
   bindInventory();
+  ensureManagerReplenishment();
   document.querySelectorAll('[data-inventory-view]').forEach(b=>b.addEventListener('click',()=>{inventoryView=b.dataset.inventoryView;renderInventory()}));
   setTimeout(()=>{let prefill='';try{prefill=sessionStorage.getItem('storeops_express_prefill_ean')||'';sessionStorage.removeItem('storeops_express_prefill_ean')}catch{}const ean=$('#invQuickEan');if(ean&&prefill){ean.value=prefill;$('#invQuickQty')?.focus?.()}else{const target=$('#invQuickReasonExplain')||$('#invQuickRecountQty')||ean;target?.focus?.()}},80);
 }
