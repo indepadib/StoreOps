@@ -1,0 +1,40 @@
+name: V2.40 Store Truth Glovo
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  store-truth-glovo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dynamics-sales.mjs
+          node --check backend/services/stock-signals.mjs
+          node --check backend/services/glovo-availability.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/pages/manager-scan.js
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check frontend/js/mobile-barcode.js
+          node --check frontend/js/app.js
+          node --check frontend/js/pages/network.js
+          node --check frontend/js/pages/channel-availability.js
+      - name: Store truth and Glovo contract
+        run: node backend/tests/v240-store-truth-glovo.mjs
+      - name: Same-time D-7 contract
+        run: node backend/tests/v235-same-time-pulse.mjs
+      - name: Replenishment assistant
+        run: node backend/tests/manager-replenishment-assistant.mjs
+      - name: Manager runtime stability
+        run: node backend/tests/v2393-manager-runtime-stability.mjs
+      - name: Version contract
+        run: node backend/tests/version-contract.mjs
