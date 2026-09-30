@@ -1,6 +1,6 @@
 import {canAccessStore,canManageStore} from './permissions.mjs';
 import {sellThroughSnapshot} from './sell-through.mjs';
-import {buildGlovoAvailability,pushGlovoAvailability} from './glovo-availability.mjs';
+import {buildGlovoAvailability,pushGlovoAvailability,verifyGlovoConnection} from './glovo-availability.mjs';
 import {coolSaveBasket,coolSaveSuggestions,createCoolSaveBasket,publishCoolSaveBasket,cancelCoolSaveBasket,listCoolSaveBaskets,coolSaveSummary} from './cool-save.mjs';
 import {listCoolSaveExternalOrders,coolSaveExternalOrderSummary} from './cool-save-orders.mjs';
 
@@ -13,6 +13,7 @@ export async function handleStoreGrowthApi({req,url,user}){
  const path=url.pathname;let p;
  p=route(path,'/api/stores/:storeId/sell-through');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await sellThroughSnapshot(p.storeId,{businessDate:url.searchParams.get('date')||undefined,force:url.searchParams.get('force')==='1'})}}
  p=route(path,'/api/stores/:storeId/channels/glovo');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/verify');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:200,data:await verifyGlovoConnection(p.storeId)}}
  p=route(path,'/api/stores/:storeId/channels/glovo/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:202,data:await pushGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
  p=route(path,'/api/stores/:storeId/cool-save/suggestions');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await coolSaveSuggestions(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
  p=route(path,'/api/stores/:storeId/cool-save');if(p){
