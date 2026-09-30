@@ -10,7 +10,7 @@ async function invoke(path,name,...args){const mod=await lazy(path),fn=mod?.[nam
 const isManager=()=>app.user?.role==='store_manager';
 const isDevelopmentOnly=()=>isDevelopment()&&!isManager();
 const managerControlPages=new Set(['staffing','coldChain','cashOpening','commercial','receipts','dlc','inventory','quality','maintenance','losses','cash']);
-function managerTabFor(page){if(page==='today'||page==='managerPerformance')return'today';if(page==='managerScan')return'managerScan';if(page==='managerControls')return'managerControls';if(page==='inventory')return'inventory';return'managerMore'}
+function managerTabFor(page){if(page==='today'||page==='managerPerformance')return'today';if(page==='managerScan')return'managerScan';if(page==='inventory')return'inventory';if(page==='losses')return'losses';return'managerMore'}
 function pilotSession(s){if(!app.showcase)return s;const patch=u=>u?.id==='u-vf'?{...u,name:'Ayoub Nachiti'}:u;return{...s,user:patch(s.user),availableDemoUsers:(s.availableDemoUsers||[]).map(patch)}}
 function pilotStores(rows){if(!app.showcase)return rows;return(rows||[]).map(s=>s.id==='val-fleuri'?{...s,opening_time:'08:00',closing_time:'23:00'}:s)}
 
