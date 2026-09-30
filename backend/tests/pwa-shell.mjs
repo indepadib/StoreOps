@@ -33,7 +33,7 @@ assert.ok(!assets.includes('/')&&!assets.includes('/index.html'),'HTML shell mus
 assert.match(index,/\/js\/boot-rescue\.js/,'boot rescue must load before application startup');
 assert.match(index,/\/manager-dlc-focus\.css/,'DLC focused manager stylesheet must be linked');
 assert.match(index,/\/manager-commercial-focus\.css/,'commercial focused manager stylesheet must be linked');
-assert.match(rescue,/storeops_boot_rescue_v2305/,'boot rescue must guard against reload loops');
+assert.match(rescue,/storeops_boot_rescue_v2402/,'boot rescue must guard against reload loops');
 assert.match(rescue,/getRegistrations\(\)/,'boot rescue must be able to remove a broken service worker');
 assert.match(rescue,/caches\.delete/,'boot rescue must clear stale StoreOps shell caches');
 assert.match(bootClassic,/STOREOPS_BOOT_PREP/,'classic runtime must prepare a cache-clean startup before modules');
@@ -53,7 +53,7 @@ assert.match(netlifyToml,/for = "\/runtime-config\.js"[\s\S]*Cache-Control = "no
 assert.match(repair,/serviceWorker\.getRegistrations\(\)/,'repair gateway must unregister legacy service workers independently of app modules');
 assert.match(repair,/caches\.keys\(\)/,'repair gateway must clear legacy browser caches');
 assert.match(repair,/storeops_showcase_state_v7/,'repair gateway must reset potentially stale Showcase state');
-assert.match(repair,/index\.html\?storeops_clean=2305/,'repair gateway must reopen a fresh index URL');
+assert.match(repair,/index\.html\?storeops_clean=2402/,'repair gateway must reopen a fresh index URL');
 assert.doesNotMatch(redirects,/^\/\s+\/repair\.html\s+30[12]/m,'root must stay direct so Microsoft OAuth callback query parameters are preserved');
 assert.match(redirects,/^\/repair\s+\/repair\.html\s+200/m,'repair must remain available as an explicit manual route');
 assert.match(netlifyToml,/for = "\/"[\s\S]*Cache-Control = "no-store, max-age=0"/,'root navigation must never be cached');
