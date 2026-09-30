@@ -7,7 +7,7 @@ const read=p=>readFileSync(new URL(p,root),'utf8');
 
 assert.equal(GLOVO_SKUS.size,1035,'Le catalogue Glovo doit reprendre les 1 035 SKU uniques des Jets 1 à 4.');
 assert.equal(GLOVO_CATALOG_VERSION,'2026-09-30');
-for(const sku of ['HS-001191','HS-000994','HS-005591'])assert.ok(GLOVO_SKUS.has(sku),`SKU Glovo attendu absent: ${sku}`);
+for(const sku of ['HS-001191','HS-000224','HS-005591'])assert.ok(GLOVO_SKUS.has(sku),`SKU Glovo attendu absent: ${sku}`);
 
 const stock=read('backend/services/stock-signals.mjs');
 assert.match(stock,/productNameSource/);
