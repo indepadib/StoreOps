@@ -9,7 +9,7 @@ let cfg=null,data=null,inventoryView='COUNT',quickInventoryProduct=null,replenis
 function ensureManagerReplenishment(){
  if(app.user?.role!=='store_manager'||replenishmentLazyStarted)return;
  replenishmentLazyStarted=true;
- import('../manager-replenishment-v2.js?v=2400').catch(e=>{replenishmentLazyStarted=false;console.warn('Assistant réapprovisionnement indisponible',e)});
+ import('../manager-replenishment-v2.js?v=2402').catch(e=>{replenishmentLazyStarted=false;console.warn('Assistant réapprovisionnement indisponible',e)});
 }
 function focusedInventorySessionId(){try{return sessionStorage.getItem(FOCUS_INVENTORY_KEY)||''}catch{return''}}
 function setFocusedInventorySession(id=''){try{id?sessionStorage.setItem(FOCUS_INVENTORY_KEY,id):sessionStorage.removeItem(FOCUS_INVENTORY_KEY)}catch{}}

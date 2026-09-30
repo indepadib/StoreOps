@@ -25,7 +25,7 @@ assert.ok(scanner.includes('Html5Qrcode'),'iOS/Safari fallback implementation mi
 assert.ok(scanner.includes('EAN_13')&&scanner.includes('CODE_128'),'fallback must support retail 1D barcodes');
 assert.ok(scanner.includes('saisie manuelle'),'manual fallback must remain explicit');
 assert.ok(scanner.includes("facingMode:'environment'")||scanner.includes("facingMode:{ideal:'environment'}"),'rear camera must be preferred');
-assert.ok(pwa.includes("import './mobile-barcode.js?v=2400'"),'mobile scan layer must load with a cache-busted StoreOps runtime');
+assert.ok(pwa.includes("import './mobile-barcode.js?v=2402'"),'mobile scan layer must load with a cache-busted StoreOps runtime');
 assert.ok(sw.includes("'/js/mobile-barcode.js'"),'scanner JS must be available in the PWA shell');
 assert.ok(sw.includes("'/mobile-barcode.css'"),'scanner CSS must be available in the PWA shell');
 
