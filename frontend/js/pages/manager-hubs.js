@@ -81,6 +81,7 @@ export async function renderManagerMore(){
   $('#managerMoreContent').innerHTML=`
     <div class="manager-hub-head"><span class="manager-eyebrow">Plus</span><h2>Tous les outils</h2><p>Accès direct aux modules quand vous ne passez pas par la file « À valider ».</p></div>
     <div class="manager-more-grid">
+      ${navCard('inventory','Ruptures & réapprovisionnement','Rupture, stock négatif, Direct ou DC : StoreOps propose le bon circuit, prépare TO / PO et consolide le lot.','Stock magasin → action')}
       ${navCard('managerTeam','Équipe & prise de poste','Présences, couverture et actions équipe du magasin.')}
       ${navCard('commercial','Prix & promotions','Scan prix, changements du jour et promotions.')}
       ${navCard('inventory','Comptage express','Scanner librement un article, compter, puis passer au suivant.','Terrain · scan libre','data-inventory-mode="COUNT"')}
