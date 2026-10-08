@@ -17,6 +17,7 @@ let activeTargetInput=null,activeAfterScan=null,activeCameraCandidates=[],active
 const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
+function setScannerMode(mode='linear'){const host=document.querySelector('#storeopsBarcodeScanner');if(host)host.dataset.scanMode=mode;}
 
 function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2403';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
@@ -29,9 +30,9 @@ function scannerShell(){
   host.className='barcode-scanner-backdrop';
   host.hidden=true;
   host.innerHTML=`<div class="barcode-scanner-sheet" role="dialog" aria-modal="true" aria-label="Scanner un code-barres">
-    <div class="barcode-scanner-head"><div><strong>Scanner l’article</strong><small>Cadre uniquement le code-barres, idéalement avec l’objectif 1×.</small></div><button class="btn ghost" type="button" data-close-barcode-scanner>Fermer</button></div>
+    <div class="barcode-scanner-head"><div><strong>Scanner l’article</strong><small>Présente simplement le code-barres : horizontal, vertical ou incliné. StoreOps adapte la lecture.</small></div><button class="btn ghost" type="button" data-close-barcode-scanner>Fermer</button></div>
     <div class="barcode-video-wrap"><video id="storeopsBarcodeVideo" playsinline muted></video><div id="storeopsHtml5Reader" class="barcode-html5-reader" hidden></div><div class="barcode-frame"><span></span></div></div>
-    <div class="barcode-scanner-foot"><strong>Lecture EAN automatique</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>À 15–25 cm, garde les barres nettes dans la bande blanche. Si l’image est floue, utilise « Changer d’objectif » : StoreOps privilégie l’objectif arrière 1× et évite l’ultra grand-angle.</span>
+    <div class="barcode-scanner-foot"><strong>Lecture EAN automatique</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>À 15–25 cm, laisse l’appareil faire la mise au point. StoreOps commence par une lecture rapide puis élargit automatiquement la zone pour accepter un code tourné ou incliné.</span>
       <div class="barcode-scanner-actions"><button class="btn soft" type="button" data-barcode-next-camera>Changer d’objectif</button><label class="btn soft barcode-photo-action" for="storeopsBarcodePhoto">Photo du code</label><button class="btn ghost" type="button" data-barcode-retry>Relancer</button></div>
       <input id="storeopsBarcodePhoto" type="file" accept="image/*" capture="environment" hidden>
     </div>
@@ -44,7 +45,7 @@ function scannerShell(){
     if(!activeTargetInput||!activeCameraCandidates.length)return;
     activeCameraIndex=(activeCameraIndex+1)%activeCameraCandidates.length;
     setScanStatus(`Changement d’objectif · essai ${activeCameraIndex+1}/${activeCameraCandidates.length}…`,'switching');
-    await startHtml5Candidate(activeTargetInput,activeAfterScan,scanToken);
+    await startHtml5Candidate(activeTargetInput,activeAfterScan,scanToken,'linear');
   });
   host.querySelector('#storeopsBarcodePhoto').addEventListener('change',async e=>{const file=e.target.files?.[0];e.target.value='';if(file)await scanPhotoFile(file)});
   return host;
@@ -157,37 +158,44 @@ async function startNativeScanner(detector,input,afterScan,token){
   };
   activeFrame=requestAnimationFrame(tick);
 }
-async function startHtml5Candidate(input,afterScan,token){
+async function startHtml5Candidate(input,afterScan,token,scanMode='linear'){
   if(token!==scanToken)return;
   if(activeFallbackTimer)clearTimeout(activeFallbackTimer);
   activeFallbackTimer=null;
   await shutdownHtml5();
   if(token!==scanToken)return;
-  const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');video.hidden=true;reader.hidden=false;host.hidden=false;
+  const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');video.hidden=true;reader.hidden=false;host.hidden=false;setScannerMode(scanMode);
   const candidate=activeCameraCandidates[activeCameraIndex]||null,camera=candidate?.id||{facingMode:'environment'};
   try{
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formatConfig());
-    const apple=isAppleMobile();
-    await activeHtml5.start(camera,{fps:apple?24:18,aspectRatio:apple?3/4:4/3,qrbox:(w,h)=>({width:Math.max(180,Math.min(760,Math.round(w*.94))),height:Math.max(110,Math.min(360,Math.round(h*(apple?0.36:0.46))))}),disableFlip:false},decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
+    const apple=isAppleMobile(),multi=scanMode==='multi-angle';
+    const qrbox=(w,h)=>multi
+      ?{width:Math.max(190,Math.min(820,Math.round(w*.92))),height:Math.max(220,Math.min(640,Math.round(h*(apple?0.74:0.68))))}
+      :{width:Math.max(180,Math.min(760,Math.round(w*.94))),height:Math.max(110,Math.min(360,Math.round(h*(apple?0.36:0.46))))};
+    await activeHtml5.start(camera,{fps:apple?24:18,aspectRatio:apple?3/4:4/3,qrbox,disableFlip:false},decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
     if(token!==scanToken)return;
     await tuneHtml5Camera(reader);
     const suffix=candidate?.virtual?' · caméra arrière auto':activeCameraCandidates.length>1?` · objectif ${activeCameraIndex+1}/${activeCameraCandidates.length}`:'';
-    setScanStatus(`EAN prêt${suffix} · centre les barres dans la bande blanche et attends la mise au point.`,'ready');
+    setScanStatus(multi?`Lecture multi-angle${suffix} · le code peut être horizontal, vertical ou incliné.`:`EAN prêt${suffix} · centre les barres et attends la mise au point.`,'ready');
     const nextButton=host.querySelector('[data-barcode-next-camera]');if(nextButton)nextButton.disabled=activeCameraCandidates.length<2;
     activeFallbackTimer=setTimeout(async()=>{
       if(token!==scanToken)return;
+      if(scanMode==='linear'){
+        setScanStatus('Code non lu immédiatement · passage automatique en lecture multi-angle…','switching');
+        return startHtml5Candidate(input,afterScan,token,'multi-angle');
+      }
       if(activeCameraIndex<activeCameraCandidates.length-1){
         activeCameraIndex+=1;
         setScanStatus(`Code non lu · essai automatique d’un autre objectif (${activeCameraIndex+1}/${activeCameraCandidates.length})…`,'switching');
-        await startHtml5Candidate(input,afterScan,token);
-      }else{
-        setScanStatus('Le live n’a pas obtenu une image assez nette. Essaie « Changer d’objectif » ou « Photo du code » pour une capture haute définition.','photo');
-        host.querySelector('.barcode-photo-action')?.classList.add('recommended');
+        return startHtml5Candidate(input,afterScan,token,'linear');
       }
-    },5200);
+      setScanStatus('Le live n’a pas obtenu une image assez nette. Utilise « Photo du code » pour une capture haute définition, ou relance le live.','photo');
+      host.querySelector('.barcode-photo-action')?.classList.add('recommended');
+    },scanMode==='linear'?3200:4800);
   }catch(e){
     if(token!==scanToken)return;
-    if(activeCameraIndex<activeCameraCandidates.length-1){activeCameraIndex+=1;return startHtml5Candidate(input,afterScan,token)}
+    if(scanMode==='linear')return startHtml5Candidate(input,afterScan,token,'multi-angle');
+    if(activeCameraIndex<activeCameraCandidates.length-1){activeCameraIndex+=1;return startHtml5Candidate(input,afterScan,token,'linear')}
     setScanStatus('Le live caméra est indisponible. Utilise « Photo du code » ou saisis l’EAN manuellement.','photo');
     host.querySelector('.barcode-photo-action')?.classList.add('recommended');
     if(e?.name==='NotAllowedError')toast('Autorise la caméra pour scanner, ou saisis le code manuellement.');
@@ -206,7 +214,7 @@ async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={
   }catch{physicalCameras=[]}
   activeCameraCandidates=physicalCameras.length?physicalCameras:[{id:null,label:'Caméra arrière automatique',virtual:true}];
   activeCameraIndex=0;
-  await startHtml5Candidate(input,afterScan,token);
+  await startHtml5Candidate(input,afterScan,token,'linear');
 }
 async function scanPhotoFile(file){
   const input=activeTargetInput,afterScan=activeAfterScan,token=scanToken;if(!input||!file)return;
@@ -232,7 +240,7 @@ async function startScanner(input,afterScan){
   stopScanner();
   activeTargetInput=input;activeAfterScan=afterScan;
   const token=scanToken;
-  const host=scannerShell();host.hidden=false;host.querySelector('.barcode-photo-action')?.classList.remove('recommended');setScanStatus('Initialisation de la caméra…');
+  const host=scannerShell();host.hidden=false;setScannerMode('linear');host.querySelector('.barcode-photo-action')?.classList.remove('recommended');setScanStatus('Initialisation de la caméra…');
   if(isAppleMobile())return startIosFallback(input,afterScan,{reason:'ios',token});
   const detector=await supportedDetector();if(token!==scanToken)return;
   if(detector)return startNativeScanner(detector,input,afterScan,token);
