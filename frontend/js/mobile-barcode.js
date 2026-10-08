@@ -117,8 +117,7 @@ function cameraScore(camera,index){
   if(/back|rear|arriere|trasera|posterior|ruck|hinten/.test(label))score+=120;
   if(/front|avant|frontal|user|selfie/.test(label))score-=240;
   if(/(^|\s)(wide|grand angle|grand-angle)(\s|$)|camera 1x|1x/.test(label))score+=55;
-  if(/ultra|0\.5|0,5/.test(label))score-=150;
-  if(/tele|telephoto|zoom/.test(label))score-=110;
+  if(/ultra|0\.5|0,5|tele|telephoto|zoom/.test(label))score-=150;
   if(/dual|triple/.test(label))score-=45;
   if(isAppleMobile()&&/back camera|camera arriere/.test(label))score+=35;
   if(isAppleMobile()&&index===0)score+=8;
