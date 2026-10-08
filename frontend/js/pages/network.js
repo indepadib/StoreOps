@@ -16,7 +16,7 @@ export async function renderNetwork(){
  if(!isDirector())return;
  const host=$('#networkContent');if(!host)return;
  host.innerHTML='<div class="network-loading card"><strong>Chargement de la vue Réseau…</strong><span>Les magasins apparaissent immédiatement, puis StoreOps enrichit la vue avec les sources disponibles.</span></div>';
- const baseLoad=await safe(api('/api/network'),6000);
+ const baseLoad=await safe(api('/api/network'),7000);
  const networkLive=baseLoad.ok&&Array.isArray(baseLoad.data);
  let base=networkLive?baseLoad.data:localNetworkBase();
  if(!base.length){

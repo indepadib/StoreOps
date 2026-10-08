@@ -54,8 +54,8 @@ assert.match(inventory,/import\('\.\.\/manager-replenishment-v2\.js\?v=2402'\)/,
 assert.match(read('frontend/js/enhancements-entry.js'),/const BUILD='2403'/,'Les modules Direction doivent utiliser le cache v2.40.');
 
 const barcode=read('frontend/js/mobile-barcode.js');
-assert.match(barcode,/apple\?0\.72:0\.58/);
-assert.match(barcode,/horizontal ou vertical/);
+assert.match(barcode,/apple\?0\.36:0\.46/);
+assert.match(barcode,/Changer d’objectif/);
 assert.match(read('frontend/js/pwa.js'),/mobile-barcode\.js\?v=2403/);
 
 console.log('StoreOps V2.40 store truth + Glovo contract: OK');

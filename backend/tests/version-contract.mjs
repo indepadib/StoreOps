@@ -22,7 +22,7 @@ assert.match(env,/STOREOPS_VERSION=2\.40\.2/);
 assert.match(server,/version:config\.appVersion/g);
 assert.doesNotMatch(server,/version:'1\.10'|StoreOps V1\.10/);
 assert.match(showcaseApi,/SHOWCASE_VERSION='2\.40\.2-showcase'/);
-assert.match(netlifyBuild,/STOREOPS_RELEASE_BUILD="\$\{STOREOPS_RELEASE_BUILD:-2402\}"/,'Netlify build fallback must use V2.40.2 cache key');
+assert.match(netlifyBuild,/STOREOPS_RELEASE_BUILD="\$\{STOREOPS_RELEASE_BUILD:-2403\}"/,'Netlify build fallback must use frontend build 2403 cache key');
 assert.match(bootClassic,/var BUILD='2\.40\.2'/,'early boot watchdog must expose V2.40.2');
 assert.match(authEntry,/const BUILD='2403'/);
 assert.match(authEntry,/enhancements-entry\.js\?v=2403/);
