@@ -14,6 +14,7 @@ assert.match(barcode,/focusMode:'continuous'/);
 assert.match(barcode,/zoom/);
 assert.match(barcode,/apple\?0\.36:0\.46/);
 assert.match(css,/inset:31% 6%/);
+assert.match(css,/data-scan-mode="multi-angle"/);
 assert.match(network,/localNetworkBase/);
 assert.match(network,/Mode de secours Réseau actif/);
 assert.match(network,/\/dashboard/);
