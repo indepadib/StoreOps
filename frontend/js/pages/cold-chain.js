@@ -1,3 +1,4 @@
+import {renderTemperatureRegister} from '../temperature-register.js';
 import { api } from '../api.js';
 import { app,canManageQuality,isDirector,isQualityAudit } from '../state.js';
 import { $,esc,status,toast } from '../ui.js';
@@ -25,6 +26,8 @@ export async function renderColdChain(){
   <div class="cold-grid">${(d?.lines||[]).map(x=>zoneCard(x,locked)).join('')}</div>
   ${isDirector()?profilePanel(config.profiles):''}`;
  bind();
+ const register=document.createElement('section');register.id='temperatureRegister';$('#coldChainContent').prepend(register);
+ await renderTemperatureRegister(register,config);
 }
 function t(v){return v==null?'—':`${Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1})} °C`}
 function zoneCard(x,locked){const p=x.profile||{},st=STATE[x.status]||[x.status,'neutral'],incident=x.incident,openIncident=incident?.status==='OPEN';return`<article class="card cold-card ${x.status==='MISMATCH'?'has-error':x.status==='READY'?'is-ready':''}">
@@ -46,6 +49,6 @@ function profilePanel(profiles){return`<details class="card" style="margin-top:1
 function value(sel,id){return document.querySelector(`[${sel}="${id}"]`)?.value}
 function checked(sel,id){return !!document.querySelector(`[${sel}="${id}"]`)?.checked}
 function bind(){
- document.querySelectorAll('[data-cold-action]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.coldAction,recheck=b.dataset.recheck==='1',payload={temperature:Number(value('data-cold-temp',id)),doorOk:checked('data-cold-door',id),note:value('data-cold-note',id)||''};if(recheck)payload.maintenanceSignaled=checked('data-cold-maint',id);try{await api(`/api/cold-chain/lines/${id}/${recheck?'recheck':'check'}`,{method:'POST',body:JSON.stringify(payload)});toast(recheck?'Recontrôle froid conforme.':'Relevé froid conforme.');renderColdChain()}catch(e){toast(Array.isArray(e.details)&&e.details.length?e.details.join(' · '):e.message);renderColdChain()}}));
+ document.querySelectorAll('[data-cold-action]').forEach(b=>b.addEventListener('click',async()=>{const id=b.dataset.coldAction,recheck=b.dataset.recheck==='1',payload={temperature:value('data-cold-temp',id),doorOk:checked('data-cold-door',id),note:value('data-cold-note',id)||''};if(recheck)payload.maintenanceSignaled=checked('data-cold-maint',id);try{await api(`/api/cold-chain/lines/${id}/${recheck?'recheck':'check'}`,{method:'POST',body:JSON.stringify(payload)});toast(recheck?'Recontrôle froid conforme.':'Relevé froid conforme.');renderColdChain()}catch(e){toast(Array.isArray(e.details)&&e.details.length?e.details.join(' · '):e.message);renderColdChain()}}));
  document.querySelectorAll('[data-save-cold-profile]').forEach(b=>b.addEventListener('click',async()=>{const code=b.dataset.saveColdProfile;try{await api(`/api/cold-chain/profiles/${code}`,{method:'PUT',body:JSON.stringify({tempMin:Number(value('data-cold-min',code)),tempMax:Number(value('data-cold-max',code))})});toast('Plage température réseau mise à jour.');renderColdChain()}catch(e){toast(e.message)}}));
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-process.env.STOREOPS_DB=`/tmp/storeops-v236-${process.pid}.db`;
+process.env.STOREOPS_DB=process.env.STOREOPS_DB||`/tmp/storeops-v236-${process.pid}.db`;
 const {releasedProductDisplayName,normalizeReleasedProductSupplyMode,parseRetailFinancialDimension,releasedProductProfile}=await import('../services/released-product-sourcing.mjs');
 const {promoExpectedPrice}=await import('../services/dynamics.mjs');
 
@@ -42,8 +42,9 @@ assert.match(released,/DEFAULTLEDGERDIMENSIONDISPLAYVALUE/,'ReleasedProducts pro
 assert.match(released,/cachePut\(sku,\{status:supplyMode/,'batch product identities must be cached');
 assert.match(stock,/releasedProductSourcingMany\(items\.map/,'all action rows including negative stock must be identity-enriched');
 assert.match(stock,/releasedName=clean\(sourcing\.productName\)/,'stock signals must resolve ReleasedProducts names first');
-assert.match(stock,/productNameSource:nameSource/,'stock signals must expose the authoritative identity source');
-assert.match(pulse,/generic=.*article/,'Business Pulse must treat generic Article labels as unresolved');
+assert.match(stock,/productNameSource:sourcing\.productNameSource\|\|nameSource/,'stock signals must expose the authoritative identity source');
+assert.match(pulse,/usableProductName/,'Business Pulse must use shared validation for generic article labels');
+assert.match(read('backend/services/product-label.mjs'),/article\|item\|product/,'shared validation must reject generic article labels');
 assert.match(sell,/genericName/,'sell-through must reject generic article names');
 assert.match(sell,/snapshotCache/,'sell-through must cache expensive snapshots');
 assert.match(glovo,/availabilityCache/,'Glovo availability must be cached');

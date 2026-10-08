@@ -52,6 +52,11 @@ CREATE INDEX IF NOT EXISTS ix_merch_product_category ON merchandising_product_ca
 CREATE INDEX IF NOT EXISTS ix_assortment_store_product ON store_assortment_products(store_id,product_number,included);
 `);
 
+// Additive migration: preserve previous snapshots and their history.
+for(const table of ['merchandising_categories','merchandising_product_categories']){
+ if(!db.prepare(`PRAGMA table_info(${table})`).all().some(x=>x.name==='category_code'))db.exec(`ALTER TABLE ${table} ADD COLUMN category_code TEXT NULL`);
+}
+
 function activeWindow(from,to,day){
  const f=isoDate(from),t=isoDate(to),d=isoDate(day)||new Date().toISOString().slice(0,10);
  return (!f||f<=d)&&(!t||t>=d)
@@ -72,29 +77,29 @@ function insertAssortment(tx,{store,source,key,name=null,products=[],complete=tr
 
 export function syncCategoryHierarchy({source='GENERIC',hierarchyKey='PROCUREMENT',categories=[]}={}){
  const s=clean(source)||'GENERIC',h=clean(hierarchyKey)||'PROCUREMENT';
- db.exec('BEGIN');
+ db.exec('SAVEPOINT sync_category');
  try{
   db.prepare(`DELETE FROM merchandising_categories WHERE source=? AND hierarchy_key=?`).run(s,h);
-  const ins=db.prepare(`INSERT INTO merchandising_categories(source,hierarchy_key,category_id,category_name,parent_category_id,level,path,active,synced_at) VALUES(?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`);
+  const ins=db.prepare(`INSERT INTO merchandising_categories(source,hierarchy_key,category_id,category_name,parent_category_id,level,path,active,category_code,synced_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)`);
   let inserted=0;
   for(const row of Array.isArray(categories)?categories:[]){
    const id=clean(row.categoryId??row.id??row.code),name=clean(row.categoryName??row.name??row.label);if(!id||!name)continue;
-   ins.run(s,h,id,name,clean(row.parentCategoryId??row.parentId)||null,Number.isFinite(Number(row.level))?Number(row.level):null,clean(row.path)||null,row.active===false?0:1);inserted++;
+   ins.run(s,h,id,name,clean(row.parentCategoryId??row.parentId)||null,Number.isFinite(Number(row.level))?Number(row.level):null,clean(row.path)||null,row.active===false?0:1,clean(row.categoryCode)||null);inserted++;
   }
-  db.exec('COMMIT');return{source:s,hierarchyKey:h,inserted};
- }catch(error){db.exec('ROLLBACK');throw error}
+  db.exec('RELEASE sync_category');return{source:s,hierarchyKey:h,inserted};
+ }catch(error){db.exec('ROLLBACK TO sync_category');db.exec('RELEASE sync_category');throw error}
 }
 
 export function syncProductCategoryAssignments({source='GENERIC',hierarchyKey='PROCUREMENT',assignments=[]}={}){
  const s=clean(source)||'GENERIC',h=clean(hierarchyKey)||'PROCUREMENT';
- db.exec('BEGIN');
+ db.exec('SAVEPOINT sync_assignment');
  try{
   db.prepare(`DELETE FROM merchandising_product_categories WHERE source=? AND hierarchy_key=?`).run(s,h);
-  const ins=db.prepare(`INSERT OR IGNORE INTO merchandising_product_categories(source,hierarchy_key,product_number,category_id,synced_at) VALUES(?,?,?,?,CURRENT_TIMESTAMP)`);
+  const ins=db.prepare(`INSERT OR IGNORE INTO merchandising_product_categories(source,hierarchy_key,product_number,category_id,category_code,synced_at) VALUES(?,?,?,?,?,CURRENT_TIMESTAMP)`);
   let inserted=0;
-  for(const row of Array.isArray(assignments)?assignments:[]){const p=clean(row.productNumber??row.itemNumber??row.product),c=clean(row.categoryId??row.category);if(!p||!c)continue;inserted+=Number(ins.run(s,h,p,c).changes||0)}
-  db.exec('COMMIT');return{source:s,hierarchyKey:h,inserted};
- }catch(error){db.exec('ROLLBACK');throw error}
+  for(const row of Array.isArray(assignments)?assignments:[]){const p=clean(row.productNumber??row.itemNumber??row.product),c=clean(row.categoryId??row.category);if(!p||!c)continue;inserted+=Number(ins.run(s,h,p,c,clean(row.categoryCode)||null).changes||0)}
+  db.exec('RELEASE sync_assignment');return{source:s,hierarchyKey:h,inserted};
+ }catch(error){db.exec('ROLLBACK TO sync_assignment');db.exec('RELEASE sync_assignment');throw error}
 }
 
 export function syncStoreAssortmentSnapshot({storeId,source='GENERIC',assortmentKey='default',assortmentName=null,products=[],complete=true,validFrom=null,validTo=null}={}){

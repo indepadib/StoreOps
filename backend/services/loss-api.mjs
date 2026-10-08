@@ -1,3 +1,4 @@
+import {temperatureRegister,createTemperatureEquipment,recordTemperature} from './temperature-log.mjs';
 import { db,todayISO } from '../db.mjs';
 import { canAccessStore,canManageStore,canManageQuality } from './permissions.mjs';
 import { getProductByEan,postLossToDynamics,getDynamicsDiagnostics,probeDataEntity } from './dynamics.mjs';
@@ -98,6 +99,10 @@ export async function handleLossApi({req,url,user}){
  p=route(path,'/api/stores/:storeId/staffing');if(p&&req.method==='GET'){requireStore(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),day=staffingDay(p.storeId,businessDate);return{status:200,data:{summary:staffingSummary(p.storeId,businessDate),day,sync:day?{ok:true,cached:true}:{ok:false,code:'STAFFING_NOT_SYNCED',message:'Planning non synchronisé pour cette journée.'}}}}
  p=route(path,'/api/stores/:storeId/staffing/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireManage(user,p.storeId);const businessDate=url.searchParams.get('date')||todayISO(),snapshot=await getStaffingSnapshot(p.storeId,businessDate),day=syncStaffingDay({storeId:p.storeId,businessDate,snapshot});return{status:200,data:{summary:staffingSummary(p.storeId,businessDate),day,sync:{ok:true,source:snapshot.source||'PLANNING'}}}}
  p=route(path,'/api/staffing/lines/:lineId/attendance');if(p&&req.method==='POST'){const row=db.prepare(`SELECT d.store_id FROM staffing_lines l JOIN staffing_days d ON d.id=l.staffing_day_id WHERE l.id=?`).get(p.lineId);if(!row)throw Object.assign(new Error('Collaborateur planning introuvable.'),{status:404});requireStore(user,row.store_id);requireManage(user,row.store_id);const b=await body(req);return{status:200,data:setAttendance({lineId:p.lineId,user,status:b.status,replacementName:b.replacementName||'',note:b.note||''})}}
+
+ p=route(path,'/api/stores/:storeId/temperature-register');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:temperatureRegister(p.storeId,{date:url.searchParams.get('date')||undefined})}}
+ p=route(path,'/api/stores/:storeId/temperature-equipment');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireQualityManage(user,p.storeId);const input=await body(req);return{status:201,data:createTemperatureEquipment({storeId:p.storeId,user,input})}}
+ p=route(path,'/api/stores/:storeId/temperature-readings');if(p&&req.method==='POST'){requireStore(user,p.storeId);requireQualityManage(user,p.storeId);const input=await body(req);return{status:201,data:recordTemperature({storeId:p.storeId,user,input})}}
 
  if(path==='/api/cold-chain/config'&&req.method==='GET')return{status:200,data:coldChainConfig()};
  p=route(path,'/api/cold-chain/profiles/:code');if(p&&(req.method==='PUT'||req.method==='PATCH')){requireDirector(user);const b=await body(req);return{status:200,data:updateColdProfile({code:p.code,user,tempMin:b.tempMin,tempMax:b.tempMax})}}

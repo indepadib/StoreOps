@@ -1,3 +1,4 @@
+import {renderHierarchyPerformance} from '../hierarchy-performance.js';
 import { api } from '../api.js';
 import { app } from '../state.js';
 import { $,esc,toast } from '../ui.js';
@@ -9,7 +10,7 @@ const ratio=v=>v==null?'—':`${Number(v).toLocaleString('fr-FR',{maximumFractio
 const number=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:2});
 const safeRows=k=>(pulse?.snapshot?.breakdowns?.[k]||[]);
 const top=k=>safeRows(k)[0]||null;
-function tabLabel(k){return({departments:'Rayons',categories:'Catégories',products:'Articles',hourly:'Heures'}[k]||k)}
+function tabLabel(k){return({departments:'Départements',categories:'Familles',products:'Articles',hourly:'Heures'}[k]||k)}
 function tone(v,{goodAbove=true}={}){if(v==null)return'';const n=Number(v);return goodAbove?(n>0?'up':n<0?'down':''):(n>0?'down':n<0?'up':'')}
 function metric(label,value,small='',cls=''){return `<div class="performance-kpi ${cls}"><span>${esc(label)}</span><strong>${value}</strong><small>${small}</small></div>`}
 function insight(label,row,kind){if(!row)return `<div><span>${esc(label)}</span><strong>—</strong><small>Donnée indisponible</small></div>`;const detail=kind==='hourly'?'créneau le plus fort':`${money(row.sales)} · ${number(row.units)} u.${row.rayonLabel?` · ${esc(row.rayonLabel)}`:''}`;return `<div><span>${esc(label)}</span><strong>${esc(row.label||row.key)}</strong><small>${detail}</small></div>`}
@@ -44,7 +45,7 @@ export async function renderManagerPerformance(){
   pulse=await api(`/api/stores/${app.storeId}/business-pulse`);
   const host=$('#managerPerformanceContent');if(!host)return;
   if(pulse.status!=='READY'||!pulse.snapshot){host.innerHTML=unavailable(pulse);return}
-  const k=pulse.snapshot.kpis||{},change=k.changeVsComparison,delta=k.comparisonDelta,comparison=comparisonDescriptor(),stock=pulse.stock||{},dep=top('departments'),cat=top('categories'),prod=top('products'),hour=top('hourly');
+  const k=pulse.snapshot.kpis||{},change=k.changeVsComparison,delta=k.comparisonDelta,comparison=comparisonDescriptor(),stock=pulse.stock||{},dep=pulse.snapshot.hierarchyRankings?.rayon?.find(x=>!x.unclassified)||null,cat=top('categories'),prod=top('products'),hour=top('hourly');
   host.innerHTML=`<div class="performance-shell performance-dashboard">
    <div class="manager-hub-head performance-title"><div><span class="manager-eyebrow">BUSINESS PULSE · PILOTAGE</span><h2>Les chiffres du magasin</h2><p>Ventes, clients et disponibilité dans une seule lecture opérationnelle.</p></div><button class="btn soft" id="refreshPerformance">Actualiser</button></div>
 
@@ -93,22 +94,24 @@ export async function renderManagerPerformance(){
     <div class="performance-section-head"><div><strong>Lecture rapide</strong><span>Où se fait le chiffre aujourd’hui.</span></div></div>
     <div class="performance-insights">
      ${insight('Top rayon',dep)}
-     ${insight('Top catégorie',cat)}
+     ${insight('Top famille',cat)}
      ${insight('Top article',prod)}
      ${insight('Heure la plus forte',hour,'hourly')}
     </div>
    </section>
 
    <section class="performance-section">
-    <div class="performance-section-head"><div><strong>Décomposition du CA</strong><span>Descendez du rayon jusqu’à l’article.</span></div></div>
+    <div class="performance-section-head"><div><strong>Décomposition du CA</strong><span>Ventes détaillées et répartition horaire.</span></div></div>
     <div class="performance-tabs">${['departments','categories','products','hourly'].map(x=>`<button data-performance-dim="${x}" class="${x===dimension?'active':''}">${tabLabel(x)}</button>`).join('')}</div>
     <div id="performanceRows" class="performance-list"></div>
    </section>
 
+   <div id="hierarchyPerformance"></div>
    ${sourceHealth()}
    <div class="pulse-actions"><span class="pulse-source">Source ${esc(pulse.source||'—')} · actualisé ${new Date(pulse.refreshedAt).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}</span></div>
   </div>`;
   renderRows();
+  renderHierarchyPerformance($('#hierarchyPerformance'),pulse);
   document.querySelectorAll('[data-performance-dim]').forEach(b=>b.onclick=()=>{dimension=b.dataset.performanceDim;renderRows()});
   $('#refreshPerformance')?.addEventListener('click',async()=>{try{pulse=await api(`/api/stores/${app.storeId}/business-pulse/refresh`,{method:'POST'});toast('Business Pulse actualisé.');renderManagerPerformance()}catch(e){toast(e.message)}});
  }catch(e){toast(e.message);throw e}

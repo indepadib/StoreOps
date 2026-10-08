@@ -1,10 +1,11 @@
+import {usableProductName} from './product-label.mjs';
+import {attachRetailHierarchy,rankRetailHierarchy,hierarchyContext} from './retail-hierarchy.mjs';
 import { config } from '../config.mjs';
 import { normalizeRetailInsights,quickPulse } from './retail-insights.mjs';
 import { readStoreSalesDay,salesComparisonDate,salesIntegrationConfig,salesComparisonCutoff } from './dynamics-sales.mjs';
 import { getStockSignals,peekStockSignals } from './stock-signals.mjs';
 import { readStoreLoyaltyRecruitments } from './dynamics-loyalty.mjs';
-import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
-import { cachedProductByProductNumber } from './product-cache.mjs';
+import { productDataMany as releasedProductSourcingMany } from './product-data.mjs';
 
 const cache=new Map();
 const inflight=new Map();
@@ -18,23 +19,9 @@ async function stockSummary(storeId,businessDate){
  return{source:s.source||null,outOfStockCount:ruptureReady?Number(s.summary?.outOfStock||0):null,nearOutOfStockCount:ruptureReady?Number(s.summary?.nearOutOfStock||0):null,ghostStockCount:ruptureReady?Number(s.summary?.ghostStock||0):null,negativeStockCount:Number(s.summary?.negative||0),residualOutsideAssortment:assortmentReady?Number(s.summary?.residualOutsideAssortment||0):null,salesRisk24h:ruptureReady?Number(s.summary?.salesRisk24h||0):null,recoverableWarehouseRisk24h:ruptureReady?Number(s.summary?.recoverableWarehouseRisk24h||0):null,supplierRisk24h:ruptureReady?Number(s.summary?.supplierRisk24h||0):null,unknownSupplyRisk24h:ruptureReady?Number(s.summary?.unknownSupplyRisk24h||0):null,ruptureReady,rupturePending:false,ruptureMethod:s.summary?.ruptureMethod||null,lowCoverageDays:s.summary?.lowCoverageDays??null,supplyReadStatus:s.summary?.supplyReadStatus||null,salesWindowDays:s.summary?.salesWindowDays||null,salesWindowProducts:s.summary?.salesWindowProducts??null,assortmentReady,assortmentState:s.summary?.assortmentState||null,cache:s.cache||null};
 }
 
-async function enrichProductNames(rows=[]){
-  const out=(rows||[]).map(x=>({...x})),unresolved=[],generic=(label,key)=>{const v=String(label||'').trim();return !v||v===String(key||'').trim()||/^article(?:\s|$)/i.test(v)||/^item(?:\s|$)/i.test(v)||/^product(?:\s|$)/i.test(v)};
-  for(const row of out){
-   const key=String(row.key||'').trim(),label=String(row.label||'').trim();
-   if(!key||!generic(label,key))continue;
-   const cached=cachedProductByProductNumber(key);
-   if(cached?.name&&cached.name!==key)row.label=cached.name;else unresolved.push(key)
-  }
-  if(unresolved.length){
-   const refs=await releasedProductSourcingMany(unresolved.slice(0,160));
-   for(const row of out){const key=String(row.key||'').trim(),ref=refs.get(key);if(!ref)continue;if(ref.productName&&generic(row.label,key))row.label=ref.productName;row.rayonCode=ref.rayonCode||null;row.rayonLabel=ref.rayonLabel||null;row.retailScope=ref.retailScope||null;row.supplyMode=ref.supplyMode||null}
-  }
-  return out
-}
-function rayonBreakdown(products=[]){
- const map=new Map();for(const p of products||[]){if(!p?.rayonLabel)continue;const key=[p.retailScope,p.rayonCode].filter(Boolean).join(':')||p.rayonLabel,cur=map.get(key)||{key,label:p.rayonLabel,sales:0,units:0,retailScope:p.retailScope||null,rayonCode:p.rayonCode||null};cur.sales+=Number(p.sales||0);cur.units+=Number(p.units||0);map.set(key,cur)}
- return[...map.values()].map(x=>({...x,sales:round2(x.sales),units:round2(x.units)})).sort((a,b)=>b.sales-a.sales)
+export async function enrichProductNames(rows=[]){
+ const refs=await releasedProductSourcingMany(rows.map(x=>x.key));
+ return rows.map(row=>{const ref=refs.get(String(row.key||'').trim())||{};return{...row,label:ref.productName||row.label,identityStatus:usableProductName(ref.productName,row.key)?ref.identityStatus:usableProductName(row.label,row.key)?'RESOLVED':'MISSING',productNameSource:ref.productNameSource||null,rayonCode:ref.rayonCode||null,rayonLabel:ref.rayonLabel||null,retailScope:ref.retailScope||null,supplyMode:ref.supplyMode||null}})
 }
 function pctChange(current,previous){const c=Number(current),p=Number(previous);return Number.isFinite(c)&&Number.isFinite(p)&&p!==0?round2(((c-p)/p)*100):null}
 function salesDeltaRows(current=[],previous=[]){
@@ -63,9 +50,19 @@ async function computeBusinessPulse(storeId,businessDate){
  if(current.status!=='READY'){
   const value={status:'UNAVAILABLE',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
  }
- const c=current.data||{};c.products=await enrichProductNames(c.products||[]);const releasedRayons=rayonBreakdown(c.products);if(releasedRayons.length)c.departments=releasedRayons;const rawPrior=comparison.status==='READY'?comparison.data:null,comparisonCutoff=rawPrior?.cutoff||null,comparisonUsable=comparison.status==='READY'&&(comparisonScope.mode==='FULL_DAY'||comparisonCutoff?.applied===true&&comparisonCutoff?.complete===true),prior=comparisonUsable?rawPrior:null,recruitment=recruitmentResult.status==='fulfilled'?recruitmentResult.value:{status:'UNAVAILABLE',recruitments:null,error:{code:recruitmentResult.reason?.code||'D365_LOYALTY_READ_FAILED',message:recruitmentResult.reason?.message||String(recruitmentResult.reason||'')}};
+ const context=hierarchyContext(),c={...(current.data||{})};c.products=attachRetailHierarchy(await enrichProductNames(c.products||[]),context);const rawPrior=comparison.status==='READY'?comparison.data:null,comparisonCutoff=rawPrior?.cutoff||null,comparisonUsable=comparison.status==='READY'&&(comparisonScope.mode==='FULL_DAY'||comparisonCutoff?.applied===true&&comparisonCutoff?.complete===true),prior=comparisonUsable?{...rawPrior}:null,recruitment=recruitmentResult.status==='fulfilled'?recruitmentResult.value:{status:'UNAVAILABLE',recruitments:null,error:{code:recruitmentResult.reason?.code||'D365_LOYALTY_READ_FAILED',message:recruitmentResult.reason?.message||String(recruitmentResult.reason||'')}};
  const baseLoyalty=c.loyalty||{},recruitments=recruitment.status==='READY'?Number(recruitment.recruitments||0):null,recruitmentRateNonLoyalty=recruitments!==null&&Number(baseLoyalty.nonLoyaltyTickets||0)>0?round2((recruitments/Number(baseLoyalty.nonLoyaltyTickets))*100):null,loyalty={...baseLoyalty,recruitments,recruitmentRateNonLoyalty,recruitmentSource:recruitment.status==='READY'?recruitment.source:'UNAVAILABLE'};
  const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount,nearOutOfStockCount:stock.nearOutOfStockCount,negativeStockCount:stock.negativeStockCount,residualOutsideAssortment:stock.residualOutsideAssortment,loyalty,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
+ const priorProducts=prior?attachRetailHierarchy(await enrichProductNames(prior.products||[]),context):null;
+ const hierarchyRankings=rankRetailHierarchy(c.products,priorProducts);
+ snapshot.hierarchyRankings=hierarchyRankings;
+ snapshot.breakdowns.departments=hierarchyRankings.department;
+ snapshot.breakdowns.categories=hierarchyRankings.family;
+ snapshot.hierarchyPreviousProducts=priorProducts;
+ snapshot.dataCoverage={products:c.products.length,namesResolved:c.products.filter(p=>p.identityStatus==='RESOLVED').length,namesFallback:c.products.filter(p=>p.identityStatus==='FALLBACK').length,ubResolved:c.products.filter(p=>p.hierarchy.status==='RESOLVED').length,unclassifiedSales:round2(c.products.filter(p=>p.hierarchy.status!=='RESOLVED').reduce((s,p)=>s+Number(p.sales||0),0))};
+ // Reconcile both comparison periods using the same UB prefixes.
+ c.departments=hierarchyRankings.department;
+ if(prior)prior.departments=rankRetailHierarchy(priorProducts).department;
  const comparisonMeta={mode:comparisonScope.mode,date:comparisonDate,cutoffMinute:comparisonScope.cutoffMinute,cutoffLabel:comparisonScope.cutoffLabel,timeZone:comparisonScope.timeZone,available:!!prior,reason:prior?null:comparison.status!=='READY'?'COMPARISON_READ_FAILED':comparisonScope.mode==='SAME_TIME'?(comparisonCutoff?.reason||'TIME_CUTOFF_UNAVAILABLE'):'COMPARISON_UNAVAILABLE'};const analysis=pulseAnalysis(c,prior,snapshot,stock);const value={status:'READY',storeId,businessDate,comparisonDate,comparison:comparisonMeta,source:current.source,refreshedAt:snapshot.refreshedAt,integration:integrationView,stock,snapshot,analysis,quick:quickPulse(snapshot),diagnostics:{rows:c.rowCount||0,includedRows:c.includedRowCount??c.rowCount??0,pages:c.pages||0,truncated:!!c.truncated,dataQuality:c.dataQuality||null,comparisonRows:prior?.rowCount||0,comparisonRawRows:rawPrior?.rawRowCount||0,comparisonDataQuality:prior?.dataQuality||null,comparisonStatus:comparison.status||null,comparisonCutoff,comparisonMode:comparisonScope.mode,comparisonError:comparison.error||null,loyaltyRecruitment:{status:recruitment.status,source:recruitment.source||null,entity:recruitment.entity||null,dateMode:recruitment.dateMode||null,error:recruitment.error||null},changeVsD7:snapshot.kpis.changeVsComparison==null?null:round2(snapshot.kpis.changeVsComparison)}};
  cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
 }

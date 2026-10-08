@@ -5,6 +5,7 @@ const pct=(a,b)=>b?round2((a/b)*100):null;
 
 function normalizeBreakdown(rows=[]){
  return (Array.isArray(rows)?rows:[]).map((r,i)=>({
+  hierarchy:r.hierarchy||null,identityStatus:r.identityStatus||null,productNameSource:r.productNameSource||null,rayonLabel:r.rayonLabel||null,retailScope:r.retailScope||null,
   key:String(r.key??r.code??r.name??i),
   label:String(r.label??r.name??r.key??'Autre'),
   sales:round2(r.sales),

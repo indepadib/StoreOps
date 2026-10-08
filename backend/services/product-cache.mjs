@@ -1,3 +1,4 @@
+import {usableProductName} from './product-label.mjs';
 import { db } from '../db.mjs';
 
 const clean=v=>String(v??'').trim();
@@ -33,7 +34,7 @@ if(displayNameVersionRow?.value!==displayNameCacheVersion){
 function hasTable(name){return !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type='table' AND name=?`).get(name)}
 
 export function rememberProductIdentity(product,{liveSource=null,error=null}={}){
- const ean=clean(product?.ean),name=clean(product?.name||product?.productName||product?.productNumber||ean);if(!ean||!name)return null;
+ const ean=clean(product?.ean),name=clean(product?.name||product?.productName||product?.productNumber||ean);if(!ean||!usableProductName(name,product?.productNumber))return null;
  const productNumber=clean(product?.productNumber)||null,category=clean(product?.category)||null,unit=clean(product?.unit)||null,source=clean(product?.source)||'D365';
  db.prepare(`INSERT INTO product_identity_cache(ean,product_number,product_name,category,unit,source,last_live_source,last_error_code,last_error_message,synced_at,updated_at)
  VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
