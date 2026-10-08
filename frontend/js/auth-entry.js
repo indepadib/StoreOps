@@ -1,6 +1,6 @@
-import { loadEnhancements } from './enhancements-entry.js?v=2402';
+import { loadEnhancements } from './enhancements-entry.js?v=2403';
 
-const BUILD='2402';
+const BUILD='2403';
 const BUILD_LABEL='2.40.2';
 
 function runtimeShowcase(){return (window.STOREOPS_CONFIG?.mode||'showcase')==='showcase'||!window.STOREOPS_CONFIG?.apiBase}

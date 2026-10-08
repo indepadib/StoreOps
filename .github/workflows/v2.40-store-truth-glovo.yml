@@ -30,6 +30,8 @@ jobs:
           node --check frontend/js/pages/channel-availability.js
       - name: Store truth and Glovo contract
         run: node backend/tests/v240-store-truth-glovo.mjs
+      - name: iPhone scanner and Network self-healing hotfix
+        run: node backend/tests/v2403-mobile-network-hotfix.mjs
       - name: Same-time D-7 contract
         run: node backend/tests/v235-same-time-pulse.mjs
       - name: Replenishment assistant

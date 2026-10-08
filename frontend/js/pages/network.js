@@ -1,5 +1,5 @@
 import{api}from'../api.js';
-import{isDirector}from'../state.js';
+import{app,isDirector}from'../state.js';
 import{$,status,progress,esc,fmtMoney}from'../ui.js';
 import{dlcRisk,closingStarted,cashClosingNeedsAttention,storeBlocked,networkRisk}from'../network-risk.js';
 import{calculateCustomerWeightedScore}from'../store-health.js';
@@ -10,27 +10,32 @@ const known=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
 const metric=v=>known(v)?Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1}):'—';
 const knownSum=(rows,fn)=>{const vals=rows.map(fn).filter(known).map(Number);return{value:vals.length?vals.reduce((a,b)=>a+b,0):null,known:vals.length,total:rows.length}};
 const coverage=m=>m.known<m.total?`${m.known}/${m.total} magasins remontés`:'Données StoreOps';
+const localNetworkBase=()=>Array.isArray(app.stores)?app.stores.map(s=>({...s,dataHealth:{network:false}})):[];
 
 export async function renderNetwork(){
  if(!isDirector())return;
  const host=$('#networkContent');if(!host)return;
  host.innerHTML='<div class="network-loading card"><strong>Chargement de la vue Réseau…</strong><span>Les magasins apparaissent immédiatement, puis StoreOps enrichit la vue avec les sources disponibles.</span></div>';
- const baseLoad=await safe(api('/api/network'),7000);
- if(!baseLoad.ok){host.innerHTML=`<div class="banner ban-danger"><strong>Vue Réseau temporairement indisponible</strong><div class="small">${esc(baseLoad.error||'Impossible de charger le réseau dans le délai prévu.')}</div><button class="btn soft" type="button" data-network-retry>Réessayer</button></div>`;host.querySelector('[data-network-retry]')?.addEventListener('click',()=>renderNetwork());return}
- const base=baseLoad.data;
- if(!Array.isArray(base)){host.innerHTML='<div class="banner ban-danger"><strong>Réponse Réseau invalide</strong><div class="small">StoreOps a reçu un format inattendu. Aucune donnée n’est inventée.</div></div>';return}
- host.innerHTML=`<div class="network-trust-note"><strong>Vue Réseau chargée</strong><span>${base.length} magasin(s) · enrichissement des ventes, équipes et contrôles en cours…</span></div><div class="network-store-grid">${base.map(r=>card({...r,dataHealth:{}})).join('')}</div>`;
+ const baseLoad=await safe(api('/api/network'),6000);
+ const networkLive=baseLoad.ok&&Array.isArray(baseLoad.data);
+ let base=networkLive?baseLoad.data:localNetworkBase();
+ if(!base.length){
+  const storesLoad=await safe(api('/api/stores'),3500);
+  if(storesLoad.ok&&Array.isArray(storesLoad.data))base=storesLoad.data.map(s=>({...s,dataHealth:{network:false}}));
+ }
+ if(!base.length){host.innerHTML=`<div class="banner ban-danger"><strong>Vue Réseau temporairement indisponible</strong><div class="small">${esc(baseLoad.error||'Aucun magasin n’a pu être chargé.')}</div><button class="btn soft" type="button" data-network-retry>Réessayer</button></div>`;host.querySelector('[data-network-retry]')?.addEventListener('click',()=>renderNetwork());return}
+ host.innerHTML=`<div class="network-trust-note"><strong>${networkLive?'Vue Réseau chargée':'Mode de secours Réseau actif'}</strong><span>${base.length} magasin(s) · ${networkLive?'enrichissement des ventes, équipes et contrôles en cours…':'la liste locale est affichée immédiatement pendant que StoreOps reconstruit les indicateurs magasin par magasin.'}</span></div><div class="network-store-grid">${base.map(r=>card({...r,dataHealth:{network:networkLive}})).join('')}</div>`;
  ensureTrustCss();
  const rows=await Promise.all(base.map(async r=>{
-  const [inc,loss,cashOpening,cold,staff,pulse]=await Promise.all([
-   safe(api(`/api/stores/${r.id}/incidents?status=OPEN`),3500),safe(api(`/api/stores/${r.id}/losses`),3500),safe(api(`/api/stores/${r.id}/cash-opening`),3500),safe(api(`/api/stores/${r.id}/cold-chain`),3500),safe(api(`/api/stores/${r.id}/staffing`),3500),safe(api(`/api/stores/${r.id}/business-pulse`),5500)
+  const [dashboard,inc,loss,cashOpening,cold,staff,pulse]=await Promise.all([
+   safe(api(`/api/stores/${r.id}/dashboard`),4000),safe(api(`/api/stores/${r.id}/incidents?status=OPEN`),3500),safe(api(`/api/stores/${r.id}/losses`),3500),safe(api(`/api/stores/${r.id}/cash-opening`),3500),safe(api(`/api/stores/${r.id}/cold-chain`),3500),safe(api(`/api/stores/${r.id}/staffing`),3500),safe(api(`/api/stores/${r.id}/business-pulse`),5500)
   ]);
-  const businessPulse=pulse.ok?pulse.data:null,k=businessPulse?.snapshot?.kpis||{},storeScore=calculateCustomerWeightedScore({operationalScore:r.operationalHealth??100,identifiedSalesShare:k.identifiedSalesShare,recruitmentRateNonLoyalty:k.recruitmentRateNonLoyalty,weight:.25});
-  return{...r,sla:inc.ok?inc.data?.stats:null,loss:loss.ok?loss.data?.summary:null,cashOpening:cashOpening.ok?cashOpening.data?.summary:null,coldChain:cold.ok?cold.data?.summary:null,staffing:staff.ok?staff.data?.summary:null,businessPulse,storeScore,dataHealth:{incidents:inc.ok,losses:loss.ok,cashOpening:cashOpening.ok,coldChain:cold.ok,staffing:staff.ok,pulse:pulse.ok}}
+  const d=dashboard.ok?dashboard.data:null,businessPulse=pulse.ok?pulse.data:null,k=businessPulse?.snapshot?.kpis||{},operationalScore=r.operationalHealth??d?.operationalHealth??100,storeScore=calculateCustomerWeightedScore({operationalScore,identifiedSalesShare:k.identifiedSalesShare,recruitmentRateNonLoyalty:k.recruitmentRateNonLoyalty,weight:.25});
+  return{...r,day:r.day||d?.day,opening:r.opening||d?.opening,closing:r.closing||d?.closing,commercial:r.commercial||d?.commercial,dlc:r.dlc||d?.dlc,inventory:r.inventory||d?.inventory,handover:r.handover||d?.handover,cash:r.cash||d?.cash,operationalHealth:operationalScore,sla:inc.ok?inc.data?.stats:null,loss:loss.ok?loss.data?.summary:null,cashOpening:cashOpening.ok?cashOpening.data?.summary:null,coldChain:cold.ok?cold.data?.summary:null,staffing:staff.ok?staff.data?.summary:null,businessPulse,storeScore,dataHealth:{network:networkLive,dashboard:dashboard.ok,incidents:inc.ok,losses:loss.ok,cashOpening:cashOpening.ok,coldChain:cold.ok,staffing:staff.ok,pulse:pulse.ok}}
  }));
  const ready=rows.filter(x=>x.day?.opening_status==='OPENED').length,scored=rows.filter(x=>Number.isFinite(Number(x.storeScore?.score))),networkScore=scored.length?Math.round(scored.reduce((a,x)=>a+Number(x.storeScore.score),0)/scored.length):null,networkSales=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.netSales),networkTickets=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.tickets),networkIdentifiedSales=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.identifiedSales),networkBasket=known(networkSales.value)&&known(networkTickets.value)&&Number(networkTickets.value)>0?Number(networkSales.value)/Number(networkTickets.value):null,networkIdentifiedShare=known(networkSales.value)&&Number(networkSales.value)>0&&known(networkIdentifiedSales.value)?Number(networkIdentifiedSales.value)/Number(networkSales.value)*100:null,networkRuptures=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.outOfStockCount),networkNear=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.nearOutOfStockCount),staffBlocking=knownSum(rows,x=>x.staffing?.blocking),coldBlocking=knownSum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=knownSum(rows,x=>x.cashOpening?.blocking),commercialBlocking=knownSum(rows,x=>x.commercial?.blocking),dlcCritical=knownSum(rows,x=>x.dlc?dlcRisk(x):null),inventoryRecounts=knownSum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=knownSum(rows,x=>x.handover?.blocking),overdue=knownSum(rows,x=>x.sla?.overdue),lossBlocking=knownSum(rows,x=>x.loss?.blocking),lossValue=knownSum(rows,x=>x.loss?.retailValue),qualityControls=knownSum(rows,x=>x.qualityControls),qualityRejected=knownSum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(x=>x.cash&&cashClosingNeedsAttention(x)).length,blocked=rows.filter(storeBlocked).length,sorted=[...rows].sort((a,b)=>networkRisk(b)-networkRisk(a));
  $('#networkContent').innerHTML=`
- <div class="network-trust-note"><strong>Vue réseau réelle</strong><span>Un « — » signifie que la source n’a pas répondu. StoreOps ne remplace plus une donnée absente par 0 ou par un faux blocage.</span></div>
+ <div class="network-trust-note"><strong>${networkLive?'Vue réseau réelle':'Vue réseau reconstruite'}</strong><span>Un « — » signifie que la source n’a pas répondu. ${networkLive?'La synthèse réseau centrale est disponible.':'StoreOps s’appuie temporairement sur les magasins chargés et leurs APIs individuelles : la page reste exploitable au lieu de disparaître.'}</span></div>
  <div class="grid g4 network-top-kpis network-business-kpis">
   <div class="card network-business-main"><div class="label">CA réseau aujourd’hui</div><div class="kpi">${known(networkSales.value)?fmtMoney(networkSales.value):'—'}</div><div class="small muted">${coverage(networkSales)}</div></div>
   <div class="card"><div class="label">Tickets réseau</div><div class="kpi">${metric(networkTickets.value)}</div><div class="small muted">Panier ${known(networkBasket)?fmtMoney(networkBasket):'—'}</div></div>

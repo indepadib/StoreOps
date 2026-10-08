@@ -9,6 +9,8 @@ const STATIC_TARGETS=[
 ];
 const HTML5_QRCODE_URLS=['https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js','https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'];
 const LINEAR_FORMAT_KEYS=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','ITF'];
+const SCANNER_DOM_VERSION='2403';
+const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2403';
 
 let activeStream=null,activeFrame=null,activeHtml5=null,scanBusy=false,lastDetect=0,html5Loader=null,activeFallbackTimer=null;
 let activeTargetInput=null,activeAfterScan=null,activeCameraCandidates=[],activeCameraIndex=0,scanToken=0;
@@ -16,19 +18,21 @@ const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
 
-function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2402';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2403';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
+  if(host&&host.dataset.storeopsScannerVersion!==SCANNER_DOM_VERSION){host.remove();host=null}
   if(host)return host;
   host=document.createElement('div');
   host.id='storeopsBarcodeScanner';
+  host.dataset.storeopsScannerVersion=SCANNER_DOM_VERSION;
   host.className='barcode-scanner-backdrop';
   host.hidden=true;
   host.innerHTML=`<div class="barcode-scanner-sheet" role="dialog" aria-modal="true" aria-label="Scanner un code-barres">
-    <div class="barcode-scanner-head"><div><strong>Scanner l’article</strong><small>Place le code-barres dans le cadre.</small></div><button class="btn ghost" type="button" data-close-barcode-scanner>Fermer</button></div>
+    <div class="barcode-scanner-head"><div><strong>Scanner l’article</strong><small>Cadre uniquement le code-barres, idéalement avec l’objectif 1×.</small></div><button class="btn ghost" type="button" data-close-barcode-scanner>Fermer</button></div>
     <div class="barcode-video-wrap"><video id="storeopsBarcodeVideo" playsinline muted></video><div id="storeopsHtml5Reader" class="barcode-html5-reader" hidden></div><div class="barcode-frame"><span></span></div></div>
-    <div class="barcode-scanner-foot"><strong>Scan caméra</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>Cadre l’EAN à 15–25 cm, évite les reflets et garde les barres nettes. Le code peut être horizontal ou vertical. Si l’iPhone ne fait pas la mise au point, utilise « Photo du code ».</span>
-      <div class="barcode-scanner-actions"><label class="btn soft barcode-photo-action" for="storeopsBarcodePhoto">Photo du code</label><button class="btn ghost" type="button" data-barcode-retry>Relancer le live</button></div>
+    <div class="barcode-scanner-foot"><strong>Lecture EAN automatique</strong><span id="storeopsBarcodeStatus">Initialisation de la caméra…</span><span>À 15–25 cm, garde les barres nettes dans la bande blanche. Si l’image est floue, utilise « Changer d’objectif » : StoreOps privilégie l’objectif arrière 1× et évite l’ultra grand-angle.</span>
+      <div class="barcode-scanner-actions"><button class="btn soft" type="button" data-barcode-next-camera>Changer d’objectif</button><label class="btn soft barcode-photo-action" for="storeopsBarcodePhoto">Photo du code</label><button class="btn ghost" type="button" data-barcode-retry>Relancer</button></div>
       <input id="storeopsBarcodePhoto" type="file" accept="image/*" capture="environment" hidden>
     </div>
   </div>`;
@@ -36,9 +40,16 @@ function scannerShell(){
   host.querySelector('[data-close-barcode-scanner]').addEventListener('click',stopScanner);
   host.addEventListener('click',e=>{if(e.target===host)stopScanner()});
   host.querySelector('[data-barcode-retry]').addEventListener('click',()=>{if(activeTargetInput)startScanner(activeTargetInput,activeAfterScan)});
+  host.querySelector('[data-barcode-next-camera]').addEventListener('click',async()=>{
+    if(!activeTargetInput||!activeCameraCandidates.length)return;
+    activeCameraIndex=(activeCameraIndex+1)%activeCameraCandidates.length;
+    setScanStatus(`Changement d’objectif · essai ${activeCameraIndex+1}/${activeCameraCandidates.length}…`,'switching');
+    await startHtml5Candidate(activeTargetInput,activeAfterScan,scanToken);
+  });
   host.querySelector('#storeopsBarcodePhoto').addEventListener('change',async e=>{const file=e.target.files?.[0];e.target.value='';if(file)await scanPhotoFile(file)});
   return host;
 }
+
 
 function stopTracks(){if(activeStream){for(const track of activeStream.getTracks())track.stop();activeStream=null}}
 async function shutdownHtml5(){
@@ -94,18 +105,23 @@ function formatConfig(){
 }
 function fillScanned(input,raw,afterScan){
   const value=String(raw||'').trim();if(!value)return;
+  const current=activeCameraCandidates[activeCameraIndex];if(current?.id){try{localStorage.setItem(PREFERRED_CAMERA_KEY,current.id)}catch{}}
+  try{navigator.vibrate?.(45)}catch{}
   input.value=value;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
   stopScanner();toast(`Article scanné : ${value}`);if(typeof afterScan==='function')setTimeout(()=>afterScan(value),80);
 }
 function cameraScore(camera,index){
   const label=normalizeCameraLabel(camera?.label);
-  let score=0;
-  if(/back|rear|arriere|trasera|posterior|ruck|hinten/.test(label))score+=80;
-  if(/front|avant|frontal|user|selfie/.test(label))score-=160;
-  if(/main|standard|wide camera|camera 1x|1x/.test(label))score+=24;
-  if(/ultra|0\.5|0,5|tele|telephoto|zoom/.test(label))score-=70;
-  if(/dual|triple/.test(label))score+=8;
-  if(isAppleMobile()&&index===1)score+=32;
+  let score=0,preferred='';try{preferred=localStorage.getItem(PREFERRED_CAMERA_KEY)||''}catch{}
+  if(camera?.id&&camera.id===preferred)score+=1000;
+  if(/back|rear|arriere|trasera|posterior|ruck|hinten/.test(label))score+=120;
+  if(/front|avant|frontal|user|selfie/.test(label))score-=240;
+  if(/(^|\s)(wide|grand angle|grand-angle)(\s|$)|camera 1x|1x/.test(label))score+=55;
+  if(/ultra|0\.5|0,5/.test(label))score-=150;
+  if(/tele|telephoto|zoom/.test(label))score-=110;
+  if(/dual|triple/.test(label))score-=45;
+  if(isAppleMobile()&&/back camera|camera arriere/.test(label))score+=35;
+  if(isAppleMobile()&&index===0)score+=8;
   return score;
 }
 function cameraCandidates(cameras){
@@ -114,6 +130,16 @@ function cameraCandidates(cameras){
   const pool=nonFront.length?nonFront:rows;
   return pool.sort((a,b)=>b._score-a._score).filter((x,i,a)=>x.id&&a.findIndex(y=>y.id===x.id)===i);
 }
+async function tuneHtml5Camera(reader){
+  try{
+    const video=reader?.querySelector('video'),track=video?.srcObject?.getVideoTracks?.()[0],caps=track?.getCapabilities?.()||{},advanced=[];
+    if(caps?.focusMode?.includes?.('continuous'))advanced.push({focusMode:'continuous'});
+    const min=Number(caps?.zoom?.min),max=Number(caps?.zoom?.max);
+    if(Number.isFinite(min)&&Number.isFinite(max)&&max>1.1)advanced.push({zoom:Math.max(min,Math.min(max,1.25))});
+    if(advanced.length)await track.applyConstraints({advanced});
+  }catch{}
+}
+
 async function startNativeScanner(detector,input,afterScan,token){
   const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');reader.hidden=true;video.hidden=false;
   try{
@@ -139,32 +165,27 @@ async function startHtml5Candidate(input,afterScan,token){
   await shutdownHtml5();
   if(token!==scanToken)return;
   const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');video.hidden=true;reader.hidden=false;host.hidden=false;
-  const candidate=activeCameraCandidates[activeCameraIndex]||null;
-  const camera=candidate?.id||{facingMode:'environment'};
+  const candidate=activeCameraCandidates[activeCameraIndex]||null,camera=candidate?.id||{facingMode:'environment'};
   try{
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formatConfig());
     const apple=isAppleMobile();
-    await activeHtml5.start(camera,{
-      fps:apple?20:15,
-      aspectRatio:apple?3/4:4/3,
-      qrbox:(w,h)=>({width:Math.max(140,Math.min(620,Math.round(w*.92))),height:Math.max(140,Math.min(520,Math.round(h*(apple?0.72:0.58))))}),
-      disableFlip:false
-    },decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
+    await activeHtml5.start(camera,{fps:apple?24:18,aspectRatio:apple?3/4:4/3,qrbox:(w,h)=>({width:Math.max(180,Math.min(760,Math.round(w*.94))),height:Math.max(110,Math.min(360,Math.round(h*(apple?0.36:0.46))))}),disableFlip:false},decoded=>{if(token===scanToken)fillScanned(input,decoded,afterScan)},()=>{});
     if(token!==scanToken)return;
+    await tuneHtml5Camera(reader);
     const suffix=candidate?.virtual?' · caméra arrière auto':activeCameraCandidates.length>1?` · objectif ${activeCameraIndex+1}/${activeCameraCandidates.length}`:'';
-    setScanStatus(`EAN prêt à être lu${suffix} · garde les barres nettes dans le cadre.`,'ready');
-    try{await activeHtml5.applyVideoConstraints?.({advanced:[{focusMode:'continuous'}]})}catch{}
+    setScanStatus(`EAN prêt${suffix} · centre les barres dans la bande blanche et attends la mise au point.`,'ready');
+    const nextButton=host.querySelector('[data-barcode-next-camera]');if(nextButton)nextButton.disabled=activeCameraCandidates.length<2;
     activeFallbackTimer=setTimeout(async()=>{
       if(token!==scanToken)return;
       if(activeCameraIndex<activeCameraCandidates.length-1){
         activeCameraIndex+=1;
-        setScanStatus(`Mise au point insuffisante · essai automatique d’un autre objectif (${activeCameraIndex+1}/${activeCameraCandidates.length})…`,'switching');
+        setScanStatus(`Code non lu · essai automatique d’un autre objectif (${activeCameraIndex+1}/${activeCameraCandidates.length})…`,'switching');
         await startHtml5Candidate(input,afterScan,token);
       }else{
-        setScanStatus('Le live n’arrive pas à faire une mise au point fiable. Appuie sur « Photo du code » : l’iPhone utilisera son appareil photo natif.','photo');
+        setScanStatus('Le live n’a pas obtenu une image assez nette. Essaie « Changer d’objectif » ou « Photo du code » pour une capture haute définition.','photo');
         host.querySelector('.barcode-photo-action')?.classList.add('recommended');
       }
-    },3200);
+    },5200);
   }catch(e){
     if(token!==scanToken)return;
     if(activeCameraIndex<activeCameraCandidates.length-1){activeCameraIndex+=1;return startHtml5Candidate(input,afterScan,token)}
@@ -173,6 +194,7 @@ async function startHtml5Candidate(input,afterScan,token){
     if(e?.name==='NotAllowedError')toast('Autorise la caméra pour scanner, ou saisis le code manuellement.');
   }
 }
+
 async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={}){
   if(token!==scanToken)return;
   setScanStatus(reason==='native-timeout'?'Passage au décodeur EAN renforcé…':'Chargement du décodeur EAN optimisé iPhone…','switching');
