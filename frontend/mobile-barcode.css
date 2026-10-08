@@ -20,3 +20,8 @@
 
 /* v2.40.3 iPhone: narrow 1D band improves autofocus and retail EAN decoding. */
 @media(max-width:430px){.barcode-frame{inset:31% 6%;border-radius:16px}.barcode-frame:after{left:5%;right:5%}.barcode-video-wrap{max-height:52vh}.barcode-scanner-actions{grid-template-columns:1fr}.barcode-scanner-actions [data-barcode-next-camera]{order:-1}}
+
+/* Multi-angle pass: after the fast 1D band, widen the guide automatically for rotated bottle/pack labels. */
+.barcode-scanner-backdrop[data-scan-mode="multi-angle"] .barcode-frame{inset:12% 8%;border-radius:20px}
+.barcode-scanner-backdrop[data-scan-mode="multi-angle"] .barcode-frame:after{left:12%;right:12%}
+@media(max-width:430px){.barcode-scanner-backdrop[data-scan-mode="multi-angle"] .barcode-frame{inset:12% 7%}}
