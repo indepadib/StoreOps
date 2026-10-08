@@ -8,6 +8,9 @@ on:
         required: true
         type: boolean
         default: false
+  workflow_run:
+    workflows: ["StoreOps CI"]
+    types: [completed]
 
 concurrency:
   group: storeops-production-deploy
@@ -18,7 +21,14 @@ permissions:
 
 jobs:
   deploy:
-    if: ${{ inputs.confirm_production == true }}
+    if: >-
+      ${{
+        (github.event_name == 'workflow_dispatch' && inputs.confirm_production == true) ||
+        (github.event_name == 'workflow_run' &&
+         github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.head_branch == 'main' &&
+         contains(github.event.workflow_run.head_commit.message, '[deploy-production]'))
+      }}
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: production
@@ -26,10 +36,10 @@ jobs:
       NETLIFY_SITE_ID: c0169294-465a-47ce-8ad7-4a290f790cf6
       NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
     steps:
-      - name: Checkout StoreOps main
+      - name: Checkout verified StoreOps release
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
           fetch-depth: 1
 
       - name: Setup Node 22
