@@ -1,89 +1,63 @@
-import{api}from'../api.js';
-import{app,isDirector}from'../state.js';
-import{$,status,progress,esc,fmtMoney}from'../ui.js';
-import{dlcRisk,closingStarted,cashClosingNeedsAttention,storeBlocked,networkRisk}from'../network-risk.js';
-import{calculateCustomerWeightedScore}from'../store-health.js';
+import {api} from '../api.js';
+import {app,isDirector} from '../state.js';
+import {$,esc,status,fmtMoney} from '../ui.js';
+import {assessNetworkStore,controlOverview,selectControlRows,CONTROL_STATES} from '../network-control-model.js';
 
-const timeout=(ms,label='Source lente')=>new Promise((_,reject)=>setTimeout(()=>reject(new Error(label)),ms));
-const safe=async(p,ms=4500)=>{try{return{ok:true,data:await Promise.race([p,timeout(ms)])}}catch(error){return{ok:false,data:null,error:error?.message||'Indisponible'}}};
-const known=v=>v!==null&&v!==undefined&&v!==''&&Number.isFinite(Number(v));
-const metric=v=>known(v)?Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1}):'—';
-const knownSum=(rows,fn)=>{const vals=rows.map(fn).filter(known).map(Number);return{value:vals.length?vals.reduce((a,b)=>a+b,0):null,known:vals.length,total:rows.length}};
-const coverage=m=>m.known<m.total?`${m.known}/${m.total} magasins remontés`:'Données StoreOps';
+let generation=0;
 const localNetworkBase=()=>Array.isArray(app.stores)?app.stores.map(s=>({...s,dataHealth:{network:false}})):[];
-
+const money=v=>v==null?'—':fmtMoney(v);
+const count=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:1});
+async function read(path,timeout=12000){const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeout);try{return await api(path,{signal:controller.signal})}finally{clearTimeout(timer)}}
 export async function renderNetwork(){
  if(!isDirector())return;
- const host=$('#networkContent');if(!host)return;
- host.innerHTML='<div class="network-loading card"><strong>Chargement de la vue Réseau…</strong><span>Les magasins apparaissent immédiatement, puis StoreOps enrichit la vue avec les sources disponibles.</span></div>';
- const baseLoad=await safe(api('/api/network'),7000);
- const networkLive=baseLoad.ok&&Array.isArray(baseLoad.data);
- let base=networkLive?baseLoad.data:localNetworkBase();
- if(!base.length){
-  const storesLoad=await safe(api('/api/stores'),3500);
-  if(storesLoad.ok&&Array.isArray(storesLoad.data))base=storesLoad.data.map(s=>({...s,dataHealth:{network:false}}));
+ const host=$('#networkContent');if(!host)return;const token=++generation;
+ if(!document.getElementById('network-control-css')){const link=document.createElement('link');link.id='network-control-css';link.rel='stylesheet';link.href='/network-control.css';document.head.appendChild(link)}
+ host.innerHTML='<div class="card" role="status">Chargement de la chambre de contrôle…</div>';
+ let base,networkLive=true,error='';
+ try{base=await read('/api/network',10000);if(!Array.isArray(base))throw new Error('Situation réseau indisponible')}catch(e){networkLive=false;error=e.message;base=localNetworkBase();if(!base.length)try{base=(await read('/api/stores')).map(s=>({...s,dataHealth:{network:false}}))}catch{}}
+ if(token!==generation||!host.isConnected)return;
+ if(!base?.length){host.innerHTML='<div class="card">Situation réseau indisponible. <button class="btn soft" data-network-retry>Réessayer</button></div>';host.querySelector('[data-network-retry]').onclick=()=>renderNetwork();return}
+ let rows=base.map(r=>assessNetworkStore({...r,dataHealth:{...r.dataHealth,network:networkLive}})),filter='ATTENTION',query='',limit=20,selected=null,loadingStore=null,bulk=false,bulkDone=0;
+ const detailCache=new Map();
+ const active=()=>token===generation&&host.isConnected&&app.page==='network';
+ function draw(){
+  if(token!==generation)return;
+  const summary=controlOverview(rows),visible=selectControlRows(rows,{filter,query}),selectedRow=rows.find(r=>r.id===selected);
+  host.innerHTML=`<div class="ncc"><header class="ncc-hero"><div><span class="ncc-eyebrow">EXPLOITATION · RÉSEAU</span><h2>Chambre de contrôle</h2><p>${summary.total} magasins · ${summary.opened} ouverts · commencez par ceux qui nécessitent une intervention.</p></div><button class="btn soft" data-ncc-refresh>Actualiser la situation</button></header>
+  ${!networkLive?`<p class="banner ban-danger">Mode de secours Réseau actif : les magasins sont visibles, mais leur situation doit être vérifiée. ${esc(error)}</p>`:''}
+  <div class="ncc-status-grid">${Object.entries(CONTROL_STATES).map(([key,s])=>`<button class="ncc-status ncc-${key.toLowerCase()} ${filter===key?'active':''}" data-ncc-filter="${key}" aria-pressed="${filter===key}"><span>${s.label}</span><strong>${summary.counts[key]}</strong><small>${key==='CRITICAL'?'Action prioritaire':key==='WARNING'?'Points de vigilance':key==='UNKNOWN'?'Situation incomplète':'Aucune alerte remontée'}</small></button>`).join('')}</div>
+  <section class="ncc-overview"><div><strong>Tout le réseau en un regard</strong><p>Chaque case représente un magasin. Cliquez pour comprendre sa situation.</p></div><div class="ncc-matrix">${selectControlRows(rows).map(r=>`<button class="ncc-tile ncc-${r.control.state.toLowerCase()} ${selected===r.id?'selected':''}" data-ncc-store="${esc(r.id)}" aria-label="${esc(r.name+' : '+r.control.label+' · '+r.control.primary)}" title="${esc(r.name+' · '+r.control.primary)}"><strong>${esc(r.code||r.name)}</strong><span>${esc(r.control.label)}</span></button>`).join('')}</div></section>
+  <div class="ncc-business"><div><span>CA réseau disponible</span><strong>${money(summary.sales)}</strong><small>${summary.salesCoverage}/${summary.total} magasins · les données absentes ne sont pas comptées à zéro</small></div><button class="btn soft" data-ncc-sales ${bulk?'disabled':''}>${bulk?`Lecture des CA : ${bulkDone}/${rows.length}`:'Charger les CA du réseau'}</button></div>
+  <div class="ncc-layout"><section class="ncc-list"><div class="ncc-tools"><label>Rechercher un magasin<input data-ncc-search value="${esc(query)}" placeholder="Nom, code ou responsable"></label><label>Afficher<select data-ncc-select><option value="ALL" ${filter==='ALL'?'selected':''}>Tous les magasins</option><option value="ATTENTION" ${filter==='ATTENTION'?'selected':''}>Magasins à traiter ou vérifier</option>${Object.entries(CONTROL_STATES).map(([key,s])=>`<option value="${key}" ${filter===key?'selected':''}>${s.label}</option>`).join('')}</select></label></div><div class="table-wrap"><table class="table"><thead><tr><th>Magasin</th><th>Situation</th><th>Priorité à comprendre</th><th>CA / D-7</th></tr></thead><tbody>${visible.slice(0,limit).map(r=>`<tr class="${selected===r.id?'ncc-selected':''}"><td><button class="ncc-store-link" data-ncc-store="${esc(r.id)}">${esc(r.name)}</button><small>${esc(r.control.phase)}</small></td><td>${status(r.control.label,r.control.tone)}</td><td>${esc(r.control.primary)}${r.control.reasons.length>1?`<small>+ ${r.control.reasons.length-1} autre(s) point(s)</small>`:''}</td><td>${money(r.control.kpis.netSales)}<small>${r.control.pulseReady&&r.businessPulse?.comparison?.available&&r.control.kpis.changeVsComparison!=null?Number(r.control.kpis.changeVsComparison).toFixed(1)+' % à même période':'Comparatif non disponible'}</small></td></tr>`).join('')||'<tr><td colspan="4">Aucun magasin dans ce filtre.</td></tr>'}</tbody></table></div><p>${visible.length} magasin(s)${visible.length>limit?` · <button class="btn soft" data-ncc-more>Afficher les suivants</button>`:''}</p></section><aside class="ncc-detail" aria-live="polite">${selectedRow?detail(selectedRow):'<div class="ncc-empty"><strong>Sélectionnez un magasin</strong><p>Vous verrez les alertes, le responsable et les domaines à traiter, puis les chiffres détaillés.</p></div>'}</aside></div>
+  <p class="small muted">Situation opérationnelle issue de StoreOps · les CA sont chargés à la demande. Le gris indique une situation incomplète. Une baisse de CA n’est signalée que si le comparatif D-7 est disponible ; elle ne prouve pas une cause.</p></div>`;
+  host.querySelector('[data-ncc-refresh]').onclick=()=>renderNetwork();
+  host.querySelectorAll('[data-ncc-filter]').forEach(b=>b.onclick=()=>{filter=filter===b.dataset.nccFilter?'ALL':b.dataset.nccFilter;limit=20;draw()});
+  host.querySelector('[data-ncc-select]').onchange=e=>{filter=e.target.value;limit=20;draw()};
+  host.querySelector('[data-ncc-search]').oninput=e=>{query=e.target.value;limit=20;const position=e.target.selectionStart;draw();const input=host.querySelector('[data-ncc-search]');input.focus();input.setSelectionRange(position,position)};
+  host.querySelectorAll('[data-ncc-store]').forEach(b=>b.onclick=()=>selectStore(b.dataset.nccStore));
+  host.querySelector('[data-ncc-more]')?.addEventListener('click',()=>{limit+=20;draw()});
+  host.querySelector('[data-ncc-sales]').onclick=()=>loadSales();
+  host.querySelector('[data-ncc-close]')?.addEventListener('click',()=>{selected=null;draw()});
+  host.querySelector('[data-ncc-retry-detail]')?.addEventListener('click',()=>{detailCache.delete(selected);selectStore(selected)});
  }
- if(!base.length){host.innerHTML=`<div class="banner ban-danger"><strong>Vue Réseau temporairement indisponible</strong><div class="small">${esc(baseLoad.error||'Aucun magasin n’a pu être chargé.')}</div><button class="btn soft" type="button" data-network-retry>Réessayer</button></div>`;host.querySelector('[data-network-retry]')?.addEventListener('click',()=>renderNetwork());return}
- host.innerHTML=`<div class="network-trust-note"><strong>${networkLive?'Vue Réseau chargée':'Mode de secours Réseau actif'}</strong><span>${base.length} magasin(s) · ${networkLive?'enrichissement des ventes, équipes et contrôles en cours…':'la liste locale est affichée immédiatement pendant que StoreOps reconstruit les indicateurs magasin par magasin.'}</span></div><div class="network-store-grid">${base.map(r=>card({...r,dataHealth:{network:networkLive}})).join('')}</div>`;
- ensureTrustCss();
- const rows=await Promise.all(base.map(async r=>{
-  const [dashboard,inc,loss,cashOpening,cold,staff,pulse]=await Promise.all([
-   safe(api(`/api/stores/${r.id}/dashboard`),4000),safe(api(`/api/stores/${r.id}/incidents?status=OPEN`),3500),safe(api(`/api/stores/${r.id}/losses`),3500),safe(api(`/api/stores/${r.id}/cash-opening`),3500),safe(api(`/api/stores/${r.id}/cold-chain`),3500),safe(api(`/api/stores/${r.id}/staffing`),3500),safe(api(`/api/stores/${r.id}/business-pulse`),5500)
-  ]);
-  const d=dashboard.ok?dashboard.data:null,businessPulse=pulse.ok?pulse.data:null,k=businessPulse?.snapshot?.kpis||{},operationalScore=r.operationalHealth??d?.operationalHealth??100,storeScore=calculateCustomerWeightedScore({operationalScore,identifiedSalesShare:k.identifiedSalesShare,recruitmentRateNonLoyalty:k.recruitmentRateNonLoyalty,weight:.25});
-  return{...r,day:r.day||d?.day,opening:r.opening||d?.opening,closing:r.closing||d?.closing,commercial:r.commercial||d?.commercial,dlc:r.dlc||d?.dlc,inventory:r.inventory||d?.inventory,handover:r.handover||d?.handover,cash:r.cash||d?.cash,operationalHealth:operationalScore,sla:inc.ok?inc.data?.stats:null,loss:loss.ok?loss.data?.summary:null,cashOpening:cashOpening.ok?cashOpening.data?.summary:null,coldChain:cold.ok?cold.data?.summary:null,staffing:staff.ok?staff.data?.summary:null,businessPulse,storeScore,dataHealth:{network:networkLive,dashboard:dashboard.ok,incidents:inc.ok,losses:loss.ok,cashOpening:cashOpening.ok,coldChain:cold.ok,staffing:staff.ok,pulse:pulse.ok}}
- }));
- const ready=rows.filter(x=>x.day?.opening_status==='OPENED').length,scored=rows.filter(x=>Number.isFinite(Number(x.storeScore?.score))),networkScore=scored.length?Math.round(scored.reduce((a,x)=>a+Number(x.storeScore.score),0)/scored.length):null,networkSales=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.netSales),networkTickets=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.tickets),networkIdentifiedSales=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.identifiedSales),networkBasket=known(networkSales.value)&&known(networkTickets.value)&&Number(networkTickets.value)>0?Number(networkSales.value)/Number(networkTickets.value):null,networkIdentifiedShare=known(networkSales.value)&&Number(networkSales.value)>0&&known(networkIdentifiedSales.value)?Number(networkIdentifiedSales.value)/Number(networkSales.value)*100:null,networkRuptures=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.outOfStockCount),networkNear=knownSum(rows,x=>x.businessPulse?.snapshot?.kpis?.nearOutOfStockCount),staffBlocking=knownSum(rows,x=>x.staffing?.blocking),coldBlocking=knownSum(rows,x=>x.coldChain?.blocking),cashOpeningBlocking=knownSum(rows,x=>x.cashOpening?.blocking),commercialBlocking=knownSum(rows,x=>x.commercial?.blocking),dlcCritical=knownSum(rows,x=>x.dlc?dlcRisk(x):null),inventoryRecounts=knownSum(rows,x=>x.inventory?.pendingRecounts),handoverBlocking=knownSum(rows,x=>x.handover?.blocking),overdue=knownSum(rows,x=>x.sla?.overdue),lossBlocking=knownSum(rows,x=>x.loss?.blocking),lossValue=knownSum(rows,x=>x.loss?.retailValue),qualityControls=knownSum(rows,x=>x.qualityControls),qualityRejected=knownSum(rows,x=>x.qualityRejected),closingCashBlocked=rows.filter(x=>x.cash&&cashClosingNeedsAttention(x)).length,blocked=rows.filter(storeBlocked).length,sorted=[...rows].sort((a,b)=>networkRisk(b)-networkRisk(a));
- $('#networkContent').innerHTML=`
- <div class="network-trust-note"><strong>${networkLive?'Vue réseau réelle':'Vue réseau reconstruite'}</strong><span>Un « — » signifie que la source n’a pas répondu. ${networkLive?'La synthèse réseau centrale est disponible.':'StoreOps s’appuie temporairement sur les magasins chargés et leurs APIs individuelles : la page reste exploitable au lieu de disparaître.'}</span></div>
- <div class="grid g4 network-top-kpis network-business-kpis">
-  <div class="card network-business-main"><div class="label">CA réseau aujourd’hui</div><div class="kpi">${known(networkSales.value)?fmtMoney(networkSales.value):'—'}</div><div class="small muted">${coverage(networkSales)}</div></div>
-  <div class="card"><div class="label">Tickets réseau</div><div class="kpi">${metric(networkTickets.value)}</div><div class="small muted">Panier ${known(networkBasket)?fmtMoney(networkBasket):'—'}</div></div>
-  <div class="card"><div class="label">Poids CA encarté</div><div class="kpi">${known(networkIdentifiedShare)?metric(networkIdentifiedShare)+'%':'—'}</div><div class="small muted">${known(networkIdentifiedSales.value)?fmtMoney(networkIdentifiedSales.value)+' identifié':'Donnée indisponible'}</div></div>
-  <div class="card"><div class="label">Ruptures / proches</div><div class="kpi">${metric(networkRuptures.value)} / ${metric(networkNear.value)}</div><div class="small muted">réseau · ventes + couverture</div></div>
-  <div class="card"><div class="label">Score réseau</div><div class="kpi">${networkScore==null?'—':networkScore+'/100'}</div><div class="small muted">Customer & fidélité jusqu’à 25%</div></div>
-  <div class="card"><div class="label">Magasins ouverts</div><div class="kpi">${ready}/${rows.length}</div><div class="small muted">${blocked} ouverture(s) bloquée(s)</div></div>
-  <div class="card"><div class="label">SLA en retard</div><div class="kpi">${metric(overdue.value)}</div><div class="small muted">${coverage(overdue)}</div></div>
- </div>
- <details class="network-secondary-kpis"><summary>Voir les indicateurs opérationnels <span>⌄</span></summary><div class="grid g4" style="margin-top:10px">
-  ${kpi('Équipe ouverture',staffBlocking,'blocage(s) couverture')}${kpi('Froid ouverture',coldBlocking)}${kpi('Caisses ouverture',cashOpeningBlocking)}${kpi('Prix & promos',commercialBlocking,'action(s) bloquante(s)')}
-  ${kpi('DLC critiques',dlcCritical)}${kpi('Recomptages stock',inventoryRecounts)}${kpi('Passations bloquantes',handoverBlocking)}${kpi('Démarque à traiter',lossBlocking,known(lossValue.value)?fmtMoney(lossValue.value):'Valeur indisponible')}
-  ${kpi('Contrôles qualité',qualityControls,'réalisés aujourd’hui')}${kpi('Quantité refusée',qualityRejected,'qualité / réception')}
-  <div class="card"><div class="label">Clôtures caisse à traiter</div><div class="kpi">${closingCashBlocked}</div><div class="small muted">Source StoreOps</div></div>
- </div></details>
- ${blocked?`<div class="banner ban-danger" style="margin-top:14px"><strong>${blocked} ouverture(s) bloquée(s).</strong> Les cartes ci-dessous sont classées par criticité opérationnelle.</div>`:''}
- ${known(qualityRejected.value)&&qualityRejected.value>0?`<div class="banner ban-danger" style="margin-top:10px"><strong>${qualityRejected.value} unité(s) refusée(s) aujourd’hui sur le réseau.</strong> Les magasins concernés remontent dans le classement de priorité.</div>`:''}
- <div class="network-section-title"><div><strong>Priorités réseau</strong><span>Les données indisponibles restent explicitement marquées « — ».</span></div></div>
- <div class="network-store-grid">${sorted.map(card).join('')}</div>`;
- ensureTrustCss();
+ function detail(r){
+  const c=r.control,k=c.kpis,d=detailCache.get(r.id),pulse=r.businessPulse;
+  return `<div class="ncc-detail-head"><div><span>${esc(r.code||'Magasin')}</span><h3>${esc(r.name)}</h3>${status(c.label,c.tone)}</div><button class="btn soft" data-ncc-close aria-label="Fermer le détail">Fermer</button></div><p><strong>${esc(c.primary)}</strong></p><p>Responsable : ${esc(r.day?.opening_owner_name||'Non attribué')} · ${esc(c.phase)}</p><section><h4>Ce qui nécessite une action</h4>${c.reasons.map(reason=>`<p>${status(CONTROL_STATES[reason.state].label,CONTROL_STATES[reason.state].tone)} ${esc(reason.label)}</p>`).join('')||'<p>Aucune alerte opérationnelle remontée.</p>'}</section>
+  <details open><summary>Comprendre les opérations</summary><div class="ncc-detail-metrics">${[['Ouverture',r.opening?.percent==null?'—':r.opening.percent+' %'],['Froid en écart',count(r.coldChain?.mismatch)],['Équipe présente',count(r.staffing?.present)],['Caisses prêtes',count(r.cashOpening?.ready)],['Prix / promos à faire',count(r.commercial?.pending)],['Incidents ouverts',count(r.openIncidents)],['DLC périmées',count(r.dlc?.expired)],['Recomptages',count(r.inventory?.pendingRecounts)]].map(([label,value])=>`<div><span>${label}</span><strong>${value}</strong></div>`).join('')}</div></details>
+  <details open><summary>Comprendre l’activité</summary>${loadingStore===r.id?'<p role="status">Lecture des ventes de ce magasin…</p>':''}${d?.error?`<p>Ventes indisponibles : ${esc(d.error)}</p><button class="btn soft" data-ncc-retry-detail>Réessayer</button>`:''}<div class="ncc-detail-metrics"><div><span>CA</span><strong>${money(k.netSales)}</strong></div><div><span>Panier</span><strong>${money(k.averageBasket)}</strong></div><div><span>Tickets</span><strong>${count(k.tickets)}</strong></div><div><span>Ruptures</span><strong>${count(k.outOfStockCount)}</strong></div></div>${c.pulseReady?`<p>D-7 ${esc(pulse.comparison?.cutoffLabel||'journée complète')} : ${money(k.comparison)} · ${pulse.comparison?.available?'période comparable':'comparatif indisponible'}.</p>${pulse.analysis?.decomposition?`<p>Contribution des tickets : ${money(pulse.analysis.decomposition.ticketContribution)} · du panier : ${money(pulse.analysis.decomposition.basketContribution)}.</p>`:''}<small>Ventes actualisées : ${esc(new Date(pulse.refreshedAt).toLocaleTimeString('fr-FR'))}</small>`:'<p>Les chiffres absents restent à « — ».</p>'}</details>
+  <button class="btn brand wide" data-network-store="${esc(r.id)}">Ouvrir le magasin et traiter →</button>`;
+ }
+ async function selectStore(id){
+  selected=id;draw();
+  if(window.matchMedia('(max-width:950px)').matches)host.querySelector('.ncc-detail')?.scrollIntoView({behavior:'smooth',block:'start'});
+  if(detailCache.has(id))return;
+  loadingStore=id;draw();
+  try{const pulse=await read(`/api/stores/${encodeURIComponent(id)}/business-pulse`);if(!active())return;detailCache.set(id,{ok:true});rows=rows.map(r=>r.id===id?assessNetworkStore({...r,businessPulse:pulse}):r)}catch(e){if(active())detailCache.set(id,{error:e.message})}finally{if(loadingStore===id)loadingStore=null;if(active())draw()}
+ }
+ async function loadSales(){
+  if(bulk)return;bulk=true;bulkDone=0;draw();let cursor=0;
+  await Promise.all(Array.from({length:Math.min(3,rows.length)},async()=>{while(active()&&cursor<rows.length){const id=rows[cursor++].id;try{const pulse=await read(`/api/stores/${encodeURIComponent(id)}/business-pulse`);if(!active())return;rows=rows.map(r=>r.id===id?assessNetworkStore({...r,businessPulse:pulse}):r)}catch{}bulkDone++;if(active())draw()}}));
+  bulk=false;if(active())draw();
+ }
+ draw();
 }
-
-function kpi(label,m,detail=''){return`<div class="card"><div class="label">${esc(label)}</div><div class="kpi">${metric(m.value)}</div><div class="small muted">${esc(detail||coverage(m))}${detail&&m.known<m.total?` · ${esc(coverage(m))}`:''}</div></div>`}
-function val(v,suffix=''){return known(v)?`${metric(v)}${suffix}`:'—'}
-function pair(a,b){return known(a)&&known(b)?`${metric(a)}/${metric(b)}`:'—'}
-function card(r){
- const open=r.day?.opening_status==='OPENED',staffAlert=!open&&known(r.staffing?.blocking)&&Number(r.staffing.blocking)>0,coldAlert=!open&&known(r.coldChain?.blocking)&&Number(r.coldChain.blocking)>0,cashAlert=!open&&known(r.cashOpening?.blocking)&&Number(r.cashOpening.blocking)>0,commercialAlert=!open&&known(r.commercial?.blocking)&&Number(r.commercial.blocking)>0,handoverAlert=!open&&known(r.handover?.blocking)&&Number(r.handover.blocking)>0,dlcValue=r.dlc?dlcRisk(r):null,dlcAlert=known(dlcValue)&&Number(dlcValue)>0,stockAlert=known(r.inventory?.pendingRecounts)&&Number(r.inventory.pendingRecounts)>0,qualityAlert=known(r.qualityRejected)&&Number(r.qualityRejected)>0,closingAlert=!!r.cash&&cashClosingNeedsAttention(r),danger=staffAlert||coldAlert||cashAlert||commercialAlert||handoverAlert||dlcAlert||qualityAlert||closingAlert||(known(r.sla?.overdue)&&Number(r.sla.overdue)>0)||(known(r.criticalIncidents)&&Number(r.criticalIncidents)>0);
- const closingPct=known(r.closing?.percent)?Number(r.closing.percent):null,closingStatus=r.day?.closing_status==='CLOSED'?'Fermé':closingStarted(r)?'En fermeture':'Non démarrée',health=Object.values(r.dataHealth||{}),missing=health.filter(x=>x===false).length,k=r.businessPulse?.snapshot?.kpis||{},score=r.storeScore||null,scoreTone=Number(score?.score)>=80?'ok':Number(score?.score)>=65?'warn':'danger';
- return`<article class="card network-store ${danger?'critical':''}">
-  <div class="row"><div><div class="label">${esc(r.code||'Magasin')}</div><h3>${esc(r.name)}</h3></div><div class="row">${score?status('Score '+score.score+'/100',scoreTone):''}${status(danger?'À traiter':open?'Ouvert':'En cours',danger?'danger':open?'ok':'warn')}</div></div>
-  ${missing?`<div class="network-data-warning"><strong>${missing} source${missing>1?'s':''} indisponible${missing>1?'s':''}</strong><span>Les champs concernés restent à « — ».</span></div>`:''}
-  <div class="network-process"><div class="row small"><strong>Ouverture</strong><span>${val(r.opening?.percent,'%')}</span></div>${known(r.opening?.percent)?progress(Number(r.opening.percent)):''}<div class="owner-line"><span>Responsable</span><strong>${esc(r.day?.opening_owner_name||'Non attribué')}</strong></div></div>
-  <div class="network-signals"><div><span>Équipe</span><strong>${pair(r.staffing?.present,r.staffing?.lines)}</strong></div><div><span>Froid</span><strong>${pair(r.coldChain?.ready,r.coldChain?.lines)}</strong></div><div><span>Caisses</span><strong>${pair(r.cashOpening?.ready,r.cashOpening?.lines)}</strong></div><div><span>Incidents</span><strong>${val(r.sla?.open??r.openIncidents)}</strong></div></div>
-  <div class="network-signals"><div><span>Prix</span><strong>${val(r.commercial?.blocking)}</strong></div><div><span>DLC</span><strong>${val(dlcValue)}</strong></div><div><span>Stock</span><strong>${val(r.inventory?.pendingRecounts)}</strong></div><div><span>Passation</span><strong>${val(r.handover?.blocking)}</strong></div></div>
-  <div class="network-signals"><div><span>Qualité</span><strong>${known(r.qualityControls)?`${metric(r.qualityControls)} ctrl.`:'—'}</strong></div><div><span>Refus</span><strong>${val(r.qualityRejected)}</strong></div><div><span>Clôture</span><strong>${esc(closingStatus)}</strong></div><div><span>Caisse fin</span><strong>${closingAlert?val(r.cash?.blocking??r.cash?.recounts??r.cash?.pending):'—'}</strong></div></div>
-  <div class="network-business-strip"><div><span>CA</span><strong>${k.netSales==null?'—':fmtMoney(k.netSales)}</strong></div><div><span>Tickets</span><strong>${metric(k.tickets)}</strong></div><div><span>Panier</span><strong>${k.averageBasket==null?'—':fmtMoney(k.averageBasket)}</strong></div><div><span>Ruptures</span><strong>${metric(k.outOfStockCount)}</strong></div></div>
-  <div class="network-customer-score"><span>Customer & fidélité</span><strong>CA encarté ${k.identifiedSalesShare==null?'—':metric(k.identifiedSalesShare)+'%'} · recrutement ${k.recruitmentRateNonLoyalty==null?'à connecter':metric(k.recruitmentRateNonLoyalty)+'%'}</strong><small>${score?.complete?'Poids Customer appliqué : 25%':score?.appliedCustomerWeight?'Poids Customer partiel : '+Math.round(score.appliedCustomerWeight*100)+'%':'Dimension Customer non scorée'}</small></div>
-  ${closingStarted(r)&&closingPct!==null?`<div class="network-process closing-mini"><div class="row small"><strong>Fermeture</strong><span>${closingPct}%</span></div>${progress(closingPct)}</div>`:''}
-  ${staffAlert?`<div class="banner ban-danger"><strong>Couverture équipe insuffisante</strong> · ${r.staffing.pending||0} à pointer · ${r.staffing.absent||0} absent(s).</div>`:''}
-  ${coldAlert?`<div class="banner ban-danger"><strong>${r.coldChain.blocking} zone(s) froid</strong> bloquent l’ouverture.</div>`:''}
-  ${cashAlert?`<div class="banner ban-danger"><strong>${r.cashOpening.blocking} caisse(s)</strong> restent à préparer.</div>`:''}
-  ${commercialAlert?`<div class="banner ban-danger"><strong>${r.commercial.blocking} action(s) prix/promo</strong> restent à exécuter.</div>`:''}
-  ${handoverAlert?`<div class="banner ban-danger"><strong>${r.handover.blocking} passation(s)</strong> doivent être traitées avant ouverture.</div>`:''}
-  ${dlcAlert?`<div class="banner ban-danger"><strong>${dlcValue} lot(s) DLC critique(s) / périmé(s)</strong> nécessitent une action terrain.</div>`:''}
-  ${stockAlert?`<div class="banner ban-info"><strong>${r.inventory.pendingRecounts} recomptage(s) stock</strong> en attente.</div>`:''}
-  ${qualityAlert?`<div class="banner ban-danger"><strong>${r.qualityRejected} unité(s) refusée(s) qualité</strong> aujourd’hui · ${val(r.qualityControls)} contrôle(s).</div>`:''}
-  ${closingAlert?`<div class="banner ban-danger"><strong>Clôture caisse à traiter</strong><div class="small">${val(r.cash?.pending)} shift(s) en attente · ${val(r.cash?.recounts)} recomptage(s) · ${val(r.cash?.blocking)} blocage(s).</div></div>`:''}
-  <button class="btn soft wide" data-network-store="${r.id}">Superviser ce magasin</button>
- </article>`;
-}
-function ensureTrustCss(){if(document.getElementById('networkTrustCss'))return;const s=document.createElement('style');s.id='networkTrustCss';s.textContent=`.network-loading{display:grid;gap:5px;margin-bottom:12px}.network-loading strong{font-size:13px}.network-loading span{font-size:10px;color:var(--muted)}.network-trust-note{display:flex;gap:10px;justify-content:space-between;align-items:center;border:1px solid #dfe7e3;background:#f7fbf8;border-radius:15px;padding:11px 13px;margin-bottom:12px}.network-trust-note strong{font-size:11px}.network-trust-note span{font-size:10px;color:var(--muted)}.network-secondary-kpis{margin:10px 0}.network-secondary-kpis>summary{cursor:pointer;color:var(--muted);font-size:11px;font-weight:800}.network-data-warning{display:flex;justify-content:space-between;gap:8px;border-radius:11px;background:#fff8ed;padding:8px 9px;margin:9px 0}.network-data-warning strong,.network-data-warning span{font-size:9px}.network-data-warning span{color:var(--muted)}.network-business-main{background:linear-gradient(135deg,var(--brand),#7a173b)!important;color:#fff!important;border-color:var(--brand)!important}.network-business-main .label,.network-business-main .small{color:#ffe5ee!important}.network-business-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:9px}.network-business-strip>div{padding:8px;border-radius:10px;background:#faf7f8}.network-business-strip span{display:block;font-size:8px;color:var(--muted)}.network-business-strip strong{display:block;font-size:10px;margin-top:2px}.network-customer-score{margin-top:9px;padding:9px 10px;border-radius:11px;background:#f8f5f6}.network-customer-score span,.network-customer-score small{display:block;font-size:9px;color:var(--muted)}.network-customer-score strong{display:block;font-size:11px;margin:2px 0}@media(max-width:700px){.network-trust-note{align-items:flex-start;flex-direction:column}.network-top-kpis{grid-template-columns:1fr 1fr!important}}`;document.head.appendChild(s)}

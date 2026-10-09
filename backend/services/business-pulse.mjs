@@ -85,3 +85,7 @@ export function clearBusinessPulseCache(storeId=null){
  for(const key of cache.keys())if(key.startsWith(`${storeId}:`))cache.delete(key);
  for(const key of inflight.keys())if(key.startsWith(`${storeId}:`))inflight.delete(key)
 }
+export function peekBusinessPulse(storeId,businessDate){
+ const hit=cache.get(`${storeId}:${businessDate}`);
+ return hit&&Date.now()-hit.at<ttlMs()?hit.value:null;
+}
