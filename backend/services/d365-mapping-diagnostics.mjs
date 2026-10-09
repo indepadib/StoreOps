@@ -17,7 +17,7 @@ const SALES_ROLES={
  quantity:['qty','quantity','salesqty'],
  salesUnit:['salesunit','salesunitsymbol','unitid','unit','unitofmeasure','uom'],
  cost:['costamount','costprice','costvalue','cost','cogs'],
- time:['time','transactiontime','createddatetime','datetime'],
+ time:['transtime','transactiontime','time'],
  productName:['productname','itemname','name','description'],
  department:['department','departmentname','rayon'],
  category:['category','categoryname','family','famille'],
@@ -40,7 +40,8 @@ const PRICE_ROLES={
 };
 
 const ROLE_EXACT_PRIORITY={
- channel:['store','storeid','retailchannelid','retailchannel','channelid','terminalstore','channel']
+ channel:['store','storeid','retailchannelid','retailchannel','channelid','terminalstore','channel'],
+ time:['transtime','transactiontime','time']
 };
 function infer(rows,roles){
  const keys=unique((rows||[]).flatMap(r=>Object.keys(r||{})));
@@ -50,11 +51,12 @@ function infer(rows,roles){
   const ranked=keys.map(key=>{
    const lower=clean(key).toLowerCase(),idx=priority.indexOf(lower),bonus=idx>=0?(priority.length-idx)*20:0;
    return{key,score:keyScore(key,patterns)+bonus}
-  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
+  }).filter(x=>x.score>0&&(role!=='time'||priority.includes(clean(x.key).toLowerCase()))).sort((a,b)=>b.score-a.score||a.key.localeCompare(b.key));
   fields[role]={candidate:ranked[0]?.key||null,confidence:ranked[0]?.score>=6?'HIGH':ranked[0]?.score>=3?'MEDIUM':ranked[0]?.score>0?'LOW':'NONE',alternatives:ranked.slice(1,4)};
  }
  return{keys,fields};
 }
+export function inferSalesTimeField(rows=[]){return infer(rows,SALES_ROLES).fields.time.candidate}
 function maskedRows(rows=[]){return rows.slice(0,3).map(row=>Object.fromEntries(Object.entries(row||{}).map(([k,v])=>[k,typeof v==='string'&&v.length>80?`${v.slice(0,77)}…`:v])))}
 async function safeProbe(entity,{filter='',extra=''}={}){
  try{const r=await probeDataEntity(entity,{top:3,filter,extra});return{ok:!!r.ok,entity,latencyMs:r.latencyMs||null,rowCount:r.rowCount||0,rows:maskedRows(r.rows||[]),error:null}}
