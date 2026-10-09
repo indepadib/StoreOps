@@ -25,4 +25,8 @@ const ended={ProcessingStatus:'Processed',ValidTo:'2026-10-08'};
 assert.equal(offerEndedRecently(ended,'2026-10-11'),true);assert.equal(offerEndedRecently(ended,'2026-10-12'),false);
 assert.equal(offerEndedRecently(ended,'2026-10-08'),false);
 assert.equal(offerStartedRecently({Status:'Enabled',ProcessingStatus:'Processed',ValidFrom:'2026-10-09'},'2026-10-11'),true);
+sync('2026-10-21',[{...base,sourceKey:'D365-LEGACY-2026-10-21',validFrom:'2026-10-21'}]);
+db.prepare("UPDATE commercial_controls SET event_date=NULL,source_details_json=NULL WHERE source_key LIKE 'D365-LEGACY-%'").run();
+db.prepare("UPDATE commercial_source_state SET last_action_business_date='2026-09-01' WHERE stable_key='D365-LEGACY'").run();
+assert.equal(listCommercialControls(storeId,'2026-10-21').some(r=>r.source_key.startsWith('D365-LEGACY-')),false,'legacy rolling snapshots use the corrected source event');
 console.log('PASS three-day event window, no rolling renewal, no old baseline, verification suppression, true change reopening and inclusive promo expiry');

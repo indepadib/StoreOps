@@ -190,7 +190,7 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
  const rows=db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date<=? AND COALESCE(event_date,business_date)>=? AND COALESCE(event_date,business_date)<=? ORDER BY business_date DESC,created_at DESC`).all(storeId,businessDate,windowStart(businessDate),businessDate),seen=new Set(),out=[];
- for(const row of rows){const key=stableKeyFor({sourceKey:row.source_key});if(seen.has(key))continue;seen.add(key);if(row.status!=='VERIFIED'){const h=hydrate(row),event=h.event_date||h.sourceDetails?.eventDate||eventDateFor({actionType:h.action_type,sourceDetails:h.sourceDetails})||h.business_date;if(recent(event,businessDate))out.push(h)}}
+ for(const row of rows){const key=stableKeyFor({sourceKey:row.source_key});if(seen.has(key))continue;seen.add(key);if(row.status!=='VERIFIED'){const h=hydrate(row),state=!h.event_date&&row.source_key.startsWith('D365-')?db.prepare('SELECT last_action_type,last_action_business_date FROM commercial_source_state WHERE store_id=? AND stable_key=?').get(storeId,key):null,event=h.event_date||(state?.last_action_type?state.last_action_business_date:null)||h.sourceDetails?.eventDate||eventDateFor({actionType:h.action_type,sourceDetails:h.sourceDetails})||h.business_date;if(recent(event,businessDate))out.push(h)}}
  return out.sort((a,b)=>['CRITICAL','HIGH','NORMAL','LOW'].indexOf(a.priority)-['CRITICAL','HIGH','NORMAL','LOW'].indexOf(b.priority));
 }
 export function commercialSummary(storeId,businessDate=todayISO()){
