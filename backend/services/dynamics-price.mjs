@@ -300,17 +300,18 @@ export async function getCommercialPriceChanges(storeId,businessDate){
   }catch(error){sources.push({source:'SALES_PRICE_AGREEMENTS',status:'ERROR',code:error.code||'D365_PRICE_AGREEMENTS_DELTA_FAILED',message:error.message})}
 
   try{
-    const entity=basePriceEntity(),payload=await dateScopedRows(entity,{
-      dateField:'SalesPriceDate',day,filterParts:[companyFilter],
+    const entity=basePriceEntity(),payloads=await Promise.all(scanDays.map(scanDay=>dateScopedRows(entity,{
+      dateField:'SalesPriceDate',day:scanDay,filterParts:[companyFilter],
       select:BASE_PRICE_SELECT_FIELDS.join(','),pageSize:200,maxRows:4000
-    });
+    })));
+    const payload={value:payloads.flatMap(p=>p.value||[]),rowCount:payloads.reduce((n,p)=>n+(p.rowCount||0),0),truncated:payloads.some(p=>p.truncated)};
     if(payload.truncated)throw Object.assign(new Error(`Les changements de prix de base du ${day} dépassent la limite StoreOps.`),{status:503,code:'D365_COMMERCIAL_BASE_PRICES_TRUNCATED'});
     let inserted=0;
-    for(const r of payload.value||[]){
+    for(const r of (payload.value||[]).sort((a,b)=>String(a.SalesPriceDate).localeCompare(String(b.SalesPriceDate)))){
       const item=clean(r.ItemNumber||r.ProductNumber),rowDay=dateOnly(r.SalesPriceDate),price=Number(r.SalesPrice);
-      if(!item||rowDay!==day||!Number.isFinite(price)||price<0||agreementItems.has(item))continue;
+      if(!item||!scanDays.includes(rowDay)||!Number.isFinite(price)||price<0||agreementItems.has(item))continue;
       changesByKey.set(`BASE:${item}`,{
-        sourceKey:`D365-PRICE-BASE-${item}-${day}`,stableKey:`D365-PRICE-BASE:${item}`,
+        sourceKey:`D365-PRICE-BASE-${item}-${rowDay}`,stableKey:`D365-PRICE-BASE:${item}`,
         fingerprint:stableFingerprint(['BASE',item,price,r.SalesUnitSymbol,r.SalesPriceQuantity,r.SalesPriceDate,r.SellStartDate,r.SellEndDate]),
         actionType:'PRICE_CHANGE',ean:`ITEM:${item}`,productNumber:item,productName:item,category:null,
         oldPrice:null,expectedPrice:price,promoLabel:`Nouveau prix de base ${price.toFixed(2)} DH`,

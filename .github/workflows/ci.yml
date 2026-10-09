@@ -36,6 +36,8 @@ jobs:
         run: node backend/tests/retail-hierarchy-live.mjs
       - name: POS same-time comparison and explanatory evidence
         run: node backend/tests/sales-comparison-evidence.mjs
+      - name: Recent commercial actions window
+        run: node backend/tests/commercial-recent-window.mjs
       - name: PWA shell integrity test
         run: node backend/tests/pwa-shell.mjs
       - name: Blind inventory presentation test

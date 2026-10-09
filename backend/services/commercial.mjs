@@ -52,6 +52,8 @@ function ensureColumn(table,column,definition){const cols=db.prepare(`PRAGMA tab
 ensureColumn('commercial_controls','source_details_json','TEXT NULL');
 ensureColumn('commercial_policies','recheck_days','INTEGER NOT NULL DEFAULT 7');
 ensureColumn('commercial_source_state','last_verified_at','TEXT NULL');
+ensureColumn('commercial_source_state','last_action_type','TEXT NULL');
+ensureColumn('commercial_controls','event_date','TEXT NULL');
 
 function userName(id){return id?db.prepare(`SELECT name FROM users WHERE id=?`).get(id)?.name||null:null}
 export function commercialPolicy(){return db.prepare(`SELECT * FROM commercial_policies WHERE id='default'`).get()}
@@ -71,7 +73,7 @@ export function commercialConfig(){
    {code:'NONE',label:'Aucune signalétique'}
   ],
   policy:commercialPolicy(),
-  semantics:{verifiedRecheckDays:Number(commercialPolicy().recheck_days||7),verifiedMessage:'Un contrôle conforme ne revient pas chaque jour. Il réapparaît si Dynamics change ou à échéance du recontrôle.'}
+  semantics:{actionWindowDays:3,verifiedRecheckDays:null,verifiedMessage:'Actions récentes uniquement : aujourd’hui et les deux jours précédents. Un contrôle validé ne revient que si Dynamics change.'}
  };
 }
 function hydrate(row){
@@ -88,33 +90,44 @@ function stableKeyFor(c){
 }
 function fingerprintFor(c){
  if(c?.fingerprint)return String(c.fingerprint);
- return JSON.stringify([c?.productNumber,c?.ean,c?.expectedPrice,c?.oldPrice,c?.promoLabel,c?.signageAction])
+ return JSON.stringify([c?.productNumber,c?.ean,c?.expectedPrice,c?.oldPrice,String(c?.promoLabel||'').replace(/^Contrôle de rattrapage · promotion (?:récente|démarrée hier) · /,'')])
 }
+function canonicalFingerprint(value){try{const a=JSON.parse(value);if(Array.isArray(a)&&a.length===6){a.pop();a[4]=String(a[4]||'').replace(/^Contrôle de rattrapage · promotion (?:récente|démarrée hier) · /,'');return JSON.stringify(a)}}catch{}return value}
 function shortHash(value){
  let h=2166136261;for(const ch of String(value||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619)}return (h>>>0).toString(36)
 }
+const windowStart=day=>{const d=new Date(`${day}T12:00:00Z`);d.setUTCDate(d.getUTCDate()-2);return d.toISOString().slice(0,10)};
+const recent=(event,day)=>event&&event>=windowStart(day)&&event<=day;
+function eventDateFor(c){
+ if(c.actionType==='PROMO_END'){const to=dateOnly(c.validTo||c.effectiveTo||c.sourceDetails?.validTo);if(to){const d=new Date(`${to}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10)}}
+ return dateOnly(c.validFrom||c.effectiveFrom||c.sourceDetails?.validFrom);
+}
 function materializeCommercialDeltas(storeId,businessDate,changes=[]){
- const out=[],get=db.prepare(`SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?`),history=db.prepare(`SELECT action_type,ean,product_number,expected_price,old_price,promo_label,signage_action FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1`);
- const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,first_seen_at,last_seen_at,last_changed_at,last_action_business_date) VALUES(?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,NULL,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date)`);
+ const out=[],get=db.prepare('SELECT * FROM commercial_source_state WHERE store_id=? AND stable_key=?'),history=db.prepare('SELECT * FROM commercial_controls WHERE store_id=? AND source_key LIKE ? ORDER BY business_date DESC,created_at DESC LIMIT 1');
+ const upsert=db.prepare(`INSERT INTO commercial_source_state(store_id,stable_key,fingerprint,last_action_business_date,last_action_type) VALUES(?,?,?,?,?) ON CONFLICT(store_id,stable_key) DO UPDATE SET fingerprint=excluded.fingerprint,last_seen_at=CURRENT_TIMESTAMP,last_changed_at=CASE WHEN commercial_source_state.fingerprint<>excluded.fingerprint THEN CURRENT_TIMESTAMP ELSE commercial_source_state.last_changed_at END,last_action_business_date=COALESCE(excluded.last_action_business_date,commercial_source_state.last_action_business_date),last_action_type=COALESCE(excluded.last_action_type,commercial_source_state.last_action_type)`);
  for(const original of Array.isArray(changes)?changes:[]){
-  let c={...original};const d365=c.source==='D365_RETAIL_PRICING',stableKey=stableKeyFor(c),fingerprint=fingerprintFor(c);
+  let c={...original};const d365=String(c.source||'').startsWith('D365_RETAIL_PRICING'),stableKey=stableKeyFor(c),fingerprint=fingerprintFor(c);
   if(!d365||!stableKey){out.push(c);continue}
-  const previous=get.get(storeId,stableKey),historical=history.get(storeId,`${stableKey}-%`),changed=!!previous&&previous.fingerprint!==fingerprint;
-  const historicalFingerprint=historical?fingerprintFor({productNumber:historical.product_number,ean:historical.ean,expectedPrice:historical.expected_price,oldPrice:historical.old_price,promoLabel:historical.promo_label,signageAction:historical.signage_action}):null,changedFromHistory=!!historical&&historicalFingerprint!==fingerprint;
+  const previous=get.get(storeId,stableKey),historical=history.get(storeId,`${stableKey}-%`);
+  let details={};try{details=JSON.parse(historical?.source_details_json||'{}')}catch{}
+  const changed=previous?canonicalFingerprint(previous.fingerprint)!==fingerprint:historical?(details.originalFingerprint?canonicalFingerprint(details.originalFingerprint)!==fingerprint:Number(historical.expected_price)!==Number(c.expectedPrice)||historical.ean!==c.ean):false;
+  const sourceDate=eventDateFor(c),first=!previous&&!historical;
+  let event=changed?businessDate:previous?.last_action_business_date||historical?.event_date||null;
+  if(!changed&&previous&&!previous.last_action_type&&!historical?.event_date)event=sourceDate;
+  if(first&&recent(sourceDate,businessDate))event=sourceDate;
+  // A source first seen without an effective date is baselined, never a backlog.
+  const type=changed?(c.deltaActionType||(c.actionType==='VERIFY'?'PROMO_START':c.actionType)):previous?.last_action_type||historical?.action_type||(c.actionType==='VERIFY'?(c.deltaActionType||'PROMO_START'):c.actionType);
+  upsert.run(storeId,stableKey,fingerprint,event,event?type:null);
+  if(changed)db.prepare('UPDATE commercial_source_state SET last_verified_at=NULL WHERE store_id=? AND stable_key=?').run(storeId,stableKey);
+  if(!recent(event,businessDate))continue;
+  if(!changed&&previous?.last_verified_at)continue;
   if(c.oldPrice==null&&historical?.expected_price!=null&&Number(historical.expected_price)!==Number(c.expectedPrice))c.oldPrice=Number(historical.expected_price);
-  const from=c.validFrom||c.effectiveFrom||null,distance=dayDistance(from,businessDate),recentFirstSeen=!previous&&!historical&&distance!==null&&distance>=0&&distance<=7,deltaFirstSeen=!previous&&!historical&&(c.deltaOnFirstSeen===true||recentFirstSeen),recheckDays=Math.max(1,Number(commercialPolicy().recheck_days||7)),sinceVerified=previous?.last_verified_at?dayDistance(previous.last_verified_at,businessDate):null,periodicRecheck=c.actionType==='VERIFY'&&!changed&&!changedFromHistory&&!deltaFirstSeen&&sinceVerified!==null&&sinceVerified>=recheckDays;
-  let actionDate=null;
-  if(c.actionType==='VERIFY'&&(changed||changedFromHistory||deltaFirstSeen)){
-    const deltaActionType=c.deltaActionType||'PROMO_START',priceDelta=deltaActionType==='PRICE_CHANGE';
-    c={...c,actionType:deltaActionType,signageAction:c.deltaSignageAction|| (priceDelta?'VERIFY':'INSTALL'),priority:c.priority==='CRITICAL'?'CRITICAL':'HIGH',promoLabel:[changed||changedFromHistory?(priceDelta?'Accord tarifaire modifié dans Dynamics':'Promotion modifiée dans Dynamics'):(priceDelta?'Nouvel accord tarifaire détecté':'Promotion récente détectée'),c.promoLabel].filter(Boolean).join(' · ')};
-    actionDate=businessDate
-  }else if(periodicRecheck){c={...c,scheduledRecheck:true,priority:'HIGH',promoLabel:[`Recontrôle périodique après ${recheckDays} jours`,c.promoLabel].filter(Boolean).join(' · ')};actionDate=businessDate
-  }else if(c.actionType!=='VERIFY')actionDate=businessDate;
-  if(actionDate)c.sourceKey=`${stableKey}-${businessDate}-${shortHash(fingerprint)}`;
-  upsert.run(storeId,stableKey,fingerprint,actionDate);
-  out.push(c)
+  c={...c,actionType:type,eventDate:event,sourceKey:`${stableKey}-${event}-${shortHash(fingerprint)}`,signageAction:type==='PROMO_END'?'REMOVE':type==='PROMO_START'?'INSTALL':c.signageAction||'VERIFY',sourceDetails:{...c.sourceDetails,eventDate:event,stableKey,originalFingerprint:fingerprint}};
+  if(first&&type==='PRICE_CHANGE')c.promoLabel=['Nouvel accord tarifaire détecté',c.promoLabel].filter(Boolean).join(' · ');
+  if(changed)c.promoLabel=[type==='PRICE_CHANGE'?'Accord tarifaire modifié dans Dynamics':'Promotion modifiée dans Dynamics',c.promoLabel].filter(Boolean).join(' · ');
+  out.push(c);
  }
- return out
+ return out;
 }
 function isActionableChange(c){
  if(!c?.sourceKey||!c?.ean||!c?.productName)return false;
@@ -153,7 +166,7 @@ function aggregateOfferAnomalies(changes,businessDate){
 export function syncCommercialControls({storeId,businessDate=todayISO(),changes=[],preserveExisting=false}){
  const raw=Array.isArray(changes)?changes:[],deltaAware=materializeCommercialDeltas(storeId,businessDate,raw),filtered=deltaAware.filter(isActionableChange),actionable=aggregateOfferAnomalies(filtered,businessDate);
  const removed=preserveExisting?{changes:0}:db.prepare(`DELETE FROM commercial_controls WHERE store_id=? AND business_date=? AND status='PENDING' AND source_key LIKE 'D365-%'`).run(storeId,businessDate);
- const stmt=db.prepare(`INSERT INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,source_details_json,signage_action,priority,blocking_opening) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ const stmt=db.prepare(`INSERT INTO commercial_controls(id,store_id,business_date,source_key,action_type,ean,product_number,product_name,category,old_price,expected_price,promo_label,source_details_json,signage_action,priority,blocking_opening,event_date) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
  ON CONFLICT(store_id,business_date,source_key) DO UPDATE SET
   ean=excluded.ean,
   product_number=excluded.product_number,
@@ -165,18 +178,20 @@ export function syncCommercialControls({storeId,businessDate=todayISO(),changes=
   source_details_json=excluded.source_details_json,
   signage_action=excluded.signage_action,
   priority=excluded.priority,
-  blocking_opening=excluded.blocking_opening`);
+  blocking_opening=excluded.blocking_opening,event_date=excluded.event_date`);
  let inserted=0;
  for(const c of actionable){
   const actionType=c.actionType||'VERIFY',priority=c.priority||'NORMAL';
   const blocking=c.blockingOpening===false?0:(priority==='CRITICAL'||actionType!=='VERIFY'?1:0);
-  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.sourceDetails?JSON.stringify(c.sourceDetails):null,c.signageAction||'VERIFY',priority,blocking);
+  const info=stmt.run(uid('cc'),storeId,businessDate,String(c.sourceKey),actionType,String(c.ean),c.productNumber||null,c.productName,c.category||null,c.oldPrice??null,c.expectedPrice??null,c.promoLabel||null,c.sourceDetails?JSON.stringify(c.sourceDetails):null,c.signageAction||'VERIFY',priority,blocking,c.eventDate||dateOnly(c.sourceDetails?.eventDate)||businessDate);
   inserted+=Number(info.changes||0);
  }
  return{inserted,removed:Number(removed.changes||0),preserveExisting:!!preserveExisting,rawCount:raw.length,deltaAwareCount:deltaAware.length,filteredCount:filtered.length,actionableCount:actionable.length,total:db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=?`).get(storeId,businessDate).n};
 }
 export function listCommercialControls(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date=? ORDER BY CASE priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'NORMAL' THEN 2 ELSE 3 END, created_at`).all(storeId,businessDate).map(hydrate);
+ const rows=db.prepare(`SELECT * FROM commercial_controls WHERE store_id=? AND business_date<=? AND COALESCE(event_date,business_date)>=? AND COALESCE(event_date,business_date)<=? ORDER BY business_date DESC,created_at DESC`).all(storeId,businessDate,windowStart(businessDate),businessDate),seen=new Set(),out=[];
+ for(const row of rows){const key=stableKeyFor({sourceKey:row.source_key});if(seen.has(key))continue;seen.add(key);if(row.status!=='VERIFIED'){const h=hydrate(row),state=!h.event_date&&row.source_key.startsWith('D365-')?db.prepare('SELECT last_action_type,last_action_business_date FROM commercial_source_state WHERE store_id=? AND stable_key=?').get(storeId,key):null,event=h.event_date||(state?.last_action_type?state.last_action_business_date:null)||h.sourceDetails?.eventDate||eventDateFor({actionType:h.action_type,sourceDetails:h.sourceDetails})||h.business_date;if(recent(event,businessDate))out.push(h)}}
+ return out.sort((a,b)=>['CRITICAL','HIGH','NORMAL','LOW'].indexOf(a.priority)-['CRITICAL','HIGH','NORMAL','LOW'].indexOf(b.priority));
 }
 export function commercialSummary(storeId,businessDate=todayISO()){
  const rows=listCommercialControls(storeId,businessDate),counts={PENDING:0,MISMATCH:0,VERIFIED:0};
@@ -184,7 +199,7 @@ export function commercialSummary(storeId,businessDate=todayISO()){
  return{total:rows.length,pending:counts.PENDING||0,mismatch:counts.MISMATCH||0,verified:counts.VERIFIED||0,blocking:rows.filter(x=>x.blocking_opening&&x.status!=='VERIFIED').length,readiness:rows.length?Math.round(((counts.VERIFIED||0)/rows.length)*100):100};
 }
 export function commercialBlockingCount(storeId,businessDate=todayISO()){
- return db.prepare(`SELECT COUNT(*) n FROM commercial_controls WHERE store_id=? AND business_date=? AND blocking_opening=1 AND status!='VERIFIED'`).get(storeId,businessDate).n;
+ return listCommercialControls(storeId,businessDate).filter(r=>r.blocking_opening).length;
 }
 export function submitCommercialControl({id,user,observedPrice=null,signageOk=null,executionOk=null,note=''}) {
  const row=db.prepare(`SELECT * FROM commercial_controls WHERE id=?`).get(id);if(!row)throw Object.assign(new Error('Contrôle prix/promo introuvable.'),{status:404});
