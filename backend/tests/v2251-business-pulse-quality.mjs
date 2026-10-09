@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-process.env.STOREOPS_DB='/tmp/storeops-v2251-sales-quality.db';
+process.env.STOREOPS_DB=process.env.STOREOPS_DB||'/tmp/storeops-v2251-sales-quality.db';
 
 const {aggregateSalesRows}=await import('../services/dynamics-sales.mjs');
 

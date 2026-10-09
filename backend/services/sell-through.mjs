@@ -1,7 +1,8 @@
+import {attachRetailHierarchy} from './retail-hierarchy.mjs';
 import {readStoreStockSnapshot} from './dynamics-stock.mjs';
 import {readStoreSalesActivityWindow} from './dynamics-sales.mjs';
 import {assortmentIndex,productTaxonomy} from './assortment.mjs';
-import {releasedProductSourcingMany} from './released-product-sourcing.mjs';
+import {productDataMany as releasedProductSourcingMany} from './product-data.mjs';
 
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const clean=v=>String(v??'').trim();
@@ -40,15 +41,11 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
    items.push({id:`slow-${productNumber}`,type:'SLOW',priority:coverage>=SLOW_COVERAGE()*2?'HIGH':'MEDIUM',productNumber,name:(!genericName(sale?.name)&&sale.name!==productNumber?sale.name:!genericName(row.name)&&row.name!==productNumber?row.name:productNumber),ean:row.ean||null,category,availableStock:available,salesUnit:sale?.salesUnit||null,salesUnitsWindow:round(salesUnits,3),salesValueWindow:round(salesValue,2),dailySales:daily,coverageDays:coverage,noSaleDays:null,reason:`Stock estimé à ${coverage} jours de couverture au rythme récent.`,suggestedActions:['MERCHANDISE','COOL_SAVE','TRANSFER','REDUCE_TARGET']})
   }
  }
- const profileSkus=items.slice(0,160).map(x=>x.productNumber).filter(Boolean);
- if(profileSkus.length){
-  let timer=null;try{
-   const released=await Promise.race([releasedProductSourcingMany(profileSkus),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('IDENTITY_TIMEOUT')),2200)})]);
-   for(const item of items){const profile=released.get(item.productNumber);if(!profile)continue;if(profile.productName&&(genericName(item.name)||item.name===item.productNumber))item.name=profile.productName;item.rayonCode=profile.rayonCode||null;item.rayonLabel=profile.rayonLabel||null;item.retailScope=profile.retailScope||null;item.supplyMode=profile.supplyMode||null}
-  }catch{}finally{if(timer)clearTimeout(timer)}
- }
+ const profiles=await releasedProductSourcingMany(items.map(x=>x.productNumber));
+ for(const item of items){const profile=profiles.get(item.productNumber);if(!profile)continue;if(profile.productName)item.name=profile.productName;item.identityStatus=profile.identityStatus;item.productNameSource=profile.productNameSource||null;item.rayonCode=profile.rayonCode||null;item.rayonLabel=profile.rayonLabel||null;item.retailScope=profile.retailScope||null;item.supplyMode=profile.supplyMode||null}
  items.sort((a,b)=>(a.type==='DEAD'?0:1)-(b.type==='DEAD'?0:1)||(Number(b.coverageDays||999)-Number(a.coverageDays||999))||Number(b.availableStock)-Number(a.availableStock));
  const dead=items.filter(x=>x.type==='DEAD'),slow=items.filter(x=>x.type==='SLOW');
- const value={status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}};snapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+snapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}})();
+ const enrichedItems=attachRetailHierarchy(items);
+ const value={status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items:enrichedItems,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}};snapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+snapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}})();
  if(!force)snapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&snapshotInflight.get(cacheKey)===task)snapshotInflight.delete(cacheKey)}
 }

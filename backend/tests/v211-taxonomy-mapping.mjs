@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-process.env.STOREOPS_DB=`/tmp/storeops-v211-taxonomy-${process.pid}.db`;
+process.env.STOREOPS_DB=process.env.STOREOPS_DB||`/tmp/storeops-v211-taxonomy-${process.pid}.db`;
 process.env.D365_MODE='live';
 process.env.D365_BASE_URL='https://example.operations.dynamics.com';
 process.env.D365_TENANT_ID='tenant';

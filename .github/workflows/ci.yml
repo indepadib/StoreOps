@@ -30,6 +30,8 @@ jobs:
           node --check frontend/sw.js
       - name: Version contract test
         run: node backend/tests/version-contract.mjs
+      - name: Article identity, UB rankings and temperature register
+        run: node backend/tests/data-temperature-hierarchy.mjs
       - name: PWA shell integrity test
         run: node backend/tests/pwa-shell.mjs
       - name: Blind inventory presentation test

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 
-process.env.STOREOPS_DB=`/tmp/storeops-v235-${process.pid}.db`;
+process.env.STOREOPS_DB=process.env.STOREOPS_DB||`/tmp/storeops-v235-${process.pid}.db`;
 const {minuteOfDay,salesComparisonCutoff}=await import('../services/dynamics-sales.mjs');
 
 assert.equal(minuteOfDay('09:15'),555);

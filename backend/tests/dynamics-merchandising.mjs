@@ -10,7 +10,7 @@ const categories=normalizeCategoryRows([
 assert.equal(categories.length,2);assert.equal(categories[1].categoryName,'Biscuits');assert.equal(categories[1].parentCategoryId,'100');
 
 const assignments=normalizeAssignmentRows([{ProductNumber:'HS-1',CategoryId:'100200'}],{});
-assert.deepEqual(assignments,[{productNumber:'HS-1',categoryId:'100200',hierarchy:null}]);
+assert.deepEqual(assignments,[{productNumber:'HS-1',categoryId:'100200',categoryCode:'100200',hierarchy:null}]);
 
 const assortments=normalizeAssortmentRows([
  {AssortmentId:'A1',AssortmentName:'Val Fleuri Core',ProductNumber:'HS-1',Included:true,ValidFrom:'2026-01-01'},

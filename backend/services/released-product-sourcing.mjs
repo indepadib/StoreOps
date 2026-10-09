@@ -1,4 +1,5 @@
 import {config} from '../config.mjs';
+import {resolveProductLabel} from './product-label.mjs';
 import {odataGet,odataGetAll} from './dynamics.mjs';
 
 const clean=v=>String(v??'').trim();
@@ -13,11 +14,7 @@ const sourcingCacheMs=()=>Math.max(30_000,Math.min(900_000,Number(process.env.ST
 function cacheGet(sku){const x=sourcingCache.get(String(sku||''));return x&&Date.now()<x.expiresAt?x.value:null}
 function cachePut(sku,value){if(sku&&value)sourcingCache.set(String(sku),{value,expiresAt:Date.now()+sourcingCacheMs()});return value}
 function productNameField(row){const configured=clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD||config.dynamics.productNameField),keys=Object.keys(row||{});if(configured){const found=keys.find(k=>k.toLowerCase()===configured.toLowerCase());if(found&&clean(row[found]))return found}for(const name of productNameCandidates){const found=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(found&&clean(row[found]))return found}return null}
-export function releasedProductDisplayName(row){
- const field=productNameField(row),name=field?clean(row?.[field]):null;
- const quality=!field?null:/productsearchname/i.test(field)?'SEARCH_FALLBACK':/^searchname$/i.test(field)?'SEARCH_FALLBACK':'DISPLAY_NAME';
- return{field:field||null,name,quality}
-}
+export function releasedProductDisplayName(row){return resolveProductLabel(row,{configuredField:process.env.D365_RELEASED_PRODUCT_NAME_FIELD||config.dynamics.productNameField})}
 function valueField(row,candidates=[]){const keys=Object.keys(row||{});for(const c of candidates){const hit=keys.find(k=>k.toLowerCase()===String(c).toLowerCase());if(hit)return hit}return null}
 export function parseRetailFinancialDimension(value){
  const raw=clean(value),parts=raw.split('|').map(clean).filter(Boolean);
@@ -74,8 +71,8 @@ export async function releasedProductSourcingMany(productNumbers=[]){
   }
   if(workingItemField)break
  }
- if(!workingItemField){for(const sku of skus)out.set(sku,{status:lastError?'ERROR':'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:lastError?null:'RELEASED_PRODUCT_NOT_FOUND',error:lastError?.message||null,code:lastError?.code||null});return out}
- const probeNameField=productNameField(probeRow),probeSupplyField=inferField(probeRow),probeVendorField=[vendorField,'PrimaryVendorAccount','VendorAccountNumber'].find(field=>field&&Object.prototype.hasOwnProperty.call(probeRow||{},field))||null,probeDimensionField=valueField(probeRow,['DefaultLedgerDimensionDisplayValue','DEFAULTLEDGERDIMENSIONDISPLAYVALUE']),probeInventoryUnit=valueField(probeRow,['InventoryUnitSymbol']),probeSalesUnit=valueField(probeRow,['SalesUnitSymbol']),probePurchaseUnit=valueField(probeRow,['PurchaseUnitSymbol']),probeSalesPrice=valueField(probeRow,['SalesPrice']),probeUnitCost=valueField(probeRow,['UnitCost']),select=[workingItemField,probeNameField,probeSupplyField,probeVendorField,probeDimensionField,probeInventoryUnit,probeSalesUnit,probePurchaseUnit,probeSalesPrice,probeUnitCost,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ if(!workingItemField){for(const sku of pending)out.set(sku,{status:lastError?'ERROR':'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:lastError?null:'RELEASED_PRODUCT_NOT_FOUND',error:lastError?.message||null,code:lastError?.code||null});return out}
+ const probeNameField=productNameField(probeRow),probeSupplyField=inferField(probeRow),probeVendorField=[vendorField,'PrimaryVendorAccount','VendorAccountNumber'].find(field=>field&&Object.prototype.hasOwnProperty.call(probeRow||{},field))||null,probeDimensionField=valueField(probeRow,['DefaultLedgerDimensionDisplayValue','DEFAULTLEDGERDIMENSIONDISPLAYVALUE']),probeInventoryUnit=valueField(probeRow,['InventoryUnitSymbol']),probeSalesUnit=valueField(probeRow,['SalesUnitSymbol']),probePurchaseUnit=valueField(probeRow,['PurchaseUnitSymbol']),probeSalesPrice=valueField(probeRow,['SalesPrice']),probeUnitCost=valueField(probeRow,['UnitCost']),select=[workingItemField,...Object.keys(probeRow||{}).filter(k=>[...productNameCandidates,clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD||config.dynamics.productNameField)].some(n=>n.toLowerCase()===k.toLowerCase())),probeSupplyField,probeVendorField,probeDimensionField,probeInventoryUnit,probeSalesUnit,probePurchaseUnit,probeSalesPrice,probeUnitCost,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  for(let i=0;i<pending.length;i+=30){
   const chunk=pending.slice(i,i+30),filters=[`(${chunk.map(sku=>`${workingItemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   try{

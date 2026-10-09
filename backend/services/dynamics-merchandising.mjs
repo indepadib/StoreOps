@@ -1,3 +1,5 @@
+import {db} from '../db.mjs';
+import {retailCategoryCode} from './category-code.mjs';
 import { config } from '../config.mjs';
 import { odataGetAll } from './dynamics.mjs';
 import { syncCategoryHierarchy,syncProductCategoryAssignments,replaceStoreAssortmentSnapshots } from './assortment.mjs';
@@ -59,10 +61,10 @@ export function dynamicsMerchandisingConfig(){
 export function normalizeCategoryRows(rows=[],mapping=dynamicsMerchandisingConfig().taxonomy){
  const out=[];
  for(const row of Array.isArray(rows)?rows:[]){
-  const categoryId=clean(first(row,[mapping.categoryIdField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','CategoryCode','Category']));
-  const categoryName=clean(first(row,[mapping.categoryNameField,'CategoryName','ProcurementCategoryName','Name','Description']));
+  const categoryId=clean(first(row,[mapping.categoryIdField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','CategoryCode','ProductCategoryCode','ProductCategoryName','Category']));
+  const categoryName=clean(first(row,[mapping.categoryNameField,'CategoryName','ProcurementCategoryName','ProductCategoryName','Name','Description']));
   if(!categoryId||!categoryName)continue;
-  out.push({categoryId,categoryName,parentCategoryId:clean(first(row,[mapping.parentCategoryIdField,'ParentCategoryId','ParentCategoryIdentifier','ParentCategory']))||null,level:Number(first(row,[mapping.categoryLevelField,'CategoryLevel','Level']))||null,path:clean(first(row,[mapping.categoryPathField,'CategoryPath','Path']))||null,hierarchy:clean(first(row,[mapping.hierarchyField,'CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null,active:boolish(first(row,['IsActive','Active','Status']),true)});
+  out.push({categoryId,categoryName,categoryCode:[row.ProductCategoryCode,row.CategoryCode,row.Code,row.ProductCategoryName,row.CategoryName,categoryId].map(retailCategoryCode).find(Boolean)||null,parentCategoryId:clean(first(row,[mapping.parentCategoryIdField,'ParentCategoryId','ParentCategoryIdentifier','ParentCategory']))||null,level:Number(first(row,[mapping.categoryLevelField,'CategoryLevel','Level']))||null,path:clean(first(row,[mapping.categoryPathField,'CategoryPath','Path']))||null,hierarchy:clean(first(row,[mapping.hierarchyField,'ProductCategoryHierarchyName','CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null,active:boolish(first(row,['IsActive','Active','Status']),true)});
  }
  return out
 }
@@ -71,9 +73,9 @@ export function normalizeAssignmentRows(rows=[],mapping=dynamicsMerchandisingCon
  const out=[];
  for(const row of Array.isArray(rows)?rows:[]){
   const productNumber=clean(first(row,[mapping.assignmentProductField,'ProductNumber','ItemNumber','Product','ProductId']));
-  const categoryId=clean(first(row,[mapping.assignmentCategoryField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','Category']));
+  const categoryId=clean(first(row,[mapping.assignmentCategoryField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','CategoryCode','ProductCategoryCode','ProductCategoryName','Category']));
   if(!productNumber||!categoryId)continue;
-  out.push({productNumber,categoryId,hierarchy:clean(first(row,[mapping.assignmentHierarchyField,'CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null});
+  out.push({productNumber,categoryId,categoryCode:[row.ProductCategoryCode,row.CategoryCode,row.ProductCategoryName,row.CategoryName,categoryId].map(retailCategoryCode).find(Boolean)||null,hierarchy:clean(first(row,[mapping.assignmentHierarchyField,'ProductCategoryHierarchyName','CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null});
  }
  return out
 }
@@ -104,10 +106,28 @@ export async function syncTaxonomyFromDynamics(){
   odataGetAll(categoryEntity,{pageSize:t.pageSize,maxRows:t.maxRows,extra:config.dynamics.dataAreaId?'cross-company=true':''}),
   odataGetAll(assignmentEntity,{pageSize:t.pageSize,maxRows:t.maxRows,extra:config.dynamics.dataAreaId?'cross-company=true':''})
  ]);
- const categories=normalizeCategoryRows(categoriesRaw.value,t),assignments=normalizeAssignmentRows(assignmentsRaw.value,t);
+ if(categoriesRaw.truncated||assignmentsRaw.truncated)throw Object.assign(new Error('Référentiel catégories incomplet : dernier état conservé.'),{status:409,code:'D365_TAXONOMY_TRUNCATED'});
+ const companyRows=rows=>(rows||[]).filter(row=>{const area=clean(first(row,[config.dynamics.dataAreaField,'dataAreaId','DataAreaId']));return !area||!config.dynamics.dataAreaId||area.toLowerCase()===config.dynamics.dataAreaId.toLowerCase()});
+ const categories=normalizeCategoryRows(companyRows(categoriesRaw.value),t),assignments=normalizeAssignmentRows(companyRows(assignmentsRaw.value),t);
  if(!categories.length)throw Object.assign(new Error('Aucune catégorie exploitable retournée par D365 : mapping à valider.'),{status:409,code:'D365_TAXONOMY_EMPTY',details:{entity:categoryEntity,rowsRead:categoriesRaw.rowCount}});
  if(!assignments.length)throw Object.assign(new Error('Aucune affectation produit/catégorie exploitable retournée par D365 : mapping à valider.'),{status:409,code:'D365_CATEGORY_ASSIGNMENT_EMPTY',details:{entity:assignmentEntity,rowsRead:assignmentsRaw.rowCount}});
- const hierarchyKey=c.hierarchyKey,categorySync=syncCategoryHierarchy({source:c.source,hierarchyKey,categories}),assignmentSync=syncProductCategoryAssignments({source:c.source,hierarchyKey,assignments});
+ const hierarchyKey=c.hierarchyKey;
+ const named=[...new Set([...categories,...assignments].map(x=>x.hierarchy).filter(Boolean))];
+ // Unscoped rows can only be attributed when one hierarchy is unambiguous.
+ if(named.length>1&&[...categories,...assignments].some(x=>!x.hierarchy))throw Object.assign(new Error('Hiérarchie absente sur une partie du référentiel : mapping à préciser.'),{status:409,code:'D365_TAXONOMY_SCOPE_AMBIGUOUS'});
+ const scope=x=>x.hierarchy||named[0]||hierarchyKey,keys=[...new Set([...categories,...assignments].map(scope))];
+ let categoryCount=0,assignmentCount=0;
+ db.exec('SAVEPOINT sync_taxonomy');
+ try{
+  for(const key of keys){
+   const cats=categories.filter(x=>scope(x)===key),links=assignments.filter(x=>scope(x)===key);
+   if(!cats.length||!links.length)throw Object.assign(new Error(`Référentiel incomplet pour ${key} : dernier état conservé.`),{status:409,code:'D365_TAXONOMY_SCOPE_INCOMPLETE'});
+   categoryCount+=syncCategoryHierarchy({source:c.source,hierarchyKey:key,categories:cats}).inserted;
+   assignmentCount+=syncProductCategoryAssignments({source:c.source,hierarchyKey:key,assignments:links}).inserted;
+  }
+  db.exec('RELEASE sync_taxonomy');
+ }catch(error){db.exec('ROLLBACK TO sync_taxonomy');db.exec('RELEASE sync_taxonomy');throw error}
+ const categorySync={inserted:categoryCount},assignmentSync={inserted:assignmentCount};
  return{source:c.source,hierarchyKey,categoryEntity,assignmentEntity,categories:categorySync.inserted,assignments:assignmentSync.inserted,rowsRead:{categories:categoriesRaw.rowCount,assignments:assignmentsRaw.rowCount},truncated:!!categoriesRaw.truncated||!!assignmentsRaw.truncated}
 }
 
