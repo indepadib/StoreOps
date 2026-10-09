@@ -6,7 +6,8 @@ import {assessNetworkStore,controlOverview,selectControlRows,networkClock} from 
 const now=new Date('2026-10-09T10:00:00Z');
 const healthy=id=>({id,code:id,name:`Magasin ${id}`,dataHealth:{network:true},day:{business_date:'2026-10-09',opening_status:'OPENED',closing_status:'NOT_STARTED'},staffing:{status:'OPENED',blocking:0},coldChain:{status:'OPENED',mismatch:0},cashOpening:{status:'OPENED',mismatch:0}});
 const assess=row=>assessNetworkStore(row,{now});
-assert.deepEqual(networkClock(now),{date:'2026-10-09',minute:660});
+// Use an established winter date: future Morocco DST forecasts differ across ICU versions.
+assert.deepEqual(networkClock(new Date('2025-01-15T12:00:00Z')),{date:'2025-01-15',minute:780});
 assert.equal(assess(healthy('ok')).control.state,'OK');
 assert.equal(assess({...healthy('unknown'),dataHealth:{network:false}}).control.state,'UNKNOWN');
 assert.equal(assess({...healthy('undated'),day:{opening_status:'OPENED'}}).control.state,'UNKNOWN');
