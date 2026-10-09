@@ -21,7 +21,7 @@ assert.equal(assess({...healthy('staff'),staffing:{status:'PREPARING',blocking:1
 const unopened={...healthy('opening'),day:{business_date:'2026-10-09',opening_status:'NOT_STARTED'},commercial:{blocking:1}};
 assert.equal(assess(unopened).control.state,'CRITICAL');
 assert.equal(assess({...unopened,opening_time:'12:00'}).control.state,'OK','no overdue opening before scheduled time');
-const pulse={status:'READY',businessDate:'2026-10-09',refreshedAt:now.toISOString(),comparison:{available:true},snapshot:{kpis:{netSales:1000,changeVsComparison:-15}}};
+const pulse={status:'READY',businessDate:'2026-10-09',refreshedAt:now.toISOString(),comparison:{available:true},snapshot:{kpis:{netSales:1000,comparison:1200,changeVsComparison:-16.67}}};
 assert.equal(assess({...healthy('sales'),businessPulse:pulse}).control.state,'WARNING');
 assert.equal(assess({...healthy('bad-comparison'),businessPulse:{...pulse,comparison:{available:false}}}).control.state,'OK');
 assert.equal(assess({...healthy('stale-sales'),businessPulse:{...pulse,refreshedAt:'2026-10-09T09:00:00Z'}}).control.pulseReady,false);

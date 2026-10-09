@@ -48,6 +48,8 @@ jobs:
         run: node backend/tests/network-risk.mjs
       - name: Network control room priorities and data completeness
         run: node backend/tests/network-control-room.mjs
+      - name: Network actions, comparable sales and bounded reads
+        run: node backend/tests/network-control-optimization.mjs
       - name: Today receiving and quality signals test
         run: node backend/tests/today-signals.mjs
       - name: Evidence-safe incident resolution policy test
