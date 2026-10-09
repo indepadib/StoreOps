@@ -46,6 +46,8 @@ jobs:
         run: node backend/tests/quality-draft.mjs
       - name: Network control-tower risk test
         run: node backend/tests/network-risk.mjs
+      - name: Network control room priorities and data completeness
+        run: node backend/tests/network-control-room.mjs
       - name: Today receiving and quality signals test
         run: node backend/tests/today-signals.mjs
       - name: Evidence-safe incident resolution policy test
