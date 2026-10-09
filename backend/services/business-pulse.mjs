@@ -1,5 +1,6 @@
+import {readRetailHierarchyContext} from './retail-hierarchy-data.mjs';
 import {usableProductName} from './product-label.mjs';
-import {attachRetailHierarchy,rankRetailHierarchy,hierarchyContext} from './retail-hierarchy.mjs';
+import {attachRetailHierarchy,rankRetailHierarchy} from './retail-hierarchy.mjs';
 import { config } from '../config.mjs';
 import { normalizeRetailInsights,quickPulse } from './retail-insights.mjs';
 import { readStoreSalesDay,salesComparisonDate,salesIntegrationConfig,salesComparisonCutoff } from './dynamics-sales.mjs';
@@ -50,12 +51,13 @@ async function computeBusinessPulse(storeId,businessDate){
  if(current.status!=='READY'){
   const value={status:'UNAVAILABLE',storeId,businessDate,comparisonDate,source:'D365',integration:integrationView,stock,refreshedAt:new Date().toISOString(),snapshot:null,quick:null};cache.set(`${storeId}:${businessDate}`,{at:Date.now(),value});return value;
  }
- const context=hierarchyContext(),c={...(current.data||{})};c.products=attachRetailHierarchy(await enrichProductNames(c.products||[]),context);const rawPrior=comparison.status==='READY'?comparison.data:null,comparisonCutoff=rawPrior?.cutoff||null,comparisonUsable=comparison.status==='READY'&&(comparisonScope.mode==='FULL_DAY'||comparisonCutoff?.applied===true&&comparisonCutoff?.complete===true),prior=comparisonUsable?{...rawPrior}:null,recruitment=recruitmentResult.status==='fulfilled'?recruitmentResult.value:{status:'UNAVAILABLE',recruitments:null,error:{code:recruitmentResult.reason?.code||'D365_LOYALTY_READ_FAILED',message:recruitmentResult.reason?.message||String(recruitmentResult.reason||'')}};
+ const context=await readRetailHierarchyContext([...(current.data?.products||[]),...(comparison.data?.products||[])].map(p=>p.key)),c={...(current.data||{})};c.products=attachRetailHierarchy(await enrichProductNames(c.products||[]),context);const rawPrior=comparison.status==='READY'?comparison.data:null,comparisonCutoff=rawPrior?.cutoff||null,comparisonUsable=comparison.status==='READY'&&(comparisonScope.mode==='FULL_DAY'||comparisonCutoff?.applied===true&&comparisonCutoff?.complete===true),prior=comparisonUsable?{...rawPrior}:null,recruitment=recruitmentResult.status==='fulfilled'?recruitmentResult.value:{status:'UNAVAILABLE',recruitments:null,error:{code:recruitmentResult.reason?.code||'D365_LOYALTY_READ_FAILED',message:recruitmentResult.reason?.message||String(recruitmentResult.reason||'')}};
  const baseLoyalty=c.loyalty||{},recruitments=recruitment.status==='READY'?Number(recruitment.recruitments||0):null,recruitmentRateNonLoyalty=recruitments!==null&&Number(baseLoyalty.nonLoyaltyTickets||0)>0?round2((recruitments/Number(baseLoyalty.nonLoyaltyTickets))*100):null,loyalty={...baseLoyalty,recruitments,recruitmentRateNonLoyalty,recruitmentSource:recruitment.status==='READY'?recruitment.source:'UNAVAILABLE'};
  const snapshot=normalizeRetailInsights({source:current.source,storeId,businessDate,refreshedAt:new Date().toISOString(),sales:c.sales,netSales:c.netSales,tickets:c.tickets,units:c.units,marginValue:c.marginValue,marginRate:c.marginRate,comparison:prior?.netSales??null,outOfStockCount:stock.outOfStockCount,nearOutOfStockCount:stock.nearOutOfStockCount,negativeStockCount:stock.negativeStockCount,residualOutsideAssortment:stock.residualOutsideAssortment,loyalty,departments:c.departments,categories:c.categories,products:c.products,hourly:c.hourly});
  const priorProducts=prior?attachRetailHierarchy(await enrichProductNames(prior.products||[]),context):null;
  const hierarchyRankings=rankRetailHierarchy(c.products,priorProducts);
  snapshot.hierarchyRankings=hierarchyRankings;
+ snapshot.hierarchyRead=context.diagnostics;
  snapshot.breakdowns.departments=hierarchyRankings.department;
  snapshot.breakdowns.categories=hierarchyRankings.family;
  snapshot.hierarchyPreviousProducts=priorProducts;

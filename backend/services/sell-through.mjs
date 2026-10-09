@@ -1,3 +1,4 @@
+import {readRetailHierarchyContext} from './retail-hierarchy-data.mjs';
 import {attachRetailHierarchy} from './retail-hierarchy.mjs';
 import {readStoreStockSnapshot} from './dynamics-stock.mjs';
 import {readStoreSalesActivityWindow} from './dynamics-sales.mjs';
@@ -45,7 +46,7 @@ export async function sellThroughSnapshot(storeId,{businessDate=new Date().toISO
  for(const item of items){const profile=profiles.get(item.productNumber);if(!profile)continue;if(profile.productName)item.name=profile.productName;item.identityStatus=profile.identityStatus;item.productNameSource=profile.productNameSource||null;item.rayonCode=profile.rayonCode||null;item.rayonLabel=profile.rayonLabel||null;item.retailScope=profile.retailScope||null;item.supplyMode=profile.supplyMode||null}
  items.sort((a,b)=>(a.type==='DEAD'?0:1)-(b.type==='DEAD'?0:1)||(Number(b.coverageDays||999)-Number(a.coverageDays||999))||Number(b.availableStock)-Number(a.availableStock));
  const dead=items.filter(x=>x.type==='DEAD'),slow=items.filter(x=>x.type==='SLOW');
- const enrichedItems=attachRetailHierarchy(items);
- const value={status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items:enrichedItems,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}};snapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+snapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}})();
+ const hierarchy=await readRetailHierarchyContext(items.map(x=>x.productNumber)),enrichedItems=attachRetailHierarchy(items,hierarchy);
+ const value={status:'READY',storeId,businessDate,windowDays:days,thresholds:{deadNoSaleDays:days,slowCoverageDays:SLOW_COVERAGE()},items:enrichedItems,summary:{dead:dead.length,slow:slow.length,total:items.length,deadStockUnits:round(dead.reduce((s,x)=>s+n(x.availableStock),0),3),slowStockUnits:round(slow.reduce((s,x)=>s+n(x.availableStock),0),3)},diagnostics:{hierarchy:hierarchy.diagnostics,stockSource:stock.source,salesSource:sales.source,assortmentState:assortment.status,warehouseId:stock.warehouseId,rowsRead:stock.rowCount,salesProducts:(sales.products||[]).length}};snapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+snapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}})();
  if(!force)snapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&snapshotInflight.get(cacheKey)===task)snapshotInflight.delete(cacheKey)}
 }

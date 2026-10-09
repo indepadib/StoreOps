@@ -61,10 +61,10 @@ export function dynamicsMerchandisingConfig(){
 export function normalizeCategoryRows(rows=[],mapping=dynamicsMerchandisingConfig().taxonomy){
  const out=[];
  for(const row of Array.isArray(rows)?rows:[]){
-  const categoryId=clean(first(row,[mapping.categoryIdField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','CategoryCode','ProductCategoryCode','ProductCategoryName','Category']));
+  const categoryId=clean(first(row,[mapping.categoryIdField,'CategoryId','CategoryIdentifier','ProcurementCategoryId','CategoryCode','ProductCategoryCode','ProductCategoryName','Category','CategoryName']));
   const categoryName=clean(first(row,[mapping.categoryNameField,'CategoryName','ProcurementCategoryName','ProductCategoryName','Name','Description']));
   if(!categoryId||!categoryName)continue;
-  out.push({categoryId,categoryName,categoryCode:[row.ProductCategoryCode,row.CategoryCode,row.Code,row.ProductCategoryName,row.CategoryName,categoryId].map(retailCategoryCode).find(Boolean)||null,parentCategoryId:clean(first(row,[mapping.parentCategoryIdField,'ParentCategoryId','ParentCategoryIdentifier','ParentCategory']))||null,level:Number(first(row,[mapping.categoryLevelField,'CategoryLevel','Level']))||null,path:clean(first(row,[mapping.categoryPathField,'CategoryPath','Path']))||null,hierarchy:clean(first(row,[mapping.hierarchyField,'ProductCategoryHierarchyName','CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null,active:boolish(first(row,['IsActive','Active','Status']),true)});
+  out.push({categoryId,categoryName,categoryCode:clean(first(row,['ProductCategoryCode','CategoryCode','Code']))||[row.ProductCategoryName,row.CategoryName,categoryId].map(retailCategoryCode).find(Boolean)||null,parentCategoryId:clean(first(row,[mapping.parentCategoryIdField,'ParentCategoryId','ParentCategoryIdentifier','ParentCategory','ParentCategoryName']))||null,level:Number(first(row,[mapping.categoryLevelField,'CategoryLevel','Level']))||null,path:clean(first(row,[mapping.categoryPathField,'CategoryPath','Path']))||null,hierarchy:clean(first(row,[mapping.hierarchyField,'ProductCategoryHierarchyName','CategoryHierarchyName','HierarchyName','CategoryHierarchy']))||null,active:boolish(first(row,['IsActive','Active','Status']),true)});
  }
  return out
 }

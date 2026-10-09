@@ -32,6 +32,8 @@ jobs:
         run: node backend/tests/version-contract.mjs
       - name: Article identity, UB rankings and temperature register
         run: node backend/tests/data-temperature-hierarchy.mjs
+      - name: D365 category joins and hierarchy reads
+        run: node backend/tests/retail-hierarchy-live.mjs
       - name: PWA shell integrity test
         run: node backend/tests/pwa-shell.mjs
       - name: Blind inventory presentation test

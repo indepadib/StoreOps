@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'hierarchy-')),'test.db');
+const {readRetailHierarchyContext}=await import('../services/retail-hierarchy-data.mjs');
+const {attachRetailHierarchy,makeHierarchyContext}=await import('../services/retail-hierarchy.mjs');
+const {db}=await import('../db.mjs');
+const hierarchy='H&S Procurement Category Hierarchy';
+const names=['APLS','STAND','STAND CHARCUTERIE','CHARCUTERIE SÉCHE','CHARCUTERIE FUMÉE','SALAMI'];
+const codes=['2','19','002019062','002019062346','002019062346001','002019062346001006'];
+const rows=names.map((CategoryName,i)=>({CategoryName,CategoryCode:codes[i],CategoryHierarchyName:hierarchy,ParentCategoryName:i?names[i-1]:'H&S'}));
+rows.push({CategoryName:'SALAMI',CategoryCode:'003001001001001001',CategoryHierarchyName:'Other hierarchy'});
+let categoryCalls=0,assignmentCalls=0;
+const read=async(entity,options)=>{
+ if(entity==='ProcurementProductCategories'){categoryCalls++;return{value:rows,truncated:false}}
+ assignmentCalls++;assert.ok(options.filter.includes("ProductNumber eq 'HS-000001'"));
+ return{value:[{ProductNumber:'HS-000001',ProductCategoryName:'SALAMI',ProductCategoryHierarchyName:hierarchy}],truncated:false};
+};
+const before=db.prepare('SELECT count(*) n FROM merchandising_categories').get().n;
+const context=await readRetailHierarchyContext(['HS-000001'],{live:true,read});
+assert.equal(context.diagnostics.status,'READY');
+const p=attachRetailHierarchy([{productNumber:'HS-000001'}],context)[0];
+assert.equal(p.hierarchy.ub,codes[5]);
+assert.deepEqual(Object.values(p.hierarchy.levels).map(x=>x.label),names);
+assert.deepEqual(Object.values(p.hierarchy.levels).map(x=>x.id),codes.map((_,i)=>codes[5].slice(0,(i+1)*3)));
+await readRetailHierarchyContext(['HS-000001'],{live:true,read});
+assert.equal(categoryCalls,1);assert.equal(assignmentCalls,1);
+assert.equal(db.prepare('SELECT count(*) n FROM merchandising_categories').get().n,before);
+const ambiguous=makeHierarchyContext(context.categories,[...context.assignments,{...context.assignments[0],category_id:'003001001001001001',category_code:'003001001001001001'}]);
+assert.equal(attachRetailHierarchy([{productNumber:'HS-000001'}],ambiguous)[0].hierarchy.status,'AMBIGUOUS');
+process.env.D365_CATEGORY_ENTITY='FailureCategories';
+const failed=await readRetailHierarchyContext(['HS-000001'],{live:true,read:async()=>({value:rows,truncated:true})});
+assert.equal(failed.diagnostics.code,'D365_TAXONOMY_TRUNCATED');
+console.log('PASS real D365 shape, scoped name join, short parent codes, cache, ambiguity and read-only failure');
