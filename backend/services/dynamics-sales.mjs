@@ -54,7 +54,12 @@ export function minuteOfDay(v){
  }
  return null
 }
-function hourOf(v){const m=minuteOfDay(v);return m===null?null:Math.floor(m/60)}
+export function transactionMinute(v,timeField=''){
+ if(/^transtime$/i.test(timeField)&&typeof v==='string'&&/^\d+$/.test(v.trim())){const seconds=Number(v);return seconds>=0&&seconds<=86399?Math.floor(seconds/60):null}
+ if(/modified|created|pickup|shipping/i.test(timeField))return null;
+ return minuteOfDay(v);
+}
+function hourOf(v,timeField){const m=transactionMinute(v,timeField);return m===null?null:Math.floor(m/60)}
 function zonedClock(now=new Date(),timeZone=process.env.STOREOPS_BUSINESS_TIME_ZONE||'Africa/Casablanca'){
  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(now).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
  return{date:`${parts.year}-${parts.month}-${parts.day}`,hour:Number(parts.hour),minute:Number(parts.minute),timeZone}
@@ -65,12 +70,12 @@ export function salesComparisonCutoff(businessDate,{now=new Date(),timeZone=proc
  const cutoffMinute=clock.hour*60+clock.minute;
  return{mode:'SAME_TIME',cutoffMinute,cutoffLabel:`${String(clock.hour).padStart(2,'0')}:${String(clock.minute).padStart(2,'0')}`,timeZone:clock.timeZone}
 }
-function applyCutoff(rows,timeField,cutoffMinute){
+export function applyCutoff(rows,timeField,cutoffMinute){
  const input=Array.isArray(rows)?rows:[];
  if(cutoffMinute===null||cutoffMinute===undefined)return{rows:input,meta:{requested:false,applied:false,complete:true,cutoffMinute:null,cutoffLabel:null,totalRows:input.length,parseableRows:input.length,unparseableRows:0,reason:null}};
  if(!timeField)return{rows:input,meta:{requested:true,applied:false,complete:false,cutoffMinute,cutoffLabel:`${String(Math.floor(cutoffMinute/60)).padStart(2,'0')}:${String(cutoffMinute%60).padStart(2,'0')}`,totalRows:input.length,parseableRows:0,unparseableRows:input.length,reason:'TIME_FIELD_UNMAPPED'}};
  const kept=[];let parseable=0,unparseable=0;
- for(const row of input){const minute=minuteOfDay(row?.[timeField]);if(minute===null){unparseable++;continue}parseable++;if(minute<=cutoffMinute)kept.push(row)}
+ for(const row of input){const minute=transactionMinute(row?.[timeField],timeField);if(minute===null){unparseable++;continue}parseable++;if(minute<=cutoffMinute)kept.push(row)}
  const complete=unparseable===0;
  return{rows:complete?kept:input,meta:{requested:true,applied:complete,complete,cutoffMinute,cutoffLabel:`${String(Math.floor(cutoffMinute/60)).padStart(2,'0')}:${String(cutoffMinute%60).padStart(2,'0')}`,totalRows:input.length,parseableRows:parseable,unparseableRows:unparseable,reason:complete?null:'TIME_PARSE_INCOMPLETE'}}
 }
@@ -88,7 +93,7 @@ export function salesIntegrationConfig(storeId=null){
   product:clean(saved?.fields?.product)||field('D365_SALES_PRODUCT_FIELD','itemId'),
   name:clean(saved?.fields?.productName)||field('D365_SALES_PRODUCT_NAME_FIELD',''),
   cost:clean(saved?.fields?.cost)||field('D365_SALES_COST_FIELD',''),
-  time:clean(saved?.fields?.time)||field('D365_SALES_TIME_FIELD','time'),
+  time:entity==='RetailTransactionSalesTransBIEntities'?'transTime':clean(saved?.fields?.time)||field('D365_SALES_TIME_FIELD','time'),
   department:clean(saved?.fields?.department)||field('D365_SALES_DEPARTMENT_FIELD',''),
   category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD',''),
   customer:clean(saved?.fields?.customer)||field('D365_SALES_CUSTOMER_FIELD','custAccount'),
@@ -111,7 +116,8 @@ function taxonomyLabels(productNumber){
 
 export function aggregateSalesRows(rows=[],cfg={}){
  const f=cfg.fields||{},sign=Number(cfg.sign||-1),costSign=Number(cfg.costSign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
- let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0;
+ let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0;
+ const hourTickets=new Map();
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
@@ -127,12 +133,12 @@ export function aggregateSalesRows(rows=[],cfg={}){
   add(products,productNumber,name,sales,qty,cost);
   const dep=clean(f.department?r[f.department]:'')||tax.department,cat=clean(f.category?r[f.category]:'')||tax.category;
   if(dep)add(departments,dep,dep,sales,qty,cost);if(cat)add(categories,cat,cat,sales,qty,cost);
-  const hour=hourOf(f.time?r[f.time]:null);if(hour!==null)add(hours,String(hour),`${String(hour).padStart(2,'0')}:00`,sales,qty,cost);
+  const minute=transactionMinute(f.time?r[f.time]:null,f.time),hour=hourOf(f.time?r[f.time]:null,f.time);if(hour!==null){lastSaleMinute=Math.max(lastSaleMinute??0,minute);add(hours,String(hour),`${String(hour).padStart(2,'0')}:00`,sales,qty,cost);if(!hourTickets.has(String(hour)))hourTickets.set(String(hour),new Set());if(tx)hourTickets.get(String(hour)).add(tx)}else untimedRows++;
  }
  const finish=map=>[...map.values()].map(x=>({key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null})).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
  const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
- return{sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'VOIDED_OR_CANCELLED'}};
+ return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'VOIDED_OR_CANCELLED'}};
 }
 
 function literalFilters(field,value){

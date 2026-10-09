@@ -1,3 +1,4 @@
+import {renderSalesEvidence} from '../sales-explanation.js';
 import {renderHierarchyPerformance} from '../hierarchy-performance.js';
 import { api } from '../api.js';
 import { app } from '../state.js';
@@ -30,9 +31,9 @@ function comparisonDescriptor(){
  return{label:'D-7',detail:'Journée complète'}
 }
 function analysisBlock(){
- const a=pulse?.analysis;if(!a)return'';const comparison=comparisonDescriptor();const mechanism={TRAFFIC_AND_BASKET:'Le recul vient du trafic et du panier moyen.',TRAFFIC:'Le trafic explique l’essentiel du recul.',BASKET:'Le panier moyen explique l’essentiel du recul.',TRAFFIC_AND_BASKET_UP:'Trafic et panier progressent ensemble.',TRAFFIC_UP:'La hausse vient surtout de davantage de tickets.',BASKET_UP:'La hausse vient surtout d’un panier plus élevé.',STABLE:'Le niveau est globalement stable.'}[a.mechanism]||'Analyse automatique des principaux moteurs du CA.';
+ const a=pulse?.analysis;if(!a)return'';const comparison=comparisonDescriptor();const mechanism={TRAFFIC_AND_BASKET:'Moins de tickets et un panier moyen plus faible.',TRAFFIC:'Le nombre de tickets diminue.',BASKET:'Le panier moyen diminue.',TRAFFIC_AND_BASKET_UP:'Tickets et panier progressent ensemble.',TRAFFIC_UP:'Le nombre de tickets augmente.',BASKET_UP:'Le panier moyen augmente.',STABLE:'Le niveau est globalement stable.'}[a.mechanism]||'Analyse automatique des principaux moteurs du CA.';
  const drivers=(a.departmentDrivers||[]).slice(0,5);
- return `<section class="performance-section performance-explanation"><div class="performance-section-head"><div><strong>Pourquoi le CA bouge ?</strong><span>Trafic, panier et rayons comparés à période strictement équivalente.</span></div></div><div class="performance-explanation-main"><div><span>Diagnostic</span><strong>${esc(mechanism)}</strong><small>Tickets ${pct(a.trafficChangePct)} · panier ${pct(a.basketChangePct)}</small></div><div><span>CA à risque / 24h</span><strong>${money(a.salesRisk24h)}</strong><small>${a.recoverableWarehouseRisk24h?`${money(a.recoverableWarehouseRisk24h)} récupérable entrepôt`:a.supplierRisk24h?`${money(a.supplierRisk24h)} à couvrir par achat`:'selon ruptures détectées'}</small></div></div>${drivers.length?`<div class="performance-driver-list">${drivers.map(x=>`<div><span>${esc(x.label)}</span><strong class="${x.delta>=0?'up':'down'}">${x.delta>=0?'+':''}${money(x.delta)}</strong><small>${money(x.current)} aujourd’hui · ${money(x.previous)} ${comparison.label}</small></div>`).join('')}</div>`:''}</section>`;
+ return `<section class="performance-section performance-explanation"><div class="performance-section-head"><div><strong>Pourquoi le CA bouge ?</strong><span>Tickets, panier et rayons comparés à période strictement équivalente.</span></div></div><div class="performance-explanation-main"><div><span>Diagnostic</span><strong>${esc(mechanism)}</strong><small>Tickets ${pct(a.trafficChangePct)} · panier ${pct(a.basketChangePct)}</small></div><div><span>CA à risque / 24h</span><strong>${money(a.salesRisk24h)}</strong><small>${a.recoverableWarehouseRisk24h?`${money(a.recoverableWarehouseRisk24h)} récupérable entrepôt`:a.supplierRisk24h?`${money(a.supplierRisk24h)} à couvrir par achat`:'selon ruptures détectées'}</small></div></div>${drivers.length?`<div class="performance-driver-list">${drivers.map(x=>`<div><span>${esc(x.label)}</span><strong class="${x.delta>=0?'up':'down'}">${x.delta>=0?'+':''}${money(x.delta)}</strong><small>${money(x.current)} aujourd’hui · ${money(x.previous)} ${comparison.label}</small></div>`).join('')}</div>`:''}</section>`;
 }
 function unavailable(p){return `<div class="performance-shell"><div class="manager-hub-head"><span class="manager-eyebrow">Business Pulse</span><h2>Performance magasin</h2><p>Le flux de ventes n’est pas encore connecté pour ce magasin.</p></div><div class="pulse-unavailable"><strong>Ventes non connectées</strong><span>StoreOps n’affiche aucune valeur estimée. Le mapping D365 ventes doit être validé avant activation LIVE.</span></div></div>`}
 function sourceHealth(){
@@ -62,6 +63,7 @@ export async function renderManagerPerformance(){
    </section>
 
    ${analysisBlock()}
+   ${renderSalesEvidence(pulse)}
 
    <section class="performance-section">
     <div class="performance-section-head"><div><strong>Customer & fidélité</strong><span>Identification, valeur client et recrutement.</span></div></div>
