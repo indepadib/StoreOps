@@ -1,7 +1,7 @@
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
-  const PREF_KEY = 'one-retail-intelligence:prefs:v1';
+  const PREF_KEY = 'retail-intelligence:prefs:v1';
 
   const TENANTS = {
     franprix: {
@@ -154,10 +154,14 @@
     toast._t = setTimeout(() => el.classList.remove('show'), 2600);
   }
 
-  async function api(path) {
+  async function api(path, options = {}) {
+    if (typeof window.RETAIL_INTELLIGENCE_API === 'function') {
+      return window.RETAIL_INTELLIGENCE_API(path, options);
+    }
     const res = await fetch(path, {
+      ...options,
       credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(options.headers || {}) },
       cache: 'no-store'
     });
     if (!res.ok) {
@@ -799,7 +803,11 @@
           ? $('[data-widget="network"]')
           : section === 'sales'
             ? $('[data-widget="hourly"]')
-            : $('.hero');
+            : section === 'categories'
+              ? $('#categoryCommander')
+              : section === 'inventory'
+                ? $('#inventoryIntelligence')
+                : $('.hero');
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
@@ -846,7 +854,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `one-retail-analytics-${state.tenant}-${state.businessDate}.csv`;
+    a.download = `retail-intelligence-${state.tenant}-${state.businessDate}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -863,7 +871,7 @@
       .replace(/'/g, '&#039;');
   }
 
-  window.ONE_RETAIL_ANALYTICS = {
+  window.RETAIL_INTELLIGENCE = {
     getState: () => state,
     api,
     money,
@@ -874,12 +882,13 @@
     aggregate,
     reload: () => loadData(true)
   };
+  window.ONE_RETAIL_ANALYTICS = window.RETAIL_INTELLIGENCE;
 
-  document.addEventListener('one-retail:rendered', () => {});
+  document.addEventListener('retail-intelligence:rendered', () => {});
   const originalRenderAll = renderAll;
   renderAll = function(){
     originalRenderAll();
-    document.dispatchEvent(new CustomEvent('one-retail:data', { detail: { state } }));
+    document.dispatchEvent(new CustomEvent('retail-intelligence:data', { detail: { state } }));
   };
 
   bootstrap();
