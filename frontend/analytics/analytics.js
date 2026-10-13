@@ -771,11 +771,13 @@
               ? $('#categoryCommander')
               : section === 'inventory'
                 ? $('#inventoryIntelligence')
-                : section === 'loyalty'
-                  ? $('#loyaltyIntelligence')
-                  : section === 'cashiers'
-                    ? $('#cashierIntelligence')
-                    : $('.hero');
+                : section === 'promotions'
+                  ? $('#promotionIntelligence')
+                  : section === 'loyalty'
+                    ? $('#loyaltyIntelligence')
+                    : section === 'cashiers'
+                      ? $('#cashierIntelligence')
+                      : $('.hero');
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
