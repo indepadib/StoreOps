@@ -3,6 +3,7 @@ import { canAccessStore } from './permissions.mjs';
 import { productDataMany } from './product-data.mjs';
 import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './dynamics-stock.mjs';
 import { readWalletBurn } from './dynamics-tender.mjs';
+import { readPromotionAnalytics } from './analytics-promotions.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -73,6 +74,15 @@ export async function handleAnalyticsApi({ req, url, user }){
     const id=decodeURIComponent(viewMatch[1]);
     const result=db.prepare('DELETE FROM analytics_saved_views WHERE id=? AND user_id=?').run(id,user.id);
     return{status:result.changes?200:404,data:result.changes?{ok:true}:{error:'Vue introuvable.'}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
+    const storeId=clean(url.searchParams.get('storeId'));
+    const businessDate=clean(url.searchParams.get('date'))||new Date().toISOString().slice(0,10);
+    const force=url.searchParams.get('force')==='1';
+    if(!storeId)return{status:400,data:{error:'storeId requis.'}};
+    if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
+    return{status:200,data:await readPromotionAnalytics(storeId,{businessDate,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/wallet'){
