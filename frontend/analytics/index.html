@@ -10,6 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/analytics/analytics.css">
+  <link rel="stylesheet" href="/analytics/categories.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -52,8 +53,8 @@
         <button data-section="network">
           <span class="nav-icon">▦</span><span>Réseau</span>
         </button>
-        <button data-section="categories" disabled title="Phase 2">
-          <span class="nav-icon">≡</span><span>Catégories & Produits</span><small>Phase 2</small>
+        <button data-section="categories">
+          <span class="nav-icon">≡</span><span>Catégories & Produits</span>
         </button>
         <button data-section="inventory" disabled title="Phase 3">
           <span class="nav-icon">◫</span><span>Stock</span><small>Phase 3</small>
@@ -219,6 +220,79 @@
           </div>
         </section>
 
+        <section class="panel category-commander" id="categoryCommander" data-widget="categories">
+          <div class="section-heading category-head">
+            <div>
+              <span class="eyebrow">CATEGORY COMMANDER</span>
+              <h2>Du département jusqu'au SKU</h2>
+              <p class="category-subtitle">Analyse hiérarchique UB, ranking dynamique, poids dans le parent et évolution vs J-7.</p>
+            </div>
+            <div class="category-tools">
+              <div class="level-tabs" id="categoryLevelTabs" role="tablist">
+                <button class="active" data-level="department">Département</button>
+                <button data-level="rayon">Rayon</button>
+                <button data-level="family">Famille</button>
+                <button data-level="subfamily">Sous-famille</button>
+                <button data-level="subsubfamily">Sous-sous-famille</button>
+                <button data-level="product">Produit</button>
+              </div>
+              <input id="categorySearch" class="search-input" type="search" placeholder="Rechercher catégorie ou produit">
+            </div>
+          </div>
+
+          <div class="category-summary" id="categorySummary"></div>
+
+          <div class="category-layout">
+            <div class="category-table-wrap">
+              <table class="category-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Nom</th>
+                    <th>CA</th>
+                    <th>Δ CA</th>
+                    <th>Poids</th>
+                    <th>Qté</th>
+                    <th>Articles</th>
+                    <th>Rang S-1</th>
+                    <th>Δ Rang</th>
+                  </tr>
+                </thead>
+                <tbody id="categoryBody">
+                  <tr><td colspan="9"><div class="table-loading">Chargement de la hiérarchie…</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="category-side">
+              <div class="category-side-card">
+                <span class="eyebrow">CONCENTRATION</span>
+                <h3>Pareto CA</h3>
+                <div id="paretoSummary" class="pareto-summary"></div>
+                <div id="paretoBars" class="pareto-bars"></div>
+              </div>
+              <div class="category-side-card">
+                <span class="eyebrow">MOUVEMENTS</span>
+                <h3>Plus fortes évolutions</h3>
+                <div id="categoryMovers" class="movers-list"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <div class="product-drawer" id="productDrawer" aria-hidden="true">
+          <div class="product-drawer-head">
+            <div>
+              <span class="eyebrow">PRODUCT 360</span>
+              <h2 id="productDrawerTitle">Produit</h2>
+              <p id="productDrawerMeta">—</p>
+            </div>
+            <button class="icon-btn" id="closeProductDrawer" aria-label="Fermer">×</button>
+          </div>
+          <div id="productDrawerBody"></div>
+        </div>
+        <div id="productBackdrop" class="drawer-backdrop" hidden></div>
+
         <section class="analytics-grid bottom-grid">
           <article class="panel" data-widget="departments">
             <div class="section-heading">
@@ -278,5 +352,6 @@
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
 
   <script src="/analytics/analytics.js" defer></script>
+  <script src="/analytics/categories.js" defer></script>
 </body>
 </html>
