@@ -863,5 +863,24 @@
       .replace(/'/g, '&#039;');
   }
 
+  window.ONE_RETAIL_ANALYTICS = {
+    getState: () => state,
+    api,
+    money,
+    number,
+    percent,
+    escapeHtml,
+    readyRows,
+    aggregate,
+    reload: () => loadData(true)
+  };
+
+  document.addEventListener('one-retail:rendered', () => {});
+  const originalRenderAll = renderAll;
+  renderAll = function(){
+    originalRenderAll();
+    document.dispatchEvent(new CustomEvent('one-retail:data', { detail: { state } }));
+  };
+
   bootstrap();
 })();
