@@ -15,6 +15,7 @@
     sort: { key: 'sales', dir: 'desc' },
     storeSearch: '',
     loading: false,
+    savedViews: [],
     prefs: loadPrefs()
   };
 
@@ -125,6 +126,7 @@
     select.addEventListener('change', async () => {
       state.tenant = select.value;
       applyTenant();
+      await loadSavedViews();
       await loadTenant();
     });
     applyTenant();
@@ -190,6 +192,7 @@
       state.session = session;
       state.stores = Array.isArray(stores) ? stores : [];
       hydrateStoreFilter();
+      await loadSavedViews();
       await loadTenant();
     } catch (error) {
       setFreshness('error', 'Connexion indisponible');
@@ -741,11 +744,18 @@
       applyPreferences();
     });
 
+    $('#saveViewBtn')?.addEventListener('click', saveCurrentView);
+    $('#applyViewBtn')?.addEventListener('click', applySavedView);
+    $('#deleteViewBtn')?.addEventListener('click', deleteSavedView);
+    $('#savedViewName')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') saveCurrentView();
+    });
+
     $('#resetPrefs').addEventListener('click', () => {
       localStorage.removeItem(PREF_KEY);
       state.prefs = { density: 'comfortable', widgets: {} };
       applyPreferences();
-      toast('Vue réinitialisée');
+      toast('Vue locale réinitialisée');
     });
 
     $$('.side-nav button:not(:disabled)').forEach(btn => {
@@ -767,7 +777,119 @@
     });
   }
 
+  function currentViewPayload() {
+    return {
+      tenant: state.tenant,
+      selectedStore: state.selectedStore,
+      businessDate: state.businessDate,
+      comparisonMode: $('#comparisonMode')?.value || 'j7',
+      periodPreset: $('#periodPreset')?.value || 'date',
+      prefs: JSON.parse(JSON.stringify(state.prefs || {}))
+    };
+  }
+
+  async function loadSavedViews() {
+    const select = $('#savedViewsSelect');
+    if (!select) return;
+    try {
+      const data = await api(`/api/analytics/views?tenant=${encodeURIComponent(state.tenant)}`);
+      state.savedViews = Array.isArray(data?.items) ? data.items : [];
+      renderSavedViews();
+      const status = $('#savedViewsStatus');
+      if (status) status.textContent = state.savedViews.length
+        ? `${state.savedViews.length} vue(s) enregistrée(s) pour ${TENANTS[state.tenant]?.label || state.tenant}.`
+        : 'Aucune vue enregistrée pour cette enseigne.';
+    } catch (error) {
+      state.savedViews = [];
+      renderSavedViews();
+      const status = $('#savedViewsStatus');
+      if (status) status.textContent = `Vues indisponibles : ${error?.message || 'erreur de lecture'}`;
+    }
+  }
+
+  function renderSavedViews() {
+    const select = $('#savedViewsSelect');
+    if (!select) return;
+    const current = select.value;
+    select.innerHTML = '<option value="">Choisir une vue…</option>' +
+      state.savedViews.map(v => `<option value="${escapeHtml(v.id)}">${escapeHtml(v.name)}</option>`).join('');
+    if (state.savedViews.some(v => v.id === current)) select.value = current;
+  }
+
+  async function saveCurrentView() {
+    const input = $('#savedViewName');
+    const name = String(input?.value || '').trim();
+    if (!name) return toast('Donne un nom à la vue');
+    const btn = $('#saveViewBtn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
+    try {
+      const saved = await api(`/api/analytics/views?tenant=${encodeURIComponent(state.tenant)}`, {
+        method: 'POST',
+        body: { name, payload: currentViewPayload() }
+      });
+      if (input) input.value = '';
+      await loadSavedViews();
+      if ($('#savedViewsSelect')) $('#savedViewsSelect').value = saved.id || '';
+      toast(`Vue « ${name} » enregistrée`);
+    } catch (error) {
+      toast(error?.message || 'Impossible d’enregistrer la vue');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Enregistrer'; }
+    }
+  }
+
+  async function applySavedView() {
+    const id = $('#savedViewsSelect')?.value;
+    const view = state.savedViews.find(v => v.id === id);
+    if (!view) return toast('Choisis une vue sauvegardée');
+    const payload = view.payload || {};
+
+    if (payload.tenant && TENANTS[payload.tenant]) {
+      state.tenant = payload.tenant;
+      $('#brandSelect').value = state.tenant;
+      applyTenant();
+    }
+
+    state.businessDate = payload.businessDate || state.businessDate;
+    $('#businessDate').value = state.businessDate;
+
+    if (payload.periodPreset && $('#periodPreset')) $('#periodPreset').value = payload.periodPreset;
+    if (payload.comparisonMode && $('#comparisonMode')) $('#comparisonMode').value = payload.comparisonMode;
+
+    state.prefs = {
+      density: 'comfortable',
+      widgets: {},
+      ...(payload.prefs || {})
+    };
+    savePrefs();
+    applyPreferences();
+
+    const requestedStore = payload.selectedStore || 'ALL';
+    state.selectedStore = requestedStore === 'ALL' || state.stores.some(s => s.id === requestedStore) ? requestedStore : 'ALL';
+    hydrateStoreFilter();
+    $('#storeFilter').value = state.selectedStore;
+
+    updatePeriodSummary();
+    closeDrawer();
+    await loadTenant();
+    toast(`Vue « ${view.name} » appliquée`);
+  }
+
+  async function deleteSavedView() {
+    const id = $('#savedViewsSelect')?.value;
+    const view = state.savedViews.find(v => v.id === id);
+    if (!view) return toast('Choisis une vue à supprimer');
+    try {
+      await api(`/api/analytics/views/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await loadSavedViews();
+      toast(`Vue « ${view.name} » supprimée`);
+    } catch (error) {
+      toast(error?.message || 'Suppression impossible');
+    }
+  }
+
   function openDrawer() {
+    loadSavedViews();
     $('#customizeDrawer').classList.add('open');
     $('#customizeDrawer').setAttribute('aria-hidden', 'false');
     $('#drawerBackdrop').hidden = false;
