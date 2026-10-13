@@ -771,7 +771,11 @@
               ? $('#categoryCommander')
               : section === 'inventory'
                 ? $('#inventoryIntelligence')
-                : $('.hero');
+                : section === 'loyalty'
+                  ? $('#loyaltyIntelligence')
+                  : section === 'cashiers'
+                    ? $('#cashierIntelligence')
+                    : $('.hero');
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
