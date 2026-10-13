@@ -138,6 +138,86 @@
           </div>
         </section>
 
+        <section class="executive-deck" id="executiveDeck" data-widget="executiveDeck">
+          <article class="executive-primary">
+            <div class="executive-primary-head">
+              <div>
+                <span class="executive-kicker">CHIFFRE D'AFFAIRES</span>
+                <div class="executive-value" id="executiveSalesValue">—</div>
+              </div>
+              <div class="executive-delta" id="executiveSalesDelta">—</div>
+            </div>
+            <div class="executive-primary-foot">
+              <div>
+                <span class="executive-caption">Comparaison</span>
+                <strong id="executiveComparisonValue">—</strong>
+              </div>
+              <div>
+                <span class="executive-caption">Écart absolu</span>
+                <strong id="executiveSalesGap">—</strong>
+              </div>
+              <div>
+                <span class="executive-caption">Périmètre</span>
+                <strong id="executiveScopeValue">—</strong>
+              </div>
+            </div>
+          </article>
+
+          <div class="executive-drivers">
+            <article class="executive-driver-card">
+              <span class="executive-kicker">FRÉQUENTATION</span>
+              <div class="executive-driver-main">
+                <strong id="executiveTickets">—</strong>
+                <span id="executiveTrafficDelta">—</span>
+              </div>
+              <div class="executive-driver-bar"><i id="executiveTrafficBar"></i></div>
+              <small>Tickets vs période de comparaison</small>
+            </article>
+            <article class="executive-driver-card">
+              <span class="executive-kicker">PANIER</span>
+              <div class="executive-driver-main">
+                <strong id="executiveBasket">—</strong>
+                <span id="executiveBasketDelta">—</span>
+              </div>
+              <div class="executive-driver-bar"><i id="executiveBasketBar"></i></div>
+              <small>Panier moyen vs période de comparaison</small>
+            </article>
+          </div>
+
+          <aside class="executive-health">
+            <div class="executive-health-head">
+              <span class="executive-kicker">BUSINESS HEALTH</span>
+              <strong id="executiveHealthLabel">—</strong>
+            </div>
+            <div class="executive-health-grid">
+              <div class="health-metric">
+                <span>CA fidélisé</span>
+                <strong id="healthLoyalty">—</strong>
+              </div>
+              <div class="health-metric">
+                <span>Recrutement</span>
+                <strong id="healthRecruitment">—</strong>
+              </div>
+              <div class="health-metric">
+                <span>Ruptures</span>
+                <strong id="healthOos">—</strong>
+              </div>
+              <div class="health-metric">
+                <span>Data</span>
+                <strong id="healthCoverage">—</strong>
+              </div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="attention-rail" id="attentionRail" data-widget="attentionRail">
+          <div class="attention-label">
+            <span class="attention-dot"></span>
+            <strong>À surveiller</strong>
+          </div>
+          <div class="attention-items" id="attentionItems"></div>
+        </section>
+
         <section class="insights-panel" data-widget="insights">
           <div class="section-heading compact">
             <div>
@@ -553,6 +633,8 @@
     <p class="drawer-copy">Personnalise le cockpit, puis enregistre des vues par enseigne. Les vues sauvegardées sont liées à ton utilisateur.</p>
 
     <div class="drawer-section">
+      <label class="toggle-row"><span>Executive deck</span><input type="checkbox" data-widget-toggle="executiveDeck" checked></label>
+      <label class="toggle-row"><span>À surveiller</span><input type="checkbox" data-widget-toggle="attentionRail" checked></label>
       <label class="toggle-row"><span>Insights</span><input type="checkbox" data-widget-toggle="insights" checked></label>
       <label class="toggle-row"><span>KPIs</span><input type="checkbox" data-widget-toggle="kpis" checked></label>
       <label class="toggle-row"><span>Rythme commercial</span><input type="checkbox" data-widget-toggle="hourly" checked></label>
