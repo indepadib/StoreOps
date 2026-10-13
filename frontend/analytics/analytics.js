@@ -300,6 +300,8 @@
     const agg = aggregate();
     updateHeadings(agg);
     updateFreshness(agg);
+    renderExecutiveDeck(agg);
+    renderAttentionRail(agg);
     renderInsights(agg);
     renderKpis(agg);
     renderHourly(agg);
@@ -336,6 +338,157 @@
     pill.classList.remove('live', 'partial', 'error');
     if (tone) pill.classList.add(tone);
     $('#freshnessText').textContent = text;
+  }
+
+  function executiveDriverChanges() {
+    const rows = readyRows();
+    const trafficValues = rows.map(r => safe(r.pulse?.analysis?.trafficChangePct)).filter(v => v != null);
+    const basketValues = rows.map(r => safe(r.pulse?.analysis?.basketChangePct)).filter(v => v != null);
+    const avg = values => values.length ? values.reduce((s, v) => s + v, 0) / values.length : null;
+    return { traffic: avg(trafficValues), basket: avg(basketValues) };
+  }
+
+  function signedPercentHtml(value) {
+    if (value == null || !Number.isFinite(Number(value))) return '<span class="executive-trend neutral">N/A</span>';
+    const n = Number(value);
+    const cls = Math.abs(n) < .05 ? 'neutral' : n > 0 ? 'positive' : 'negative';
+    const symbol = cls === 'positive' ? '↗' : cls === 'negative' ? '↘' : '→';
+    const sign = n > 0 ? '+' : '';
+    return `<span class="executive-trend ${cls}">${symbol} ${sign}${n.toFixed(1).replace('.', ',')} %</span>`;
+  }
+
+  function renderExecutiveDeck(a) {
+    if (!$('#executiveDeck')) return;
+    const drivers = executiveDriverChanges();
+    const gap = a.comparison != null ? a.sales - a.comparison : null;
+
+    $('#executiveSalesValue').textContent = money(a.sales, true);
+    $('#executiveSalesDelta').innerHTML = signedPercentHtml(a.change);
+    $('#executiveComparisonValue').textContent = a.comparison == null ? 'N/A' : money(a.comparison, true);
+    $('#executiveSalesGap').textContent = gap == null ? 'N/A' : `${gap > 0 ? '+' : ''}${money(gap, true)}`;
+    $('#executiveSalesGap').className = gap == null ? '' : gap > 0 ? 'executive-positive' : gap < 0 ? 'executive-negative' : '';
+    $('#executiveScopeValue').textContent = state.selectedStore === 'ALL'
+      ? `${a.ready}/${a.totalStores} magasins`
+      : state.stores.find(s => s.id === state.selectedStore)?.name || 'Magasin';
+
+    $('#executiveTickets').textContent = number(a.tickets);
+    $('#executiveTrafficDelta').innerHTML = signedPercentHtml(drivers.traffic);
+    $('#executiveBasket').textContent = money(a.avgBasket);
+    $('#executiveBasketDelta').innerHTML = signedPercentHtml(drivers.basket);
+
+    const trafficWidth = drivers.traffic == null ? 12 : Math.max(8, Math.min(100, 50 + drivers.traffic * 2.2));
+    const basketWidth = drivers.basket == null ? 12 : Math.max(8, Math.min(100, 50 + drivers.basket * 2.2));
+    $('#executiveTrafficBar').style.width = `${trafficWidth}%`;
+    $('#executiveBasketBar').style.width = `${basketWidth}%`;
+    $('#executiveTrafficBar').className = drivers.traffic != null && drivers.traffic < 0 ? 'negative' : '';
+    $('#executiveBasketBar').className = drivers.basket != null && drivers.basket < 0 ? 'negative' : '';
+
+    $('#healthLoyalty').textContent = percent(a.identifiedShare);
+    $('#healthRecruitment').textContent = percent(a.recruitmentRate);
+    $('#healthOos').textContent = number(a.oos);
+    $('#healthCoverage').textContent = a.totalStores ? `${Math.round(a.ready / a.totalStores * 100)} %` : 'N/A';
+
+    let health = 'Stable';
+    let tone = 'stable';
+    if (a.change != null && a.change >= 5 && (a.oos == null || a.oos < 20)) {
+      health = 'Solide';
+      tone = 'strong';
+    } else if ((a.change != null && a.change < -5) || (a.oos != null && a.oos >= 30)) {
+      health = 'Sous tension';
+      tone = 'risk';
+    } else if ((a.change != null && a.change > 0) || (a.identifiedShare != null && a.identifiedShare >= 45)) {
+      health = 'En progression';
+      tone = 'positive';
+    }
+    const healthLabel = $('#executiveHealthLabel');
+    healthLabel.textContent = health;
+    healthLabel.className = `health-label ${tone}`;
+  }
+
+  function renderAttentionRail(a) {
+    const host = $('#attentionItems');
+    if (!host) return;
+
+    const items = [];
+    const stores = networkRows().filter(r => r.status === 'READY');
+
+    const worst = [...stores]
+      .filter(r => r.change != null)
+      .sort((x, y) => x.change - y.change)[0];
+
+    if (worst && worst.change < 0) {
+      items.push({
+        tone: 'negative',
+        label: worst.name,
+        text: `${worst.change.toFixed(1).replace('.', ',')} % vs J-7`,
+        target: 'network'
+      });
+    }
+
+    if (a.oos != null && a.oos > 0) {
+      items.push({
+        tone: a.oos >= 20 ? 'negative' : 'warning',
+        label: 'Ruptures',
+        text: `${number(a.oos)} référence(s) à surveiller`,
+        target: 'inventory'
+      });
+    }
+
+    if (a.identifiedShare != null && a.identifiedShare < 40) {
+      items.push({
+        tone: 'warning',
+        label: 'Fidélité',
+        text: `Seulement ${percent(a.identifiedShare)} du CA identifié`,
+        target: 'loyalty'
+      });
+    }
+
+    if (a.recruitmentRate != null && a.recruitmentRate < 8) {
+      items.push({
+        tone: 'warning',
+        label: 'Recrutement',
+        text: `${percent(a.recruitmentRate)} des tickets recrutables`,
+        target: 'loyalty'
+      });
+    }
+
+    if (a.ready < a.totalStores) {
+      items.push({
+        tone: 'neutral',
+        label: 'Data',
+        text: `${a.ready}/${a.totalStores} magasins disponibles`,
+        target: 'dataQuality'
+      });
+    }
+
+    if (!items.length) {
+      items.push({
+        tone: 'positive',
+        label: 'Réseau',
+        text: 'Aucun signal prioritaire détecté sur les métriques disponibles',
+        target: 'overview'
+      });
+    }
+
+    host.innerHTML = items.slice(0, 4).map(item => `
+      <button class="attention-item ${item.tone}" data-attention-target="${item.target}">
+        <span class="attention-item-label">${escapeHtml(item.label)}</span>
+        <strong>${escapeHtml(item.text)}</strong>
+        <span class="attention-arrow">→</span>
+      </button>
+    `).join('');
+
+    $('[data-attention-target]', host).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.dataset.attentionTarget;
+        const node = target === 'network' ? $('[data-widget="network"]')
+          : target === 'inventory' ? $('#inventoryIntelligence')
+          : target === 'loyalty' ? $('#loyaltyIntelligence')
+          : target === 'dataQuality' ? $('[data-widget="dataQuality"]')
+          : $('.hero');
+        node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
   }
 
   function renderKpis(a) {
