@@ -1,5 +1,5 @@
 (() => {
-  const core = () => window.ONE_RETAIL_ANALYTICS;
+  const core = () => window.RETAIL_INTELLIGENCE || window.ONE_RETAIL_ANALYTICS;
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -318,7 +318,7 @@
     `).join('');
   }
 
-  function openProduct(key) {
+  async function openProduct(key) {
     const api = core();
     const products = aggregateProducts();
     const product = products.find(p => p.key === key);
@@ -330,6 +330,8 @@
     const previous = product.previousKnown ? product.previous : null;
     const change = previous ? (product.sales - previous) / previous * 100 : null;
     const ub = product.hierarchy?.ub || hierarchy.ub?.id || null;
+    const appState = api.getState?.() || {};
+    const storeId = appState.selectedStore || 'ALL';
 
     $('#productDrawerTitle').textContent = product.label;
     $('#productDrawerMeta').textContent = `${product.key} · rang #${product.rank} · ${stores.length} magasin(s)`;
@@ -374,15 +376,73 @@
         </div>
       </div>
 
-      <div class="product-note">
-        Stock, couverture, fournisseur, EAN et prix catalogue ne sont pas inventés ici :
-        ils seront affichés dès que le module Product 360 sera branché aux sources article / stock correspondantes.
+      <div class="product-section">
+        <h3>Stock & sourcing</h3>
+        <div id="productStockBlock"><div class="table-loading">Lecture du stock Dynamics…</div></div>
       </div>
     `;
 
     $('#productDrawer').classList.add('open');
     $('#productDrawer').setAttribute('aria-hidden', 'false');
     $('#productBackdrop').hidden = false;
+
+    try {
+      const details = await api.api(`/api/analytics/product?itemId=${encodeURIComponent(product.key)}&storeId=${encodeURIComponent(storeId)}`);
+      if ($('#productDrawer')?.getAttribute('aria-hidden') === 'true') return;
+      renderProductStock(details, product);
+    } catch (error) {
+      const host = $('#productStockBlock');
+      if (host) host.innerHTML = `<div class="product-note">Stock indisponible : ${api.escapeHtml(error?.message || 'source non disponible')}. Aucune valeur n'est remplacée par zéro.</div>`;
+    }
+  }
+
+  function renderProductStock(details, salesProduct) {
+    const api = core();
+    const host = $('#productStockBlock');
+    if (!host) return;
+    const p = details?.product || {};
+    const stockStores = Array.isArray(details?.stores) ? details.stores : [];
+
+    const productFacts = [
+      ['EAN', p.ean || 'N/A'],
+      ['Fournisseur', p.primaryVendorAccount || 'N/A'],
+      ['Mode supply', p.supplyMode || 'N/A'],
+      ['Unité stock', p.inventoryUnit || 'N/A'],
+      ['Prix catalogue', p.salesPrice == null ? 'N/A' : api.money(p.salesPrice)],
+      ['Rayon source', p.rayonLabel || salesProduct.rayonLabel || 'N/A']
+    ];
+
+    const signalRows = window.RETAIL_INVENTORY?.getStockForProduct?.(salesProduct.key) || [];
+    const signalByStore = new Map(signalRows.map(x => [x.storeId, x]));
+
+    host.innerHTML = `
+      <div class="product-facts">
+        ${productFacts.map(([label, value]) => `<div class="product-fact"><span>${label}</span><strong>${api.escapeHtml(value)}</strong></div>`).join('')}
+      </div>
+
+      <div class="product-store-list" style="margin-top:12px">
+        ${stockStores.length ? stockStores.map(s => {
+          const signal = signalByStore.get(s.storeId);
+          const available = s.stock?.available;
+          const supply = s.supply?.available;
+          const coverage = signal?.coverageDays;
+          const tone = signal?.type ? ` · ${signal.type}` : '';
+          return `
+            <div class="product-store" style="grid-template-columns:minmax(110px,1fr) repeat(3,auto)">
+              <strong>${api.escapeHtml(s.storeName)}</strong>
+              <span>Stock ${available == null ? 'N/A' : api.number(available, 2)}</span>
+              <span>DC ${supply == null ? 'N/A' : api.number(supply, 2)}</span>
+              <span>${coverage == null ? 'Couverture N/A' : api.number(coverage, 1) + ' j'}${api.escapeHtml(tone)}</span>
+            </div>
+          `;
+        }).join('') : '<div class="table-loading">Aucun magasin accessible sur ce périmètre.</div>'}
+      </div>
+
+      <div class="product-note">
+        Le stock affiché provient de la source D365 configurée. La couverture n'est montrée que lorsqu'un signal analytique la calcule ;
+        absence de signal ≠ couverture nulle.
+      </div>
+    `;
   }
 
   function closeProduct() {
@@ -414,7 +474,8 @@
       setTimeout(() => $('#categoryCommander')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 20);
     });
 
-    document.addEventListener('one-retail:data', render);
+    document.addEventListener('retail-intelligence:data', render);
+    document.addEventListener('retail-intelligence:open-product', e => { const key=e.detail?.productNumber; if(key) openProduct(key); });
 
     const existing = core()?.getState?.();
     if (existing?.pulses?.length) render();
