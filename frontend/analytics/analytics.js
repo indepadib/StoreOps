@@ -146,7 +146,7 @@
     $('#emptyBrandText').textContent = `La structure multi-enseigne est en place. Il reste à brancher la source ${tenant.label} pour alimenter les KPIs réels, sans générer de données fictives.`;
 
     const modules = tenant.modules || {};
-    $('.side-nav button[data-section]').forEach(btn => {
+    $$('.side-nav button[data-section]').forEach(btn => {
       const section = btn.dataset.section;
       if (Object.prototype.hasOwnProperty.call(modules, section)) btn.hidden = modules[section] === false;
     });
@@ -526,7 +526,7 @@
       </button>
     `).join('');
 
-    $('[data-attention-target]', host).forEach(btn => {
+    $$('[data-attention-target]', host).forEach(btn => {
       btn.addEventListener('click', () => {
         const target = btn.dataset.attentionTarget;
         const node = target === 'network' ? $('[data-widget="network"]')
@@ -959,7 +959,7 @@
       toast('Vue locale réinitialisée');
     });
 
-    $('.side-nav button:not(:disabled)').forEach(btn => {
+    $$('.side-nav button:not(:disabled)').forEach(btn => {
       btn.addEventListener('click', () => {
         state.section = btn.dataset.section || 'overview';
         applySectionView();
@@ -1119,7 +1119,7 @@
     const allowed = new Set(SECTION_WIDGETS[state.section] || SECTION_WIDGETS.overview);
     document.body.dataset.analyticsSection = state.section;
 
-    $('[data-widget]').forEach(el => {
+    $$('[data-widget]').forEach(el => {
       const key = el.dataset.widget;
       if (key === 'hero') {
         el.hidden = false;
@@ -1142,7 +1142,7 @@
       bottomGrid.hidden = state.section !== 'overview' || !anyVisible;
     }
 
-    $('.side-nav button[data-section]').forEach(btn => {
+    $$('.side-nav button[data-section]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.section === state.section);
     });
 
@@ -1153,7 +1153,7 @@
   function applyPreferences() {
     document.body.classList.toggle('compact', state.prefs.density === 'compact');
     $('#densitySelect').value = state.prefs.density || 'comfortable';
-    $('[data-widget-toggle]').forEach(input => {
+    $$('[data-widget-toggle]').forEach(input => {
       input.checked = state.prefs.widgets[input.dataset.widgetToggle] !== false;
     });
     applySectionView();
