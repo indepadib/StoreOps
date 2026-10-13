@@ -615,3 +615,12 @@ body.compact .kpi-value{font-size:25px}
   .kpi-value{font-size:22px}
   .inventory-kpi,.loyalty-kpi,.promotion-kpi,.cashier-stat{min-height:88px!important;padding:11px!important}
 }
+
+.nav-icon svg{
+  width:15px;height:15px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
