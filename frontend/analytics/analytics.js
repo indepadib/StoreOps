@@ -928,7 +928,7 @@
     $('#closeDrawer').addEventListener('click', closeDrawer);
     $('#drawerBackdrop').addEventListener('click', closeDrawer);
     $('#mobileFiltersBtn').addEventListener('click', () => {
-      $('#filterbar').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.body.classList.toggle('mobile-nav-open');
     });
 
     $$('[data-widget-toggle]').forEach(input => {
@@ -963,6 +963,7 @@
       btn.addEventListener('click', () => {
         state.section = btn.dataset.section || 'overview';
         applySectionView();
+        document.body.classList.remove('mobile-nav-open');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
@@ -1081,7 +1082,16 @@
     }
   }
 
+  document.addEventListener('click', e => {
+    if (!document.body.classList.contains('mobile-nav-open')) return;
+    const sidebar = $('.sidebar');
+    const trigger = $('#mobileFiltersBtn');
+    if (sidebar?.contains(e.target) || trigger?.contains(e.target)) return;
+    document.body.classList.remove('mobile-nav-open');
+  });
+
   function openDrawer() {
+    document.body.classList.remove('mobile-nav-open');
     loadSavedViews();
     $('#customizeDrawer').classList.add('open');
     $('#customizeDrawer').setAttribute('aria-hidden', 'false');
