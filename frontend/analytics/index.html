@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111111">
+  <title>ONE Retail Intelligence</title>
+  <meta name="description" content="Cockpit analytique multi-enseigne ONE Retail">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/analytics/analytics.css">
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-symbol" aria-hidden="true"><span>1</span></div>
+      <div>
+        <div class="product-name">ONE Retail <strong>Intelligence</strong></div>
+        <div class="product-subtitle">Performance & Analytics</div>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="icon-btn mobile-only" id="mobileFiltersBtn" aria-label="Filtres">☰</button>
+      <div class="freshness" id="freshnessPill">
+        <span class="status-dot"></span>
+        <span id="freshnessText">Connexion…</span>
+      </div>
+      <button class="ghost-btn" id="customizeBtn">Personnaliser</button>
+      <button class="primary-btn" id="exportBtn">Exporter</button>
+    </div>
+  </header>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="context-card">
+        <label for="brandSelect">Enseigne</label>
+        <select id="brandSelect"></select>
+        <div class="brand-status" id="brandStatus"></div>
+      </div>
+
+      <nav class="side-nav" aria-label="Navigation Analytics">
+        <button class="active" data-section="overview">
+          <span class="nav-icon">⌂</span><span>Vue exécutive</span>
+        </button>
+        <button data-section="sales">
+          <span class="nav-icon">↗</span><span>Ventes</span>
+        </button>
+        <button data-section="network">
+          <span class="nav-icon">▦</span><span>Réseau</span>
+        </button>
+        <button data-section="categories" disabled title="Phase 2">
+          <span class="nav-icon">≡</span><span>Catégories & Produits</span><small>Phase 2</small>
+        </button>
+        <button data-section="inventory" disabled title="Phase 3">
+          <span class="nav-icon">◫</span><span>Stock</span><small>Phase 3</small>
+        </button>
+        <button data-section="loyalty" disabled title="Phase 4">
+          <span class="nav-icon">♡</span><span>Fidélité</span><small>Phase 4</small>
+        </button>
+        <button data-section="promotions" disabled title="Phase 5">
+          <span class="nav-icon">%</span><span>Promotions</span><small>Phase 5</small>
+        </button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="separation-note">
+          <strong>Analytics observe & explique.</strong>
+          <span>StoreOps reste l'outil opérationnel magasin.</span>
+        </div>
+        <a href="/" class="storeops-link">Ouvrir StoreOps ↗</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="filterbar" id="filterbar">
+        <div class="filter-group">
+          <label>Période</label>
+          <select id="periodPreset">
+            <option value="today">Aujourd'hui</option>
+            <option value="yesterday">Hier</option>
+            <option value="date">Date précise</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Date</label>
+          <input type="date" id="businessDate">
+        </div>
+        <div class="filter-group">
+          <label>Comparaison</label>
+          <select id="comparisonMode">
+            <option value="j7">J-7</option>
+          </select>
+        </div>
+        <div class="filter-group wide">
+          <label>Magasin</label>
+          <select id="storeFilter">
+            <option value="ALL">Tous les magasins</option>
+          </select>
+        </div>
+        <button class="filter-refresh" id="refreshBtn">Actualiser</button>
+        <div class="active-period" id="periodSummary"></div>
+      </section>
+
+      <section id="brandUnavailable" class="empty-product" hidden>
+        <div class="empty-icon">◈</div>
+        <h1 id="emptyBrandTitle">Enseigne non connectée</h1>
+        <p id="emptyBrandText">Cette enseigne est déjà prévue dans l'architecture mais sa source de données n'est pas encore branchée.</p>
+        <div class="empty-checks">
+          <span>✓ Architecture multi-enseigne</span>
+          <span>✓ Thème personnalisable</span>
+          <span>✓ KPIs configurables</span>
+          <span>○ Connecteur data à brancher</span>
+        </div>
+      </section>
+
+      <div id="analyticsContent">
+        <section class="hero" data-widget="hero">
+          <div>
+            <div class="eyebrow" id="eyebrow">PERFORMANCE RÉSEAU</div>
+            <h1 id="pageTitle">Comment va le réseau aujourd'hui ?</h1>
+            <p id="pageSubtitle">Lecture instantanée de la performance commerciale, de la fidélité et des principaux signaux magasins.</p>
+          </div>
+          <div class="hero-meta">
+            <span id="scopeLabel">Tous les magasins</span>
+            <strong id="dateLabel">—</strong>
+          </div>
+        </section>
+
+        <section class="insights-panel" data-widget="insights">
+          <div class="section-heading compact">
+            <div>
+              <span class="eyebrow">INSIGHTS</span>
+              <h2>Ce qu'il faut voir maintenant</h2>
+            </div>
+            <span class="section-note">Calculé uniquement à partir des données disponibles</span>
+          </div>
+          <div class="insights-grid" id="insightsGrid">
+            <div class="skeleton insight-skeleton"></div>
+            <div class="skeleton insight-skeleton"></div>
+            <div class="skeleton insight-skeleton"></div>
+          </div>
+        </section>
+
+        <section class="kpi-grid" id="kpiGrid" data-widget="kpis" aria-label="Indicateurs clés">
+          <div class="kpi-card skeleton-card"></div>
+          <div class="kpi-card skeleton-card"></div>
+          <div class="kpi-card skeleton-card"></div>
+          <div class="kpi-card skeleton-card"></div>
+          <div class="kpi-card skeleton-card"></div>
+          <div class="kpi-card skeleton-card"></div>
+        </section>
+
+        <section class="analytics-grid">
+          <article class="panel panel-large" data-widget="hourly">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">VENTES</span>
+                <h2>Rythme commercial</h2>
+              </div>
+              <div class="panel-kpi" id="salesDeltaMini">—</div>
+            </div>
+            <div class="chart-wrap">
+              <svg id="hourlyChart" viewBox="0 0 900 290" role="img" aria-label="Courbe des ventes horaires"></svg>
+              <div class="chart-empty" id="hourlyEmpty" hidden>Données horaires indisponibles pour ce périmètre.</div>
+            </div>
+            <div class="chart-legend">
+              <span><i class="legend-current"></i>Période sélectionnée</span>
+              <span class="muted" id="chartCoverage">—</span>
+            </div>
+          </article>
+
+          <article class="panel" data-widget="mix">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">MOTEURS</span>
+                <h2>Ce qui explique le CA</h2>
+              </div>
+            </div>
+            <div class="driver-list" id="driversList"></div>
+          </article>
+        </section>
+
+        <section class="panel" data-widget="network">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">RÉSEAU</span>
+              <h2>Performance magasins</h2>
+            </div>
+            <div class="table-actions">
+              <span id="networkCoverage" class="coverage-badge">—</span>
+              <input id="storeSearch" class="search-input" type="search" placeholder="Rechercher un magasin">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="network-table">
+              <thead>
+                <tr>
+                  <th data-sort="name">Magasin</th>
+                  <th data-sort="sales">CA TTC</th>
+                  <th data-sort="change">Δ CA</th>
+                  <th data-sort="tickets">Tickets</th>
+                  <th data-sort="basket">Panier</th>
+                  <th data-sort="identifiedShare">% CA fidélisé</th>
+                  <th data-sort="recruitments">Recrutements</th>
+                  <th data-sort="recruitmentRate">Taux recrut.</th>
+                  <th data-sort="oos">Ruptures</th>
+                  <th data-sort="negative">Stock nég.</th>
+                  <th>Qualité data</th>
+                </tr>
+              </thead>
+              <tbody id="networkBody">
+                <tr><td colspan="11"><div class="table-loading">Chargement du réseau…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="analytics-grid bottom-grid">
+          <article class="panel" data-widget="departments">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">CATÉGORIES</span>
+                <h2>Top départements</h2>
+              </div>
+              <span class="phase-tag">Préfiguration Phase 2</span>
+            </div>
+            <div id="departmentBars" class="bar-list"></div>
+          </article>
+
+          <article class="panel" data-widget="dataQuality">
+            <div class="section-heading">
+              <div>
+                <span class="eyebrow">FIABILITÉ</span>
+                <h2>Couverture de la donnée</h2>
+              </div>
+            </div>
+            <div id="dataQualityGrid" class="quality-grid"></div>
+          </article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <aside class="drawer" id="customizeDrawer" aria-hidden="true">
+    <div class="drawer-head">
+      <div>
+        <span class="eyebrow">PERSONNALISATION</span>
+        <h2>Mon cockpit</h2>
+      </div>
+      <button class="icon-btn" id="closeDrawer" aria-label="Fermer">×</button>
+    </div>
+    <p class="drawer-copy">Ces préférences restent propres à votre navigateur. Elles préfigurent les vues sauvegardées multi-utilisateurs.</p>
+
+    <div class="drawer-section">
+      <label class="toggle-row"><span>Insights</span><input type="checkbox" data-widget-toggle="insights" checked></label>
+      <label class="toggle-row"><span>KPIs</span><input type="checkbox" data-widget-toggle="kpis" checked></label>
+      <label class="toggle-row"><span>Rythme commercial</span><input type="checkbox" data-widget-toggle="hourly" checked></label>
+      <label class="toggle-row"><span>Moteurs du CA</span><input type="checkbox" data-widget-toggle="mix" checked></label>
+      <label class="toggle-row"><span>Performance réseau</span><input type="checkbox" data-widget-toggle="network" checked></label>
+      <label class="toggle-row"><span>Top départements</span><input type="checkbox" data-widget-toggle="departments" checked></label>
+      <label class="toggle-row"><span>Qualité data</span><input type="checkbox" data-widget-toggle="dataQuality" checked></label>
+    </div>
+
+    <div class="drawer-section">
+      <label for="densitySelect">Densité</label>
+      <select id="densitySelect">
+        <option value="comfortable">Confortable</option>
+        <option value="compact">Compacte</option>
+      </select>
+    </div>
+
+    <button class="ghost-btn full" id="resetPrefs">Réinitialiser la vue</button>
+  </aside>
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+
+  <script src="/analytics/analytics.js" defer></script>
+</body>
+</html>
