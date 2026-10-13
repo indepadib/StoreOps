@@ -4,14 +4,25 @@ set -eu
 if [ -n "${STOREOPS_API_BASE:-}" ]; then MODE="api"; else MODE="showcase"; fi
 export STOREOPS_RUNTIME_MODE="$MODE"
 export STOREOPS_RELEASE_BUILD="${STOREOPS_RELEASE_BUILD:-2403}"
-node <<'NODE' > runtime-config.js
+node <<'NODE' > analytics-runtime-config.js
 const clientId=process.env.STOREOPS_ENTRA_CLIENT_ID||process.env.STOREOPS_ENTRA_SPA_CLIENT_ID||'';
 const tenantId=process.env.STOREOPS_ENTRA_TENANT_ID||'';
 const apiScope=process.env.STOREOPS_ENTRA_API_SCOPE||(clientId?'api://'+clientId+'/StoreOps.Access':'');
 const cfg={apiBase:process.env.STOREOPS_API_BASE||'',mode:process.env.STOREOPS_RUNTIME_MODE||'showcase',entra:{tenantId,spaClientId:clientId,apiScope}};
 process.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\n');
 NODE
+cp analytics-runtime-config.js runtime-config.js
 cat ./js/boot-classic.js >> runtime-config.js
+
+# Analytics deploy previews must call their own Netlify /api/* route. Calling the
+# production custom domain from a deploy-preview origin is cross-origin and is
+# blocked by the browser before authentication even starts.
+cat <<'EOF' >> analytics-runtime-config.js
+if (location.hostname.endsWith('.netlify.app')) {
+  window.STOREOPS_CONFIG.apiBase = location.origin;
+  window.STOREOPS_CONFIG.mode = 'api';
+}
+EOF
 
 # Keep only the small early-runtime graph required before the deferred application
 # modules: tenant branding, boot rescue and auth-entry. Normalize their cache key

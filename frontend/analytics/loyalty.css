@@ -1,0 +1,56 @@
+.loyalty-intelligence,.cashier-intelligence{margin-top:14px}
+.loyalty-head{align-items:flex-start}
+.loyalty-kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:9px;margin-bottom:14px}
+.loyalty-kpi{border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:var(--surface-2);min-height:88px}
+.loyalty-kpi small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:800}
+.loyalty-kpi strong{display:block;font-size:19px;letter-spacing:-.04em;margin-top:5px}
+.loyalty-kpi span{display:block;color:var(--muted);font-size:8px;margin-top:4px;line-height:1.35}
+.loyalty-layout{display:grid;grid-template-columns:minmax(0,1.8fr) minmax(260px,.55fr);gap:14px}
+.subsection-heading{display:flex;justify-content:space-between;align-items:flex-start;margin:2px 0 10px}
+.subsection-heading h3{font-size:14px;margin:4px 0 0}
+.loyalty-table-wrap,.cashier-table-wrap{overflow:auto;border:1px solid var(--line);border-radius:13px;max-height:560px}
+.loyalty-table,.cashier-table{width:100%;border-collapse:collapse;min-width:980px}
+.loyalty-table th,.loyalty-table td,.cashier-table th,.cashier-table td{padding:10px 11px;border-bottom:1px solid var(--line);white-space:nowrap;text-align:right}
+.loyalty-table th:first-child,.loyalty-table td:first-child,.cashier-table th:first-child,.cashier-table td:first-child,.cashier-table th:nth-child(2),.cashier-table td:nth-child(2){text-align:left}
+.loyalty-table th,.cashier-table th{position:sticky;top:0;background:#fafafa;z-index:2;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.06em}
+.loyalty-table td,.cashier-table td{font-size:9px}
+.loyalty-side{display:flex;flex-direction:column;gap:12px}
+.wallet-value{font-size:30px;font-weight:850;letter-spacing:-.05em;margin:5px 0 4px}
+.wallet-card p{font-size:9px;color:var(--muted);line-height:1.5;margin:0}
+.uplift-hero{font-size:28px;font-weight:850;letter-spacing:-.05em}
+.uplift-caption{font-size:9px;color:var(--muted);line-height:1.45;margin-top:3px}
+.uplift-bars{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.uplift-row{display:grid;grid-template-columns:1fr auto;gap:8px;font-size:9px;padding:7px 0;border-bottom:1px solid var(--line)}
+.uplift-row:last-child{border-bottom:0}
+.uplift-row span{color:var(--muted)}
+.uplift-row strong{font-size:10px}
+.cashier-tools{display:flex;align-items:center;gap:8px}
+.cashier-tools select{width:auto;min-width:110px}
+.cashier-tools .search-input{width:220px}
+.cashier-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:14px}
+.cashier-stat{border:1px solid var(--line);border-radius:13px;padding:11px 12px;background:var(--surface-2)}
+.cashier-stat small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em;font-weight:800}
+.cashier-stat strong{display:block;font-size:18px;letter-spacing:-.04em;margin-top:5px}
+.cashier-stat span{display:block;color:var(--muted);font-size:8px;margin-top:4px}
+.cashier-name{display:flex;flex-direction:column;gap:2px}
+.cashier-name strong{font-size:9px}
+.cashier-name span{font-size:8px;color:var(--muted)}
+.eligibility-pill{display:inline-block;border-radius:999px;padding:4px 7px;font-size:8px;font-weight:850;background:var(--success-soft);color:var(--success)}
+.eligibility-pill.low{background:var(--warning-soft);color:var(--warning)}
+
+@media(max-width:1200px){
+  .loyalty-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .loyalty-layout{grid-template-columns:1fr}
+  .loyalty-side{display:grid;grid-template-columns:1fr 1fr}
+}
+@media(max-width:860px){
+  .loyalty-kpis{grid-template-columns:1fr 1fr}
+  .loyalty-side{grid-template-columns:1fr}
+  .cashier-tools{width:100%;align-items:stretch;flex-direction:column}
+  .cashier-tools select,.cashier-tools .search-input{width:100%}
+  .cashier-summary{grid-template-columns:1fr 1fr}
+}
+@media(max-width:520px){
+  .loyalty-kpis,.cashier-summary{grid-template-columns:1fr 1fr}
+  .loyalty-kpi strong,.cashier-stat strong{font-size:16px}
+}
