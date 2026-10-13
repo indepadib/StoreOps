@@ -209,6 +209,20 @@ CREATE INDEX IF NOT EXISTS ix_incidents_store_status ON incidents(store_id,statu
 CREATE INDEX IF NOT EXISTS ix_incident_actions_incident ON incident_actions(incident_id,status,due_at);
 `);
 
+db.exec(`
+CREATE TABLE IF NOT EXISTS analytics_saved_views (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tenant_key TEXT NOT NULL,
+  name TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id,tenant_key,name)
+);
+CREATE INDEX IF NOT EXISTS ix_analytics_saved_views_user ON analytics_saved_views(user_id,tenant_key,updated_at);
+`);
+
 function ensureColumn(table,column,definition){
   const cols=db.prepare(`PRAGMA table_info(${table})`).all();
   if(!cols.some(c=>c.name===column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
