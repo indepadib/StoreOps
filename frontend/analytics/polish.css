@@ -967,3 +967,70 @@ body[data-analytics-section="cashiers"] #cashierIntelligence,
 body[data-analytics-section="promotions"] #promotionIntelligence{
   margin-top:0;
 }
+
+
+/* ---------- mobile shell hardening ---------- */
+@media(max-width:1024px){
+  .filterbar{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    align-items:end!important;
+  }
+  .filter-group,.filter-group.wide{min-width:0!important;width:100%!important}
+  .filter-group.wide{grid-column:auto!important}
+  .filterbar select,.filterbar input[type="date"]{
+    width:100%!important;
+    max-width:100%!important;
+    min-width:0!important;
+  }
+  .filter-refresh{width:100%!important}
+  .active-period{
+    grid-column:1/-1!important;
+    white-space:normal!important;
+    line-height:1.4;
+  }
+}
+@media(max-width:860px){
+  .sidebar{
+    display:flex!important;
+    position:fixed!important;
+    left:0!important;
+    top:64px!important;
+    bottom:0!important;
+    width:min(82vw,310px)!important;
+    height:auto!important;
+    z-index:65!important;
+    transform:translateX(-104%);
+    transition:transform .22s ease;
+    box-shadow:24px 0 55px rgba(5,10,20,.24);
+  }
+  body.mobile-nav-open .sidebar{transform:translateX(0)}
+  body.mobile-nav-open:after{
+    content:"";
+    position:fixed;
+    inset:64px 0 0 0;
+    z-index:60;
+    background:rgba(5,10,20,.42);
+    backdrop-filter:blur(3px);
+  }
+  .app{display:block!important}
+  .main{width:100%!important}
+  .mobile-only{display:grid!important}
+}
+@media(max-width:620px){
+  .filterbar{
+    grid-template-columns:1fr!important;
+    gap:8px!important;
+  }
+  .filter-group.wide,.filter-refresh,.active-period{grid-column:auto!important}
+  .filterbar{
+    padding:12px!important;
+    border-radius:16px!important;
+  }
+  .filter-group label{font-size:7.5px!important}
+  .filterbar select,.filterbar input[type="date"]{
+    min-height:44px!important;
+    font-size:12px!important;
+  }
+  .filter-refresh{min-height:44px!important}
+  .topbar-actions .primary-btn{font-size:10px!important}
+}
