@@ -13,6 +13,7 @@
   <link rel="stylesheet" href="/analytics/categories.css">
   <link rel="stylesheet" href="/analytics/inventory.css">
   <link rel="stylesheet" href="/analytics/loyalty.css">
+  <link rel="stylesheet" href="/analytics/promotions.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -67,8 +68,8 @@
         <button data-section="cashiers">
           <span class="nav-icon">◎</span><span>Caissiers</span>
         </button>
-        <button data-section="promotions" disabled title="Phase 5">
-          <span class="nav-icon">%</span><span>Promotions</span><small>Phase 5</small>
+        <button data-section="promotions">
+          <span class="nav-icon">%</span><span>Promotions</span>
         </button>
       </nav>
 
@@ -222,6 +223,65 @@
                 <tr><td colspan="11"><div class="table-loading">Chargement du réseau…</div></td></tr>
               </tbody>
             </table>
+          </div>
+        </section>
+
+        <section class="panel promotion-intelligence" id="promotionIntelligence" data-widget="promotions">
+          <div class="section-heading promotion-head">
+            <div>
+              <span class="eyebrow">PROMOTION CONTROL TOWER</span>
+              <h2>Offres, profondeur de remise & disponibilité</h2>
+              <p class="category-subtitle">Analyse des promotions D365 actives et récentes. Le CA promo, l'uplift et le ROI restent masqués tant que les transactions de remise ne sont pas reliées aux ventes.</p>
+            </div>
+            <div class="promotion-tools">
+              <div class="level-tabs" id="promotionTabs">
+                <button class="active" data-promo-view="ALL">Toutes</button>
+                <button data-promo-view="ACTIVE">Actives</button>
+                <button data-promo-view="ENDING">Expire bientôt</button>
+                <button data-promo-view="STOCK">Stock à risque</button>
+                <button data-promo-view="ENDED">Terminées</button>
+              </div>
+              <input id="promotionSearch" class="search-input" type="search" placeholder="Offre, article, catégorie">
+            </div>
+          </div>
+
+          <div class="promotion-kpis" id="promotionKpis"></div>
+
+          <div class="promotion-layout">
+            <div class="promotion-table-wrap">
+              <table class="promotion-table">
+                <thead>
+                  <tr>
+                    <th>Statut</th>
+                    <th>Offre / Article</th>
+                    <th>Magasin</th>
+                    <th>Mécanique</th>
+                    <th>Prix avant</th>
+                    <th>Prix promo</th>
+                    <th>Remise</th>
+                    <th>Validité</th>
+                    <th>Stock</th>
+                    <th>Groupe prix</th>
+                  </tr>
+                </thead>
+                <tbody id="promotionBody">
+                  <tr><td colspan="10"><div class="table-loading">Chargement promotions…</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="promotion-side">
+              <div class="category-side-card">
+                <span class="eyebrow">EFFICACITÉ</span>
+                <h3>Mesures disponibles</h3>
+                <div id="promotionMeasurement"></div>
+              </div>
+              <div class="category-side-card">
+                <span class="eyebrow">RISQUE STOCK</span>
+                <h3>Promotions à surveiller</h3>
+                <div id="promotionRisk"></div>
+              </div>
+            </aside>
           </div>
         </section>
 
@@ -497,6 +557,7 @@
       <label class="toggle-row"><span>Rythme commercial</span><input type="checkbox" data-widget-toggle="hourly" checked></label>
       <label class="toggle-row"><span>Moteurs du CA</span><input type="checkbox" data-widget-toggle="mix" checked></label>
       <label class="toggle-row"><span>Performance réseau</span><input type="checkbox" data-widget-toggle="network" checked></label>
+      <label class="toggle-row"><span>Promotions</span><input type="checkbox" data-widget-toggle="promotions" checked></label>
       <label class="toggle-row"><span>Fidélité</span><input type="checkbox" data-widget-toggle="loyalty" checked></label>
       <label class="toggle-row"><span>Caissiers</span><input type="checkbox" data-widget-toggle="cashiers" checked></label>
       <label class="toggle-row"><span>Stock Intelligence</span><input type="checkbox" data-widget-toggle="inventory" checked></label>
