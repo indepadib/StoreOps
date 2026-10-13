@@ -33,6 +33,7 @@ async function start(){
     await import('/analytics/categories.js');
     await import('/analytics/inventory.js');
     await import('/analytics/loyalty.js');
+    await import('/analytics/promotions.js');
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);
     if(Number(error?.status)===401||Number(error?.status)===403)return returnToStoreOps();
