@@ -11,6 +11,7 @@
     stores: [],
     pulses: [],
     selectedStore: 'ALL',
+    section: 'overview',
     businessDate: isoDate(new Date()),
     sort: { key: 'sales', dir: 'desc' },
     storeSearch: '',
@@ -315,12 +316,59 @@
     const store = state.selectedStore === 'ALL'
       ? null
       : state.stores.find(s => s.id === state.selectedStore);
+    const tenant = TENANTS[state.tenant] || {};
+    const storeLabel = tenant.terminology?.store || 'Magasin';
+    const sectionCopy = {
+      overview: {
+        eyebrow: 'VUE EXÉCUTIVE',
+        title: store ? `Comment va ${store.name} ?` : 'Comment va le réseau ?',
+        subtitle: store
+          ? 'Les signaux essentiels pour comprendre la performance du magasin sans parcourir dix écrans.'
+          : 'Les signaux essentiels du réseau, hiérarchisés pour comprendre rapidement ce qui accélère, ce qui décroche et où regarder.'
+      },
+      sales: {
+        eyebrow: 'VENTES',
+        title: store ? `Dynamique commerciale · ${store.name}` : 'Dynamique commerciale',
+        subtitle: 'Chiffre d’affaires, fréquentation, panier et rythme de vente avec comparaison homogène.'
+      },
+      network: {
+        eyebrow: 'RÉSEAU',
+        title: 'Comparer les magasins',
+        subtitle: `Une lecture homogène des ${storeLabel.toLowerCase()}s pour repérer immédiatement les écarts de performance.`
+      },
+      categories: {
+        eyebrow: 'CATÉGORIES & PRODUITS',
+        title: 'Comprendre ce qui se vend vraiment',
+        subtitle: 'Du département au SKU : poids, rang, évolution et concentration du chiffre d’affaires.'
+      },
+      inventory: {
+        eyebrow: 'STOCK',
+        title: 'Disponibilité & risque commercial',
+        subtitle: 'Ruptures, faible couverture, stock négatif et exposition commerciale, sans masquer les limites de la donnée.'
+      },
+      loyalty: {
+        eyebrow: 'FIDÉLITÉ',
+        title: 'Valeur client & recrutement',
+        subtitle: 'Identification, panier membre, recrutement et burn Wallet lorsque la source paiement est disponible.'
+      },
+      cashiers: {
+        eyebrow: 'CAISSIERS',
+        title: 'Performance fidélité par staff',
+        subtitle: 'Identifier les écarts de recrutement et d’identification en tenant compte du volume traité.'
+      },
+      promotions: {
+        eyebrow: 'PROMOTIONS',
+        title: 'Promotion Control Tower',
+        subtitle: 'Suivre les offres, la profondeur de remise, leur validité et leur exposition au risque stock.'
+      }
+    };
+    const copy = sectionCopy[state.section] || sectionCopy.overview;
+
     $('#scopeLabel').textContent = store ? store.name : `${agg.ready}/${agg.totalStores} magasins disponibles`;
     $('#dateLabel').textContent = formatDate(state.businessDate);
-    $('#pageTitle').textContent = store ? `Comment va ${store.name} ?` : 'Comment va le réseau ?';
-    $('#pageSubtitle').textContent = store
-      ? 'Performance commerciale, fidélité et signaux de stock sur le magasin sélectionné.'
-      : 'Lecture consolidée du réseau avec comparaison J-7 et possibilité de descendre au magasin.';
+    $('#eyebrow').textContent = `${copy.eyebrow} · ${String(tenant.label || '').toUpperCase()}`;
+    $('#pageTitle').textContent = copy.title;
+    $('#pageSubtitle').textContent = copy.subtitle;
   }
 
   function updateFreshness(agg) {
@@ -911,27 +959,11 @@
       toast('Vue locale réinitialisée');
     });
 
-    $$('.side-nav button:not(:disabled)').forEach(btn => {
+    $('.side-nav button:not(:disabled)').forEach(btn => {
       btn.addEventListener('click', () => {
-        $$('.side-nav button').forEach(x => x.classList.remove('active'));
-        btn.classList.add('active');
-        const section = btn.dataset.section;
-        const target = section === 'network'
-          ? $('[data-widget="network"]')
-          : section === 'sales'
-            ? $('[data-widget="hourly"]')
-            : section === 'categories'
-              ? $('#categoryCommander')
-              : section === 'inventory'
-                ? $('#inventoryIntelligence')
-                : section === 'promotions'
-                  ? $('#promotionIntelligence')
-                  : section === 'loyalty'
-                    ? $('#loyaltyIntelligence')
-                    : section === 'cashiers'
-                      ? $('#cashierIntelligence')
-                      : $('.hero');
-        target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        state.section = btn.dataset.section || 'overview';
+        applySectionView();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
   }
@@ -940,6 +972,7 @@
     return {
       tenant: state.tenant,
       selectedStore: state.selectedStore,
+      section: state.section,
       businessDate: state.businessDate,
       comparisonMode: $('#comparisonMode')?.value || 'j7',
       periodPreset: $('#periodPreset')?.value || 'date',
@@ -1009,6 +1042,7 @@
       applyTenant();
     }
 
+    state.section = SECTION_WIDGETS[payload.section] ? payload.section : state.section;
     state.businessDate = payload.businessDate || state.businessDate;
     $('#businessDate').value = state.businessDate;
 
@@ -1060,18 +1094,59 @@
     $('#drawerBackdrop').hidden = true;
   }
 
+  const SECTION_WIDGETS = {
+    overview: ['executiveDeck','attentionRail','insights','kpis','hourly','mix','network','departments','dataQuality'],
+    sales: ['kpis','hourly','mix','network'],
+    network: ['executiveDeck','attentionRail','network'],
+    categories: ['categories'],
+    inventory: ['inventory'],
+    loyalty: ['loyalty'],
+    cashiers: ['cashiers'],
+    promotions: ['promotions']
+  };
+
+  function applySectionView() {
+    const allowed = new Set(SECTION_WIDGETS[state.section] || SECTION_WIDGETS.overview);
+    document.body.dataset.analyticsSection = state.section;
+
+    $('[data-widget]').forEach(el => {
+      const key = el.dataset.widget;
+      if (key === 'hero') {
+        el.hidden = false;
+        return;
+      }
+      const inSection = allowed.has(key);
+      const enabled = state.prefs.widgets[key] !== false;
+      el.hidden = !(inSection && enabled);
+    });
+
+    const salesGrid = $('#salesOverviewGrid');
+    if (salesGrid) {
+      const anyVisible = !($('[data-widget="hourly"]')?.hidden ?? true) || !($('[data-widget="mix"]')?.hidden ?? true);
+      salesGrid.hidden = !(allowed.has('hourly') || allowed.has('mix')) || !anyVisible;
+    }
+
+    const bottomGrid = $('#overviewBottomGrid');
+    if (bottomGrid) {
+      const anyVisible = !($('[data-widget="departments"]')?.hidden ?? true) || !($('[data-widget="dataQuality"]')?.hidden ?? true);
+      bottomGrid.hidden = state.section !== 'overview' || !anyVisible;
+    }
+
+    $('.side-nav button[data-section]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.section === state.section);
+    });
+
+    const agg = aggregate();
+    updateHeadings(agg);
+  }
+
   function applyPreferences() {
     document.body.classList.toggle('compact', state.prefs.density === 'compact');
     $('#densitySelect').value = state.prefs.density || 'comfortable';
-    $$('[data-widget]').forEach(el => {
-      const key = el.dataset.widget;
-      if (key === 'hero') return;
-      const visible = state.prefs.widgets[key] !== false;
-      el.hidden = !visible;
-    });
-    $$('[data-widget-toggle]').forEach(input => {
+    $('[data-widget-toggle]').forEach(input => {
       input.checked = state.prefs.widgets[input.dataset.widgetToggle] !== false;
     });
+    applySectionView();
   }
 
   function exportCsv() {
