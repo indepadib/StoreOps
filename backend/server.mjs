@@ -28,6 +28,7 @@ import { handleMerchandisingApi } from './services/merchandising-api.mjs';
 import { productTaxonomy } from './services/assortment.mjs';
 import { handleWorkforceApi } from './services/workforce-api.mjs';
 import { handleBusinessPulseApi } from './services/business-pulse-api.mjs';
+import { handleAnalyticsApi } from './services/analytics-api.mjs';
 import { handleLossExportApi } from './services/loss-export-api.mjs';
 import { handleStoreSettingsApi } from './services/store-settings-api.mjs';
 import { handleOpeningApi } from './services/opening-api.mjs';
@@ -97,6 +98,7 @@ async function api(req,res,url){
   const merchandisingResponse=await handleMerchandisingApi({req,url,user});if(merchandisingResponse)return json(req,res,merchandisingResponse.status,merchandisingResponse.data);
   const workforceResponse=await handleWorkforceApi({req,url,user});if(workforceResponse)return json(req,res,workforceResponse.status,workforceResponse.data);
   const businessPulseResponse=await handleBusinessPulseApi({req,url,user});if(businessPulseResponse)return json(req,res,businessPulseResponse.status,businessPulseResponse.data);
+  const analyticsResponse=await handleAnalyticsApi({req,url,user});if(analyticsResponse)return json(req,res,analyticsResponse.status,analyticsResponse.data);
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
   const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return json(req,res,storeSettingsResponse.status,storeSettingsResponse.data);
   const growthResponse=await handleStoreGrowthApi({req,url,user});if(growthResponse)return json(req,res,growthResponse.status,growthResponse.data);
