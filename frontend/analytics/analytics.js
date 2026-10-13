@@ -3,64 +3,7 @@
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
   const PREF_KEY = 'retail-intelligence:prefs:v1';
 
-  const TENANTS = {
-    franprix: {
-      label: 'Franprix',
-      accent: '#e5004f',
-      connected: true,
-      sourceLabel: 'Dynamics 365 / Commerce',
-      description: 'Réseau Franprix Maroc'
-    },
-    flormar: {
-      label: 'Flormar',
-      accent: '#d9175b',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Beauté & cosmétique'
-    },
-    mrbricolage: {
-      label: 'Mr.Bricolage',
-      accent: '#e53935',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Maison & bricolage'
-    },
-    venezia: {
-      label: 'Venezia Ice',
-      accent: '#8b5e3c',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Restauration & glace'
-    },
-    dahab: {
-      label: 'Dahab',
-      accent: '#b88a2a',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Retail'
-    },
-    beautyforyou: {
-      label: 'Beauty For You',
-      accent: '#a92b73',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Beauté'
-    },
-    intersport: {
-      label: 'Intersport',
-      accent: '#1d5fbf',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Sport'
-    },
-    primor: {
-      label: 'Primor',
-      accent: '#2c2c2c',
-      connected: false,
-      sourceLabel: 'À connecter',
-      description: 'Beauté'
-    }
-  };
+  const TENANTS = window.RETAIL_INTELLIGENCE_TENANTS || {};
 
   const state = {
     tenant: 'franprix',
@@ -188,7 +131,8 @@
   }
 
   function applyTenant() {
-    const tenant = TENANTS[state.tenant];
+    const tenant = TENANTS[state.tenant] || TENANTS.franprix;
+    if (!tenant) return;
     document.documentElement.style.setProperty('--accent', tenant.accent);
     document.documentElement.style.setProperty('--accent-soft', hexToSoft(tenant.accent));
     $('#brandStatus').textContent = tenant.connected
@@ -197,6 +141,16 @@
     $('#eyebrow').textContent = tenant.connected ? `PERFORMANCE · ${tenant.label.toUpperCase()}` : 'ENSEIGNE À CONNECTER';
     $('#emptyBrandTitle').textContent = `${tenant.label} est prête côté Analytics`;
     $('#emptyBrandText').textContent = `La structure multi-enseigne est en place. Il reste à brancher la source ${tenant.label} pour alimenter les KPIs réels, sans générer de données fictives.`;
+
+    const modules = tenant.modules || {};
+    $('.side-nav button[data-section]').forEach(btn => {
+      const section = btn.dataset.section;
+      if (Object.prototype.hasOwnProperty.call(modules, section)) btn.hidden = modules[section] === false;
+    });
+
+    const storeLabel = tenant.terminology?.store || 'Magasin';
+    const storeFilterLabel = $('#storeFilter')?.closest('.filter-group')?.querySelector('label');
+    if (storeFilterLabel) storeFilterLabel.textContent = storeLabel;
   }
 
   function hexToSoft(hex) {
