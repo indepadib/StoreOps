@@ -4,13 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111111">
-  <title>ONE Retail Intelligence</title>
+  <title>Retail Intelligence</title>
   <meta name="description" content="Cockpit analytique multi-enseigne ONE Retail">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/analytics/analytics.css">
   <link rel="stylesheet" href="/analytics/categories.css">
+  <link rel="stylesheet" href="/analytics/inventory.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -20,7 +21,7 @@
       <div class="brand-symbol" aria-hidden="true"><span>1</span></div>
       <div>
         <div class="product-name">ONE Retail <strong>Intelligence</strong></div>
-        <div class="product-subtitle">Performance & Analytics</div>
+        <div class="product-subtitle">Performance, Analytics & Decision Support</div>
       </div>
     </div>
 
@@ -56,8 +57,8 @@
         <button data-section="categories">
           <span class="nav-icon">≡</span><span>Catégories & Produits</span>
         </button>
-        <button data-section="inventory" disabled title="Phase 3">
-          <span class="nav-icon">◫</span><span>Stock</span><small>Phase 3</small>
+        <button data-section="inventory">
+          <span class="nav-icon">◫</span><span>Stock</span>
         </button>
         <button data-section="loyalty" disabled title="Phase 4">
           <span class="nav-icon">♡</span><span>Fidélité</span><small>Phase 4</small>
@@ -220,6 +221,64 @@
           </div>
         </section>
 
+        <section class="panel inventory-intelligence" id="inventoryIntelligence" data-widget="inventory">
+          <div class="section-heading inventory-head">
+            <div>
+              <span class="eyebrow">STOCK INTELLIGENCE</span>
+              <h2>Disponibilité, couverture & risque commercial</h2>
+              <p class="category-subtitle">Lecture analytique du stock magasin, des ruptures, faibles couvertures et stocks négatifs. Les estimations de risque sont explicitement signalées.</p>
+            </div>
+            <div class="inventory-tools">
+              <div class="level-tabs" id="inventoryTabs">
+                <button class="active" data-stock-view="all">Tous les signaux</button>
+                <button data-stock-view="OUT">Ruptures</button>
+                <button data-stock-view="LOW">Faible couverture</button>
+                <button data-stock-view="NEGATIVE">Stock négatif</button>
+                <button data-stock-view="GHOST">Stock fantôme</button>
+              </div>
+              <input id="inventorySearch" class="search-input" type="search" placeholder="Article, EAN, fournisseur">
+            </div>
+          </div>
+
+          <div class="inventory-kpis" id="inventoryKpis"></div>
+
+          <div class="inventory-layout">
+            <div class="inventory-table-wrap">
+              <table class="inventory-table">
+                <thead>
+                  <tr>
+                    <th>Priorité</th>
+                    <th>Article</th>
+                    <th>Magasin</th>
+                    <th>Signal</th>
+                    <th>Stock</th>
+                    <th>Couverture</th>
+                    <th>Ventes 30j</th>
+                    <th>Risque 24h</th>
+                    <th>Source</th>
+                  </tr>
+                </thead>
+                <tbody id="inventoryBody">
+                  <tr><td colspan="9"><div class="table-loading">Chargement des signaux stock…</div></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <aside class="inventory-side">
+              <div class="category-side-card">
+                <span class="eyebrow">RISQUE</span>
+                <h3>CA journalier à risque</h3>
+                <div id="riskBreakdown"></div>
+              </div>
+              <div class="category-side-card">
+                <span class="eyebrow">COUVERTURE</span>
+                <h3>Priorités disponibilité</h3>
+                <div id="coverageBreakdown"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
         <section class="panel category-commander" id="categoryCommander" data-widget="categories">
           <div class="section-heading category-head">
             <div>
@@ -351,7 +410,7 @@
   </aside>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
 
-  <script src="/analytics/analytics.js" defer></script>
-  <script src="/analytics/categories.js" defer></script>
+  <script src="/runtime-config.js"></script>
+  <script type="module" src="/analytics/bootstrap.js"></script>
 </body>
 </html>
