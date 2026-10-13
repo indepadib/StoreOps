@@ -160,7 +160,7 @@ export async function readWalletBurn(storeId,{businessDate=new Date().toISOStrin
     config.dynamics.dataAreaId?config.dynamics.dataAreaField:null
   ]).join(',');
 
-  let rows=null,selected=null,lastError=null;
+  let rows=null,selected=null,lastError=null,firstEmpty=null;
   outer:for(const identifier of identifiers){
     for(const sf of storeFilters(schema.fields.store,identifier.value)){
       for(const dv of dateVariants(schema.fields.date,day)){
@@ -168,15 +168,16 @@ export async function readWalletBurn(storeId,{businessDate=new Date().toISOStrin
         if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
         try{
           const result=await odataGetAll(schema.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:500,maxRows:25000});
-          rows=result.value||[];
-          selected={identifier,storeFilter:sf,dateMode:dv.mode,rowCount:result.rowCount||rows.length,pages:result.pages||0,truncated:!!result.truncated};
-          if(rows.length)break outer;
-          if(rows!==null)break outer;
+          const candidateRows=result.value||[];
+          const candidateSelected={identifier,storeFilter:sf,dateMode:dv.mode,rowCount:result.rowCount||candidateRows.length,pages:result.pages||0,truncated:!!result.truncated};
+          if(candidateRows.length){rows=candidateRows;selected=candidateSelected;break outer}
+          if(!firstEmpty)firstEmpty={rows:candidateRows,selected:candidateSelected};
         }catch(error){lastError=error}
       }
     }
   }
 
+  if(rows===null&&firstEmpty){rows=firstEmpty.rows;selected=firstEmpty.selected}
   if(rows===null){
     return{status:'UNAVAILABLE',storeId,businessDate:day,burn:null,source:'D365_PAYMENT_READ_FAILED',entity:schema.entity,fields:schema.fields,error:{code:lastError?.code||'D365_PAYMENT_READ_FAILED',message:lastError?.message||String(lastError||'Lecture paiement impossible')}};
   }
