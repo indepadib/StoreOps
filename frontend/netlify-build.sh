@@ -14,6 +14,16 @@ NODE
 cp analytics-runtime-config.js runtime-config.js
 cat ./js/boot-classic.js >> runtime-config.js
 
+# Analytics deploy previews must call their own Netlify /api/* route. Calling the
+# production custom domain from a deploy-preview origin is cross-origin and is
+# blocked by the browser before authentication even starts.
+cat <<'EOF' >> analytics-runtime-config.js
+if (location.hostname.endsWith('.netlify.app')) {
+  window.STOREOPS_CONFIG.apiBase = location.origin;
+  window.STOREOPS_CONFIG.mode = 'api';
+}
+EOF
+
 # Keep only the small early-runtime graph required before the deferred application
 # modules: tenant branding, boot rescue and auth-entry. Normalize their cache key
 # at build time so a production release cannot mix previous JS generations.
