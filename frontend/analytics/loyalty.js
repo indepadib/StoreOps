@@ -8,7 +8,10 @@
     cashierSearch: '',
     cashierKey: null,
     cashierLoading: false,
-    cashierStores: []
+    cashierStores: [],
+    walletKey: null,
+    walletLoading: false,
+    walletStores: []
   };
 
   function safe(v) {
@@ -173,11 +176,74 @@
   }
 
   function renderWalletStatus() {
+    const api = core();
     const value = $('#walletBurnValue');
     const status = $('#walletBurnStatus');
-    if (!value || !status) return;
+    if (!api || !value || !status) return;
+
+    if (state.walletLoading) {
+      value.textContent = '…';
+      status.textContent = 'Recherche de la source paiement Wallet dans Dynamics…';
+      return;
+    }
+
+    const ready = state.walletStores.filter(x => x.ok && x.data?.status === 'READY');
+    const signIssues = state.walletStores.filter(x => x.ok && x.data?.status === 'SIGN_VALIDATION_REQUIRED');
+    const unavailable = state.walletStores.filter(x => !x.ok || x.data?.status === 'UNAVAILABLE');
+
+    if (signIssues.length) {
+      const gross = signIssues.reduce((s,x)=>s+Number(x.data?.signProfile?.grossAbsoluteAmount||0),0);
+      value.textContent = 'À valider';
+      status.textContent = `Wallet trouvé sur ${signIssues.length} magasin(s), mais les signes débit/crédit sont mixtes. Volume absolu observé : ${api.money(gross, true)}. Aucun burn net n'est affiché avant validation métier.`;
+      return;
+    }
+
+    if (ready.length) {
+      const burn = ready.reduce((s,x)=>s+Number(x.data?.burn||0),0);
+      const transactions = ready.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
+      value.textContent = api.money(burn, true);
+      status.textContent = `${transactions} transaction(s) Wallet · ${ready.length}/${state.walletStores.length} magasin(s) lus directement depuis la transaction de paiement Dynamics.`;
+      return;
+    }
+
     value.textContent = 'N/A';
-    status.textContent = 'Tender Wallet non branché : le burn reste volontairement indisponible tant que la transaction de paiement Wallet n’est pas lue directement.';
+    if (unavailable.length) {
+      const reason = unavailable[0]?.data?.diagnostics?.error?.message || unavailable[0]?.data?.message || unavailable[0]?.error?.message;
+      status.textContent = reason
+        ? `Source Wallet indisponible : ${reason}`
+        : 'La Data Entity de paiement Wallet n’a pas encore été identifiée automatiquement. Aucun burn n’est reconstruit.';
+    } else {
+      status.textContent = 'Tender Wallet non disponible sur ce périmètre.';
+    }
+  }
+
+  async function loadWallet(force = false) {
+    const api = core();
+    if (!api || state.walletLoading) return;
+    const scope = cashierScope();
+    const key = `${scope.date}|${scope.stores.map(s=>s.id).join(',')}`;
+    if (!force && state.walletKey === key) {
+      renderWalletStatus();
+      return;
+    }
+
+    state.walletLoading = true;
+    renderWalletStatus();
+
+    try {
+      state.walletStores = await Promise.all(scope.stores.map(async store => {
+        try {
+          const data = await api.api(`/api/analytics/wallet?storeId=${encodeURIComponent(store.id)}&date=${encodeURIComponent(scope.date)}${force?'&force=1':''}`);
+          return { store, ok: true, data };
+        } catch (error) {
+          return { store, ok: false, error };
+        }
+      }));
+      state.walletKey = key;
+    } finally {
+      state.walletLoading = false;
+      renderWalletStatus();
+    }
   }
 
   function cashierScope() {
@@ -298,12 +364,14 @@
     document.addEventListener('retail-intelligence:data', () => {
       renderLoyalty();
       loadCashiers(false);
+      loadWallet(false);
     });
 
     const existing = core()?.getState?.();
     if (existing?.pulses?.length) {
       renderLoyalty();
       loadCashiers(false);
+      loadWallet(false);
     }
   }
 
