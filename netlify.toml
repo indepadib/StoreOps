@@ -69,3 +69,14 @@
   for = "/sw.js"
   [headers.values]
     Cache-Control = "no-store, max-age=0"
+
+
+[[headers]]
+  for = "/analytics-runtime-config.js"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
+  for = "/analytics/*"
+  [headers.values]
+    Cache-Control = "no-cache, max-age=0, must-revalidate"
