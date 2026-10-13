@@ -28,6 +28,7 @@ async function start(){
     window.RETAIL_INTELLIGENCE_API=api;
     window.RETAIL_INTELLIGENCE_HEALTH=h;
 
+    await import('/analytics/tenants.js');
     await import('/analytics/analytics.js');
     await import('/analytics/categories.js');
     await import('/analytics/inventory.js');
