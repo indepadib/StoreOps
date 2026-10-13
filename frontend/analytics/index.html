@@ -386,7 +386,7 @@
       </div>
       <button class="icon-btn" id="closeDrawer" aria-label="Fermer">×</button>
     </div>
-    <p class="drawer-copy">Ces préférences restent propres à votre navigateur. Elles préfigurent les vues sauvegardées multi-utilisateurs.</p>
+    <p class="drawer-copy">Personnalise le cockpit, puis enregistre des vues par enseigne. Les vues sauvegardées sont liées à ton utilisateur.</p>
 
     <div class="drawer-section">
       <label class="toggle-row"><span>Insights</span><input type="checkbox" data-widget-toggle="insights" checked></label>
@@ -408,7 +408,23 @@
       </select>
     </div>
 
-    <button class="ghost-btn full" id="resetPrefs">Réinitialiser la vue</button>
+    <div class="drawer-section saved-views-section">
+      <label>Vues sauvegardées</label>
+      <div class="saved-view-create">
+        <input id="savedViewName" type="text" maxlength="80" placeholder="Ex. Direction matin">
+        <button class="primary-btn" id="saveViewBtn">Enregistrer</button>
+      </div>
+      <div class="saved-view-actions">
+        <select id="savedViewsSelect">
+          <option value="">Aucune vue sauvegardée</option>
+        </select>
+        <button class="ghost-btn" id="applyViewBtn">Appliquer</button>
+        <button class="ghost-btn danger-ghost" id="deleteViewBtn">Supprimer</button>
+      </div>
+      <small id="savedViewsStatus" class="saved-view-status">Les filtres, widgets, densité et périmètre sont sauvegardés.</small>
+    </div>
+
+    <button class="ghost-btn full" id="resetPrefs">Réinitialiser la vue locale</button>
   </aside>
   <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
 
