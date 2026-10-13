@@ -930,3 +930,40 @@ body.compact .kpi-value{font-size:25px}
   .executive-driver-main>strong{font-size:23px}
   .executive-health{padding:15px}
 }
+
+
+/* ---------- routed module pages ---------- */
+body:not([data-analytics-section="overview"]) .hero{
+  min-height:142px;
+  padding:23px 27px;
+  margin-bottom:14px;
+}
+body:not([data-analytics-section="overview"]) .hero h1{
+  font-size:30px;
+  margin:10px 0 7px;
+}
+body:not([data-analytics-section="overview"]) .hero p{max-width:760px}
+body[data-analytics-section="categories"] #categoryCommander,
+body[data-analytics-section="inventory"] #inventoryIntelligence,
+body[data-analytics-section="loyalty"] #loyaltyIntelligence,
+body[data-analytics-section="cashiers"] #cashierIntelligence,
+body[data-analytics-section="promotions"] #promotionIntelligence,
+body[data-analytics-section="network"] [data-widget="network"]{
+  animation:riPageIn .24s ease both;
+}
+@keyframes riPageIn{
+  from{opacity:0;transform:translateY(5px)}
+  to{opacity:1;transform:none}
+}
+body[data-analytics-section="sales"] #salesOverviewGrid,
+body[data-analytics-section="sales"] [data-widget="network"]{
+  animation:riPageIn .24s ease both;
+}
+body[data-analytics-section="network"] [data-widget="network"],
+body[data-analytics-section="categories"] #categoryCommander,
+body[data-analytics-section="inventory"] #inventoryIntelligence,
+body[data-analytics-section="loyalty"] #loyaltyIntelligence,
+body[data-analytics-section="cashiers"] #cashierIntelligence,
+body[data-analytics-section="promotions"] #promotionIntelligence{
+  margin-top:0;
+}
