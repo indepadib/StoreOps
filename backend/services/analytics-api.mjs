@@ -1,9 +1,34 @@
-import { db } from '../db.mjs';
+import { db, uid } from '../db.mjs';
 import { canAccessStore } from './permissions.mjs';
 import { productDataMany } from './product-data.mjs';
 import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './dynamics-stock.mjs';
 
 const clean = value => String(value ?? '').trim();
+
+
+function readBody(req){
+  return new Promise((resolve,reject)=>{
+    let raw='';
+    req.on('data',chunk=>{raw+=chunk;if(raw.length>1_000_000)reject(Object.assign(new Error('Payload trop volumineux'),{status:413}))});
+    req.on('end',()=>{try{resolve(raw?JSON.parse(raw):{})}catch{reject(Object.assign(new Error('JSON invalide'),{status:400}))}});
+    req.on('error',reject);
+  });
+}
+
+function parsePayload(row){
+  try{return JSON.parse(row.payload_json||'{}')}catch{return{}}
+}
+
+function savedView(row){
+  return {
+    id:row.id,
+    tenantKey:row.tenant_key,
+    name:row.name,
+    payload:parsePayload(row),
+    createdAt:row.created_at,
+    updatedAt:row.updated_at
+  };
+}
 
 function safeError(error){
   return {
@@ -13,6 +38,42 @@ function safeError(error){
 }
 
 export async function handleAnalyticsApi({ req, url, user }){
+  if(url.pathname === '/api/analytics/views'){
+    const tenantKey=clean(url.searchParams.get('tenant'))||'franprix';
+
+    if(req.method==='GET'){
+      const rows=db.prepare('SELECT * FROM analytics_saved_views WHERE user_id=? AND tenant_key=? ORDER BY updated_at DESC,name')
+        .all(user.id,tenantKey);
+      return {status:200,data:{items:rows.map(savedView)}};
+    }
+
+    if(req.method==='POST'){
+      const body=await readBody(req),name=clean(body.name),payload=body.payload&&typeof body.payload==='object'?body.payload:{};
+      if(!name)return{status:400,data:{error:'Nom de vue requis.'}};
+      if(name.length>80)return{status:400,data:{error:'Nom de vue trop long.'}};
+      const existing=db.prepare('SELECT id FROM analytics_saved_views WHERE user_id=? AND tenant_key=? AND name=?').get(user.id,tenantKey,name);
+      const id=existing?.id||uid('av');
+      if(existing){
+        db.prepare('UPDATE analytics_saved_views SET payload_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND user_id=?')
+          .run(JSON.stringify(payload),id,user.id);
+      }else{
+        db.prepare('INSERT INTO analytics_saved_views(id,user_id,tenant_key,name,payload_json) VALUES(?,?,?,?,?)')
+          .run(id,user.id,tenantKey,name,JSON.stringify(payload));
+      }
+      const row=db.prepare('SELECT * FROM analytics_saved_views WHERE id=? AND user_id=?').get(id,user.id);
+      return{status:200,data:savedView(row)};
+    }
+
+    return null;
+  }
+
+  const viewMatch=url.pathname.match(/^\/api\/analytics\/views\/([^/]+)$/);
+  if(viewMatch&&req.method==='DELETE'){
+    const id=decodeURIComponent(viewMatch[1]);
+    const result=db.prepare('DELETE FROM analytics_saved_views WHERE id=? AND user_id=?').run(id,user.id);
+    return{status:result.changes?200:404,data:result.changes?{ok:true}:{error:'Vue introuvable.'}};
+  }
+
   if(req.method !== 'GET') return null;
   if(url.pathname !== '/api/analytics/product') return null;
 
