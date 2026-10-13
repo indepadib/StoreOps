@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="/analytics/analytics.css">
   <link rel="stylesheet" href="/analytics/categories.css">
   <link rel="stylesheet" href="/analytics/inventory.css">
+  <link rel="stylesheet" href="/analytics/loyalty.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -60,8 +61,11 @@
         <button data-section="inventory">
           <span class="nav-icon">◫</span><span>Stock</span>
         </button>
-        <button data-section="loyalty" disabled title="Phase 4">
-          <span class="nav-icon">♡</span><span>Fidélité</span><small>Phase 4</small>
+        <button data-section="loyalty">
+          <span class="nav-icon">♡</span><span>Fidélité</span>
+        </button>
+        <button data-section="cashiers">
+          <span class="nav-icon">◎</span><span>Caissiers</span>
         </button>
         <button data-section="promotions" disabled title="Phase 5">
           <span class="nav-icon">%</span><span>Promotions</span><small>Phase 5</small>
@@ -216,6 +220,105 @@
               </thead>
               <tbody id="networkBody">
                 <tr><td colspan="11"><div class="table-loading">Chargement du réseau…</div></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel loyalty-intelligence" id="loyaltyIntelligence" data-widget="loyalty">
+          <div class="section-heading loyalty-head">
+            <div>
+              <span class="eyebrow">LOYALTY INTELLIGENCE</span>
+              <h2>Identification, recrutement & valeur client</h2>
+              <p class="category-subtitle">Lecture du poids fidélisé, de l'uplift panier et de la performance de recrutement. Les métriques non disponibles restent explicitement à N/A.</p>
+            </div>
+            <span class="coverage-badge" id="loyaltyCoverage">—</span>
+          </div>
+
+          <div class="loyalty-kpis" id="loyaltyKpis"></div>
+
+          <div class="loyalty-layout">
+            <div>
+              <div class="subsection-heading">
+                <div>
+                  <span class="eyebrow">RÉSEAU</span>
+                  <h3>Performance fidélité par magasin</h3>
+                </div>
+              </div>
+              <div class="loyalty-table-wrap">
+                <table class="loyalty-table">
+                  <thead>
+                    <tr>
+                      <th>Magasin</th>
+                      <th>CA fidélisé</th>
+                      <th>% CA fidélisé</th>
+                      <th>Tickets fidélisés</th>
+                      <th>% tickets</th>
+                      <th>Panier membre</th>
+                      <th>Panier non-membre</th>
+                      <th>Uplift panier</th>
+                      <th>Recrutements</th>
+                      <th>Taux recrut.</th>
+                    </tr>
+                  </thead>
+                  <tbody id="loyaltyBody">
+                    <tr><td colspan="10"><div class="table-loading">Chargement fidélité…</div></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="loyalty-side">
+              <div class="category-side-card wallet-card">
+                <span class="eyebrow">CASHBACK</span>
+                <h3>Burn Wallet</h3>
+                <div class="wallet-value" id="walletBurnValue">N/A</div>
+                <p id="walletBurnStatus">La source Tender / Wallet n'est pas encore branchée dans Analytics. Aucun burn n'est reconstruit artificiellement.</p>
+              </div>
+              <div class="category-side-card">
+                <span class="eyebrow">LECTURE</span>
+                <h3>Écart panier membre</h3>
+                <div id="basketUpliftPanel"></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section class="panel cashier-intelligence" id="cashierIntelligence" data-widget="cashiers">
+          <div class="section-heading">
+            <div>
+              <span class="eyebrow">CASHIER ANALYTICS</span>
+              <h2>Identification & recrutement par staff</h2>
+              <p class="category-subtitle">Classement avec seuil minimum de volume. Le recrutement est attribué selon la première transaction identifiée historique lorsque la source le permet.</p>
+            </div>
+            <div class="cashier-tools">
+              <select id="cashierWindow">
+                <option value="7">7 jours</option>
+                <option value="30" selected>30 jours</option>
+                <option value="60">60 jours</option>
+                <option value="90">90 jours</option>
+              </select>
+              <input id="cashierSearch" class="search-input" type="search" placeholder="StaffId ou nom">
+            </div>
+          </div>
+          <div class="cashier-summary" id="cashierSummary"></div>
+          <div class="cashier-table-wrap">
+            <table class="cashier-table">
+              <thead>
+                <tr>
+                  <th>Caissier</th>
+                  <th>Magasin</th>
+                  <th>CA</th>
+                  <th>Tickets</th>
+                  <th>% tickets fid.</th>
+                  <th>% CA fid.</th>
+                  <th>Recrutements</th>
+                  <th>Taux recrut.</th>
+                  <th>Volume suffisant</th>
+                </tr>
+              </thead>
+              <tbody id="cashierBody">
+                <tr><td colspan="9"><div class="table-loading">Chargement performance caissiers…</div></td></tr>
               </tbody>
             </table>
           </div>
@@ -394,6 +497,8 @@
       <label class="toggle-row"><span>Rythme commercial</span><input type="checkbox" data-widget-toggle="hourly" checked></label>
       <label class="toggle-row"><span>Moteurs du CA</span><input type="checkbox" data-widget-toggle="mix" checked></label>
       <label class="toggle-row"><span>Performance réseau</span><input type="checkbox" data-widget-toggle="network" checked></label>
+      <label class="toggle-row"><span>Fidélité</span><input type="checkbox" data-widget-toggle="loyalty" checked></label>
+      <label class="toggle-row"><span>Caissiers</span><input type="checkbox" data-widget-toggle="cashiers" checked></label>
       <label class="toggle-row"><span>Stock Intelligence</span><input type="checkbox" data-widget-toggle="inventory" checked></label>
       <label class="toggle-row"><span>Category Commander</span><input type="checkbox" data-widget-toggle="categories" checked></label>
       <label class="toggle-row"><span>Top départements</span><input type="checkbox" data-widget-toggle="departments" checked></label>
