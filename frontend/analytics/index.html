@@ -14,16 +14,17 @@
   <link rel="stylesheet" href="/analytics/inventory.css">
   <link rel="stylesheet" href="/analytics/loyalty.css">
   <link rel="stylesheet" href="/analytics/promotions.css">
+  <link rel="stylesheet" href="/analytics/polish.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <header class="topbar">
     <div class="brand-block">
-      <div class="brand-symbol" aria-hidden="true"><span>1</span></div>
+      <div class="brand-symbol" aria-hidden="true"><span>RI</span></div>
       <div>
         <div class="product-name">Retail <strong>Intelligence</strong></div>
-        <div class="product-subtitle">Performance, Analytics & Decision Support</div>
+        <div class="product-subtitle">Decision intelligence for retail teams</div>
       </div>
     </div>
 
@@ -33,8 +34,8 @@
         <span class="status-dot"></span>
         <span id="freshnessText">Connexion…</span>
       </div>
-      <button class="ghost-btn" id="customizeBtn">Personnaliser</button>
-      <button class="primary-btn" id="exportBtn">Exporter</button>
+      <button class="ghost-btn" id="customizeBtn">Vue</button>
+      <button class="primary-btn" id="exportBtn">Exporter <span aria-hidden="true">↗</span></button>
     </div>
   </header>
 
@@ -127,7 +128,7 @@
       <div id="analyticsContent">
         <section class="hero" data-widget="hero">
           <div>
-            <div class="eyebrow" id="eyebrow">PERFORMANCE RÉSEAU</div>
+            <div class="eyebrow hero-eyebrow" id="eyebrow">PERFORMANCE RÉSEAU</div>
             <h1 id="pageTitle">Comment va le réseau aujourd'hui ?</h1>
             <p id="pageSubtitle">Lecture instantanée de la performance commerciale, de la fidélité et des principaux signaux magasins.</p>
           </div>
