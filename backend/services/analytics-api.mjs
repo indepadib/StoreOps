@@ -112,7 +112,7 @@ export async function handleAnalyticsApi({ req, url, user }){
       if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     }
     const data=await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force});
-    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?600:24*3600;
+    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:24*3600;
     await writeAnalyticsCache(cacheKey,'decision',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
@@ -133,7 +133,7 @@ export async function handleAnalyticsApi({ req, url, user }){
     const cacheKey=analyticsCacheKey('wallet',[storeId,startDate,endDate]);
     if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
     const data=await readWalletBurnRange(storeId,{startDate,endDate,force});
-    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?600:6*3600;
+    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:6*3600;
     await writeAnalyticsCache(cacheKey,'wallet',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
