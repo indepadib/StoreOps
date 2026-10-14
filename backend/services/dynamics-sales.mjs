@@ -331,7 +331,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  if(!selected)throw lastError||Object.assign(new Error('Lecture période ventes D365 impossible.'),{code:'D365_SALES_RANGE_FAILED'});
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
- const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map();
+ const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map(),staffMap=new Map();
  const weekdayNames=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
  const favourite=map=>{let key=null,value=-1;for(const [k,v] of map||[]){if(v>value){key=k;value=v}}return key};
  for(const row of selected.rows){
@@ -343,7 +343,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
     const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),dates:new Set(),weekdays:new Map(),hours:new Map(),firstDate:null,lastDate:null};
     cur.sales+=sales;cur.units+=qty;if(tx)cur.transactions.add(tx);
-    if(product)cur.products.set(product,(cur.products.get(product)||0)+sales);
+    if(product){const cp=cur.products.get(product)||{sales:0,units:0};cp.sales+=sales;cp.units+=qty;cur.products.set(product,cp)}
     if(day){
       cur.dates.add(day);if(!cur.firstDate||day<cur.firstDate)cur.firstDate=day;if(!cur.lastDate||day>cur.lastDate)cur.lastDate=day;
       const weekday=weekdayNames[new Date(day+'T12:00:00Z').getUTCDay()];cur.weekdays.set(weekday,(cur.weekdays.get(weekday)||0)+1)
@@ -356,6 +356,19 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     }
    }
   }
+  if(c.fields.staff){
+    const staffId=clean(row[c.fields.staff]);
+    if(staffId){
+      const status=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();
+      if(!['VOIDED','CANCELLED','CANCELED'].includes(status)){
+        const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
+        const identified=!!customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(customer);
+        const cur=staffMap.get(staffId)||{staffId,sales:0,transactions:new Set(),identifiedTransactions:new Set(),identifiedSales:0};
+        cur.sales+=sales;if(tx)cur.transactions.add(tx);if(identified){cur.identifiedSales+=sales;if(tx)cur.identifiedTransactions.add(tx)}
+        staffMap.set(staffId,cur)
+      }
+    }
+  }
  }
  const daily=[...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{
   const x=aggregateSalesRows(rows,c);return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'?x.marginValue:null,marginRate:margin.status==='VALIDATED'?x.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
@@ -364,8 +377,9 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,
   averageUnitsPerBasket:x.transactions.size?round2(x.units/x.transactions.size):null,activeDays:x.dates.size,distinctProducts:x.products.size,firstDate:x.firstDate,lastDate:x.lastDate,
   favouriteWeekday:favourite(x.weekdays),favouriteHour:favourite(x.hours),
-  topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))
+  topProducts:[...x.products.entries()].sort((a,b)=>b[1].sales-a[1].sales).slice(0,20).map(([productNumber,v])=>({productNumber,sales:round2(v.sales),units:round2(v.units)}))
  })).sort((a,b)=>b.sales-a.sales);
+ const staff=[...staffMap.values()].map(x=>({staffId:x.staffId,sales:round2(x.sales),tickets:x.transactions.size,identifiedTickets:x.identifiedTransactions.size,identifiedTicketRate:x.transactions.size?round2(x.identifiedTransactions.size/x.transactions.size*100):null,identifiedSales:round2(x.identifiedSales),identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,nonLoyaltyTickets:Math.max(0,x.transactions.size-x.identifiedTransactions.size),recruitments:null,recruitmentRateNonLoyalty:null})).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets);
  const identifiedBaskets=[...identifiedBasketMap.values()],pairMap=new Map(),basketProductSales=new Map();
  let totalBasketUnits=0,totalDistinctProducts=0,singleItemBaskets=0;
  for(const basket of identifiedBaskets){
@@ -393,6 +407,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   departments:totalRaw.departments.map(x=>publicMarginRow(x,margin)),
   categories:totalRaw.categories.map(x=>publicMarginRow(x,margin)),
   customers,
+  staff,
   basketAnalysis,
   diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
  };
