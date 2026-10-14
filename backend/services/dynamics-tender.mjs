@@ -6,6 +6,7 @@ const clean=v=>String(v??'').trim();
 const esc=v=>String(v).replaceAll("'","''");
 const validName=v=>/^[A-Za-z0-9_]+$/.test(clean(v));
 const cache=new Map();
+let paymentSchemaPromise=null,tenderMapPromise=null;
 const ttlMs=()=>Math.max(30_000,Math.min(600_000,Number(process.env.RETAIL_ANALYTICS_TENDER_CACHE_MS)||120_000));
 
 function metaEntityName(row={}){
@@ -68,6 +69,8 @@ function mappingComplete(fields={}){
   return !!(fields.store&&fields.date&&fields.amount&&fields.tender);
 }
 async function discoverPaymentSchema(){
+  if(paymentSchemaPromise)return paymentSchemaPromise;
+  paymentSchemaPromise=(async()=>{
   const explicit=clean(process.env.D365_TENDER_PAYMENT_ENTITY);
   const metadata=await listDataEntities('payment').catch(()=>[]);
   const names=unique([
@@ -76,6 +79,9 @@ async function discoverPaymentSchema(){
     'RetailTransactionPaymentTrans',
     'RetailTransactionPaymentTransEntity',
     'RetailPaymentTransactions',
+    'RetailTransactionPaymentTransBIEntities',
+    'RetailTransactionPaymentTransactionsBIEntities',
+    'RetailTransactionTenderTransBIEntities',
     ...metadata.map(metaEntityName).filter(n=>/payment/i.test(n)&&/transaction|retail/i.test(n))
   ]).filter(validName);
 
@@ -90,8 +96,12 @@ async function discoverPaymentSchema(){
     }catch(error){lastError=error}
   }
   return{status:'UNAVAILABLE',entity:null,fields:null,error:{code:lastError?.code||'D365_TENDER_ENTITY_UNMAPPED',message:lastError?.message||'Aucune Data Entity de paiements retail exploitable détectée.'}};
+  })();
+  try{return await paymentSchemaPromise}catch(error){paymentSchemaPromise=null;throw error}
 }
 async function tenderNameMap(){
+  if(tenderMapPromise)return tenderMapPromise;
+  tenderMapPromise=(async()=>{
   const explicit=clean(process.env.D365_TENDER_TYPE_ENTITY);
   const metadata=await listDataEntities('tender').catch(()=>[]);
   const names=unique([
@@ -118,6 +128,8 @@ async function tenderNameMap(){
     }catch{}
   }
   return{status:'UNAVAILABLE',entity:null,map:new Map()};
+  })();
+  try{return await tenderMapPromise}catch(error){tenderMapPromise=null;throw error}
 }
 function configuredWalletIds(){
   return unique(clean(process.env.D365_WALLET_TENDER_IDS||process.env.D365_WALLET_TENDER_ID).split(','));
