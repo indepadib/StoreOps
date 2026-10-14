@@ -4,6 +4,7 @@ import { productDataMany } from './product-data.mjs';
 import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './dynamics-stock.mjs';
 import { readWalletBurn } from './dynamics-tender.mjs';
 import { readPromotionAnalytics } from './analytics-promotions.mjs';
+import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -74,6 +75,22 @@ export async function handleAnalyticsApi({ req, url, user }){
     const id=decodeURIComponent(viewMatch[1]);
     const result=db.prepare('DELETE FROM analytics_saved_views WHERE id=? AND user_id=?').run(id,user.id);
     return{status:result.changes?200:404,data:result.changes?{ok:true}:{error:'Vue introuvable.'}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/decision'){
+    const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))?clean(v):null;
+    const startDate=iso(url.searchParams.get('start'));
+    const endDate=iso(url.searchParams.get('end'));
+    const compareStartDate=iso(url.searchParams.get('compareStart'));
+    const compareEndDate=iso(url.searchParams.get('compareEnd'));
+    const requestedStore=clean(url.searchParams.get('storeId'))||'ALL';
+    const force=url.searchParams.get('force')==='1';
+    if(!startDate||!endDate||!compareStartDate||!compareEndDate)return{status:400,data:{error:'start, end, compareStart et compareEnd sont requis au format YYYY-MM-DD.'}};
+    const allStores=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
+    const stores=requestedStore==='ALL'?allStores:allStores.filter(store=>store.id===requestedStore);
+    if(requestedStore!=='ALL'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
+    if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
+    return{status:200,data:await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
