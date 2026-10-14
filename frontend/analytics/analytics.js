@@ -1225,7 +1225,7 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','attentionRail','kpis'],
+    overview: ['executiveDeck','decisionSales'],
     sales: ['decisionSales'],
     network: ['storeBenchmark'],
     categories: ['productPerformance'],
