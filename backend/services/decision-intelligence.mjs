@@ -119,14 +119,24 @@ function storeComparison(store,current,previous){
  const c=current?.summary||{},p=previous?.summary||{};
  return{storeId:store.id,storeName:store.name,storeCode:store.code,sales:c.sales??null,previousSales:p.sales??null,changePct:p.sales?pct(c.sales,p.sales):null,deltaSales:c.sales!=null&&p.sales!=null?round2(c.sales-p.sales):null,tickets:c.tickets??null,previousTickets:p.tickets??null,ticketsChangePct:p.tickets?pct(c.tickets,p.tickets):null,averageBasket:c.averageBasket??null,previousAverageBasket:p.averageBasket??null,basketChangePct:p.averageBasket?pct(c.averageBasket,p.averageBasket):null,marginValue:c.marginValue??null,marginRate:c.marginRate??null,previousMarginValue:p.marginValue??null,deltaMargin:c.marginValue!=null&&p.marginValue!=null?round2(c.marginValue-p.marginValue):null,marginChangePct:p.marginValue?pct(c.marginValue,p.marginValue):null,identifiedSalesShare:c.identifiedSalesShare??null,identifiedTicketRate:c.identifiedTicketRate??null,status:current?.status||'UNAVAILABLE'}
 }
+async function mapLimit(items,limit,worker){
+ const out=new Array(items.length);let cursor=0;
+ const run=async()=>{while(true){const i=cursor++;if(i>=items.length)return;out[i]=await worker(items[i],i)}};
+ await Promise.all(Array.from({length:Math.max(1,Math.min(limit,items.length))},run));
+ return out
+}
+
 export async function buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force=false}={}){
- const pairs=await Promise.all(stores.map(async store=>{
-  const [current,previous]=await Promise.all([
-    readStoreSalesRange(store.id,{startDate,endDate,force}),
-    readStoreSalesRange(store.id,{startDate:compareStartDate,endDate:compareEndDate,force})
-  ]);
-  return{store,current,previous}
- }));
+ const tasks=[];
+ for(const store of stores){
+  tasks.push({store,kind:'current',startDate,endDate});
+  tasks.push({store,kind:'previous',startDate:compareStartDate,endDate:compareEndDate});
+ }
+ const concurrency=Math.max(2,Math.min(5,Number(process.env.RETAIL_ANALYTICS_D365_CONCURRENCY)||3));
+ const resolved=await mapLimit(tasks,concurrency,task=>readStoreSalesRange(task.store.id,{startDate:task.startDate,endDate:task.endDate,force}));
+ const byStore=new Map(stores.map(store=>[store.id,{store,current:null,previous:null}]));
+ tasks.forEach((task,i)=>{const pair=byStore.get(task.store.id);pair[task.kind]=resolved[i]});
+ const pairs=[...byStore.values()];
  const currentResults=pairs.map(x=>({...x.current,storeId:x.store.id})).filter(x=>x.status==='READY'||x.status==='TRUNCATED');
  const previousResults=pairs.map(x=>({...x.previous,storeId:x.store.id})).filter(x=>x.status==='READY'||x.status==='TRUNCATED');
  const currentSummary=sumSummary(currentResults),previousSummary=sumSummary(previousResults);
