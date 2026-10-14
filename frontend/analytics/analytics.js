@@ -12,6 +12,12 @@
     pulses: [],
     selectedStore: 'ALL',
     section: 'overview',
+    periodPreset: '30d',
+    periodStart: shiftDate(isoDate(new Date()), -29),
+    periodEnd: isoDate(new Date()),
+    comparisonMode: 'previous_period',
+    compareStart: shiftDate(isoDate(new Date()), -59),
+    compareEnd: shiftDate(isoDate(new Date()), -30),
     businessDate: isoDate(new Date()),
     sort: { key: 'sales', dir: 'desc' },
     storeSearch: '',
@@ -32,6 +38,58 @@
     const d = new Date(`${iso}T12:00:00`);
     d.setDate(d.getDate() + days);
     return isoDate(d);
+  }
+
+  function daysBetween(start, end) {
+    const a = Date.parse(`${start}T12:00:00Z`), b = Date.parse(`${end}T12:00:00Z`);
+    return Number.isFinite(a) && Number.isFinite(b) && b >= a ? Math.floor((b - a) / 86400000) + 1 : 1;
+  }
+
+  function monthBounds(iso, offset = 0) {
+    const d = new Date(`${iso}T12:00:00`);
+    const first = new Date(d.getFullYear(), d.getMonth() + offset, 1);
+    const last = new Date(d.getFullYear(), d.getMonth() + offset + 1, 0);
+    return { start: isoDate(first), end: isoDate(last) };
+  }
+
+  function applyPresetToState(preset = state.periodPreset) {
+    const today = isoDate(new Date());
+    state.periodPreset = preset;
+    if (preset === 'today') state.periodStart = state.periodEnd = today;
+    else if (preset === '7d') { state.periodEnd = today; state.periodStart = shiftDate(today, -6); }
+    else if (preset === '30d') { state.periodEnd = today; state.periodStart = shiftDate(today, -29); }
+    else if (preset === 'month') { const m = monthBounds(today, 0); state.periodStart = m.start; state.periodEnd = today; }
+    else if (preset === 'previous_month') { const m = monthBounds(today, -1); state.periodStart = m.start; state.periodEnd = m.end; }
+    state.businessDate = state.periodEnd;
+    applyComparisonToState(state.comparisonMode);
+  }
+
+  function applyComparisonToState(mode = state.comparisonMode) {
+    state.comparisonMode = mode;
+    if (mode === 'custom') return;
+    const days = daysBetween(state.periodStart, state.periodEnd);
+    if (mode === 'previous_period') {
+      state.compareEnd = shiftDate(state.periodStart, -1);
+      state.compareStart = shiftDate(state.compareEnd, -(days - 1));
+    } else if (mode === 'previous_month') {
+      const m = monthBounds(state.periodStart, -1);
+      state.compareStart = m.start;
+      state.compareEnd = m.end;
+    } else if (mode === 'previous_year') {
+      const start = new Date(`${state.periodStart}T12:00:00`), end = new Date(`${state.periodEnd}T12:00:00`);
+      start.setFullYear(start.getFullYear() - 1); end.setFullYear(end.getFullYear() - 1);
+      state.compareStart = isoDate(start); state.compareEnd = isoDate(end);
+    }
+  }
+
+  function syncPeriodControls() {
+    if ($('#periodPreset')) $('#periodPreset').value = state.periodPreset;
+    if ($('#periodStart')) $('#periodStart').value = state.periodStart;
+    if ($('#periodEnd')) $('#periodEnd').value = state.periodEnd;
+    if ($('#comparisonMode')) $('#comparisonMode').value = state.comparisonMode;
+    if ($('#compareStart')) $('#compareStart').value = state.compareStart;
+    if ($('#compareEnd')) $('#compareEnd').value = state.compareEnd;
+    $$('.compare-date-group').forEach(el => el.hidden = state.comparisonMode !== 'custom');
   }
 
   function formatDate(iso) {
@@ -185,7 +243,7 @@
     applyPreferences();
     bindEvents();
 
-    $('#businessDate').value = state.businessDate;
+    syncPeriodControls();
     updatePeriodSummary();
 
     try {
@@ -213,13 +271,26 @@
   async function loadData(force = false) {
     if (state.loading) return;
     state.loading = true;
-    setLoading();
-    setFreshness('', 'Actualisation…');
 
     const targetStores = state.selectedStore === 'ALL'
       ? state.stores
       : state.stores.filter(s => s.id === state.selectedStore);
 
+    const decisionSections = new Set(['overview','sales','network','categories','crm']);
+    if (decisionSections.has(state.section)) {
+      state.pulses = [];
+      const scope = state.selectedStore === 'ALL'
+        ? `${targetStores.length} magasin(s)`
+        : targetStores[0]?.name || 'Magasin';
+      if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
+      setFreshness('live', 'Analyse période');
+      document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
+      state.loading = false;
+      return;
+    }
+
+    setLoading();
+    setFreshness('', 'Actualisation…');
     try {
       const results = await Promise.all(targetStores.map(async store => {
         try {
@@ -341,6 +412,11 @@
         title: 'Comprendre ce qui se vend vraiment',
         subtitle: 'Du département au SKU : poids, rang, évolution et concentration du chiffre d’affaires.'
       },
+      crm: {
+        eyebrow: 'CLIENTS & CRM',
+        title: 'Qui sont mes clients ?',
+        subtitle: 'Valeur, fréquence, concentration et comportements d’achat sur la période sélectionnée.'
+      },
       inventory: {
         eyebrow: 'STOCK',
         title: 'Disponibilité & risque commercial',
@@ -365,7 +441,7 @@
     const copy = sectionCopy[state.section] || sectionCopy.overview;
 
     $('#scopeLabel').textContent = store ? store.name : `${agg.ready}/${agg.totalStores} magasins disponibles`;
-    $('#dateLabel').textContent = formatDate(state.businessDate);
+    $('#dateLabel').textContent = state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
     $('#eyebrow').textContent = `${copy.eyebrow} · ${String(tenant.label || '').toUpperCase()}`;
     $('#pageTitle').textContent = copy.title;
     $('#pageSubtitle').textContent = copy.subtitle;
@@ -881,32 +957,69 @@
   }
 
   function updatePeriodSummary() {
-    $('#periodSummary').textContent = `Période : ${formatDate(state.businessDate)} · comparaison : ${formatDate(shiftDate(state.businessDate, -7))}`;
+    const current = state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
+    const compare = state.compareStart === state.compareEnd ? formatDate(state.compareEnd) : `${formatDate(state.compareStart)} → ${formatDate(state.compareEnd)}`;
+    $('#periodSummary').textContent = `Période : ${current} · comparaison : ${compare}`;
+  }
+
+  async function refreshForPeriod(force = false) {
+    state.businessDate = state.periodEnd;
+    syncPeriodControls();
+    updatePeriodSummary();
+    document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
+    await loadData(force);
   }
 
   function bindEvents() {
     $('#storeFilter').addEventListener('change', e => {
       state.selectedStore = e.target.value;
-      loadData();
+      refreshForPeriod(false);
     });
 
-    $('#businessDate').addEventListener('change', e => {
-      state.businessDate = e.target.value || isoDate(new Date());
-      $('#periodPreset').value = 'date';
+    $('#periodPreset')?.addEventListener('change', e => {
+      if (e.target.value === 'custom') {
+        state.periodPreset = 'custom';
+        syncPeriodControls();
+        return;
+      }
+      applyPresetToState(e.target.value);
+      refreshForPeriod(false);
+    });
+
+    $('#periodStart')?.addEventListener('change', e => {
+      state.periodPreset = 'custom';
+      state.periodStart = e.target.value || state.periodStart;
+      if (state.periodStart > state.periodEnd) state.periodEnd = state.periodStart;
+      applyComparisonToState(state.comparisonMode);
+      refreshForPeriod(false);
+    });
+
+    $('#periodEnd')?.addEventListener('change', e => {
+      state.periodPreset = 'custom';
+      state.periodEnd = e.target.value || state.periodEnd;
+      if (state.periodEnd < state.periodStart) state.periodStart = state.periodEnd;
+      applyComparisonToState(state.comparisonMode);
+      refreshForPeriod(false);
+    });
+
+    $('#comparisonMode')?.addEventListener('change', e => {
+      applyComparisonToState(e.target.value);
+      syncPeriodControls();
+      if (state.comparisonMode !== 'custom') refreshForPeriod(false);
+    });
+
+    $('#compareStart')?.addEventListener('change', e => {
+      state.compareStart = e.target.value || state.compareStart;
       updatePeriodSummary();
-      loadData();
+      refreshForPeriod(false);
     });
-
-    $('#periodPreset').addEventListener('change', e => {
-      const v = e.target.value;
-      if (v === 'today') state.businessDate = isoDate(new Date());
-      if (v === 'yesterday') state.businessDate = shiftDate(isoDate(new Date()), -1);
-      $('#businessDate').value = state.businessDate;
+    $('#compareEnd')?.addEventListener('change', e => {
+      state.compareEnd = e.target.value || state.compareEnd;
       updatePeriodSummary();
-      if (v !== 'date') loadData();
+      refreshForPeriod(false);
     });
 
-    $('#refreshBtn').addEventListener('click', () => loadData(true));
+    $('#refreshBtn').addEventListener('click', () => refreshForPeriod(true));
 
     $('#storeSearch').addEventListener('input', e => {
       state.storeSearch = e.target.value || '';
@@ -965,6 +1078,7 @@
         applySectionView();
         document.body.classList.remove('mobile-nav-open');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        refreshForPeriod(false);
       });
     });
   }
@@ -975,8 +1089,12 @@
       selectedStore: state.selectedStore,
       section: state.section,
       businessDate: state.businessDate,
-      comparisonMode: $('#comparisonMode')?.value || 'j7',
-      periodPreset: $('#periodPreset')?.value || 'date',
+      periodPreset: state.periodPreset,
+      periodStart: state.periodStart,
+      periodEnd: state.periodEnd,
+      comparisonMode: state.comparisonMode,
+      compareStart: state.compareStart,
+      compareEnd: state.compareEnd,
       prefs: JSON.parse(JSON.stringify(state.prefs || {}))
     };
   }
@@ -1044,11 +1162,14 @@
     }
 
     state.section = SECTION_WIDGETS[payload.section] ? payload.section : state.section;
-    state.businessDate = payload.businessDate || state.businessDate;
-    $('#businessDate').value = state.businessDate;
-
-    if (payload.periodPreset && $('#periodPreset')) $('#periodPreset').value = payload.periodPreset;
-    if (payload.comparisonMode && $('#comparisonMode')) $('#comparisonMode').value = payload.comparisonMode;
+    state.periodPreset = payload.periodPreset || state.periodPreset;
+    state.periodStart = payload.periodStart || payload.businessDate || state.periodStart;
+    state.periodEnd = payload.periodEnd || payload.businessDate || state.periodEnd;
+    state.comparisonMode = payload.comparisonMode || state.comparisonMode;
+    state.compareStart = payload.compareStart || state.compareStart;
+    state.compareEnd = payload.compareEnd || state.compareEnd;
+    state.businessDate = state.periodEnd;
+    syncPeriodControls();
 
     state.prefs = {
       density: 'comfortable',
@@ -1105,10 +1226,11 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','attentionRail','insights','kpis','hourly','mix','network','departments','dataQuality'],
-    sales: ['kpis','hourly','mix','network'],
-    network: ['executiveDeck','attentionRail','network'],
-    categories: ['categories'],
+    overview: ['executiveDeck','decisionSales'],
+    sales: ['decisionSales'],
+    network: ['storeBenchmark'],
+    categories: ['productPerformance'],
+    crm: ['crmIntelligence'],
     inventory: ['inventory'],
     loyalty: ['loyalty'],
     cashiers: ['cashiers'],

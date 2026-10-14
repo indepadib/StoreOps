@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/analytics/loyalty.css">
   <link rel="stylesheet" href="/analytics/promotions.css">
   <link rel="stylesheet" href="/analytics/polish.css">
+  <link rel="stylesheet" href="/analytics/decision.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -60,6 +61,9 @@
         <button data-section="categories">
           <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg></span><span>Catégories & Produits</span>
         </button>
+        <button data-section="crm">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2.5 21a6.5 6.5 0 0 1 13 0"/><circle cx="18" cy="9" r="3"/><path d="M15.5 21a5.5 5.5 0 0 1 6-5.4"/></svg></span><span>Clients & CRM</span>
+        </button>
         <button data-section="inventory">
           <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></svg></span><span>Stock</span>
         </button>
@@ -84,24 +88,42 @@
     </aside>
 
     <main class="main">
-      <section class="filterbar" id="filterbar">
-        <div class="filter-group">
+      <section class="filterbar filterbar-pro" id="filterbar">
+        <div class="filter-group preset-group">
           <label>Période</label>
           <select id="periodPreset">
             <option value="today">Aujourd'hui</option>
-            <option value="yesterday">Hier</option>
-            <option value="date">Date précise</option>
+            <option value="7d">7 derniers jours</option>
+            <option value="30d" selected>30 derniers jours</option>
+            <option value="month">Mois en cours</option>
+            <option value="previous_month">Mois précédent</option>
+            <option value="custom">Personnalisée</option>
           </select>
         </div>
-        <div class="filter-group">
-          <label>Date</label>
-          <input type="date" id="businessDate">
+        <div class="filter-group date-range-group">
+          <label>Du</label>
+          <input type="date" id="periodStart">
         </div>
-        <div class="filter-group">
-          <label>Comparaison</label>
+        <div class="filter-group date-range-group">
+          <label>Au</label>
+          <input type="date" id="periodEnd">
+        </div>
+        <div class="filter-group comparison-group">
+          <label>Comparer à</label>
           <select id="comparisonMode">
-            <option value="j7">J-7</option>
+            <option value="previous_period">Période précédente</option>
+            <option value="previous_month">Mois précédent</option>
+            <option value="previous_year">Même période N-1</option>
+            <option value="custom">Personnalisée</option>
           </select>
+        </div>
+        <div class="filter-group compare-date-group" hidden>
+          <label>Comparaison du</label>
+          <input type="date" id="compareStart">
+        </div>
+        <div class="filter-group compare-date-group" hidden>
+          <label>Comparaison au</label>
+          <input type="date" id="compareEnd">
         </div>
         <div class="filter-group wide">
           <label>Magasin</label>
@@ -135,6 +157,118 @@
           <div class="hero-meta">
             <span id="scopeLabel">Tous les magasins</span>
             <strong id="dateLabel">—</strong>
+          </div>
+        </section>
+
+        <section class="decision-dashboard sales-diagnostic" id="salesDiagnostic" data-widget="decisionSales" hidden>
+          <div class="decision-head">
+            <div>
+              <span class="eyebrow">SALES DIAGNOSTIC</span>
+              <h2>Pourquoi le chiffre bouge ?</h2>
+              <p>Décomposition CA → fréquentation → panier → catégories → articles, avec lecture marge lorsque le coût transactionnel est validé.</p>
+            </div>
+            <div class="margin-status" id="marginStatusBadge">Marge · vérification source</div>
+          </div>
+          <div class="decision-kpis" id="decisionSalesKpis"></div>
+          <div class="decision-grid decision-grid-main">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">DÉCOMPOSITION</span><h3>Ce qui explique l'écart de CA</h3></div></div>
+              <div id="salesDriversWaterfall" class="waterfall-list"></div>
+            </article>
+            <article class="decision-card decision-chart-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">TENDANCE</span><h3>CA quotidien</h3></div><span id="decisionCoverage" class="coverage-badge">—</span></div>
+              <svg id="decisionDailyChart" viewBox="0 0 920 300" aria-label="Évolution quotidienne des ventes"></svg>
+            </article>
+          </div>
+          <div class="decision-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">CONTRIBUTION NÉGATIVE</span><h3>Ce qui tire le CA vers le bas</h3></div></div>
+              <div id="negativeContributors" class="contributor-list"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">CONTRIBUTION POSITIVE</span><h3>Ce qui compense / accélère</h3></div></div>
+              <div id="positiveContributors" class="contributor-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="decision-dashboard store-benchmark" id="storeBenchmark" data-widget="storeBenchmark" hidden>
+          <div class="decision-head">
+            <div>
+              <span class="eyebrow">STORE BENCHMARK</span>
+              <h2>Comment se positionne chaque magasin ?</h2>
+              <p>Rankings réseau, indices de performance et lecture CA / tickets / panier / marge / fidélité.</p>
+            </div>
+          </div>
+          <div class="benchmark-summary" id="benchmarkSummary"></div>
+          <div class="decision-table-wrap">
+            <table class="decision-table">
+              <thead><tr><th>Rank</th><th>Magasin</th><th>CA</th><th>Δ CA</th><th>Indice réseau</th><th>Tickets</th><th>Panier</th><th>Marge</th><th>Taux marge</th><th>CA fidélisé</th></tr></thead>
+              <tbody id="benchmarkBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="decision-dashboard product-performance" id="productPerformance" data-widget="productPerformance" hidden>
+          <div class="decision-head decision-head-tools">
+            <div>
+              <span class="eyebrow">PRODUCT & CATEGORY PERFORMANCE</span>
+              <h2>Ranker ce qui se vend — et ce qui détruit de la valeur</h2>
+              <p>Classement dynamique par niveau de hiérarchie et métrique business.</p>
+            </div>
+            <div class="decision-toolbar">
+              <select id="performanceLevel">
+                <option value="department">Département</option>
+                <option value="rayon">Rayon</option>
+                <option value="family">Famille</option>
+                <option value="subfamily">Sous-famille</option>
+                <option value="subsubfamily">Sous-sous-famille</option>
+                <option value="product" selected>Article</option>
+              </select>
+              <select id="performanceMetric">
+                <option value="sales">CA</option>
+                <option value="deltaSales">Δ CA</option>
+                <option value="units">Quantité</option>
+                <option value="marginValue">Marge DH</option>
+                <option value="marginRate">Taux de marge</option>
+              </select>
+              <input id="performanceSearch" class="search-input" type="search" placeholder="Rechercher article / catégorie">
+            </div>
+          </div>
+          <div class="performance-quadrants" id="performanceQuadrants"></div>
+          <div class="decision-table-wrap">
+            <table class="decision-table">
+              <thead><tr><th>Rank</th><th>Élément</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>Qté</th><th>Marge DH</th><th>Taux marge</th><th>Rank avant</th><th>Δ Rank</th></tr></thead>
+              <tbody id="performanceBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="decision-dashboard crm-intelligence" id="crmIntelligence" data-widget="crmIntelligence" hidden>
+          <div class="decision-head">
+            <div>
+              <span class="eyebrow">CRM & CUSTOMER INTELLIGENCE</span>
+              <h2>Qui sont mes clients et comment consomment-ils ?</h2>
+              <p>Vue comportementale sur la période sélectionnée. La rétention lifetime et la vraie dormance seront distinguées dès que l'historique client complet est consolidé.</p>
+            </div>
+            <span class="coverage-badge">Périmètre sélectionné</span>
+          </div>
+          <div class="crm-kpis" id="crmKpis"></div>
+          <div class="decision-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">SEGMENTS</span><h3>Structure de la clientèle identifiée</h3></div></div>
+              <div id="crmSegments" class="segment-grid"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">CONCENTRATION</span><h3>Poids des meilleurs clients</h3></div></div>
+              <div id="crmConcentration"></div>
+            </article>
+          </div>
+          <div class="decision-table-wrap crm-table-wrap">
+            <table class="decision-table">
+              <thead><tr><th>Client</th><th>Segment</th><th>CA</th><th>Visites</th><th>Panier</th><th>Unités</th><th>1ère visite période</th><th>Dernière visite</th><th>Magasins</th><th>Top produits</th></tr></thead>
+              <tbody id="crmBody"></tbody>
+            </table>
           </div>
         </section>
 

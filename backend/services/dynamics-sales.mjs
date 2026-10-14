@@ -249,3 +249,113 @@ export async function readStoreProductSalesVelocity(storeId,productNumber,{busin
 }
 
 export function salesComparisonDate(day,days=7){return nextDate(day,-Math.abs(Number(days)||7))}
+
+
+const salesRangeCache=new Map();
+function daySpan(startDay,endDay){
+ const start=Date.parse(`${startDay}T00:00:00Z`),end=Date.parse(`${endDay}T00:00:00Z`);
+ return Number.isFinite(start)&&Number.isFinite(end)&&end>=start?Math.floor((end-start)/86400000)+1:null
+}
+function validatedMarginConfig(c){
+ const raw=clean(process.env.D365_SALES_COST_RELIABILITY||process.env.RETAIL_MARGIN_COST_RELIABILITY).toUpperCase();
+ const validated=['VALIDATED','TRUSTED','POSTED','TRANSACTIONAL'].includes(raw);
+ return{
+  status:!c.fields.cost?'UNAVAILABLE':validated?'VALIDATED':'UNVALIDATED',
+  costField:c.fields.cost||null,
+  source:c.fields.cost?`D365/${c.entity}.${c.fields.cost}`:null,
+  reason:!c.fields.cost?'COST_FIELD_UNMAPPED':validated?null:'TRANSACTION_COST_NOT_VALIDATED'
+ }
+}
+function publicMarginRow(row,margin){
+ if(!row)return row;
+ if(margin.status==='VALIDATED')return row;
+ return{...row,marginValue:null,marginRate:null}
+}
+function mergeMetricRows(target,rows=[]){
+ for(const row of rows){
+  const key=String(row.key||''),cur=target.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true};
+  cur.sales+=num(row.sales);cur.units+=num(row.units);
+  if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;
+  else cur.marginValue+=num(row.marginValue);
+  if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
+  target.set(key,cur)
+ }
+}
+function finishMetricRows(map,margin){
+ return[...map.values()].map(x=>{
+  const sales=round2(x.sales),marginValue=margin.status==='VALIDATED'&&x.marginKnown?round2(x.marginValue):null;
+  return{key:x.key,label:x.label,sales,units:round2(x.units),marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}
+ }).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
+}
+export async function readStoreSalesRange(storeId,{startDate,endDate,force=false}={}){
+ const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
+ if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
+ if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`;
+ const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
+
+ const margin=validatedMarginConfig(c);
+ const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])];
+ let selected=null,lastError=null,firstEmpty=null;
+
+ outer:for(const identifier of identifiers){
+  for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
+   for(const mode of dateModes){
+    try{
+     const chunkDays=Math.max(2,Math.min(14,Number(process.env.RETAIL_ANALYTICS_RANGE_CHUNK_DAYS)||7)),chunks=[];
+     for(let chunkStart=start;chunkStart<=end;chunkStart=nextDate(chunkStart,chunkDays)){
+      const candidate=nextDate(chunkStart,chunkDays-1);chunks.push({start:chunkStart,end:candidate>end?end:candidate})
+     }
+     const rows=[];let pages=0,truncated=false,rowCount=0;
+     for(const chunk of chunks){
+      const filters=[storeFilter,dateRangeFilter(c.fields.date,chunk.start,chunk.end,mode)];
+      if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+      const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
+      rows.push(...(fetched.value||[]));pages+=Number(fetched.pages||0);rowCount+=Number(fetched.rowCount||0);truncated=truncated||!!fetched.truncated
+     }
+     const candidate={rows,pages,rowCount,truncated,identifier,mode,chunks:chunks.length};
+     if(rows.length){selected=candidate;break outer}
+     firstEmpty=firstEmpty||candidate;
+    }catch(error){lastError=error}
+   }
+  }
+ }
+ selected=selected||firstEmpty;
+ if(!selected)throw lastError||Object.assign(new Error('Lecture période ventes D365 impossible.'),{code:'D365_SALES_RANGE_FAILED'});
+
+ const totalRaw=aggregateSalesRows(selected.rows,c);
+ const dailyMap=new Map(),customerMap=new Map();
+ for(const row of selected.rows){
+  const day=dateOnly(c.fields.date?row[c.fields.date]:null);if(day){if(!dailyMap.has(day))dailyMap.set(day,[]);dailyMap.get(day).push(row)}
+  if(c.fields.customer){
+   const customer=clean(row[c.fields.customer]),upper=customer.toUpperCase();
+   if(customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(upper)){
+    const status=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(status))continue;
+    const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:'');
+    const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),firstDate:null,lastDate:null};
+    cur.sales+=sales;if(c.fields.quantity)cur.units+=Math.abs(num(row[c.fields.quantity]));if(tx)cur.transactions.add(tx);
+    if(product)cur.products.set(product,(cur.products.get(product)||0)+sales);
+    if(day){if(!cur.firstDate||day<cur.firstDate)cur.firstDate=day;if(!cur.lastDate||day>cur.lastDate)cur.lastDate=day}
+    customerMap.set(customer,cur)
+   }
+  }
+ }
+ const daily=[...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{
+  const x=aggregateSalesRows(rows,c);return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'?x.marginValue:null,marginRate:margin.status==='VALIDATED'?x.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
+ });
+ const customers=[...customerMap.values()].map(x=>({customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,firstDate:x.firstDate,lastDate:x.lastDate,topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))})).sort((a,b)=>b.sales-a.sales);
+ const value={
+  status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
+  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginValue:margin.status==='VALIDATED'?totalRaw.marginValue:null,marginRate:margin.status==='VALIDATED'?totalRaw.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
+  margin,
+  daily,
+  products:totalRaw.products.map(x=>publicMarginRow(x,margin)),
+  departments:totalRaw.departments.map(x=>publicMarginRow(x,margin)),
+  categories:totalRaw.categories.map(x=>publicMarginRow(x,margin)),
+  customers,
+  diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
+ };
+ salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
+ return{...value,cache:{status:'MISS'}}
+}
