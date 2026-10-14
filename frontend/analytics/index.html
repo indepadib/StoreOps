@@ -202,6 +202,16 @@
             </div>
           </div>
           <div class="benchmark-summary" id="benchmarkSummary"></div>
+          <div class="decision-grid benchmark-story-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">POSITIONNEMENT</span><h3>CA vs dynamique réseau</h3></div></div>
+              <div id="benchmarkVisual" class="benchmark-visual"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">DÉCISIONS</span><h3>Où agir en priorité ?</h3></div></div>
+              <div id="storeDecisionList" class="decision-action-list"></div>
+            </article>
+          </div>
           <div class="decision-table-wrap">
             <table class="decision-table">
               <thead><tr><th>Rank</th><th>Magasin</th><th>CA</th><th>Δ CA</th><th>Indice réseau</th><th>Tickets</th><th>Panier</th><th>Marge</th><th>Taux marge</th><th>CA fidélisé</th></tr></thead>
@@ -276,6 +286,17 @@
             <span class="coverage-badge">Périmètre sélectionné</span>
           </div>
           <div class="crm-kpis" id="crmKpis"></div>
+          <div class="decision-grid crm-story-grid">
+            <article class="decision-card crm-insight-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">CE QU'IL FAUT RETENIR</span><h3>Lecture client en 30 secondes</h3></div></div>
+              <div id="crmInsights" class="crm-insights"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">POSITION PRIX</span><h3>Entrée de gamme, cœur ou premium ?</h3></div></div>
+              <div id="crmPricePreference" class="price-preference"></div>
+              <p class="metric-footnote">Positionnement relatif au prix observé des articles comparables dans leur famille et leur unité sur la période ; ce n'est pas une classification marketing officielle.</p>
+            </article>
+          </div>
           <div class="decision-grid">
             <article class="decision-card">
               <div class="decision-card-head"><div><span class="mini-kicker">PERSONAS COMPORTEMENTAUX</span><h3>Quel type de client fréquente le magasin ?</h3></div></div>
@@ -308,7 +329,7 @@
           </div>
           <div class="decision-table-wrap crm-table-wrap">
             <table class="decision-table">
-              <thead><tr><th>Client</th><th>Persona</th><th>Segment</th><th>CA</th><th>Visites</th><th>Panier</th><th>Réf. distinctes</th><th>Jours actifs</th><th>Dernière visite</th><th>Habitude</th><th>Top produits</th></tr></thead>
+              <thead><tr><th>Client</th><th>Persona</th><th>Position prix</th><th>Segment</th><th>CA</th><th>Visites</th><th>Panier</th><th>Réf. distinctes</th><th>Jours actifs</th><th>Dernière visite</th><th>Habitude</th><th>Top produits</th></tr></thead>
               <tbody id="crmBody"></tbody>
             </table>
           </div>
