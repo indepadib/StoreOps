@@ -75,22 +75,40 @@
     const api = core();
     const body = $('#loyaltyBody');
     if (!body) return;
+    const d = decisionData();
+    const walletByStore = new Map(state.walletStores.map(x => [x.store?.id, x]));
+    let rows = [];
 
-    const rows = pulseRows().map(({ store, pulse }) => {
-      const k = pulse?.snapshot?.kpis || {};
-      return {
-        name: store.name,
-        identifiedSales: safe(k.identifiedSales),
-        identifiedShare: safe(k.identifiedSalesShare),
-        identifiedTickets: safe(k.identifiedTickets),
-        identifiedTicketRate: safe(k.identifiedTicketRate),
-        memberBasket: safe(k.identifiedAverageBasket),
-        nonMemberBasket: safe(k.nonLoyaltyAverageBasket),
-        uplift: safe(k.basketUpliftIdentified),
-        recruitments: safe(k.recruitments),
-        recruitmentRate: safe(k.recruitmentRateNonLoyalty)
-      };
-    }).sort((a,b)=>(b.identifiedShare ?? -1)-(a.identifiedShare ?? -1));
+    if (d?.stores?.length) {
+      rows = d.stores.map(s => {
+        const identifiedSales = s.identifiedSalesShare != null ? Number(s.sales||0) * Number(s.identifiedSalesShare)/100 : null;
+        const identifiedTickets = s.identifiedTicketRate != null ? Number(s.tickets||0) * Number(s.identifiedTicketRate)/100 : null;
+        const nonMemberSales = identifiedSales != null ? Number(s.sales||0)-identifiedSales : null;
+        const nonMemberTickets = identifiedTickets != null ? Math.max(0,Number(s.tickets||0)-identifiedTickets) : null;
+        const memberBasket = identifiedTickets > 0 ? identifiedSales/identifiedTickets : null;
+        const nonMemberBasket = nonMemberSales != null && nonMemberTickets > 0 ? nonMemberSales/nonMemberTickets : null;
+        const wallet = walletByStore.get(s.storeId);
+        return {
+          id:s.storeId,name:s.storeName,identifiedSales,
+          identifiedShare:s.identifiedSalesShare,identifiedTickets,
+          identifiedTicketRate:s.identifiedTicketRate,memberBasket,nonMemberBasket,
+          uplift:memberBasket!=null&&nonMemberBasket?((memberBasket/nonMemberBasket)-1)*100:null,
+          walletBurn:wallet?.data?.status==='READY'?safe(wallet.data.burn):null,
+          walletTransactions:wallet?.data?.status==='READY'?safe(wallet.data.walletTransactions):null
+        };
+      }).sort((a,b)=>(b.identifiedShare ?? -1)-(a.identifiedShare ?? -1));
+    } else {
+      rows = pulseRows().map(({ store, pulse }) => {
+        const k = pulse?.snapshot?.kpis || {}, wallet=walletByStore.get(store.id);
+        return {
+          id:store.id,name:store.name,identifiedSales:safe(k.identifiedSales),identifiedShare:safe(k.identifiedSalesShare),
+          identifiedTickets:safe(k.identifiedTickets),identifiedTicketRate:safe(k.identifiedTicketRate),
+          memberBasket:safe(k.identifiedAverageBasket),nonMemberBasket:safe(k.nonLoyaltyAverageBasket),uplift:safe(k.basketUpliftIdentified),
+          walletBurn:wallet?.data?.status==='READY'?safe(wallet.data.burn):null,
+          walletTransactions:wallet?.data?.status==='READY'?safe(wallet.data.walletTransactions):null
+        };
+      }).sort((a,b)=>(b.identifiedShare ?? -1)-(a.identifiedShare ?? -1));
+    }
 
     if (!rows.length) {
       body.innerHTML = '<tr><td colspan="10"><div class="table-loading">Données fidélité indisponibles.</div></td></tr>';
@@ -107,8 +125,8 @@
         <td>${api.money(r.memberBasket)}</td>
         <td>${api.money(r.nonMemberBasket)}</td>
         <td>${api.percent(r.uplift)}</td>
-        <td>${api.number(r.recruitments)}</td>
-        <td>${api.percent(r.recruitmentRate)}</td>
+        <td>${api.money(r.walletBurn,true)}</td>
+        <td>${api.number(r.walletTransactions)}</td>
       </tr>
     `).join('');
   }
@@ -175,9 +193,10 @@
     const api = core();
     if (!api || state.walletLoading) return;
     const scope = cashierScope();
-    const key = `${scope.date}|${scope.stores.map(s=>s.id).join(',')}`;
+    const key = `${scope.start}|${scope.end}|${scope.stores.map(s=>s.id).join(',')}`;
     if (!force && state.walletKey === key) {
       renderWalletStatus();
+      renderLoyalty();
       return;
     }
 
@@ -185,30 +204,43 @@
     renderWalletStatus();
 
     try {
-      state.walletStores = await Promise.all(scope.stores.map(async store => {
-        try {
-          const data = await api.api(`/api/analytics/wallet?storeId=${encodeURIComponent(store.id)}&date=${encodeURIComponent(scope.date)}${force?'&force=1':''}`);
-          return { store, ok: true, data };
-        } catch (error) {
-          return { store, ok: false, error };
+      let cursor = 0;
+      const results = new Array(scope.stores.length);
+      const worker = async () => {
+        while (cursor < scope.stores.length) {
+          const i = cursor++;
+          const store = scope.stores[i];
+          try {
+            const qs = new URLSearchParams({ storeId: store.id, start: scope.start, end: scope.end });
+            if (force) qs.set('force','1');
+            const data = await api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true });
+            results[i] = { store, ok: true, data };
+          } catch (error) {
+            results[i] = { store, ok: false, error };
+          }
         }
-      }));
+      };
+      await Promise.all(Array.from({ length: Math.min(2, Math.max(1, scope.stores.length)) }, worker));
+      state.walletStores = results.filter(Boolean);
       state.walletKey = key;
     } finally {
       state.walletLoading = false;
       renderWalletStatus();
+      renderLoyalty();
     }
   }
 
   function cashierScope() {
     const api = core();
     const appState = api?.getState?.();
-    if (!appState) return { stores: [], date: null };
+    if (!appState) return { stores: [], date: null, start: null, end: null };
     return {
       stores: appState.selectedStore === 'ALL'
         ? appState.stores
         : appState.stores.filter(s => s.id === appState.selectedStore),
-      date: appState.businessDate
+      date: appState.businessDate,
+      start: appState.periodStart || appState.businessDate,
+      end: appState.periodEnd || appState.businessDate
     };
   }
 
@@ -319,6 +351,21 @@
       renderLoyalty();
       loadCashiers(false);
       loadWallet(false);
+    });
+    document.addEventListener('retail-intelligence:decision', () => {
+      renderLoyalty();
+      loadWallet(false);
+    });
+    document.addEventListener('retail-intelligence:period', () => {
+      state.walletKey = null;
+      loadWallet(false);
+    });
+    document.addEventListener('retail-intelligence:section', () => {
+      const section = core()?.getState?.()?.section;
+      if (section === 'loyalty') {
+        renderLoyalty();
+        loadWallet(false);
+      }
     });
 
     const existing = core()?.getState?.();
