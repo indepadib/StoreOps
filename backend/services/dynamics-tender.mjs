@@ -35,6 +35,19 @@ function dateVariants(field,day){
     {mode:'DATETIME',filter:`${field} ge ${day}T00:00:00Z and ${field} lt ${nextDate(day)}T00:00:00Z`}
   ];
 }
+function dateRangeVariants(field,startDay,endDay){
+  const next=nextDate(endDay);
+  return [
+    {mode:'DATE',filter:`${field} ge ${startDay} and ${field} le ${endDay}`},
+    {mode:'DATE_STRING',filter:`${field} ge '${esc(startDay)}' and ${field} le '${esc(endDay)}'`},
+    {mode:'DATETIME',filter:`${field} ge ${startDay}T00:00:00Z and ${field} lt ${next}T00:00:00Z`}
+  ];
+}
+function rangeDays(startDay,endDay){
+  const a=Date.parse(startDay+'T12:00:00Z'),b=Date.parse(endDay+'T12:00:00Z');
+  return Number.isFinite(a)&&Number.isFinite(b)&&b>=a?Math.floor((b-a)/86400000)+1:null
+}
+function addDays(day,n){const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)}
 function storeFilters(field,value){
   const v=clean(value),out=[`${field} eq '${esc(v)}'`];
   if(/^-?\d+(?:\.\d+)?$/.test(v))out.push(`${field} eq ${v}`);
@@ -218,4 +231,39 @@ export async function readWalletBurn(storeId,{businessDate=new Date().toISOStrin
 export function clearWalletBurnCache(storeId=null){
   if(!storeId){cache.clear();return}
   for(const key of cache.keys())if(key.startsWith(storeId+'|'))cache.delete(key);
+}
+
+export async function readWalletBurnRange(storeId,{startDate,endDate,force=false}={}){
+  const start=/^\d{4}-\d{2}-\d{2}$/.test(clean(startDate))?clean(startDate):null,end=/^\d{4}-\d{2}-\d{2}$/.test(clean(endDate))?clean(endDate):null,days=start&&end?rangeDays(start,end):null;
+  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,burn:null,message:'Période Wallet invalide.'};
+  const key=`RANGE|${storeId}|${start}|${end}`,hit=cache.get(key);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
+  if(config.dynamics.mode!=='live')return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_NOT_LIVE'};
+
+  const schema=await discoverPaymentSchema();if(schema.status!=='READY')return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'PAYMENT_ENTITY_UNMAPPED',diagnostics:schema};
+  const tenderTypes=await tenderNameMap(),walletIds=configuredWalletIds(),identifiers=salesStoreIdentifiers(storeId,schema.fields.store);
+  if(!identifiers.length)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'STORE_IDENTIFIER_UNMAPPED',entity:schema.entity,fields:schema.fields};
+
+  const select=unique([schema.fields.transaction,schema.fields.store,schema.fields.date,schema.fields.amount,schema.fields.tender,schema.fields.currency,schema.fields.terminal,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null]).join(',');
+  const chunks=[];for(let cursor=start;cursor<=end;cursor=addDays(cursor,7)){const candidate=addDays(cursor,6);chunks.push({start:cursor,end:candidate>end?end:candidate})}
+  let selectedRows=null,selectedMeta=null,lastError=null,firstEmpty=null;
+  outer:for(const identifier of identifiers){
+    for(const sf of storeFilters(schema.fields.store,identifier.value)){
+      for(const template of dateRangeVariants(schema.fields.date,start,end)){
+        try{
+          const rows=[];let pages=0,truncated=false,rowCount=0,next=0;
+          const worker=async()=>{while(next<chunks.length){const chunk=chunks[next++],variant=dateRangeVariants(schema.fields.date,chunk.start,chunk.end).find(x=>x.mode===template.mode),filters=[sf,variant.filter];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);const result=await odataGetAll(schema.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:500,maxRows:25000});rows.push(...(result.value||[]));pages+=Number(result.pages||0);rowCount+=Number(result.rowCount||0);truncated=truncated||!!result.truncated}};
+          await Promise.all(Array.from({length:Math.min(3,chunks.length)},worker));
+          const meta={identifier,storeFilter:sf,dateMode:template.mode,rowCount:rowCount||rows.length,pages,truncated,chunks:chunks.length};
+          if(rows.length){selectedRows=rows;selectedMeta=meta;break outer}
+          firstEmpty=firstEmpty||{rows,meta}
+        }catch(error){lastError=error}
+      }
+    }
+  }
+  if(selectedRows===null&&firstEmpty){selectedRows=firstEmpty.rows;selectedMeta=firstEmpty.meta}
+  if(selectedRows===null)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_PAYMENT_READ_FAILED',error:{code:lastError?.code||'D365_PAYMENT_READ_FAILED',message:lastError?.message||String(lastError||'Lecture paiement impossible')}};
+
+  const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,walletIds)),profile=signProfile(walletRows,schema.fields.amount),burn=derivedBurn(profile);
+  const value={status:burn.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
+  cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
 }
