@@ -47,7 +47,7 @@ function mergeCustomers(results=[],endDate=null){
     cur.sales+=num(row.sales);cur.units+=num(row.units);cur.tickets+=num(row.tickets);cur.activeDays+=num(row.activeDays);
     if(row.firstDate&&(!cur.firstDate||row.firstDate<cur.firstDate))cur.firstDate=row.firstDate;
     if(row.lastDate&&(!cur.lastDate||row.lastDate>cur.lastDate))cur.lastDate=row.lastDate;
-    for(const p of row.topProducts||[])cur.products.set(p.productNumber,(cur.products.get(p.productNumber)||0)+num(p.sales));
+    for(const p of row.topProducts||[]){const cp=cur.products.get(p.productNumber)||{sales:0,units:0};cp.sales+=num(p.sales);cp.units+=num(p.units);cur.products.set(p.productNumber,cp)}
     if(row.favouriteWeekday)cur.weekdays.set(row.favouriteWeekday,(cur.weekdays.get(row.favouriteWeekday)||0)+Math.max(1,num(row.activeDays)));
     if(row.favouriteHour!=null)cur.hours.set(String(row.favouriteHour),(cur.hours.get(String(row.favouriteHour))||0)+Math.max(1,num(row.tickets)));
     if(result.storeId)cur.stores.add(result.storeId);
@@ -56,7 +56,7 @@ function mergeCustomers(results=[],endDate=null){
   const fav=m=>{let key=null,best=-1;for(const [k,v] of m)if(v>best){key=k;best=v}return key};
   const rows=[...map.values()].map(x=>{
     const recency=x.lastDate&&endDate?Math.max(0,Math.round((Date.parse(endDate+'T12:00:00Z')-Date.parse(x.lastDate+'T12:00:00Z'))/86400000)):null;
-    return{customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.tickets,activeDays:x.activeDays,averageBasket:x.tickets?round2(x.sales/x.tickets):null,averageUnitsPerBasket:x.tickets?round2(x.units/x.tickets):null,firstDate:x.firstDate,lastDate:x.lastDate,recencyDays:recency,storeCount:x.stores.size,distinctProducts:x.products.size,favouriteWeekday:fav(x.weekdays),favouriteHour:fav(x.hours),topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))}
+    return{customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.tickets,activeDays:x.activeDays,averageBasket:x.tickets?round2(x.sales/x.tickets):null,averageUnitsPerBasket:x.tickets?round2(x.units/x.tickets):null,firstDate:x.firstDate,lastDate:x.lastDate,recencyDays:recency,storeCount:x.stores.size,distinctProducts:x.products.size,favouriteWeekday:fav(x.weekdays),favouriteHour:fav(x.hours),topProducts:[...x.products.entries()].sort((a,b)=>b[1].sales-a[1].sales).slice(0,20).map(([productNumber,v])=>({productNumber,sales:round2(v.sales),units:round2(v.units)}))}
   }).sort((a,b)=>b.sales-a.sales);
   const totalSales=rows.reduce((s,x)=>s+x.sales,0),highValue=rows.length?rows[Math.max(0,Math.ceil(rows.length*.2)-1)]?.sales||0:0;
   const basketValues=rows.map(x=>num(x.averageBasket)).sort((a,b)=>a-b),breadthValues=rows.map(x=>num(x.distinctProducts)).sort((a,b)=>a-b),p80=a=>a.length?a[Math.max(0,Math.ceil(a.length*.8)-1)]:0,highBasket=p80(basketValues),broad=p80(breadthValues);
@@ -75,6 +75,43 @@ function customerCohorts(customers=[]){
   const map=new Map();
   for(const x of customers){if(!x.firstDate)continue;const d=new Date(x.firstDate+'T12:00:00Z'),dow=(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()-dow);const key=d.toISOString().slice(0,10),cur=map.get(key)||{cohort:key,customers:0,sales:0,repeat:0,tickets:0};cur.customers++;cur.sales+=num(x.sales);cur.tickets+=num(x.tickets);if(x.tickets>=2)cur.repeat++;map.set(key,cur)}
   return[...map.values()].sort((a,b)=>a.cohort.localeCompare(b.cohort)).map(x=>({...x,sales:round2(x.sales),repeatRate:x.customers?round2(x.repeat/x.customers*100):null,averageSpend:x.customers?round2(x.sales/x.customers):null,averageVisits:x.customers?round2(x.tickets/x.customers):null}))
+}
+
+
+function mergeStaff(results=[]){
+ const rows=[];
+ for(const r of results){
+  for(const s of r?.staff||[])rows.push({...s,storeId:r.storeId||null});
+ }
+ return rows.sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
+}
+
+function buildPriceTierMap(products=[]){
+ const attached=attachRetailHierarchy(products),groups=new Map(),map=new Map();
+ for(const p of attached){
+  const units=Math.abs(num(p.units)),sales=num(p.sales),unit=String(p.quantityUnit||'').trim().toUpperCase();
+  if(!units||!sales||!unit)continue;
+  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||'__ALL__',key=`${family}|${unit}`,price=sales/units;
+  if(!Number.isFinite(price)||price<=0)continue;
+  if(!groups.has(key))groups.set(key,[]);groups.get(key).push({key:p.key,price})
+ }
+ for(const rows of groups.values()){
+  const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
+  if(n<3){for(const r of sorted)map.set(r.key,{tier:'CORE',score:null});continue}
+  const q1=sorted[Math.floor((n-1)*.33)].price,q2=sorted[Math.floor((n-1)*.67)].price;
+  for(const r of sorted)map.set(r.key,{tier:r.price<=q1?'VALUE':r.price>=q2?'PREMIUM':'CORE',score:r.price})
+ }
+ return map
+}
+
+function enrichCustomerPricePreferences(customers=[],tierMap=new Map()){
+ return customers.map(c=>{
+  const mix={VALUE:0,CORE:0,PREMIUM:0};let known=0;
+  for(const p of c.topProducts||[]){const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;const weight=Math.max(0,num(p.sales));mix[tier]+=weight;known+=weight}
+  let pricePreference='UNKNOWN';
+  if(known>0){const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]);pricePreference=ranked[0][0]}
+  return{...c,pricePreference,priceMix:known?{valuePct:round2(mix.VALUE/known*100),corePct:round2(mix.CORE/known*100),premiumPct:round2(mix.PREMIUM/known*100),coverageSales:round2(known)}:null}
+ })
 }
 
 function sumSummary(results=[]){
@@ -142,7 +179,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const currentSummary=sumSummary(currentResults),previousSummary=sumSummary(previousResults);
  const currentProducts=mergeRows(currentResults.map(x=>x.products)),previousProducts=mergeRows(previousResults.map(x=>x.products));
  const products=compareRows(currentProducts,previousProducts),hierarchy=hierarchyFromProducts(currentProducts,previousProducts);
- const customers=mergeCustomers(currentResults,endDate),basketAnalysis=mergeBasketAnalysis(currentResults),cohorts=customerCohorts(customers);
+ const priceTierMap=buildPriceTierMap(currentProducts),customers=enrichCustomerPricePreferences(mergeCustomers(currentResults,endDate),priceTierMap),basketAnalysis=mergeBasketAnalysis(currentResults),cohorts=customerCohorts(customers),cashiers=mergeStaff(currentResults);
  const marginStatuses=[...new Set(currentResults.map(x=>x.margin?.status).filter(Boolean))],marginStatus=marginStatuses.length===1?marginStatuses[0]:marginStatuses.includes('UNVALIDATED')?'UNVALIDATED':marginStatuses.includes('UNAVAILABLE')?'UNAVAILABLE':'MIXED';
  const storesComparison=pairs.map(x=>storeComparison(x.store,x.current,x.previous)).sort((a,b)=>num(b.sales)-num(a.sales));
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
@@ -167,7 +204,8 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   products,
   hierarchy,
   contributors:{negativeProducts,positiveProducts,negativeStores:[...storesComparison].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...storesComparison].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},
-  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,cohorts,basketAnalysis,personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customers:customers.slice(0,500)},
+  cashiers:{status:cashiers.length?'READY':'UNAVAILABLE',items:cashiers,source:'SALES_RANGE_REUSE'},
+  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,cohorts,basketAnalysis,personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),pricePreferences:Object.entries(customers.reduce((a,x)=>(a[x.pricePreference]=(a[x.pricePreference]||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customers:customers.slice(0,500)},
   generatedAt:new Date().toISOString()
  }
 }
