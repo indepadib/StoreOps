@@ -267,9 +267,21 @@
     };
   }
 
+  function hydrateCashiersFromDecision(){
+    const d=decisionData(),items=d?.cashiers?.items||[];if(!items.length)return false;
+    const app=core()?.getState?.()||{},stores=new Map((app.stores||[]).map(s=>[s.id,s])),groups=new Map();
+    for(const row of items){
+      const store=stores.get(row.storeId)||{id:row.storeId||'unknown',name:row.storeId||'Magasin'},key=store.id;
+      if(!groups.has(key))groups.set(key,{store,ok:true,data:{status:'READY',source:'SALES_RANGE_REUSE',items:[]}});
+      groups.get(key).data.items.push({...row,name:row.name||row.staffId,rateEligible:Number(row.tickets||0)>=10})
+    }
+    state.cashierStores=[...groups.values()];state.cashierKey='decision|'+(d.period?.startDate||'')+'|'+(d.period?.endDate||'');renderCashiers();return true
+  }
+
   async function loadCashiers(force = false) {
     const api = core();
     if (!api || state.cashierLoading) return;
+    if(!force&&hydrateCashiersFromDecision())return;
     const scope = cashierScope();
     const key = `${scope.date}|${state.cashierDays}|${scope.stores.map(s=>s.id).join(',')}`;
     if (!force && state.cashierKey === key) {
@@ -332,7 +344,7 @@
     $('#cashierSummary').innerHTML = [
       ['Caissiers analysés', api.number(allItems.length), `${readyStores.length}/${state.cashierStores.length} magasin(s)`],
       ['Éligibles classement', api.number(eligible.length), 'Seuil volume appliqué'],
-      ['Tickets', api.number(totalTickets), `${state.cashierDays} derniers jours`],
+      ['Tickets', api.number(totalTickets), decisionData()?.cashiers?.source==='SALES_RANGE_REUSE'?'période globale sélectionnée':`${state.cashierDays} derniers jours`],
       ['Recrutements', api.number(totalRecruitments), weightedIdentification == null ? 'Identification N/A' : api.percent(weightedIdentification) + ' tickets identifiés']
     ].map(([label,value,sub])=>`
       <div class="cashier-stat"><small>${label}</small><strong>${value}</strong><span>${sub}</span></div>
