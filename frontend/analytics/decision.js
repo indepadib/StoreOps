@@ -136,15 +136,18 @@
 
   function performanceRows(){
     const d=state.data;if(!d)return[];
-    let rows=state.level==='product'?(d.products||[]):((d.hierarchy||{})[state.level]||[]);
-    const q=state.search.trim().toLowerCase();if(q)rows=rows.filter(x=>String(x.label||x.key||'').toLowerCase().includes(q)||String(x.key||'').toLowerCase().includes(q));
-    const previousField=state.level==='product'?'previousSales':'previous';
-    const prevSorted=[...rows].filter(x=>safe(x[previousField])!=null).sort((a,b)=>Number(b[previousField]||0)-Number(a[previousField]||0)),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
+    const base=state.level==='product'?(d.products||[]):((d.hierarchy||{})[state.level]||[]);
     const metric=state.metric;
-    rows=[...rows].sort((a,b)=>{
+    const previousField=metric==='sales'
+      ? (state.level==='product'?'previousSales':'previous')
+      : metric==='marginValue'?'previousMarginValue':null;
+    const prevSorted=previousField?[...base].filter(x=>safe(x[previousField])!=null).sort((a,b)=>Number(b[previousField]||0)-Number(a[previousField]||0)):[];
+    const prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
+    const ranked=[...base].sort((a,b)=>{
       const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av
-    });
-    return rows.map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||null,rankDelta:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}));
+    }).map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||null,rankDelta:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}));
+    const q=state.search.trim().toLowerCase();
+    return q?ranked.filter(x=>String(x.label||x.key||'').toLowerCase().includes(q)||String(x.key||'').toLowerCase().includes(q)):ranked;
   }
 
   function renderPerformance(){
