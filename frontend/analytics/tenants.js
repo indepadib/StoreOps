@@ -5,6 +5,7 @@ window.RETAIL_INTELLIGENCE_TENANTS = Object.freeze({
     connected: true,
     sourceLabel: 'Dynamics 365 / Commerce',
     description: 'Réseau Franprix Maroc',
+    defaultStoreIds: ['val-fleuri','trefle'],
     modules: {
       overview: true,
       sales: true,
