@@ -154,6 +154,7 @@
     try{
       state.data=await loadDecisionChunked(api,s,force); state.key=key; render();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
+      document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data}}));
       loadCatalog(force).catch(()=>{});
     }catch(error){renderError(error)}
     finally{state.loading=false}
