@@ -277,8 +277,28 @@
           <div class="crm-kpis" id="crmKpis"></div>
           <div class="decision-grid">
             <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">SEGMENTS</span><h3>Structure de la clientèle identifiée</h3></div></div>
+              <div class="decision-card-head"><div><span class="mini-kicker">PERSONAS COMPORTEMENTAUX</span><h3>Quel type de client fréquente le magasin ?</h3></div></div>
+              <div id="crmPersonas" class="persona-grid"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">SEGMENTS VALEUR / FRÉQUENCE</span><h3>Structure de la clientèle identifiée</h3></div></div>
               <div id="crmSegments" class="segment-grid"></div>
+            </article>
+          </div>
+          <div class="decision-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">BASKET DNA</span><h3>À quoi ressemble un panier client ?</h3></div></div>
+              <div id="crmBasketDna"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">AFFINITÉS</span><h3>Produits achetés ensemble</h3></div></div>
+              <div id="crmAffinities" class="affinity-list"></div>
+            </article>
+          </div>
+          <div class="decision-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">COHORTES OBSERVÉES</span><h3>Clients selon leur première semaine vue dans la période</h3></div></div>
+              <div id="crmCohorts" class="cohort-list"></div>
             </article>
             <article class="decision-card">
               <div class="decision-card-head"><div><span class="mini-kicker">CONCENTRATION</span><h3>Poids des meilleurs clients</h3></div></div>
@@ -287,7 +307,7 @@
           </div>
           <div class="decision-table-wrap crm-table-wrap">
             <table class="decision-table">
-              <thead><tr><th>Client</th><th>Segment</th><th>CA</th><th>Visites</th><th>Panier</th><th>Unités</th><th>1ère visite période</th><th>Dernière visite</th><th>Magasins</th><th>Top produits</th></tr></thead>
+              <thead><tr><th>Client</th><th>Persona</th><th>Segment</th><th>CA</th><th>Visites</th><th>Panier</th><th>U./panier</th><th>Jours actifs</th><th>Dernière visite</th><th>Habitude</th><th>Top produits</th></tr></thead>
               <tbody id="crmBody"></tbody>
             </table>
           </div>
