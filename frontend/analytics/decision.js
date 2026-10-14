@@ -449,12 +449,12 @@
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],k=$('#crmKpis');if(!k)return;
     const totalSales=customers.reduce((s,x)=>s+Number(x.sales||0),0),avg=customers.length?totalSales/customers.length:null,top10=totalSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,top20=totalSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,ba=crm.basketAnalysis||{};
     k.innerHTML=[
-      ['Clients identifiés',api.number(crm.identifiedCustomers),'sur la période'],
-      ['CA identifié',api.money(crm.identifiedSales,true),'clients connus'],
-      ['Clients revenus',api.percent(crm.repeatRate),'part des clients identifiés avec au moins 2 tickets distincts sur la période'],
-      ['Panier client',api.money(customers.length?customers.reduce((s,x)=>s+Number(x.averageBasket||0),0)/customers.length:null),'moyenne clients identifiés'],
+      ['Clients identifiés',api.number(crm.identifiedCustomers),'comptes custAccount distincts ayant acheté sur la période'],
+      ['CA identifié',api.money(crm.identifiedSales,true),'CA rattaché à un client connu'],
+      ['Clients revenus',api.percent(crm.repeatRate),'clients avec ≥ 2 tickets distincts sur la période'],
+      ['Visites / client',api.number(crm.averageVisitsPerCustomer,1),'nombre moyen de tickets distincts par client identifié'],
       ['Réf. / panier',api.number(ba.averageDistinctProducts,1),'références distinctes par panier identifié'],
-      ['Top 10 clients',api.percent(top10),'part du CA identifié']
+      ['Top 10 clients',api.percent(top10),'part du CA identifié portée par les 10 premiers clients affichés']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
     const prefLabels={VALUE:'Entrée de gamme',CORE:'Cœur de gamme',PREMIUM:'Premium',UNKNOWN:'Non classé'},prefs=crm.pricePreferences||[];
@@ -474,13 +474,13 @@
       insightPanel.innerHTML=insights.slice(0,5).map(x=>`<div class="crm-insight"><strong>${api.escapeHtml(x.title)}</strong><span>${api.escapeHtml(x.text)}</span></div>`).join('')
     }
 
-    const segmentLabels={HIGH_VALUE_FREQUENT:'High value & fréquent',HIGH_VALUE:'High value',FREQUENT:'Fréquent',REPEAT:'Repeat',SINGLE_VISIT:'1 visite'},counts={};for(const x of customers)counts[x.segment]=(counts[x.segment]||0)+1;
-    $('#crmSegments').innerHTML=Object.entries(segmentLabels).map(([key,label])=>`<div class="segment-card"><small>${label}</small><strong>${api.number(counts[key]||0)}</strong><span>${customers.length?api.percent((counts[key]||0)/customers.length*100):'N/A'} des clients</span></div>`).join('');
+    const segmentLabels={HIGH_VALUE_FREQUENT:'Forte valeur & fréquent',HIGH_VALUE:'Forte valeur',FREQUENT:'Fréquent',REPEAT:'Client revenu',SINGLE_VISIT:'1 visite'},segmentMap=new Map((crm.segments||[]).map(x=>[x.segment,x]));
+    $('#crmSegments').innerHTML=Object.entries(segmentLabels).map(([key,label])=>{const x=segmentMap.get(key)||{};return`<div class="segment-card"><small>${label}</small><strong>${api.number(x.count||0)}</strong><span>${x.sharePct==null?'N/A':api.percent(x.sharePct)} des clients identifiés</span></div>`}).join('');
 
-    const personaLabels={VIP_REGULAR:'VIP régulier',BIG_BASKET_OCCASIONAL:'Gros panier occasionnel',EXPLORER:'Explorateur',ROUTINE_REGULAR:'Routine / régulier',REPEAT_TO_GROW:'Repeat à développer',ONE_SHOT:'Visite unique'};
-    const personaNotes={VIP_REGULAR:'Fréquent + forte valeur',BIG_BASKET_OCCASIONAL:'Peu de visites, panier élevé',EXPLORER:'Large variété de produits',ROUTINE_REGULAR:'Fréquent, achats récurrents',REPEAT_TO_GROW:'Déjà revenu, potentiel à travailler',ONE_SHOT:'Une seule visite observée'};
-    const personaCounts={};for(const x of customers)personaCounts[x.persona]=(personaCounts[x.persona]||0)+1;
-    $('#crmPersonas').innerHTML=Object.keys(personaLabels).map(key=>`<div class="persona-card"><small>${personaLabels[key]}</small><strong>${api.number(personaCounts[key]||0)}</strong><span>${personaNotes[key]}</span></div>`).join('');
+    const personaLabels={VIP_REGULAR:'VIP régulier',BIG_BASKET_OCCASIONAL:'Gros panier occasionnel',EXPLORER:'Explorateur',ROUTINE_REGULAR:'Routine / régulier',REPEAT_TO_GROW:'Client revenu à développer',ONE_SHOT:'Visite unique'};
+    const personaNotes={VIP_REGULAR:'Fréquent + forte valeur',BIG_BASKET_OCCASIONAL:'Peu de visites, panier élevé',EXPLORER:'Large variété de produits',ROUTINE_REGULAR:'Fréquent, achats récurrents',REPEAT_TO_GROW:'Déjà revenu, potentiel à développer',ONE_SHOT:'Une seule visite observée'};
+    const personaMap=new Map((crm.personas||[]).map(x=>[x.persona,x]));
+    $('#crmPersonas').innerHTML=Object.keys(personaLabels).map(key=>{const x=personaMap.get(key)||{};return`<div class="persona-card"><small>${personaLabels[key]}</small><strong>${api.number(x.count||0)}</strong><span>${x.sharePct==null?'':api.percent(x.sharePct)+' · '}${personaNotes[key]}</span></div>`}).join('');
 
     $('#crmBasketDna').innerHTML=`<div class="basket-dna-grid">
       <div><small>Paniers identifiés</small><strong>${api.number(ba.identifiedBaskets)}</strong></div>
