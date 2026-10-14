@@ -1226,7 +1226,7 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','decisionSales'],
+    overview: ['executiveDeck','attentionRail','kpis'],
     sales: ['decisionSales'],
     network: ['storeBenchmark'],
     categories: ['productPerformance'],
@@ -1270,6 +1270,7 @@
 
     const agg = aggregate();
     updateHeadings(agg);
+    document.dispatchEvent(new CustomEvent('retail-intelligence:section', { detail: { section: state.section } }));
   }
 
   function applyPreferences() {
