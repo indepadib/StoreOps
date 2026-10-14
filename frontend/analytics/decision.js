@@ -167,6 +167,11 @@
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty','cashiers'].includes(s?.section)}
   function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','crm'].includes(s?.section)}
+  function warmCatalogSoon(){
+    const s=sectionState();if(!s||sectionNeedsCatalog(s))return;
+    const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
+    if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:2500});else setTimeout(run,1200)
+  }
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
@@ -179,6 +184,7 @@
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
       maybeLoadCatalog(false);
+      warmCatalogSoon();
     }
     state.loading=true;
     if(!cached)setLoading();
@@ -189,6 +195,7 @@
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
       maybeLoadCatalog(force);
+      warmCatalogSoon();
       render();
     }catch(error){if(!cached)renderError(error)}
     finally{state.loading=false}
