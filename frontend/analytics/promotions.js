@@ -10,7 +10,7 @@
     const api=core(),s=api?.getState?.();
     if(!s)return{stores:[],date:null};
     return{
-      stores:s.selectedStore==='ALL'?s.stores:s.stores.filter(x=>x.id===s.selectedStore),
+      stores:core()?.getSelectedStores?.()||s.stores||[],
       date:s.businessDate
     };
   }
