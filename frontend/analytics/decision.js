@@ -1,7 +1,7 @@
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,loading:false,level:'product',metric:'sales',search:''};
+  const state={data:null,key:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
@@ -117,6 +117,35 @@
     await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
     return mergeDecisionParts(results,{startDate:s.periodStart,endDate:s.periodEnd,days:curDays},{startDate:s.compareStart,endDate:s.compareEnd,days:cmpDays})
   }
+  function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
+  function productLabel(sku,fallback=''){const ref=catalogItem(sku);return ref?.productName||fallback||sku}
+  function productSubLabel(sku){const ref=catalogItem(sku);return ref?.productName?sku:''}
+  function hierarchyNode(sku,level){return catalogItem(sku)?.hierarchy?.[level]||null}
+  function estimateMargin(row){
+    if(row?.marginValue!=null)return{value:Number(row.marginValue),rate:row.marginRate,estimated:false};
+    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units);
+    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(Number(row?.sales)))return{value:null,rate:null,estimated:false};
+    const value=Number(row.sales)-Math.abs(units)*unitCost;
+    return{value,rate:Number(row.sales)?value/Number(row.sales)*100:null,estimated:true}
+  }
+  function catalogSkuList(){
+    const d=state.data||{},set=new Set((d.products||[]).slice(0,500).map(x=>x.key));
+    for(const x of d.crm?.customers||[])for(const p of x.topProducts||[])set.add(p.productNumber);
+    for(const p of d.crm?.basketAnalysis?.topProducts||[])set.add(p.productNumber);
+    for(const p of d.crm?.basketAnalysis?.topProductPairs||[]){set.add(p.productA);set.add(p.productB)}
+    return[...set].filter(Boolean).slice(0,650)
+  }
+  async function loadCatalog(force=false){
+    const api=core(),s=sectionState();if(!api||!state.data||state.catalogLoading)return;
+    const key=queryKey(s);if(!force&&state.catalogKey===key&&state.catalog.size)return;
+    state.catalogLoading=true;state.catalog=new Map();
+    const skus=catalogSkuList(),batches=[];for(let i=0;i<skus.length;i+=50)batches.push(skus.slice(i,i+50));
+    let cursor=0;
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);renderPerformance();renderCrm();renderContributors('negative');renderContributors('positive')}catch{}}};
+    await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
+    state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
+  }
+
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm'].includes(s?.section)}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
