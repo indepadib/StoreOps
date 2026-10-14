@@ -41,7 +41,35 @@
     const k=$('#decisionSalesKpis');if(k)k.innerHTML=`<div class="decision-kpi"><small>Source</small><strong>N/A</strong><span>${msg}</span></div>`;
   }
 
-  function render(){if(!state.data)return;renderSales();renderBenchmark();renderPerformance();renderCrm()}
+  function render(){if(!state.data)return;renderExecutive();renderSales();renderBenchmark();renderPerformance();renderCrm()}
+
+  function renderExecutive(){
+    const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{},app=sectionState()||{};
+    const set=(id,value,html=false)=>{const el=$(id);if(!el)return;if(html)el.innerHTML=value;else el.textContent=value};
+    set('#executiveSalesValue',api.money(cur.sales,true));
+    set('#executiveSalesDelta',signed(api,s.salesChangePct),true);
+    set('#executiveComparisonValue',api.money(prev.sales,true));
+    const gap=cur.sales!=null&&prev.sales!=null?cur.sales-prev.sales:null;
+    set('#executiveSalesGap',gap==null?'N/A':`${gap>0?'+':''}${api.money(gap,true)}`);
+    set('#executiveScopeValue',app.selectedStore==='ALL'?`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasins`:app.stores?.find(x=>x.id===app.selectedStore)?.name||'Magasin');
+    set('#executiveTickets',api.number(cur.tickets));
+    set('#executiveTrafficDelta',signed(api,s.ticketsChangePct),true);
+    set('#executiveBasket',api.money(cur.averageBasket));
+    set('#executiveBasketDelta',signed(api,s.basketChangePct),true);
+    set('#healthLoyalty',api.percent(cur.identifiedSalesShare));
+    set('#healthRecruitment','N/A');
+    set('#healthOos','Voir stock');
+    set('#healthCoverage',d.coverage?.storesRequested?api.percent((d.coverage.currentStoresReady||0)/d.coverage.storesRequested*100,0):'N/A');
+    const label=$('#executiveHealthLabel');
+    if(label){
+      const sales=s.salesChangePct,margin=s.marginChangePct;
+      let text='Stable',tone='stable';
+      if(sales!=null&&sales>5&&(margin==null||margin>=0)){text='Solide';tone='strong'}
+      else if((sales!=null&&sales<-5)||(margin!=null&&margin<-5)){text='Sous tension';tone='risk'}
+      else if(sales!=null&&sales>0){text='En progression';tone='positive'}
+      label.textContent=text;label.className=`health-label ${tone}`;
+    }
+  }
 
   function renderSales(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{};
