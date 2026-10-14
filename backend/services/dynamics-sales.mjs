@@ -292,7 +292,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v5',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -418,6 +418,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v5',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
