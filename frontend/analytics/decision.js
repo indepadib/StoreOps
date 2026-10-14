@@ -298,6 +298,22 @@
       ['À surveiller',weak?.storeName||'N/A',weak?.changePct==null?'—':api.percent(weak.changePct)],
       ['#1 Marge',marginBest?.storeName||'N/A',marginBest?api.money(marginBest.marginValue,true):'N/A']
     ].map(([l,v,s])=>`<div class="benchmark-card"><small>${l}</small><strong>${api.escapeHtml(v)}</strong><span>${s}</span></div>`).join('');
+    const visual=$('#benchmarkVisual'),actions=$('#storeDecisionList');
+    if(visual&&valid.length){
+      const w=620,h=290,pad=42,maxSales=Math.max(...valid.map(x=>Number(x.sales||0)),1),changes=valid.map(x=>Number(x.changePct||0)),minX=Math.min(-10,...changes),maxX=Math.max(10,...changes),x=v=>pad+(Math.max(minX,Math.min(maxX,v))-minX)/(maxX-minX||1)*(w-pad*2),y=v=>h-pad-(Number(v||0)/maxSales)*(h-pad*2);
+      const bubbles=valid.map(r=>{const cx=x(Number(r.changePct||0)),cy=y(r.sales),rr=5+Math.min(12,Math.max(0,Number(r.averageBasket||0))/30);return`<g><circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${rr.toFixed(1)}"></circle><text x="${(cx+rr+4).toFixed(1)}" y="${(cy+3).toFixed(1)}">${api.escapeHtml(r.storeName)}</text></g>`}).join('');
+      const zero=x(0);
+      visual.innerHTML=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Positionnement magasins CA et évolution"><line class="axis-line" x1="${zero}" x2="${zero}" y1="${pad/2}" y2="${h-pad/2}"></line><line class="axis-line" x1="${pad/2}" x2="${w-pad/2}" y1="${h-pad}" y2="${h-pad}"></line><text class="axis-label" x="${pad}" y="${h-8}">Baisse ← évolution CA → croissance</text><text class="axis-label" x="8" y="18">CA ↑</text>${bubbles}</svg>`
+    }else if(visual)visual.innerHTML='<div class="table-loading">Positionnement indisponible.</div>';
+    if(actions){
+      const avgTickets=valid.length?valid.reduce((s,x)=>s+Number(x.tickets||0),0)/valid.length:0,avgBasket=valid.length?valid.reduce((s,x)=>s+Number(x.averageBasket||0),0)/valid.length:0,loyalty=[...valid].filter(x=>x.identifiedSalesShare!=null).sort((a,b)=>Number(a.identifiedSalesShare)-Number(b.identifiedSalesShare))[0],growth=[...valid].filter(x=>x.changePct!=null).sort((a,b)=>Number(b.changePct)-Number(a.changePct))[0],trafficGap=[...valid].filter(x=>Number(x.averageBasket||0)>=avgBasket&&Number(x.tickets||0)<avgTickets).sort((a,b)=>Number(a.tickets)-Number(b.tickets))[0];
+      const decisions=[];
+      if(weak)decisions.push({tone:'risk',title:`Relancer ${weak.storeName}`,text:`CA ${api.percent(weak.changePct)} vs période comparée. Priorité au diagnostic trafic / assortiment.`});
+      if(trafficGap)decisions.push({tone:'warning',title:`Potentiel trafic · ${trafficGap.storeName}`,text:`Panier au-dessus du réseau mais fréquentation sous la moyenne : le levier principal est l'acquisition de visites.`});
+      if(loyalty)decisions.push({tone:'info',title:`Fidélité · ${loyalty.storeName}`,text:`Poids CA identifié ${api.percent(loyalty.identifiedSalesShare)} : vérifier identification caisse et recrutement.`});
+      if(growth)decisions.push({tone:'positive',title:`À répliquer · ${growth.storeName}`,text:`Meilleure dynamique réseau (${api.percent(growth.changePct)}). Identifier les catégories et créneaux qui expliquent la hausse.`});
+      actions.innerHTML=decisions.slice(0,4).map(d=>`<div class="decision-action ${d.tone}"><strong>${api.escapeHtml(d.title)}</strong><span>${api.escapeHtml(d.text)}</span></div>`).join('')||'<div class="table-loading">Pas assez de données pour prioriser.</div>'
+    }
     if(!ranked.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucun magasin comparable.</div></td></tr>';return}
     body.innerHTML=ranked.map((r,i)=>`<tr><td><span class="rank-chip">${i+1}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.storeName)}</strong><span>${api.escapeHtml(r.storeCode||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,r.changePct)}</td><td>${avg?api.number(r.sales/avg*100,0)+' idx':'N/A'}</td><td>${api.number(r.tickets)}</td><td>${api.money(r.averageBasket)}</td><td>${api.money(r.marginValue,true)}</td><td>${api.percent(r.marginRate)}</td><td>${api.percent(r.identifiedSalesShare)}</td></tr>`).join('');
   }
@@ -402,6 +418,23 @@
       ['Top 10 clients',api.percent(top10),'part du CA identifié']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
+    const prefLabels={VALUE:'Entrée de gamme',CORE:'Cœur de gamme',PREMIUM:'Premium',UNKNOWN:'Non classé'},prefs=crm.pricePreferences||[];
+    const prefPanel=$('#crmPricePreference');
+    if(prefPanel){
+      const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
+      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):'<div class="table-loading">Position prix en cours de calcul.</div>'
+    }
+    const insightPanel=$('#crmInsights');
+    if(insightPanel){
+      const dominantPersona=[...(crm.personas||[])].sort((a,b)=>Number(b.count)-Number(a.count))[0],dominantPref=[...prefs].filter(x=>x.preference!=='UNKNOWN').sort((a,b)=>Number(b.count)-Number(a.count))[0],insights=[];
+      if(dominantPersona)insights.push({title:'Profil dominant',text:`${api.number(dominantPersona.count)} clients sont « ${dominantPersona.persona.replaceAll('_',' ').toLowerCase()} » (${api.percent(dominantPersona.sharePct)}).`});
+      if(crm.repeatRate!=null)insights.push({title:crm.repeatRate<30?'Fréquence à construire':'Base qui revient',text:`${api.percent(crm.repeatRate)} des clients identifiés reviennent au moins une fois sur la période.`});
+      if(dominantPref)insights.push({title:'Sensibilité prix',text:`Le positionnement dominant observé est ${prefLabels[dominantPref.preference]?.toLowerCase()||dominantPref.preference} (${api.percent(dominantPref.sharePct)} des clients classés).`});
+      if(ba.singleItemBasketRate!=null)insights.push({title:ba.singleItemBasketRate>45?'Opportunité cross-sell':'Panier déjà diversifié',text:`${api.percent(ba.singleItemBasketRate)} des paniers identifiés sont mono-produit.`});
+      if(top10!=null)insights.push({title:top10>30?'CA client concentré':'CA client diffus',text:`Les 10 premiers clients pèsent ${api.percent(top10)} du CA identifié.`});
+      insightPanel.innerHTML=insights.slice(0,5).map(x=>`<div class="crm-insight"><strong>${api.escapeHtml(x.title)}</strong><span>${api.escapeHtml(x.text)}</span></div>`).join('')
+    }
+
     const segmentLabels={HIGH_VALUE_FREQUENT:'High value & fréquent',HIGH_VALUE:'High value',FREQUENT:'Fréquent',REPEAT:'Repeat',SINGLE_VISIT:'1 visite'},counts={};for(const x of customers)counts[x.segment]=(counts[x.segment]||0)+1;
     $('#crmSegments').innerHTML=Object.entries(segmentLabels).map(([key,label])=>`<div class="segment-card"><small>${label}</small><strong>${api.number(counts[key]||0)}</strong><span>${customers.length?api.percent((counts[key]||0)/customers.length*100):'N/A'} des clients</span></div>`).join('');
 
@@ -426,11 +459,12 @@
 
     $('#crmConcentration').innerHTML=`<div class="concentration-hero">${api.percent(top10)}</div><div class="concentration-caption">du CA identifié est réalisé par les 10 premiers clients de la période.</div><div class="concentration-bars"><div class="concentration-row"><span>Top 10</span><div class="concentration-track"><span style="width:${Math.min(top10||0,100)}%"></span></div><strong>${api.percent(top10)}</strong></div><div class="concentration-row"><span>Top 20</span><div class="concentration-track"><span style="width:${Math.min(top20||0,100)}%"></span></div><strong>${api.percent(top20)}</strong></div></div>`;
 
-    const body=$('#crmBody');if(!customers.length){body.innerHTML='<tr><td colspan="11"><div class="table-loading">Aucun client identifié sur la période.</div></td></tr>';return}
+    const body=$('#crmBody');if(!customers.length){body.innerHTML='<tr><td colspan="12"><div class="table-loading">Aucun client identifié sur la période.</div></td></tr>';return}
     const periodEnd=sectionState()?.periodEnd;
     body.innerHTML=customers.slice(0,500).map(x=>{const recency=x.lastDate&&periodEnd?Math.max(0,Math.round((Date.parse(periodEnd+'T12:00:00Z')-Date.parse(x.lastDate+'T12:00:00Z'))/86400000)):null,habit=[x.favouriteWeekday,x.favouriteHour!=null?`${String(x.favouriteHour).padStart(2,'0')}h`:null].filter(Boolean).join(' · '),top=(x.topProducts||[]).slice(0,3).map(p=>productLabel(p.productNumber,p.productNumber)).join(', ');return`<tr>
       <td><div class="element-cell"><strong>${api.escapeHtml(x.customerAccount)}</strong><span>${api.percent(x.shareIdentifiedSalesPct)} du CA identifié</span></div></td>
       <td><span class="persona-pill ${x.persona||''}">${api.escapeHtml(personaLabels[x.persona]||x.persona||'N/A')}</span></td>
+      <td><span class="price-pill ${x.pricePreference||'UNKNOWN'}">${api.escapeHtml(prefLabels[x.pricePreference]||'Non classé')}</span></td>
       <td><span class="segment-pill ${x.segment}">${api.escapeHtml(segmentLabels[x.segment]||x.segment)}</span></td>
       <td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.distinctProducts)}</td><td>${api.number(x.activeDays)}</td>
       <td>${api.escapeHtml(x.lastDate||'N/A')}${recency!=null?` · ${recency}j`:''}</td><td>${api.escapeHtml(habit||'N/A')}</td><td>${api.escapeHtml(top||'N/A')}</td></tr>`}).join('')
