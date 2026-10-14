@@ -126,11 +126,21 @@
           <label>Comparaison au</label>
           <input type="date" id="compareEnd">
         </div>
-        <div class="filter-group wide">
-          <label>Magasin</label>
-          <select id="storeFilter">
-            <option value="ALL">Tous les magasins</option>
-          </select>
+        <div class="filter-group wide store-filter-group">
+          <label>Magasins</label>
+          <details class="store-multiselect" id="storePicker">
+            <summary class="store-picker-summary">
+              <span id="storeSelectionLabel">Tous les magasins</span>
+              <span aria-hidden="true">⌄</span>
+            </summary>
+            <div class="store-picker-popover">
+              <label class="store-option store-option-all">
+                <input type="checkbox" id="storeAllCheck" checked>
+                <span>Tous les magasins</span>
+              </label>
+              <div id="storeMultiOptions"></div>
+            </div>
+          </details>
         </div>
         <button class="filter-refresh" id="refreshBtn">Actualiser</button>
         <div class="active-period" id="periodSummary"></div>
