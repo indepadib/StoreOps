@@ -166,6 +166,8 @@
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty'].includes(s?.section)}
+  function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','crm'].includes(s?.section)}
+  function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
     const key=queryKey(s);
@@ -176,7 +178,7 @@
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
-      loadCatalog(false).catch(()=>{});
+      maybeLoadCatalog(false);
     }
     state.loading=true;
     if(!cached)setLoading();
@@ -186,7 +188,7 @@
       state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
-      loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')});
+      maybeLoadCatalog(force);
       render();
     }catch(error){if(!cached)renderError(error)}
     finally{state.loading=false}
@@ -445,7 +447,7 @@
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force)});
     document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
-    document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false)});
+    document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false);if(state.data&&sectionNeedsCatalog())maybeLoadCatalog(false)});
     const s=sectionState();if(s?.stores?.length&&sectionNeedsDecision(s))load(false);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
