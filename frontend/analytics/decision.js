@@ -165,7 +165,7 @@
     state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
   }
 
-  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty'].includes(s?.section)}
+  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty','cashiers'].includes(s?.section)}
   function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','crm'].includes(s?.section)}
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
   async function load(force=false){
