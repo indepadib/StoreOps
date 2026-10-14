@@ -14,15 +14,103 @@
   const sectionState=()=>core()?.getState?.()||null;
 
   function queryKey(s){return [s.tenant,s.selectedStore,s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
+  function addDays(iso,days){const d=new Date(`${iso}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
+  function rangeDays(start,end){return Math.max(1,Math.floor((Date.parse(`${end}T12:00:00Z`)-Date.parse(`${start}T12:00:00Z`))/86400000)+1)}
+  function splitRange(start,end,n){
+    const total=rangeDays(start,end),parts=[],base=Math.floor(total/n),extra=total%n;let cursor=start;
+    for(let i=0;i<n;i++){const len=base+(i<extra?1:0),partEnd=addDays(cursor,len-1);parts.push({start:cursor,end:partEnd});cursor=addDays(partEnd,1)}
+    return parts
+  }
+  function pct(cur,prev){return prev?((Number(cur||0)-Number(prev||0))/Number(prev))*100:null}
+  function moneySum(values){let total=0,known=true;for(const v of values){if(v===null||v===undefined)known=false;else total+=Number(v||0)}return known?total:null}
+  function sumSnapshot(parts,key){
+    const rows=parts.map(p=>p?.summary?.[key]||{}),sales=rows.reduce((s,x)=>s+Number(x.sales||0),0),tickets=rows.reduce((s,x)=>s+Number(x.tickets||0),0),units=rows.reduce((s,x)=>s+Number(x.units||0),0);
+    const marginValue=moneySum(rows.map(x=>x.marginValue)),identifiedSales=moneySum(rows.map(x=>x.identifiedSales)),identifiedTickets=moneySum(rows.map(x=>x.identifiedTickets));
+    return{sales,tickets,units,averageBasket:tickets?sales/tickets:null,marginValue,marginRate:marginValue!=null&&sales?marginValue/sales*100:null,identifiedSales,identifiedSalesShare:identifiedSales!=null&&sales?identifiedSales/sales*100:null,identifiedTickets,identifiedTicketRate:identifiedTickets!=null&&tickets?identifiedTickets/tickets*100:null}
+  }
+  function mergeRankedRows(parts,getRows,previousField='previousSales'){
+    const map=new Map();
+    for(const part of parts)for(const row of getRows(part)||[]){
+      const key=String(row.key||'');if(!key)continue;
+      const cur=map.get(key)||{key,label:row.label||key,sales:0,previousSales:0,units:0,marginValue:0,previousMarginValue:0,marginKnown:true,previousMarginKnown:true};
+      cur.sales+=Number(row.sales||0);cur.previousSales+=Number(row[previousField]??row.previous??0);cur.units+=Number(row.units||0);
+      if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=Number(row.marginValue||0);
+      if(row.previousMarginValue===null||row.previousMarginValue===undefined)cur.previousMarginKnown=false;else cur.previousMarginValue+=Number(row.previousMarginValue||0);
+      if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
+      map.set(key,cur)
+    }
+    const rows=[...map.values()],total=rows.reduce((s,x)=>s+x.sales,0),prevSorted=[...rows].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
+    return rows.sort((a,b)=>b.sales-a.sales).map((x,i)=>{
+      const marginValue=x.marginKnown?x.marginValue:null,previousMarginValue=x.previousMarginKnown?x.previousMarginValue:null;
+      return{key:x.key,label:x.label,sales:x.sales,previousSales:x.previousSales,previous:x.previousSales,deltaSales:x.sales-x.previousSales,delta:x.sales-x.previousSales,changePct:pct(x.sales,x.previousSales),sharePct:total?x.sales/total*100:null,units:x.units,marginValue,marginRate:marginValue!=null&&x.sales?marginValue/x.sales*100:null,previousMarginValue,deltaMargin:marginValue!=null&&previousMarginValue!=null?marginValue-previousMarginValue:null,rank:i+1,previousRank:prevRank.get(x.key)||null,deltaRank:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}
+    })
+  }
+  function mergeStores(parts){
+    const map=new Map();
+    for(const part of parts)for(const row of part.stores||[]){
+      const key=row.storeId,cur=map.get(key)||{storeId:key,storeName:row.storeName,storeCode:row.storeCode,sales:0,previousSales:0,tickets:0,previousTickets:0,marginValue:0,previousMarginValue:0,marginKnown:true,previousMarginKnown:true,identifiedSales:0,identifiedSalesKnown:true,identifiedTickets:0,identifiedTicketsKnown:true};
+      cur.sales+=Number(row.sales||0);cur.previousSales+=Number(row.previousSales||0);cur.tickets+=Number(row.tickets||0);cur.previousTickets+=Number(row.previousTickets||0);
+      if(row.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(row.marginValue||0);
+      if(row.previousMarginValue==null)cur.previousMarginKnown=false;else cur.previousMarginValue+=Number(row.previousMarginValue||0);
+      if(row.identifiedSalesShare==null)cur.identifiedSalesKnown=false;else cur.identifiedSales+=Number(row.sales||0)*Number(row.identifiedSalesShare||0)/100;
+      if(row.identifiedTicketRate==null)cur.identifiedTicketsKnown=false;else cur.identifiedTickets+=Number(row.tickets||0)*Number(row.identifiedTicketRate||0)/100;
+      map.set(key,cur)
+    }
+    return[...map.values()].map(x=>({storeId:x.storeId,storeName:x.storeName,storeCode:x.storeCode,sales:x.sales,previousSales:x.previousSales,changePct:pct(x.sales,x.previousSales),deltaSales:x.sales-x.previousSales,tickets:x.tickets,previousTickets:x.previousTickets,ticketsChangePct:pct(x.tickets,x.previousTickets),averageBasket:x.tickets?x.sales/x.tickets:null,previousAverageBasket:x.previousTickets?x.previousSales/x.previousTickets:null,basketChangePct:x.previousTickets&&x.previousSales?pct(x.sales/x.tickets,x.previousSales/x.previousTickets):null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.sales?x.marginValue/x.sales*100:null,previousMarginValue:x.previousMarginKnown?x.previousMarginValue:null,deltaMargin:x.marginKnown&&x.previousMarginKnown?x.marginValue-x.previousMarginValue:null,marginChangePct:x.previousMarginKnown&&x.previousMarginValue?pct(x.marginValue,x.previousMarginValue):null,identifiedSalesShare:x.identifiedSalesKnown&&x.sales?x.identifiedSales/x.sales*100:null,identifiedTicketRate:x.identifiedTicketsKnown&&x.tickets?x.identifiedTickets/x.tickets*100:null,status:'READY'})).sort((a,b)=>b.sales-a.sales)
+  }
+  function mergeCrm(parts){
+    const map=new Map();
+    for(const part of parts)for(const x of part.crm?.customers||[]){
+      const key=x.customerAccount;if(!key)continue;const cur=map.get(key)||{customerAccount:key,sales:0,units:0,tickets:0,firstDate:null,lastDate:null,storeCount:0,products:new Map()};
+      cur.sales+=Number(x.sales||0);cur.units+=Number(x.units||0);cur.tickets+=Number(x.tickets||0);cur.storeCount=Math.max(cur.storeCount,Number(x.storeCount||0));
+      if(x.firstDate&&(!cur.firstDate||x.firstDate<cur.firstDate))cur.firstDate=x.firstDate;if(x.lastDate&&(!cur.lastDate||x.lastDate>cur.lastDate))cur.lastDate=x.lastDate;
+      for(const p of x.topProducts||[])cur.products.set(p.productNumber,(cur.products.get(p.productNumber)||0)+Number(p.sales||0));map.set(key,cur)
+    }
+    const rows=[...map.values()].sort((a,b)=>b.sales-a.sales),total=rows.reduce((s,x)=>s+x.sales,0),threshold=rows.length?rows[Math.max(0,Math.ceil(rows.length*.2)-1)]?.sales||0:0;
+    const customers=rows.map(x=>({customerAccount:x.customerAccount,sales:x.sales,units:x.units,tickets:x.tickets,averageBasket:x.tickets?x.sales/x.tickets:null,firstDate:x.firstDate,lastDate:x.lastDate,storeCount:x.storeCount,segment:x.tickets>=4&&x.sales>=threshold?'HIGH_VALUE_FREQUENT':x.sales>=threshold?'HIGH_VALUE':x.tickets>=4?'FREQUENT':x.tickets>=2?'REPEAT':'SINGLE_VISIT',shareIdentifiedSalesPct:total?x.sales/total*100:null,topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([productNumber,sales])=>({productNumber,sales}))}));
+    return{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:total,repeatCustomers:customers.filter(x=>x.tickets>=2).length,frequentCustomers:customers.filter(x=>x.tickets>=4).length,repeatRate:customers.length?customers.filter(x=>x.tickets>=2).length/customers.length*100:null,customers:customers.slice(0,500)}
+  }
+  function mergeDecisionParts(parts,period,comparison){
+    const current=sumSnapshot(parts,'current'),previous=sumSnapshot(parts,'previous'),products=mergeRankedRows(parts,p=>p.products||[]),stores=mergeStores(parts),hierarchy={};
+    for(const level of ['department','rayon','family','subfamily','subsubfamily','ub'])hierarchy[level]=mergeRankedRows(parts,p=>p.hierarchy?.[level]||[],'previous');
+    const trafficEffect=previous.averageBasket!=null?(current.tickets-previous.tickets)*previous.averageBasket:null,basketEffect=previous.averageBasket!=null&&current.averageBasket!=null?current.tickets*(current.averageBasket-previous.averageBasket):null;
+    const marginStatuses=[...new Set(parts.map(p=>p.margin?.status).filter(Boolean))],marginStatus=marginStatuses.length===1?marginStatuses[0]:marginStatuses.includes('UNVALIDATED')?'UNVALIDATED':marginStatuses.includes('UNAVAILABLE')?'UNAVAILABLE':'MIXED';
+    const crm=mergeCrm(parts);
+    return{status:'READY',period,comparison,coverage:{storesRequested:parts[0]?.coverage?.storesRequested||0,currentStoresReady:Math.min(...parts.map(p=>p.coverage?.currentStoresReady??0)),comparisonStoresReady:Math.min(...parts.map(p=>p.coverage?.comparisonStoresReady??0))},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{status:marginStatus,available:marginStatus==='VALIDATED',message:marginStatus==='VALIDATED'?'Coût transactionnel validé.':marginStatus==='UNVALIDATED'?'Champ coût détecté mais non validé comme coût historique transactionnel.':'Coût transactionnel indisponible.'},daily:{current:parts.flatMap(p=>p.daily?.current||[]).sort((a,b)=>a.date.localeCompare(b.date)),previous:parts.flatMap(p=>p.daily?.previous||[]).sort((a,b)=>a.date.localeCompare(b.date))},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},crm,generatedAt:new Date().toISOString()}
+  }
+  function setProgress(done,total){
+    const el=$('#executiveSalesValue');if(el)el.textContent=done>=total?'Finalisation…':`Analyse ${done}/${total}`;
+    const foot=$('#executiveComparisonValue');if(foot)foot.textContent='Lecture Dynamics par blocs';
+  }
+  async function fetchDecisionSlice(api,s,cur,cmp,force=false){
+    const q=new URLSearchParams({storeId:s.selectedStore||'ALL',start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
+    if(force)q.set('force','1');
+    try{return await api.api(`/api/analytics/decision?${q}`,{noRetry:true})}
+    catch(error){
+      const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON';
+      const cd=rangeDays(cur.start,cur.end),pd=rangeDays(cmp.start,cmp.end);
+      if(retryable&&cd>1&&pd>1){
+        const cparts=splitRange(cur.start,cur.end,2),pparts=splitRange(cmp.start,cmp.end,2);
+        const left=await fetchDecisionSlice(api,s,cparts[0],pparts[0],force),right=await fetchDecisionSlice(api,s,cparts[1],pparts[1],force);
+        return mergeDecisionParts([left,right],{startDate:cur.start,endDate:cur.end,days:cd},{startDate:cmp.start,endDate:cmp.end,days:pd})
+      }
+      throw error
+    }
+  }
+  async function loadDecisionChunked(api,s,force=false){
+    const curDays=rangeDays(s.periodStart,s.periodEnd),cmpDays=rangeDays(s.compareStart,s.compareEnd),blocks=Math.max(1,Math.min(Math.min(curDays,cmpDays),Math.ceil(Math.max(curDays,cmpDays)/7)));
+    const currentParts=splitRange(s.periodStart,s.periodEnd,blocks),compareParts=splitRange(s.compareStart,s.compareEnd,blocks),results=new Array(blocks);let next=0,done=0;
+    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
+    await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
+    return mergeDecisionParts(results,{startDate:s.periodStart,endDate:s.periodEnd,days:curDays},{startDate:s.compareStart,endDate:s.compareEnd,days:cmpDays})
+  }
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm'].includes(s?.section)}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
     const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
-    state.loading=true; setLoading();
+    state.loading=true; setLoading(); setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
     try{
-      const q=new URLSearchParams({storeId:s.selectedStore||'ALL',start:s.periodStart,end:s.periodEnd,compareStart:s.compareStart,compareEnd:s.compareEnd});
-      if(force)q.set('force','1');
-      state.data=await api.api(`/api/analytics/decision?${q}`); state.key=key; render();
+      state.data=await loadDecisionChunked(api,s,force); state.key=key; render();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
     }catch(error){renderError(error)}
     finally{state.loading=false}
