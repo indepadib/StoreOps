@@ -1,7 +1,7 @@
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''}};
+  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
@@ -14,6 +14,24 @@
   const sectionState=()=>core()?.getState?.()||null;
 
   function queryKey(s){return [s.tenant,s.selectedStore,s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
+  const decisionCachePrefix='retail-intelligence:decision:v3:';
+  const catalogCacheKey='retail-intelligence:catalog:v2';
+  function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
+  function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
+  function cachedDecision(key){
+    const hit=readJsonStorage(decisionCachePrefix+key);
+    if(!hit?.data||!hit.at)return null;
+    return Date.now()-Number(hit.at)<15*60*1000?hit.data:null
+  }
+  function saveDecisionCache(key,data){writeJsonStorage(decisionCachePrefix+key,{at:Date.now(),data})}
+  function hydrateCatalogCache(){
+    const hit=readJsonStorage(catalogCacheKey),items=Array.isArray(hit?.items)?hit.items:[];
+    for(const item of items)if(item?.productNumber)state.catalog.set(item.productNumber,item)
+  }
+  function persistCatalogCache(){
+    const items=[...state.catalog.values()].slice(-1800);
+    writeJsonStorage(catalogCacheKey,{at:Date.now(),items})
+  }
   function addDays(iso,days){const d=new Date(`${iso}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
   function rangeDays(start,end){return Math.max(1,Math.floor((Date.parse(`${end}T12:00:00Z`)-Date.parse(`${start}T12:00:00Z`))/86400000)+1)}
   function splitRange(start,end,n){
@@ -111,7 +129,7 @@
     }
   }
   async function loadDecisionChunked(api,s,force=false){
-    const curDays=rangeDays(s.periodStart,s.periodEnd),cmpDays=rangeDays(s.compareStart,s.compareEnd),blocks=Math.max(1,Math.min(Math.min(curDays,cmpDays),Math.ceil(Math.max(curDays,cmpDays)/7)));
+    const curDays=rangeDays(s.periodStart,s.periodEnd),cmpDays=rangeDays(s.compareStart,s.compareEnd),blocks=Math.max(1,Math.min(Math.min(curDays,cmpDays),Math.ceil(Math.max(curDays,cmpDays)/15)));
     const currentParts=splitRange(s.periodStart,s.periodEnd,blocks),compareParts=splitRange(s.compareStart,s.compareEnd,blocks),results=new Array(blocks);let next=0,done=0;
     const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
     await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
@@ -137,27 +155,40 @@
   }
   async function loadCatalog(force=false){
     const api=core(),s=sectionState();if(!api||!state.data||state.catalogLoading)return;
-    const key=queryKey(s);if(!force&&state.catalogKey===key&&state.catalog.size)return;
-    state.catalogLoading=true;state.catalog=new Map();
-    const skus=catalogSkuList(),batches=[];for(let i=0;i<skus.length;i+=50)batches.push(skus.slice(i,i+50));
+    const key=queryKey(s);if(!state.catalog.size)hydrateCatalogCache();
+    if(!force&&state.catalogKey===key&&state.catalog.size)return;
+    state.catalogLoading=true;
+    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=80)batches.push(missing.slice(i,i+80));
     let cursor=0;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
-    await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
+    await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
     state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty'].includes(s?.section)}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
-    const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
-    state.loading=true; setLoading(); setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
-    try{
-      state.data=await loadDecisionChunked(api,s,force); state.key=key;
+    const key=queryKey(s);
+    if(!force&&state.freshKey===key&&state.data){render();return}
+    const cached=!force?cachedDecision(key):null;
+    if(cached&&state.key!==key){
+      state.data=cached;state.key=key;
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
-      document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data}}));
+      render();
+      document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
+      loadCatalog(false).catch(()=>{});
+    }
+    state.loading=true;
+    if(!cached)setLoading();
+    setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/15)));
+    try{
+      const fresh=await loadDecisionChunked(api,s,force);
+      state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);
+      window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
+      document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
       loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')});
       render();
-    }catch(error){renderError(error)}
+    }catch(error){if(!cached)renderError(error)}
     finally{state.loading=false}
   }
 
