@@ -1282,27 +1282,45 @@
     applySectionView();
   }
 
+  function downloadCsv(filename,rows){
+    const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+  }
+
+  function visibleTableRows(){
+    const tables=$$('main [data-widget]:not([hidden]) table').filter(t=>t.offsetParent!==null);
+    const rows=[];
+    for(const table of tables){
+      const title=table.closest('[data-widget]')?.querySelector('h2,h3')?.textContent?.trim()||state.section;
+      if(rows.length)rows.push([]);
+      rows.push([title]);
+      const headers=$$('thead th',table).map(th=>th.textContent.trim());if(headers.length)rows.push(headers);
+      for(const tr of $$('tbody tr',table)){
+        const cells=$$('td',tr).map(td=>td.textContent.replace(/\s+/g,' ').trim());
+        if(cells.length&&cells.some(Boolean))rows.push(cells)
+      }
+    }
+    return rows
+  }
+
+  function decisionFallbackRows(){
+    const d=window.RETAIL_DECISION_INTELLIGENCE?.getData?.();if(!d)return[];
+    const cur=d.summary?.current||{},prev=d.summary?.previous||{};
+    return[
+      ['Indicateur','Période','Comparaison'],
+      ['CA',cur.sales,prev.sales],['Tickets',cur.tickets,prev.tickets],['Panier moyen',cur.averageBasket,prev.averageBasket],
+      ['Marge',cur.marginValue,prev.marginValue],['Taux marge',cur.marginRate,prev.marginRate],['Poids CA fidélisé',cur.identifiedSalesShare,prev.identifiedSalesShare]
+    ]
+  }
+
   function exportCsv() {
-    const rows = networkRows();
-    if (!rows.length) return toast('Aucune donnée à exporter');
-    const headers = ['Magasin','Code','CA TTC','Delta CA %','Tickets','Panier moyen','CA fidélisé %','Recrutements','Taux recrutement %','Ruptures','Stock négatif','Statut'];
-    const body = rows.map(r => [
-      r.name, r.code, r.sales, r.change, r.tickets, r.basket, r.identifiedShare,
-      r.recruitments, r.recruitmentRate, r.oos, r.negative, r.status
-    ]);
-    const csv = [headers, ...body]
-      .map(row => row.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';'))
-      .join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `retail-intelligence-${state.tenant}-${state.businessDate}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    toast('Export réseau généré');
+    let rows=visibleTableRows();
+    if(!rows.length)rows=decisionFallbackRows();
+    if(!rows.length)return toast('Aucune donnée visible à exporter');
+    const scope=state.selectedStore==='ALL'?'reseau':state.selectedStore;
+    downloadCsv(`retail-intelligence-${state.section}-${scope}-${state.periodStart}-${state.periodEnd}.csv`,rows);
+    toast('Export de la vue généré');
   }
 
   function escapeHtml(value) {
