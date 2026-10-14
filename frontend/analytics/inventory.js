@@ -31,13 +31,12 @@
     const c = core();
     const appState = c?.getState?.();
     if (!appState) return { stores: [], businessDate: null, selectedStore: 'ALL' };
-    const stores = appState.selectedStore === 'ALL'
-      ? appState.stores
-      : appState.stores.filter(s => s.id === appState.selectedStore);
+    const stores = c.getSelectedStores?.() || appState.stores || [];
     return {
       stores,
       businessDate: appState.businessDate,
-      selectedStore: appState.selectedStore
+      selectedStore: appState.selectedStore,
+      selectedStoreIds: appState.selectedStoreIds || []
     };
   }
 
@@ -316,10 +315,18 @@
       renderTable();
     });
 
-    document.addEventListener('retail-intelligence:data', () => load(false));
+    document.addEventListener('retail-intelligence:data', () => {
+      if(core()?.getState?.()?.section==='inventory')load(false)
+    });
+    document.addEventListener('retail-intelligence:period', () => {
+      if(core()?.getState?.()?.section==='inventory')load(false)
+    });
+    document.addEventListener('retail-intelligence:section', () => {
+      if(core()?.getState?.()?.section==='inventory')load(false)
+    });
 
     const existing = core()?.getState?.();
-    if (existing?.pulses?.length) load(false);
+    if (existing?.section==='inventory') load(false);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bind, { once: true });
