@@ -331,7 +331,7 @@
     const change = previous ? (product.sales - previous) / previous * 100 : null;
     const ub = product.hierarchy?.ub || hierarchy.ub?.id || null;
     const appState = api.getState?.() || {};
-    const storeId = appState.selectedStore || 'ALL';
+    const selected=core()?.getSelectedStores?.()||appState.stores||[];const storeId=selected.length===1?selected[0].id:'ALL';
 
     $('#productDrawerTitle').textContent = product.label;
     $('#productDrawerMeta').textContent = `${product.key} · rang #${product.rank} · ${stores.length} magasin(s)`;
