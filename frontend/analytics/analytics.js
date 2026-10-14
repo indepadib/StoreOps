@@ -281,6 +281,7 @@
   }
 
   function hydrateStoreFilter() {
+    if(!state._storeScopeInitialized){const defaults=(TENANTS[state.tenant]?.defaultStoreIds||[]).filter(id=>state.stores.some(s=>s.id===id));if(defaults.length)state.selectedStoreIds=defaults;state._storeScopeInitialized=true}
     syncStoreSelectionState();
     const host=$('#storeMultiOptions'),all=$('#storeAllCheck'),label=$('#storeSelectionLabel');
     if(host){
