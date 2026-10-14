@@ -98,11 +98,13 @@ export async function handleAnalyticsApi({ req, url, user }){
     const compareStartDate=iso(url.searchParams.get('compareStart'));
     const compareEndDate=iso(url.searchParams.get('compareEnd'));
     const requestedStore=clean(url.searchParams.get('storeId'))||'ALL';
+    const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
     const force=url.searchParams.get('force')==='1';
     if(!startDate||!endDate||!compareStartDate||!compareEndDate)return{status:400,data:{error:'start, end, compareStart et compareEnd sont requis au format YYYY-MM-DD.'}};
     const allStores=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
-    const stores=requestedStore==='ALL'?allStores:allStores.filter(store=>store.id===requestedStore);
-    if(requestedStore!=='ALL'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
+    const stores=requestedIds.length?allStores.filter(store=>requestedIds.includes(store.id)):requestedStore==='ALL'||requestedStore==='MULTI'?allStores:allStores.filter(store=>store.id===requestedStore);
+    if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins demandés sont interdits ou inconnus.'}};
+    if(!requestedIds.length&&requestedStore!=='ALL'&&requestedStore!=='MULTI'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
     const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
     if(!force){
