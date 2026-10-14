@@ -402,12 +402,13 @@
   }
 
   function bind(){
-    $('#performanceLevel')?.addEventListener('change',e=>{state.level=e.target.value;renderPerformance()});
-    $('#hierarchyTabs [data-level]').forEach(btn=>btn.addEventListener('click',()=>{state.level=btn.dataset.level||'product';renderPerformance()}));
+    const setLevel=level=>{state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
+    $('#performanceLevel')?.addEventListener('change',e=>setLevel(e.target.value));
+    $('#hierarchyTabs [data-level]').forEach(btn=>btn.addEventListener('click',()=>setLevel(btn.dataset.level)));
     const filterMap={filterDepartment:'department',filterRayon:'rayon',filterFamily:'family',filterSubfamily:'subfamily',filterSubsubfamily:'subsubfamily',filterUb:'ub',filterProduct:'product'};
     for(const [id,key] of Object.entries(filterMap))$('#'+id)?.addEventListener('change',e=>{state.filters[key]=e.target.value||'';renderPerformance()});
     $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
-    $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;renderPerformance()});
+    $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force)});
     document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
