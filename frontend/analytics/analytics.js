@@ -1046,7 +1046,7 @@
       refreshForPeriod(false);
     });
 
-    $('#refreshBtn').addEventListener('click', () => refreshForPeriod(true));
+    $('#refreshBtn').addEventListener('click', () => refreshForPeriod(false));
 
     $('#storeSearch').addEventListener('input', e => {
       state.storeSearch = e.target.value || '';
