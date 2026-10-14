@@ -966,7 +966,6 @@
     state.businessDate = state.periodEnd;
     syncPeriodControls();
     updatePeriodSummary();
-    document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
     await loadData(force);
   }
 
