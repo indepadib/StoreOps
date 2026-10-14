@@ -223,6 +223,7 @@
                 <option value="family">Famille</option>
                 <option value="subfamily">Sous-famille</option>
                 <option value="subsubfamily">Sous-sous-famille</option>
+                <option value="ub">UB</option>
                 <option value="product" selected>Article</option>
               </select>
               <select id="performanceMetric">
@@ -235,10 +236,30 @@
               <input id="performanceSearch" class="search-input" type="search" placeholder="Rechercher article / catégorie">
             </div>
           </div>
+          <div class="hierarchy-tabs" id="hierarchyTabs">
+            <button data-level="department">Département</button>
+            <button data-level="rayon">Rayon</button>
+            <button data-level="family">Famille</button>
+            <button data-level="subfamily">Sous-famille</button>
+            <button data-level="subsubfamily">Sous-sous-famille</button>
+            <button data-level="ub">UB</button>
+            <button class="active" data-level="product">Article</button>
+          </div>
+          <div class="hierarchy-filters">
+            <select id="filterDepartment"><option value="">Tous les départements</option></select>
+            <select id="filterRayon"><option value="">Tous les rayons</option></select>
+            <select id="filterFamily"><option value="">Toutes les familles</option></select>
+            <select id="filterSubfamily"><option value="">Toutes les sous-familles</option></select>
+            <select id="filterSubsubfamily"><option value="">Toutes les sous-sous-familles</option></select>
+            <select id="filterUb"><option value="">Toutes les UB</option></select>
+            <select id="filterProduct"><option value="">Tous les articles</option></select>
+            <button class="ghost-light-btn" id="clearProductFilters">Réinitialiser</button>
+          </div>
+          <div class="performance-data-note" id="catalogCoverage">Libellés, hiérarchie UB et coût courant en cours d'enrichissement…</div>
           <div class="performance-quadrants" id="performanceQuadrants"></div>
           <div class="decision-table-wrap">
             <table class="decision-table">
-              <thead><tr><th>Rank</th><th>Élément</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>Qté</th><th>Marge DH</th><th>Taux marge</th><th>Rank avant</th><th>Δ Rank</th></tr></thead>
+              <thead><tr><th>Rank</th><th>Libellé</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>Qté</th><th>Marge</th><th>Taux marge</th><th>Rank avant</th><th>Δ Rank</th></tr></thead>
               <tbody id="performanceBody"></tbody>
             </table>
           </div>
