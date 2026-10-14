@@ -14,8 +14,9 @@
   const sectionState=()=>core()?.getState?.()||null;
 
   function queryKey(s){return [s.tenant,s.selectedStore,s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
+  function sectionNeedsDecision(s=sectionState()){return ['sales','network','categories','crm'].includes(s?.section)}
   async function load(force=false){
-    const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading)return;
+    const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
     const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
     state.loading=true; setLoading();
     try{
@@ -192,9 +193,10 @@
     $('#performanceLevel')?.addEventListener('change',e=>{state.level=e.target.value;renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
-    document.addEventListener('retail-intelligence:period',e=>load(!!e.detail?.force));
-    document.addEventListener('retail-intelligence:data',()=>load(false));
-    const s=sectionState();if(s?.stores?.length)load(false);
+    document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force)});
+    document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
+    document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false)});
+    const s=sectionState();if(s?.stores?.length&&sectionNeedsDecision(s))load(false);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
 })();
