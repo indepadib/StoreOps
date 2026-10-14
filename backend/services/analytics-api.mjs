@@ -6,6 +6,7 @@ import { readWalletBurn, readWalletBurnRange } from './dynamics-tender.mjs';
 import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 import { readAnalyticsCatalog } from './analytics-catalog.mjs';
+import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -82,7 +83,12 @@ export async function handleAnalyticsApi({ req, url, user }){
     const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
     if(!products.length)return{status:400,data:{error:'products requis.'}};
     if(products.length>80)return{status:400,data:{error:'80 articles maximum par requête.'}};
-    return{status:200,data:await readAnalyticsCatalog(products)};
+    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog',sorted);
+    const cached=await readAnalyticsCache(cacheKey);
+    if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
+    const data=await readAnalyticsCatalog(sorted);
+    await writeAnalyticsCache(cacheKey,'catalog',data,7*24*3600);
+    return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/decision'){
@@ -98,7 +104,15 @@ export async function handleAnalyticsApi({ req, url, user }){
     const stores=requestedStore==='ALL'?allStores:allStores.filter(store=>store.id===requestedStore);
     if(requestedStore!=='ALL'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
-    return{status:200,data:await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force})};
+    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
+    if(!force){
+      const cached=await readAnalyticsCache(cacheKey);
+      if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
+    }
+    const data=await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force});
+    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?600:24*3600;
+    await writeAnalyticsCache(cacheKey,'decision',data,ttl);
+    return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
@@ -114,7 +128,12 @@ export async function handleAnalyticsApi({ req, url, user }){
     const storeId=clean(url.searchParams.get('storeId')),startDate=clean(url.searchParams.get('start')),endDate=clean(url.searchParams.get('end')),force=url.searchParams.get('force')==='1';
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
-    return{status:200,data:await readWalletBurnRange(storeId,{startDate,endDate,force})};
+    const cacheKey=analyticsCacheKey('wallet',[storeId,startDate,endDate]);
+    if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
+    const data=await readWalletBurnRange(storeId,{startDate,endDate,force});
+    const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?600:6*3600;
+    await writeAnalyticsCache(cacheKey,'wallet',data,ttl);
+    return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/wallet'){
