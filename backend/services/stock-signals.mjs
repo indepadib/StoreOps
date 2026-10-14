@@ -9,6 +9,7 @@ import { storeOperationalSettings } from './store-settings.mjs';
 import { assortmentIndex } from './assortment-resolver.mjs';
 import { classifyAvailability } from './assortment.mjs';
 import { readStoreSalesActivityWindow } from './dynamics-sales.mjs';
+import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
