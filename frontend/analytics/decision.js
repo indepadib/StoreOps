@@ -343,7 +343,7 @@
     setOptions('#filterUb','Toutes les UB',optionRows('ub'),state.filters.ub);
     const products=(state.data?.products||[]).map(productWithCatalog).map(p=>[p.key,p.label||p.key]).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr'));
     setOptions('#filterProduct','Tous les articles',products,state.filters.product);
-    $('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
+    $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
     const total=state.data?.products?.length||0,resolved=[...state.catalog.values()].filter(x=>x.productName).length,hier=[...state.catalog.values()].filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=[...state.catalog.values()].filter(x=>x.currentCostStatus==='READY').length;
     if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${Math.min(total,650)} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
