@@ -388,7 +388,8 @@
         renderLoyalty();
         loadWallet(false);
       } else if (section === 'cashiers') {
-        loadCashiers(false);
+        if(decisionData()?.cashiers?.items?.length) loadCashiers(false);
+        else if($('#cashierBody')) $('#cashierBody').innerHTML='<tr><td colspan="9"><div class="table-loading">Analyse des caissiers depuis les ventes de la période…</div></td></tr>';
       }
     };
 
@@ -398,7 +399,7 @@
     });
     document.addEventListener('retail-intelligence:decision', () => {
       renderLoyalty();
-      if (core()?.getState?.()?.section === 'loyalty') loadWallet(false);
+      loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:period', () => {
       state.walletKey = null;
