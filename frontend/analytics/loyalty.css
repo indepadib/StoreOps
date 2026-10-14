@@ -55,3 +55,6 @@
   .loyalty-kpi strong,.cashier-stat strong{font-size:16px}
 }
 .payment-mix-panel{display:flex;flex-direction:column;gap:10px}.payment-mix-row{display:flex;flex-direction:column;gap:5px}.payment-mix-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.payment-mix-head strong{font-size:9px}.payment-mix-head span,.payment-mix-row small{font-size:7.5px;color:#7d8898}.payment-mix-track{height:7px;border-radius:999px;background:#edf1f5;overflow:hidden}.payment-mix-track span{display:block;height:100%;border-radius:inherit;background:currentColor;color:#334155}
+
+.loyalty-intelligence,.cashier-intelligence,.loyalty-layout,.loyalty-layout>*,.loyalty-table-wrap,.cashier-table-wrap{min-width:0;max-width:100%}.loyalty-table-wrap,.cashier-table-wrap{width:100%;-webkit-overflow-scrolling:touch}.loyalty-table,.cashier-table{max-width:none}
+@media(max-width:620px){.loyalty-intelligence,.cashier-intelligence{overflow:hidden}.loyalty-layout{display:block}.loyalty-side{margin-top:12px}.loyalty-table-wrap,.cashier-table-wrap{overflow-x:auto}.loyalty-table{min-width:900px}.cashier-table{min-width:820px}.loyalty-head{margin-bottom:10px}.loyalty-kpis{gap:7px}.loyalty-kpi{min-width:0}.wallet-value{font-size:24px}}
