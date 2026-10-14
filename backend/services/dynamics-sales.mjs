@@ -303,16 +303,22 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
    for(const mode of dateModes){
     try{
-     const chunkDays=Math.max(2,Math.min(14,Number(process.env.RETAIL_ANALYTICS_RANGE_CHUNK_DAYS)||7)),chunks=[];
+     const chunkDays=Math.max(7,Math.min(31,Number(process.env.RETAIL_ANALYTICS_RANGE_CHUNK_DAYS)||31)),chunks=[];
      for(let chunkStart=start;chunkStart<=end;chunkStart=nextDate(chunkStart,chunkDays)){
       const candidate=nextDate(chunkStart,chunkDays-1);chunks.push({start:chunkStart,end:candidate>end?end:candidate})
      }
      const rows=[];let pages=0,truncated=false,rowCount=0;
-     for(const chunk of chunks){
-      const filters=[storeFilter,dateRangeFilter(c.fields.date,chunk.start,chunk.end,mode)];
-      if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
-      const fetched=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
-      rows.push(...(fetched.value||[]));pages+=Number(fetched.pages||0);rowCount+=Number(fetched.rowCount||0);truncated=truncated||!!fetched.truncated
+     const concurrency=Math.max(1,Math.min(4,Number(process.env.RETAIL_ANALYTICS_RANGE_CONCURRENCY)||3));
+     for(let i=0;i<chunks.length;i+=concurrency){
+      const batch=chunks.slice(i,i+concurrency);
+      const fetchedBatch=await Promise.all(batch.map(async chunk=>{
+       const filters=[storeFilter,dateRangeFilter(c.fields.date,chunk.start,chunk.end,mode)];
+       if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+       return odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
+      }));
+      for(const fetched of fetchedBatch){
+       rows.push(...(fetched.value||[]));pages+=Number(fetched.pages||0);rowCount+=Number(fetched.rowCount||0);truncated=truncated||!!fetched.truncated
+      }
      }
      const candidate={rows,pages,rowCount,truncated,identifier,mode,chunks:chunks.length};
      if(rows.length){selected=candidate;break outer}
