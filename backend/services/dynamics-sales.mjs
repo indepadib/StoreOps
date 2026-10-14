@@ -331,26 +331,59 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  if(!selected)throw lastError||Object.assign(new Error('Lecture période ventes D365 impossible.'),{code:'D365_SALES_RANGE_FAILED'});
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
- const dailyMap=new Map(),customerMap=new Map();
+ const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map();
+ const weekdayNames=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+ const favourite=map=>{let key=null,value=-1;for(const [k,v] of map||[]){if(v>value){key=k;value=v}}return key};
  for(const row of selected.rows){
   const day=dateOnly(c.fields.date?row[c.fields.date]:null);if(day){if(!dailyMap.has(day))dailyMap.set(day,[]);dailyMap.get(day).push(row)}
   if(c.fields.customer){
    const customer=clean(row[c.fields.customer]),upper=customer.toUpperCase();
    if(customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(upper)){
     const status=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(status))continue;
-    const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:'');
-    const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),firstDate:null,lastDate:null};
-    cur.sales+=sales;if(c.fields.quantity)cur.units+=Math.abs(num(row[c.fields.quantity]));if(tx)cur.transactions.add(tx);
+    const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
+    const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),dates:new Set(),weekdays:new Map(),hours:new Map(),firstDate:null,lastDate:null};
+    cur.sales+=sales;cur.units+=qty;if(tx)cur.transactions.add(tx);
     if(product)cur.products.set(product,(cur.products.get(product)||0)+sales);
-    if(day){if(!cur.firstDate||day<cur.firstDate)cur.firstDate=day;if(!cur.lastDate||day>cur.lastDate)cur.lastDate=day}
-    customerMap.set(customer,cur)
+    if(day){
+      cur.dates.add(day);if(!cur.firstDate||day<cur.firstDate)cur.firstDate=day;if(!cur.lastDate||day>cur.lastDate)cur.lastDate=day;
+      const weekday=weekdayNames[new Date(day+'T12:00:00Z').getUTCDay()];cur.weekdays.set(weekday,(cur.weekdays.get(weekday)||0)+1)
+    }
+    if(hour!==null)cur.hours.set(String(hour),(cur.hours.get(String(hour))||0)+1);
+    customerMap.set(customer,cur);
+    if(tx){
+      const basketKey=`${customer}|${tx}`,basket=identifiedBasketMap.get(basketKey)||{customerAccount:customer,transactionId:tx,date:day,sales:0,units:0,products:new Map()};
+      basket.sales+=sales;basket.units+=qty;if(product)basket.products.set(product,(basket.products.get(product)||0)+sales);identifiedBasketMap.set(basketKey,basket)
+    }
    }
   }
  }
  const daily=[...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{
   const x=aggregateSalesRows(rows,c);return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'?x.marginValue:null,marginRate:margin.status==='VALIDATED'?x.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
  });
- const customers=[...customerMap.values()].map(x=>({customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,firstDate:x.firstDate,lastDate:x.lastDate,topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))})).sort((a,b)=>b.sales-a.sales);
+ const customers=[...customerMap.values()].map(x=>({
+  customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,
+  averageUnitsPerBasket:x.transactions.size?round2(x.units/x.transactions.size):null,activeDays:x.dates.size,distinctProducts:x.products.size,firstDate:x.firstDate,lastDate:x.lastDate,
+  favouriteWeekday:favourite(x.weekdays),favouriteHour:favourite(x.hours),
+  topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))
+ })).sort((a,b)=>b.sales-a.sales);
+ const identifiedBaskets=[...identifiedBasketMap.values()],pairMap=new Map(),basketProductSales=new Map();
+ let totalBasketUnits=0,totalDistinctProducts=0,singleItemBaskets=0;
+ for(const basket of identifiedBaskets){
+  totalBasketUnits+=basket.units;const products=[...basket.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20);totalDistinctProducts+=products.length;if(products.length===1)singleItemBaskets++;
+  for(const [sku,sales] of products)basketProductSales.set(sku,(basketProductSales.get(sku)||0)+sales);
+  for(let i=0;i<products.length;i++)for(let j=i+1;j<products.length;j++){
+    const a=products[i][0],b=products[j][0],key=a<b?`${a}|${b}`:`${b}|${a}`,cur=pairMap.get(key)||{productA:a<b?a:b,productB:a<b?b:a,tickets:0};
+    cur.tickets++;pairMap.set(key,cur)
+  }
+ }
+ const basketAnalysis={
+  identifiedBaskets:identifiedBaskets.length,
+  averageUnits:identifiedBaskets.length?round2(totalBasketUnits/identifiedBaskets.length):null,
+  averageDistinctProducts:identifiedBaskets.length?round2(totalDistinctProducts/identifiedBaskets.length):null,
+  singleItemBasketRate:identifiedBaskets.length?round2(singleItemBaskets/identifiedBaskets.length*100):null,
+  topProducts:[...basketProductSales.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).map(([productNumber,sales])=>({productNumber,sales:round2(sales)})),
+  topProductPairs:[...pairMap.values()].sort((a,b)=>b.tickets-a.tickets).slice(0,30).map(x=>({...x,sharePct:identifiedBaskets.length?round2(x.tickets/identifiedBaskets.length*100):null}))
+ };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
   summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginValue:margin.status==='VALIDATED'?totalRaw.marginValue:null,marginRate:margin.status==='VALIDATED'?totalRaw.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
@@ -360,6 +393,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   departments:totalRaw.departments.map(x=>publicMarginRow(x,margin)),
   categories:totalRaw.categories.map(x=>publicMarginRow(x,margin)),
   customers,
+  basketAnalysis,
   diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
