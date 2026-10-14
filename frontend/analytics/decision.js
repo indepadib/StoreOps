@@ -266,37 +266,74 @@
     body.innerHTML=ranked.map((r,i)=>`<tr><td><span class="rank-chip">${i+1}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.storeName)}</strong><span>${api.escapeHtml(r.storeCode||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,r.changePct)}</td><td>${avg?api.number(r.sales/avg*100,0)+' idx':'N/A'}</td><td>${api.number(r.tickets)}</td><td>${api.money(r.averageBasket)}</td><td>${api.money(r.marginValue,true)}</td><td>${api.percent(r.marginRate)}</td><td>${api.percent(r.identifiedSalesShare)}</td></tr>`).join('');
   }
 
-  function performanceRows(){
-    const d=state.data;if(!d)return[];
-    const base=state.level==='product'?(d.products||[]):((d.hierarchy||{})[state.level]||[]);
-    const metric=state.metric;
-    const previousField=metric==='sales'
-      ? (state.level==='product'?'previousSales':'previous')
-      : metric==='marginValue'?'previousMarginValue':null;
-    const prevSorted=previousField?[...base].filter(x=>safe(x[previousField])!=null).sort((a,b)=>Number(b[previousField]||0)-Number(a[previousField]||0)):[];
-    const prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
-    const ranked=[...base].sort((a,b)=>{
-      const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av
-    }).map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||null,rankDelta:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}));
-    const q=state.search.trim().toLowerCase();
-    return q?ranked.filter(x=>String(x.label||x.key||'').toLowerCase().includes(q)||String(x.key||'').toLowerCase().includes(q)):ranked;
+  function productWithCatalog(row){
+    const ref=catalogItem(row.key),m=estimateMargin(row);
+    return{...row,label:productLabel(row.key,row.label),productCode:row.key,hierarchy:ref?.hierarchy||{},ub:ref?.ub||null,marginValue:m.value,marginRate:m.rate,marginEstimated:m.estimated}
   }
-
+  function matchesHierarchyFilters(row){
+    const f=state.filters||{},h=row.hierarchy||{};
+    if(f.department&&h.department?.id!==f.department)return false;
+    if(f.rayon&&h.rayon?.id!==f.rayon)return false;
+    if(f.family&&h.family?.id!==f.family)return false;
+    if(f.subfamily&&h.subfamily?.id!==f.subfamily)return false;
+    if(f.subsubfamily&&h.subsubfamily?.id!==f.subsubfamily)return false;
+    if(f.ub&&h.ub?.id!==f.ub)return false;
+    if(f.product&&row.key!==f.product)return false;
+    return true
+  }
+  function filteredProducts(){
+    const q=state.search.trim().toLowerCase();
+    return(state.data?.products||[]).map(productWithCatalog).filter(row=>{
+      if(!matchesHierarchyFilters(row))return false;
+      return !q||[row.label,row.key,row.hierarchy?.department?.label,row.hierarchy?.rayon?.label,row.hierarchy?.family?.label,row.hierarchy?.subfamily?.label,row.hierarchy?.subsubfamily?.label,row.hierarchy?.ub?.label].some(v=>String(v||'').toLowerCase().includes(q))
+    })
+  }
+  function aggregateHierarchyRows(products,level){
+    const map=new Map();
+    for(const p of products){
+      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,units:0,marginValue:0,marginKnown:true,marginEstimated:false};
+      cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);cur.units+=Number(p.units||0);
+      if(p.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(p.marginValue||0);
+      cur.marginEstimated=cur.marginEstimated||!!p.marginEstimated;map.set(key,cur)
+    }
+    const total=[...map.values()].reduce((s,x)=>s+x.sales,0),prev=[...map.values()].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prev.map((x,i)=>[x.key,i+1]));
+    return[...map.values()].map(x=>({...x,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.sales?x.marginValue/x.sales*100:null,previousRank:prevRank.get(x.key)||null})).sort((a,b)=>b.sales-a.sales)
+  }
+  function performanceRows(){
+    const products=filteredProducts(),base=state.level==='product'?products:aggregateHierarchyRows(products,state.level),metric=state.metric;
+    const ranked=[...base].sort((a,b)=>{const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av});
+    const prevField='previousSales',prevSorted=[...base].filter(x=>safe(x[prevField])!=null).sort((a,b)=>Number(b[prevField]||0)-Number(a[prevField]||0)),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
+    return ranked.map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||x.previousRank||null,rankDelta:(prevRank.get(x.key)||x.previousRank)?(prevRank.get(x.key)||x.previousRank)-(i+1):null}))
+  }
+  function optionRows(level){
+    const seen=new Map();
+    for(const p of(state.data?.products||[]).map(productWithCatalog)){const node=p.hierarchy?.[level];if(node?.id&&!seen.has(node.id))seen.set(node.id,node.label||node.id)}
+    return[...seen.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr'))
+  }
+  function setOptions(id,placeholder,rows,current){
+    const el=$(id);if(!el)return;const api=core();el.innerHTML=`<option value="">${placeholder}</option>`+rows.map(([value,label])=>`<option value="${api.escapeHtml(value)}">${api.escapeHtml(label)} · ${api.escapeHtml(value)}</option>`).join('');el.value=current||''
+  }
+  function renderHierarchyFilters(){
+    setOptions('#filterDepartment','Tous les départements',optionRows('department'),state.filters.department);
+    setOptions('#filterRayon','Tous les rayons',optionRows('rayon'),state.filters.rayon);
+    setOptions('#filterFamily','Toutes les familles',optionRows('family'),state.filters.family);
+    setOptions('#filterSubfamily','Toutes les sous-familles',optionRows('subfamily'),state.filters.subfamily);
+    setOptions('#filterSubsubfamily','Toutes les sous-sous-familles',optionRows('subsubfamily'),state.filters.subsubfamily);
+    setOptions('#filterUb','Toutes les UB',optionRows('ub'),state.filters.ub);
+    const products=(state.data?.products||[]).map(productWithCatalog).map(p=>[p.key,p.label||p.key]).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr'));
+    setOptions('#filterProduct','Tous les articles',products,state.filters.product);
+    $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
+    if($('#performanceLevel'))$('#performanceLevel').value=state.level;
+    const total=state.data?.products?.length||0,resolved=[...state.catalog.values()].filter(x=>x.productName).length,hier=[...state.catalog.values()].filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=[...state.catalog.values()].filter(x=>x.currentCostStatus==='READY').length;
+    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${Math.min(total,650)} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
+  }
   function renderPerformance(){
-    const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;
+    const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;renderHierarchyFilters();
     const salesValues=rows.map(x=>safe(x.sales)).filter(v=>v!=null).sort((a,b)=>a-b),median=salesValues.length?salesValues[Math.floor(salesValues.length/2)]:0;
-    const stars=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)>=0).length;
-    const declining=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)<0).length;
-    const potential=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)>0).length;
-    const weak=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)<=0).length;
-    $('#performanceQuadrants').innerHTML=[
-      ['Stars',stars,'Fort poids + dynamique positive','star'],
-      ['À défendre',declining,'Fort poids + baisse','risk'],
-      ['Potentiel',potential,'Faible poids + croissance','potential'],
-      ['À challenger',weak,'Faible poids + faible dynamique','']
-    ].map(([l,v,s,cls])=>`<div class="quadrant-card ${cls}"><small>${l}</small><strong>${api.number(v)}</strong><span>${s}</span></div>`).join('');
-    if(!rows.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucune donnée sur ce niveau.</div></td></tr>';return}
-    body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null;return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${api.number(r.units,1)}</td><td>${api.money(r.marginValue,true)}</td><td>${api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('');
+    const stars=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)>=0).length,declining=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)<0).length,potential=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)>0).length,weak=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)<=0).length;
+    $('#performanceQuadrants').innerHTML=[['Stars',stars,'Fort poids + dynamique positive','star'],['À défendre',declining,'Fort poids + baisse','risk'],['Potentiel',potential,'Faible poids + croissance','potential'],['À challenger',weak,'Faible poids + faible dynamique','']].map(([l,v,s,cls])=>`<div class="quadrant-card ${cls}"><small>${l}</small><strong>${api.number(v)}</strong><span>${s}</span></div>`).join('');
+    if(!rows.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucune donnée sur ce niveau / filtre.</div></td></tr>';return}
+    body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${api.number(r.units,1)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
   }
 
   function renderCrm(){
