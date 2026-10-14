@@ -276,7 +276,7 @@
       ? state.stores
       : state.stores.filter(s => s.id === state.selectedStore);
 
-    const decisionSections = new Set(['overview','sales','network','categories','crm']);
+    const decisionSections = new Set(['overview','sales','network','categories','crm','loyalty','cashiers']);
     if (decisionSections.has(state.section)) {
       state.pulses = [];
       const scope = state.selectedStore === 'ALL'
