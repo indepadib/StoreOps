@@ -174,8 +174,9 @@ export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}
 export async function readStoreSalesActivityWindow(storeId,{businessDate=new Date().toISOString().slice(0,10),days=30,force=false}={}){
  const c=salesIntegrationConfig(storeId),windowDays=Math.max(7,Math.min(90,Number(days)||30)),end=dateOnly(businessDate)||new Date().toISOString().slice(0,10),start=nextDate(end,-(windowDays-1));
  if(!c.ready||!c.fields.product)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate:end,windowDays,startDay:start,endDay:end,products:[],missing:[...new Set([...(c.missing||[]),!c.fields.product?'productField':null].filter(Boolean))]};
- const cacheSeconds=Math.max(300,Math.min(86400,Number(process.env.STOREOPS_SALES_ACTIVITY_CACHE_SECONDS)||21600)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`;
+ const cacheSeconds=Math.max(300,Math.min(86400,Number(process.env.STOREOPS_SALES_ACTIVITY_CACHE_SECONDS)||21600)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`,persistentKey=analyticsCacheKey('sales-activity-v2',[storeId,start,end,windowDays]);
  const cached=salesActivityCache.get(cacheKey);if(!force&&cached&&Date.now()<cached.expiresAt)return cached.value;
+ if(!force){const persistent=await readAnalyticsCache(persistentKey);if(persistent){salesActivityCache.set(cacheKey,{value:persistent,expiresAt:Date.now()+cacheSeconds*1000});return{...persistent,cache:{status:'PERSISTENT_HIT'}}}}
  const select=[c.fields.product,c.fields.name,c.fields.net,c.fields.quantity,c.fields.salesUnit,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
  let firstEmpty=null,lastError=null;
@@ -183,7 +184,7 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
   for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
    for(const mode of [...new Set(dateModes)]){
     try{
-     const chunkDays=Math.max(3,Math.min(10,Number(process.env.STOREOPS_SALES_ACTIVITY_CHUNK_DAYS)||5)),chunks=[];
+     const chunkDays=Math.max(5,Math.min(15,Number(process.env.STOREOPS_SALES_ACTIVITY_CHUNK_DAYS)||10)),chunks=[];
      for(let chunkStart=start;chunkStart<=end;chunkStart=nextDate(chunkStart,chunkDays)){
       const chunkEndCandidate=nextDate(chunkStart,chunkDays-1),chunkEnd=chunkEndCandidate>end?end:chunkEndCandidate;
       chunks.push({start:chunkStart,end:chunkEnd});
@@ -206,13 +207,13 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
      }
      const products=[...byProduct.values()].map(x=>({...x,salesValue:round2(x.salesValue),units:round3(x.units)})).sort((a,b)=>b.salesValue-a.salesValue||a.productNumber.localeCompare(b.productNumber));
      const result={status:truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,windowDays,startDay:start,endDay:end,products,rowCount,pages,truncated,chunkDays,chunks:chunks.length,config:{storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode}};
-     if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});return result}
+     if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v2',result,21600);return result}
      firstEmpty=firstEmpty||result;
     }catch(error){lastError=error}
    }
   }
  }
- if(firstEmpty){salesActivityCache.set(cacheKey,{value:firstEmpty,expiresAt:Date.now()+cacheSeconds*1000});return firstEmpty}
+ if(firstEmpty){salesActivityCache.set(cacheKey,{value:firstEmpty,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v2',firstEmpty,21600);return firstEmpty}
  throw lastError||Object.assign(new Error('Lecture activité ventes D365 impossible.'),{code:'D365_SALES_ACTIVITY_READ_FAILED'});
 }
 
