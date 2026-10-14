@@ -9,7 +9,8 @@ const clientId=process.env.STOREOPS_ENTRA_CLIENT_ID||process.env.STOREOPS_ENTRA_
 const tenantId=process.env.STOREOPS_ENTRA_TENANT_ID||'';
 const apiScope=process.env.STOREOPS_ENTRA_API_SCOPE||(clientId?'api://'+clientId+'/StoreOps.Access':'');
 const cfg={apiBase:process.env.STOREOPS_API_BASE||'',mode:process.env.STOREOPS_RUNTIME_MODE||'showcase',entra:{tenantId,spaClientId:clientId,apiScope}};
-const build=(process.env.COMMIT_REF||process.env.DEPLOY_ID||process.env.STOREOPS_RELEASE_BUILD||'dev').slice(0,12);\nprocess.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\\nwindow.RETAIL_INTELLIGENCE_BUILD = '+JSON.stringify(build)+';\\n');
+const build=(process.env.COMMIT_REF||process.env.DEPLOY_ID||process.env.STOREOPS_RELEASE_BUILD||'dev').slice(0,12);
+process.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\nwindow.RETAIL_INTELLIGENCE_BUILD = '+JSON.stringify(build)+';\n');
 NODE
 cp analytics-runtime-config.js runtime-config.js
 cat ./js/boot-classic.js >> runtime-config.js
