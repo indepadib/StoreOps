@@ -269,7 +269,7 @@
 
   function productWithCatalog(row){
     const ref=catalogItem(row.key),m=estimateMargin(row);
-    return{...row,label:productLabel(row.key,row.label),productCode:row.key,hierarchy:ref?.hierarchy||{},ub:ref?.ub||null,marginValue:m.value,marginRate:m.rate,marginEstimated:m.estimated}
+    return{...row,label:productLabel(row.key,row.label),productCode:row.key,hierarchy:ref?.hierarchy||{},ub:ref?.ub||null,quantityUnit:ref?.salesUnit||ref?.inventoryUnit||null,marginValue:m.value,marginRate:m.rate,marginEstimated:m.estimated}
   }
   function matchesHierarchyFilters(row){
     const f=state.filters||{},h=row.hierarchy||{};
@@ -289,19 +289,37 @@
       return !q||[row.label,row.key,row.hierarchy?.department?.label,row.hierarchy?.rayon?.label,row.hierarchy?.family?.label,row.hierarchy?.subfamily?.label,row.hierarchy?.subsubfamily?.label,row.hierarchy?.ub?.label].some(v=>String(v||'').toLowerCase().includes(q))
     })
   }
+  function normalizeQtyUnit(value){
+    const u=String(value||'').trim().toUpperCase();
+    if(!u)return'INCONNUE';
+    if(['KG','KGS','KILOGRAM','KILOGRAMME','KILOGRAMMES'].includes(u))return'KG';
+    if(['G','GR','GRAM','GRAMME','GRAMMES'].includes(u))return'G';
+    if(['EA','EACH','PCS','PC','PIECE','PIÈCE','UNIT','UN','U'].includes(u))return'PC';
+    if(['L','LT','LITRE','LITER'].includes(u))return'L';
+    return u
+  }
+  function quantityMapAdd(map,unit,value){const u=normalizeQtyUnit(unit);map.set(u,(map.get(u)||0)+Number(value||0))}
+  function quantityBreakdown(row,api){
+    const entries=row.quantityByUnit instanceof Map?[...row.quantityByUnit.entries()]:Object.entries(row.quantityByUnit||{});
+    if(!entries.length&&row.units!=null)return row.quantityUnit?`${api.number(row.units,2)} ${normalizeQtyUnit(row.quantityUnit)}`:'N/A';
+    return entries.sort((a,b)=>a[0].localeCompare(b[0])).map(([unit,value])=>`${api.number(value,unit==='PC'?0:2)} ${unit}`).join(' · ')||'N/A'
+  }
   function aggregateHierarchyRows(products,level){
     const map=new Map();
     for(const p of products){
-      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,units:0,marginValue:0,marginKnown:true,marginEstimated:false};
-      cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);cur.units+=Number(p.units||0);
+      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),marginValue:0,marginKnown:true,marginEstimated:false};
+      cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);quantityMapAdd(cur.quantityByUnit,p.quantityUnit,Number(p.units||0));
       if(p.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(p.marginValue||0);
       cur.marginEstimated=cur.marginEstimated||!!p.marginEstimated;map.set(key,cur)
     }
     const total=[...map.values()].reduce((s,x)=>s+x.sales,0),prev=[...map.values()].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prev.map((x,i)=>[x.key,i+1]));
-    return[...map.values()].map(x=>({...x,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.sales?x.marginValue/x.sales*100:null,previousRank:prevRank.get(x.key)||null})).sort((a,b)=>b.sales-a.sales)
+    return[...map.values()].map(x=>{
+      const unitEntries=[...x.quantityByUnit.entries()].filter(([,v])=>Number(v)!==0),single=unitEntries.length===1?unitEntries[0]:null;
+      return{...x,units:single?single[1]:null,quantityUnit:single?single[0]:null,mixedQuantityUnits:unitEntries.length>1,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.sales?x.marginValue/x.sales*100:null,previousRank:prevRank.get(x.key)||null}
+    }).sort((a,b)=>b.sales-a.sales)
   }
   function performanceRows(){
-    const products=filteredProducts(),base=state.level==='product'?products:aggregateHierarchyRows(products,state.level),metric=state.metric;
+    const products=filteredProducts(),base=state.level==='product'?products:aggregateHierarchyRows(products,state.level),metric=(state.metric==='units'&&state.level!=='product')?'sales':state.metric;
     const ranked=[...base].sort((a,b)=>{const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av});
     const prevField='previousSales',prevSorted=[...base].filter(x=>safe(x[prevField])!=null).sort((a,b)=>Number(b[prevField]||0)-Number(a[prevField]||0)),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
     return ranked.map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||x.previousRank||null,rankDelta:(prevRank.get(x.key)||x.previousRank)?(prevRank.get(x.key)||x.previousRank)-(i+1):null}))
@@ -334,7 +352,7 @@
     const stars=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)>=0).length,declining=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)<0).length,potential=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)>0).length,weak=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)<=0).length;
     $('#performanceQuadrants').innerHTML=[['Stars',stars,'Fort poids + dynamique positive','star'],['À défendre',declining,'Fort poids + baisse','risk'],['Potentiel',potential,'Faible poids + croissance','potential'],['À challenger',weak,'Faible poids + faible dynamique','']].map(([l,v,s,cls])=>`<div class="quadrant-card ${cls}"><small>${l}</small><strong>${api.number(v)}</strong><span>${s}</span></div>`).join('');
     if(!rows.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucune donnée sur ce niveau / filtre.</div></td></tr>';return}
-    body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${api.number(r.units,1)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
+    body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${quantityBreakdown(r,api)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
   }
 
   function renderCrm(){
@@ -345,7 +363,7 @@
       ['CA identifié',api.money(crm.identifiedSales,true),'clients connus'],
       ['Repeat rate',api.percent(crm.repeatRate),'≥ 2 visites sur la période'],
       ['Panier client',api.money(customers.length?customers.reduce((s,x)=>s+Number(x.averageBasket||0),0)/customers.length:null),'moyenne clients identifiés'],
-      ['U. / panier',api.number(ba.averageUnits,1),'quantité moyenne par panier identifié'],
+      ['Réf. / panier',api.number(ba.averageDistinctProducts,1),'références distinctes par panier identifié'],
       ['Top 10 clients',api.percent(top10),'part du CA identifié']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
@@ -359,8 +377,8 @@
 
     $('#crmBasketDna').innerHTML=`<div class="basket-dna-grid">
       <div><small>Paniers identifiés</small><strong>${api.number(ba.identifiedBaskets)}</strong></div>
-      <div><small>Unités / panier</small><strong>${api.number(ba.averageUnits,1)}</strong></div>
       <div><small>Réf. distinctes / panier</small><strong>${api.number(ba.averageDistinctProducts,1)}</strong></div>
+      <div><small>Quantités</small><strong>Séparées par unité</strong></div>
       <div><small>Paniers mono-produit</small><strong>${api.percent(ba.singleItemBasketRate)}</strong></div>
     </div>
     <div class="basket-top-products">${(ba.topProducts||[]).slice(0,6).map((p,i)=>`<div><span>#${i+1} ${api.escapeHtml(productLabel(p.productNumber,p.productNumber))}</span><strong>${api.money(p.sales,true)}</strong></div>`).join('')||'<div class="table-loading">Données panier en cours de consolidation.</div>'}</div>`;
@@ -379,7 +397,7 @@
       <td><div class="element-cell"><strong>${api.escapeHtml(x.customerAccount)}</strong><span>${api.percent(x.shareIdentifiedSalesPct)} du CA identifié</span></div></td>
       <td><span class="persona-pill ${x.persona||''}">${api.escapeHtml(personaLabels[x.persona]||x.persona||'N/A')}</span></td>
       <td><span class="segment-pill ${x.segment}">${api.escapeHtml(segmentLabels[x.segment]||x.segment)}</span></td>
-      <td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.averageUnitsPerBasket,1)}</td><td>${api.number(x.activeDays)}</td>
+      <td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.distinctProducts)}</td><td>${api.number(x.activeDays)}</td>
       <td>${api.escapeHtml(x.lastDate||'N/A')}${recency!=null?` · ${recency}j`:''}</td><td>${api.escapeHtml(habit||'N/A')}</td><td>${api.escapeHtml(top||'N/A')}</td></tr>`}).join('')
   }
 
