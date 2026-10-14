@@ -10,14 +10,14 @@ function mergeRows(groups=[],keyField='key'){
   for(const rows of groups){
     for(const row of rows||[]){
       const key=String(row?.[keyField]??row?.key??'').trim();if(!key)continue;
-      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true};
-      cur.sales+=num(row.sales);cur.units+=num(row.units);
+      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true,quantityUnits:new Set()};
+      cur.sales+=num(row.sales);cur.units+=num(row.units);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));
       if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(row.marginValue);
       if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
       map.set(key,cur);
     }
   }
-  return[...map.values()].map(x=>{const sales=round2(x.sales),marginValue=x.marginKnown?round2(x.marginValue):null;return{key:x.key,label:x.label,sales,units:round2(x.units),marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
+  return[...map.values()].map(x=>{const sales=round2(x.sales),marginValue=x.marginKnown?round2(x.marginValue):null,quantityUnit=x.quantityUnits.size===1?[...x.quantityUnits][0]:null;return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit,marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
 function compareRows(current=[],previous=[]){
   const prev=new Map(previous.map(x=>[x.key,x])),all=[...current],seen=new Set(current.map(x=>x.key));
