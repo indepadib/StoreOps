@@ -13,7 +13,8 @@
   };
   const sectionState=()=>core()?.getState?.()||null;
 
-  function queryKey(s){return [s.tenant,s.selectedStore,s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
+  function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
+  function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
   const decisionCachePrefix='retail-intelligence:decision:v3:';
   const catalogCacheKey='retail-intelligence:catalog:v2';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
@@ -107,14 +108,16 @@
     const trafficEffect=previous.averageBasket!=null?(current.tickets-previous.tickets)*previous.averageBasket:null,basketEffect=previous.averageBasket!=null&&current.averageBasket!=null?current.tickets*(current.averageBasket-previous.averageBasket):null;
     const marginStatuses=[...new Set(parts.map(p=>p.margin?.status).filter(Boolean))],marginStatus=marginStatuses.length===1?marginStatuses[0]:marginStatuses.includes('UNVALIDATED')?'UNVALIDATED':marginStatuses.includes('UNAVAILABLE')?'UNAVAILABLE':'MIXED';
     const crm=mergeCrm(parts);
-    return{status:'READY',period,comparison,coverage:{storesRequested:parts[0]?.coverage?.storesRequested||0,currentStoresReady:Math.min(...parts.map(p=>p.coverage?.currentStoresReady??0)),comparisonStoresReady:Math.min(...parts.map(p=>p.coverage?.comparisonStoresReady??0))},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{status:marginStatus,available:marginStatus==='VALIDATED',message:marginStatus==='VALIDATED'?'Coût transactionnel validé.':marginStatus==='UNVALIDATED'?'Champ coût détecté mais non validé comme coût historique transactionnel.':'Coût transactionnel indisponible.'},daily:{current:parts.flatMap(p=>p.daily?.current||[]).sort((a,b)=>a.date.localeCompare(b.date)),previous:parts.flatMap(p=>p.daily?.previous||[]).sort((a,b)=>a.date.localeCompare(b.date))},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},crm,generatedAt:new Date().toISOString()}
+    const cashierItems=parts.flatMap(p=>p.cashiers?.items||[]),pricePreferences=Object.entries(crm.customers.reduce((a,x)=>(a[x.pricePreference||'UNKNOWN']=(a[x.pricePreference||'UNKNOWN']||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:crm.customers.length?count/crm.customers.length*100:null}));
+    crm.pricePreferences=pricePreferences;
+    return{status:'READY',period,comparison,coverage:{storesRequested:parts[0]?.coverage?.storesRequested||0,currentStoresReady:Math.min(...parts.map(p=>p.coverage?.currentStoresReady??0)),comparisonStoresReady:Math.min(...parts.map(p=>p.coverage?.comparisonStoresReady??0))},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{status:marginStatus,available:marginStatus==='VALIDATED',message:marginStatus==='VALIDATED'?'Coût transactionnel validé.':marginStatus==='UNVALIDATED'?'Champ coût détecté mais non validé comme coût historique transactionnel.':'Coût transactionnel indisponible.'},daily:{current:parts.flatMap(p=>p.daily?.current||[]).sort((a,b)=>a.date.localeCompare(b.date)),previous:parts.flatMap(p=>p.daily?.previous||[]).sort((a,b)=>a.date.localeCompare(b.date))},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},cashiers:{status:cashierItems.length?'READY':'UNAVAILABLE',items:cashierItems,source:'CHUNK_MERGE'},crm,generatedAt:new Date().toISOString()}
   }
   function setProgress(done,total){
     const el=$('#executiveSalesValue');if(el)el.textContent=done>=total?'Finalisation…':`Analyse ${done}/${total}`;
     const foot=$('#executiveComparisonValue');if(foot)foot.textContent='Lecture Dynamics par blocs';
   }
   async function fetchDecisionSlice(api,s,cur,cmp,force=false){
-    const q=new URLSearchParams({storeId:s.selectedStore||'ALL',start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
+    const scope=storeScopeKey(s),q=new URLSearchParams({storeId:scope==='ALL'?'ALL':'MULTI',start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});if(scope!=='ALL')q.set('storeIds',scope);
     if(force)q.set('force','1');
     try{return await api.api(`/api/analytics/decision?${q}`,{noRetry:true})}
     catch(error){
@@ -129,22 +132,40 @@
     }
   }
   async function loadDecisionChunked(api,s,force=false){
-    const curDays=rangeDays(s.periodStart,s.periodEnd),cmpDays=rangeDays(s.compareStart,s.compareEnd),blocks=Math.max(1,Math.min(Math.min(curDays,cmpDays),Math.ceil(Math.max(curDays,cmpDays)/15)));
-    const currentParts=splitRange(s.periodStart,s.periodEnd,blocks),compareParts=splitRange(s.compareStart,s.compareEnd,blocks),results=new Array(blocks);let next=0,done=0;
-    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-    await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
-    return mergeDecisionParts(results,{startDate:s.periodStart,endDate:s.periodEnd,days:curDays},{startDate:s.compareStart,endDate:s.compareEnd,days:cmpDays})
+    const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end);
+    setProgress(0,1);
+    try{
+      const full=await fetchDecisionSlice(api,s,cur,cmp,force);
+      setProgress(1,1);return full
+    }catch(error){
+      const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON';
+      if(!retryable)throw error;
+      const blocks=Math.max(2,Math.min(4,Math.ceil(Math.max(curDays,cmpDays)/15))),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
+      const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
+      await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
+      return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
+    }
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
   function productLabel(sku,fallback=''){const ref=catalogItem(sku);return ref?.productName||fallback||sku}
   function productSubLabel(sku){const ref=catalogItem(sku);return ref?.productName?sku:''}
   function hierarchyNode(sku,level){return catalogItem(sku)?.hierarchy?.[level]||null}
+  function unitFactor(from,to){
+    const a=normalizeQtyUnit(from),b=normalizeQtyUnit(to);
+    if(a===b)return 1;
+    if(a==='KG'&&b==='G')return 1000;
+    if(a==='G'&&b==='KG')return .001;
+    if(a==='L'&&['ML','MILLILITRE','MILLILITER'].includes(b))return 1000;
+    if(['ML','MILLILITRE','MILLILITER'].includes(a)&&b==='L')return .001;
+    return null
+  }
   function estimateMargin(row){
     if(row?.marginValue!=null)return{value:Number(row.marginValue),rate:row.marginRate,estimated:false};
-    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units);
-    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(Number(row?.sales)))return{value:null,rate:null,estimated:false};
-    const value=Number(row.sales)-Math.abs(units)*unitCost;
-    return{value,rate:Number(row.sales)?value/Number(row.sales)*100:null,estimated:true}
+    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),saleUnit=row?.quantityUnit||ref?.salesUnit,costUnit=ref?.inventoryUnit||ref?.salesUnit;
+    const factor=unitFactor(saleUnit,costUnit);
+    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(Number(row?.sales))||factor==null)return{value:null,rate:null,estimated:false};
+    const costQty=Math.abs(units)*factor,value=Number(row.sales)-costQty*unitCost;
+    return{value,rate:Number(row.sales)?value/Number(row.sales)*100:null,estimated:true,costQty,costUnit,conversionFactor:factor}
   }
   function catalogSkuList(){
     const d=state.data||{},set=new Set((d.products||[]).slice(0,500).map(x=>x.key));
@@ -160,9 +181,9 @@
     state.catalogLoading=true;
     const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=80)batches.push(missing.slice(i,i+80));
     let cursor=0;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();safeRenderPart('sales-margin-enrichment',renderSales);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache()}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
-    state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
+    state.catalogKey=key;state.catalogLoading=false;safeRenderPart('sales-margin-enrichment',renderSales);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty','cashiers'].includes(s?.section)}
@@ -226,7 +247,7 @@
     set('#executiveComparisonValue',api.money(prev.sales,true));
     const gap=cur.sales!=null&&prev.sales!=null?cur.sales-prev.sales:null;
     set('#executiveSalesGap',gap==null?'N/A':`${gap>0?'+':''}${api.money(gap,true)}`);
-    set('#executiveScopeValue',app.selectedStore==='ALL'?`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasins`:app.stores?.find(x=>x.id===app.selectedStore)?.name||'Magasin');
+    set('#executiveScopeValue',core()?.getStoreScopeLabel?.()||`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasins`);
     set('#executiveTickets',api.number(cur.tickets));
     set('#executiveTrafficDelta',signed(api,s.ticketsChangePct),true);
     set('#executiveBasket',api.money(cur.averageBasket));
@@ -412,8 +433,8 @@
     setOptions('#filterProduct','Tous les articles',products,state.filters.product);
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
-    const total=state.data?.products?.length||0,resolved=[...state.catalog.values()].filter(x=>x.productName).length,hier=[...state.catalog.values()].filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=[...state.catalog.values()].filter(x=>x.currentCostStatus==='READY').length;
-    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${Math.min(total,650)} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
+    const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
+    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
   }
   function renderPerformance(){
     const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;renderHierarchyFilters();
@@ -430,7 +451,7 @@
     k.innerHTML=[
       ['Clients identifiés',api.number(crm.identifiedCustomers),'sur la période'],
       ['CA identifié',api.money(crm.identifiedSales,true),'clients connus'],
-      ['Repeat rate',api.percent(crm.repeatRate),'≥ 2 visites sur la période'],
+      ['Clients revenus',api.percent(crm.repeatRate),'part des clients identifiés avec au moins 2 tickets distincts sur la période'],
       ['Panier client',api.money(customers.length?customers.reduce((s,x)=>s+Number(x.averageBasket||0),0)/customers.length:null),'moyenne clients identifiés'],
       ['Réf. / panier',api.number(ba.averageDistinctProducts,1),'références distinctes par panier identifié'],
       ['Top 10 clients',api.percent(top10),'part du CA identifié']
@@ -493,7 +514,7 @@
     }
 
     const cohorts=crm.cohorts||[];
-    $('#crmCohorts').innerHTML=cohorts.length?cohorts.slice(-8).reverse().map(x=>`<div class="cohort-row"><div><strong>Semaine du ${api.escapeHtml(x.cohort)}</strong><span>${api.number(x.customers)} client(s)</span></div><div><strong>${api.percent(x.repeatRate)}</strong><span>repeat</span></div><div><strong>${api.money(x.averageSpend)}</strong><span>CA / client</span></div></div>`).join(''):'<div class="table-loading">Cohortes indisponibles.</div>';
+    $('#crmCohorts').innerHTML=cohorts.length?cohorts.slice(-8).reverse().map(x=>`<div class="cohort-row"><div><strong>Semaine du ${api.escapeHtml(x.cohort)}</strong><span>${api.number(x.customers)} client(s)</span></div><div><strong>${api.percent(x.repeatRate)}</strong><span>ont effectué ≥ 2 visites observées</span></div><div><strong>${api.money(x.averageSpend)}</strong><span>CA / client</span></div></div>`).join(''):'<div class="table-loading">Cohortes indisponibles.</div>';
 
     $('#crmConcentration').innerHTML=`<div class="concentration-hero">${api.percent(top10)}</div><div class="concentration-caption">du CA identifié est réalisé par les 10 premiers clients de la période.</div><div class="concentration-bars"><div class="concentration-row"><span>Top 10</span><div class="concentration-track"><span style="width:${Math.min(top10||0,100)}%"></span></div><strong>${api.percent(top10)}</strong></div><div class="concentration-row"><span>Top 20</span><div class="concentration-track"><span style="width:${Math.min(top20||0,100)}%"></span></div><strong>${api.percent(top20)}</strong></div></div>`;
 
