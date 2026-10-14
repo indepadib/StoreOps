@@ -46,13 +46,16 @@
 
     $('#loyaltyCoverage').textContent = `${a.coverage}/${totalStores} magasin(s) disponible(s)`;
 
+    const walletReady=state.walletStores.filter(x=>x.ok&&x.data?.status==='READY'),walletBurn=walletReady.length?walletReady.reduce((s,x)=>s+Number(x.data?.burn||0),0):null,walletTx=walletReady.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
     const cards = [
       ['CA fidélisé', api.money(a.identifiedSales, true), a.identifiedShare == null ? 'Part N/A' : api.percent(a.identifiedShare)],
       ['Poids CA fidélisé', api.percent(a.identifiedShare), a.identifiedSales == null ? 'Source indisponible' : 'sur CA total'],
       ['Tickets fidélisés', api.number(a.identifiedTickets), a.identifiedTicketRate == null ? 'Taux N/A' : api.percent(a.identifiedTicketRate)],
-      ['Recrutements', api.number(a.recruitments), a.recruitmentRate == null ? 'Taux N/A' : api.percent(a.recruitmentRate) + ' des tickets recrutables'],
-      ['Panier membre', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs ' + api.money(a.nonMemberBasket)],
-      ['Uplift panier', api.percent(a.uplift), 'membre vs non-membre']
+      ['Clients identifiés', api.number(a.identifiedCustomers), a.repeatRate == null ? 'repeat N/A' : api.percent(a.repeatRate)+' repeat'],
+      ['Panier membre', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs '+api.money(a.nonMemberBasket)],
+      ['Uplift panier', api.percent(a.uplift), 'membre vs non-membre'],
+      ['Burn Wallet', api.money(walletBurn,true), walletBurn==null?'source paiement en cours':api.number(walletTx)+' paiement(s) Wallet'],
+      ['Burn / CA identifié', a.identifiedSales&&walletBurn!=null?api.percent(walletBurn/a.identifiedSales*100):'N/A', 'usage cashback sur la période']
     ];
 
     $('#loyaltyKpis').innerHTML = cards.map(([label, value, sub]) => `
