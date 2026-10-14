@@ -146,7 +146,7 @@
     state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
   }
 
-  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm'].includes(s?.section)}
+  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty'].includes(s?.section)}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
     const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
