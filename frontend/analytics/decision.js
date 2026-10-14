@@ -454,6 +454,26 @@
     const pairs=(ba.topProductPairs||[]).slice(0,8);
     $('#crmAffinities').innerHTML=pairs.length?pairs.map(p=>`<div class="affinity-row"><div><strong>${api.escapeHtml(productLabel(p.productA,p.productA))}</strong><span>+</span><strong>${api.escapeHtml(productLabel(p.productB,p.productB))}</strong></div><small>${api.number(p.tickets)} panier(s) · ${api.percent(p.sharePct)}</small></div>`).join(''):'<div class="table-loading">Pas encore assez de paniers multi-produits pour calculer les affinités.</div>';
 
+    const catPanel=$('#crmCategoryPreferences'),visitPanel=$('#crmVisitPatterns');
+    if(catPanel){
+      const categories=new Map();
+      for(const customer of customers)for(const p of customer.topProducts||[]){
+        const ref=catalogItem(p.productNumber),node=ref?.hierarchy?.department||ref?.hierarchy?.rayon;if(!node?.label)continue;
+        const key=node.id||node.label,cur=categories.get(key)||{label:node.label,sales:0};cur.sales+=Number(p.sales||0);categories.set(key,cur)
+      }
+      const catRows=[...categories.values()].sort((a,b)=>b.sales-a.sales).slice(0,7),catTotal=catRows.reduce((s,x)=>s+x.sales,0);
+      catPanel.innerHTML=catRows.length?catRows.map((x,i)=>`<div class="category-pref-row"><span>#${i+1} ${api.escapeHtml(x.label)}</span><div><i style="width:${catTotal?Math.max(3,x.sales/catTotal*100):0}%"></i></div><strong>${api.money(x.sales,true)}</strong></div>`).join(''):'<div class="table-loading">Les univers apparaîtront dès que les libellés et la hiérarchie article sont chargés.</div>'
+    }
+    if(visitPanel){
+      const weekdays=new Map(),dayparts=new Map();
+      for(const customer of customers){
+        if(customer.favouriteWeekday)weekdays.set(customer.favouriteWeekday,(weekdays.get(customer.favouriteWeekday)||0)+1);
+        const h=Number(customer.favouriteHour);if(Number.isFinite(h)){const key=h<11?'Matin':h<14?'Midi':h<18?'Après-midi':'Soir';dayparts.set(key,(dayparts.get(key)||0)+1)}
+      }
+      const topDays=[...weekdays.entries()].sort((a,b)=>b[1]-a[1]).slice(0,4),topParts=[...dayparts.entries()].sort((a,b)=>b[1]-a[1]);
+      visitPanel.innerHTML=`<div class="visit-pattern-block"><small>Jours dominants</small>${topDays.map(([k,v])=>`<div><strong>${api.escapeHtml(k)}</strong><span>${api.number(v)} client(s)</span></div>`).join('')||'<span>N/A</span>'}</div><div class="visit-pattern-block"><small>Moments dominants</small>${topParts.map(([k,v])=>`<div><strong>${api.escapeHtml(k)}</strong><span>${api.number(v)} client(s)</span></div>`).join('')||'<span>N/A</span>'}</div>`
+    }
+
     const cohorts=crm.cohorts||[];
     $('#crmCohorts').innerHTML=cohorts.length?cohorts.slice(-8).reverse().map(x=>`<div class="cohort-row"><div><strong>Semaine du ${api.escapeHtml(x.cohort)}</strong><span>${api.number(x.customers)} client(s)</span></div><div><strong>${api.percent(x.repeatRate)}</strong><span>repeat</span></div><div><strong>${api.money(x.averageSpend)}</strong><span>CA / client</span></div></div>`).join(''):'<div class="table-loading">Cohortes indisponibles.</div>';
 
