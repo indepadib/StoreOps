@@ -14,7 +14,7 @@
   const sectionState=()=>core()?.getState?.()||null;
 
   function queryKey(s){return [s.tenant,s.selectedStore,s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  function sectionNeedsDecision(s=sectionState()){return ['sales','network','categories','crm'].includes(s?.section)}
+  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm'].includes(s?.section)}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
     const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
