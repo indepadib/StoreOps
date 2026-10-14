@@ -9,7 +9,7 @@ const clientId=process.env.STOREOPS_ENTRA_CLIENT_ID||process.env.STOREOPS_ENTRA_
 const tenantId=process.env.STOREOPS_ENTRA_TENANT_ID||'';
 const apiScope=process.env.STOREOPS_ENTRA_API_SCOPE||(clientId?'api://'+clientId+'/StoreOps.Access':'');
 const cfg={apiBase:process.env.STOREOPS_API_BASE||'',mode:process.env.STOREOPS_RUNTIME_MODE||'showcase',entra:{tenantId,spaClientId:clientId,apiScope}};
-process.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\n');
+const build=(process.env.COMMIT_REF||process.env.DEPLOY_ID||process.env.STOREOPS_RELEASE_BUILD||'dev').slice(0,12);\nprocess.stdout.write('window.STOREOPS_CONFIG = '+JSON.stringify(cfg)+';\\nwindow.RETAIL_INTELLIGENCE_BUILD = '+JSON.stringify(build)+';\\n');
 NODE
 cp analytics-runtime-config.js runtime-config.js
 cat ./js/boot-classic.js >> runtime-config.js
@@ -23,6 +23,18 @@ if (location.hostname.endsWith('.netlify.app')) {
   window.STOREOPS_CONFIG.mode = 'api';
 }
 EOF
+
+# Cache-bust every Analytics shell asset with the exact deployed commit. This is
+# important while Analytics is evolving quickly: an already-cached JS module must
+# never keep a user on an older data-loading contract after a production deploy.
+node <<'NODE'
+const fs=require('fs');
+const file='analytics/index.html';
+const build=String(process.env.COMMIT_REF||process.env.DEPLOY_ID||process.env.STOREOPS_RELEASE_BUILD||'dev').slice(0,12);
+let html=fs.readFileSync(file,'utf8');
+html=html.replace(/(href|src)="(\/analytics\/[^"?]+\.(?:css|js))(?:\?v=[^"]+)?"/g,(m,attr,url)=>`${attr}="${url}?v=${build}"`);
+fs.writeFileSync(file,html);
+NODE
 
 # Keep only the small early-runtime graph required before the deferred application
 # modules: tenant branding, boot rescue and auth-entry. Normalize their cache key
