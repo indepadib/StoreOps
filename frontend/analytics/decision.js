@@ -338,23 +338,48 @@
 
   function renderCrm(){
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],k=$('#crmKpis');if(!k)return;
-    const totalSales=customers.reduce((s,x)=>s+Number(x.sales||0),0),avg=customers.length?totalSales/customers.length:null;
-    const top10=totalSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null;
-    const top20=totalSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null;
+    const totalSales=customers.reduce((s,x)=>s+Number(x.sales||0),0),avg=customers.length?totalSales/customers.length:null,top10=totalSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,top20=totalSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,ba=crm.basketAnalysis||{};
     k.innerHTML=[
       ['Clients identifiés',api.number(crm.identifiedCustomers),'sur la période'],
-      ['CA identifié',api.money(crm.identifiedSales,true),'clients disponibles'],
-      ['Repeat rate',api.percent(crm.repeatRate),'≥ 2 visites période'],
-      ['Clients fréquents',api.number(crm.frequentCustomers),'≥ 4 visites période'],
-      ['CA / client',api.money(avg),'moyenne identifiés'],
+      ['CA identifié',api.money(crm.identifiedSales,true),'clients connus'],
+      ['Repeat rate',api.percent(crm.repeatRate),'≥ 2 visites sur la période'],
+      ['Panier client',api.money(customers.length?customers.reduce((s,x)=>s+Number(x.averageBasket||0),0)/customers.length:null),'moyenne clients identifiés'],
+      ['U. / panier',api.number(ba.averageUnits,1),'quantité moyenne par panier identifié'],
       ['Top 10 clients',api.percent(top10),'part du CA identifié']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
-    const counts={};for(const x of customers)counts[x.segment]=(counts[x.segment]||0)+1;
-    const labels={HIGH_VALUE_FREQUENT:'High value & fréquent',HIGH_VALUE:'High value',FREQUENT:'Fréquent',REPEAT:'Repeat',SINGLE_VISIT:'1 visite'};
-    $('#crmSegments').innerHTML=Object.entries(labels).map(([key,label])=>`<div class="segment-card"><small>${label}</small><strong>${api.number(counts[key]||0)}</strong><span>${customers.length?api.percent((counts[key]||0)/customers.length*100):'N/A'} des clients</span></div>`).join('');
+
+    const segmentLabels={HIGH_VALUE_FREQUENT:'High value & fréquent',HIGH_VALUE:'High value',FREQUENT:'Fréquent',REPEAT:'Repeat',SINGLE_VISIT:'1 visite'},counts={};for(const x of customers)counts[x.segment]=(counts[x.segment]||0)+1;
+    $('#crmSegments').innerHTML=Object.entries(segmentLabels).map(([key,label])=>`<div class="segment-card"><small>${label}</small><strong>${api.number(counts[key]||0)}</strong><span>${customers.length?api.percent((counts[key]||0)/customers.length*100):'N/A'} des clients</span></div>`).join('');
+
+    const personaLabels={VIP_REGULAR:'VIP régulier',BIG_BASKET_OCCASIONAL:'Gros panier occasionnel',EXPLORER:'Explorateur',ROUTINE_REGULAR:'Routine / régulier',REPEAT_TO_GROW:'Repeat à développer',ONE_SHOT:'Visite unique'};
+    const personaNotes={VIP_REGULAR:'Fréquent + forte valeur',BIG_BASKET_OCCASIONAL:'Peu de visites, panier élevé',EXPLORER:'Large variété de produits',ROUTINE_REGULAR:'Fréquent, achats récurrents',REPEAT_TO_GROW:'Déjà revenu, potentiel à travailler',ONE_SHOT:'Une seule visite observée'};
+    const personaCounts={};for(const x of customers)personaCounts[x.persona]=(personaCounts[x.persona]||0)+1;
+    $('#crmPersonas').innerHTML=Object.keys(personaLabels).map(key=>`<div class="persona-card"><small>${personaLabels[key]}</small><strong>${api.number(personaCounts[key]||0)}</strong><span>${personaNotes[key]}</span></div>`).join('');
+
+    $('#crmBasketDna').innerHTML=`<div class="basket-dna-grid">
+      <div><small>Paniers identifiés</small><strong>${api.number(ba.identifiedBaskets)}</strong></div>
+      <div><small>Unités / panier</small><strong>${api.number(ba.averageUnits,1)}</strong></div>
+      <div><small>Réf. distinctes / panier</small><strong>${api.number(ba.averageDistinctProducts,1)}</strong></div>
+      <div><small>Paniers mono-produit</small><strong>${api.percent(ba.singleItemBasketRate)}</strong></div>
+    </div>
+    <div class="basket-top-products">${(ba.topProducts||[]).slice(0,6).map((p,i)=>`<div><span>#${i+1} ${api.escapeHtml(productLabel(p.productNumber,p.productNumber))}</span><strong>${api.money(p.sales,true)}</strong></div>`).join('')||'<div class="table-loading">Données panier en cours de consolidation.</div>'}</div>`;
+
+    const pairs=(ba.topProductPairs||[]).slice(0,8);
+    $('#crmAffinities').innerHTML=pairs.length?pairs.map(p=>`<div class="affinity-row"><div><strong>${api.escapeHtml(productLabel(p.productA,p.productA))}</strong><span>+</span><strong>${api.escapeHtml(productLabel(p.productB,p.productB))}</strong></div><small>${api.number(p.tickets)} panier(s) · ${api.percent(p.sharePct)}</small></div>`).join(''):'<div class="table-loading">Pas encore assez de paniers multi-produits pour calculer les affinités.</div>';
+
+    const cohorts=crm.cohorts||[];
+    $('#crmCohorts').innerHTML=cohorts.length?cohorts.slice(-8).reverse().map(x=>`<div class="cohort-row"><div><strong>Semaine du ${api.escapeHtml(x.cohort)}</strong><span>${api.number(x.customers)} client(s)</span></div><div><strong>${api.percent(x.repeatRate)}</strong><span>repeat</span></div><div><strong>${api.money(x.averageSpend)}</strong><span>CA / client</span></div></div>`).join(''):'<div class="table-loading">Cohortes indisponibles.</div>';
+
     $('#crmConcentration').innerHTML=`<div class="concentration-hero">${api.percent(top10)}</div><div class="concentration-caption">du CA identifié est réalisé par les 10 premiers clients de la période.</div><div class="concentration-bars"><div class="concentration-row"><span>Top 10</span><div class="concentration-track"><span style="width:${Math.min(top10||0,100)}%"></span></div><strong>${api.percent(top10)}</strong></div><div class="concentration-row"><span>Top 20</span><div class="concentration-track"><span style="width:${Math.min(top20||0,100)}%"></span></div><strong>${api.percent(top20)}</strong></div></div>`;
-    const body=$('#crmBody');if(!customers.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucun client identifié sur la période.</div></td></tr>';return}
-    body.innerHTML=customers.slice(0,500).map(x=>`<tr><td><div class="element-cell"><strong>${api.escapeHtml(x.customerAccount)}</strong><span>${api.percent(x.shareIdentifiedSalesPct)} du CA identifié</span></div></td><td><span class="segment-pill ${x.segment}">${api.escapeHtml(labels[x.segment]||x.segment)}</span></td><td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.units,1)}</td><td>${api.escapeHtml(x.firstDate||'N/A')}</td><td>${api.escapeHtml(x.lastDate||'N/A')}</td><td>${api.number(x.storeCount)}</td><td>${api.escapeHtml((x.topProducts||[]).slice(0,3).map(p=>p.productNumber).join(', ')||'N/A')}</td></tr>`).join('');
+
+    const body=$('#crmBody');if(!customers.length){body.innerHTML='<tr><td colspan="11"><div class="table-loading">Aucun client identifié sur la période.</div></td></tr>';return}
+    const periodEnd=sectionState()?.periodEnd;
+    body.innerHTML=customers.slice(0,500).map(x=>{const recency=x.lastDate&&periodEnd?Math.max(0,Math.round((Date.parse(periodEnd+'T12:00:00Z')-Date.parse(x.lastDate+'T12:00:00Z'))/86400000)):null,habit=[x.favouriteWeekday,x.favouriteHour!=null?`${String(x.favouriteHour).padStart(2,'0')}h`:null].filter(Boolean).join(' · '),top=(x.topProducts||[]).slice(0,3).map(p=>productLabel(p.productNumber,p.productNumber)).join(', ');return`<tr>
+      <td><div class="element-cell"><strong>${api.escapeHtml(x.customerAccount)}</strong><span>${api.percent(x.shareIdentifiedSalesPct)} du CA identifié</span></div></td>
+      <td><span class="persona-pill ${x.persona||''}">${api.escapeHtml(personaLabels[x.persona]||x.persona||'N/A')}</span></td>
+      <td><span class="segment-pill ${x.segment}">${api.escapeHtml(segmentLabels[x.segment]||x.segment)}</span></td>
+      <td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.averageUnitsPerBasket,1)}</td><td>${api.number(x.activeDays)}</td>
+      <td>${api.escapeHtml(x.lastDate||'N/A')}${recency!=null?` · ${recency}j`:''}</td><td>${api.escapeHtml(habit||'N/A')}</td><td>${api.escapeHtml(top||'N/A')}</td></tr>`}).join('')
   }
 
   function bind(){
