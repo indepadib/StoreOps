@@ -271,13 +271,26 @@
   async function loadData(force = false) {
     if (state.loading) return;
     state.loading = true;
-    setLoading();
-    setFreshness('', 'Actualisation…');
 
     const targetStores = state.selectedStore === 'ALL'
       ? state.stores
       : state.stores.filter(s => s.id === state.selectedStore);
 
+    const decisionSections = new Set(['overview','sales','network','categories','crm']);
+    if (decisionSections.has(state.section)) {
+      state.pulses = [];
+      const scope = state.selectedStore === 'ALL'
+        ? `${targetStores.length} magasin(s)`
+        : targetStores[0]?.name || 'Magasin';
+      if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
+      setFreshness('live', 'Analyse période');
+      document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
+      state.loading = false;
+      return;
+    }
+
+    setLoading();
+    setFreshness('', 'Actualisation…');
     try {
       const results = await Promise.all(targetStores.map(async store => {
         try {
@@ -1065,6 +1078,7 @@
         applySectionView();
         document.body.classList.remove('mobile-nav-open');
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        refreshForPeriod(false);
       });
     });
   }
