@@ -99,7 +99,9 @@ export function salesIntegrationConfig(storeId=null){
   category:clean(saved?.fields?.category)||field('D365_SALES_CATEGORY_FIELD',''),
   customer:clean(saved?.fields?.customer)||field('D365_SALES_CUSTOMER_FIELD','custAccount'),
   staff:clean(saved?.fields?.staff)||field('D365_SALES_STAFF_FIELD','staffId'),
-  status:field('D365_SALES_STATUS_FIELD','transactionStatus')
+  status:field('D365_SALES_STATUS_FIELD','transactionStatus'),
+  returnNoSale:field('D365_SALES_RETURN_NO_SALE_FIELD',/^RetailTransactionSalesTransBIEntit/i.test(entity)?'returnNoSale':''),
+  taxItemGroup:field('D365_SALES_TAX_ITEM_GROUP_FIELD',/^RetailTransactionSalesTransBIEntit/i.test(entity)?'TaxItemGroup':'')
  };
  const required=[['entity',validEntity(entity)],['store',!!fields.store],['date',!!fields.date],['transaction',!!fields.transaction],['net',!!fields.net]];
  const missing=required.filter(([,ok])=>!ok).map(([k])=>k);
@@ -115,6 +117,18 @@ function taxonomyLabels(productNumber){
  return{department:sorted[0]?.category_name||null,category:sorted.at(-1)?.category_name||null};
 }
 
+function includedRetailSaleRow(row,cfg={}){
+ const f=cfg.fields||{},sign=Number(cfg.sign||-1),rawSales=Number(row?.[f.net]),sales=Number.isFinite(rawSales)?rawSales*sign:0;
+ if(!(sales>0&&sales<100000))return false;
+ const status=clean(f.status?row?.[f.status]:'').toUpperCase();
+ if(['VOIDED','CANCELLED','CANCELED'].includes(status))return false;
+ const noSale=clean(f.returnNoSale?row?.[f.returnNoSale]:'').toUpperCase();
+ if(['YES','Y','TRUE','1'].includes(noSale))return false;
+ const tax=clean(f.taxItemGroup?row?.[f.taxItemGroup]:'').replace(/\s+/g,'').toUpperCase();
+ if(tax==='EXOCOLL')return false;
+ return true
+}
+
 export function aggregateSalesRows(rows=[],cfg={}){
  const f=cfg.fields||{},sign=Number(cfg.sign||-1),costSign=Number(cfg.costSign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
  let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0;
@@ -122,8 +136,8 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
-  const tx=clean(r[f.transaction]),status=clean(f.status?r[f.status]:'').toUpperCase(),rawSales=num(r[f.net]),sales=round2(rawSales*sign);
-  if(['VOIDED','CANCELLED','CANCELED'].includes(status)){
+  const tx=clean(r[f.transaction]),rawSales=num(r[f.net]),sales=round2(rawSales*sign);
+  if(!includedRetailSaleRow(r,cfg)){
    excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);continue;
   }
   includedRows+=1;
@@ -139,7 +153,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const finish=map=>[...map.values()].map(x=>{const q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>Number(v)!==0);return{key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null}}).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
  const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
- return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'VOIDED_OR_CANCELLED'}};
+ return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'OFFICIAL_RETAIL_SALE_FILTERS'}};
 }
 
 function literalFilters(field,value){
@@ -174,7 +188,7 @@ export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}
 export async function readStoreSalesActivityWindow(storeId,{businessDate=new Date().toISOString().slice(0,10),days=30,force=false}={}){
  const c=salesIntegrationConfig(storeId),windowDays=Math.max(7,Math.min(90,Number(days)||30)),end=dateOnly(businessDate)||new Date().toISOString().slice(0,10),start=nextDate(end,-(windowDays-1));
  if(!c.ready||!c.fields.product)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate:end,windowDays,startDay:start,endDay:end,products:[],missing:[...new Set([...(c.missing||[]),!c.fields.product?'productField':null].filter(Boolean))]};
- const cacheSeconds=Math.max(300,Math.min(86400,Number(process.env.STOREOPS_SALES_ACTIVITY_CACHE_SECONDS)||21600)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`,persistentKey=analyticsCacheKey('sales-activity-v2',[storeId,start,end,windowDays]);
+ const cacheSeconds=Math.max(300,Math.min(86400,Number(process.env.STOREOPS_SALES_ACTIVITY_CACHE_SECONDS)||21600)),cacheKey=`${storeId}|${start}|${end}|${windowDays}`,persistentKey=analyticsCacheKey('sales-activity-v3',[storeId,start,end,windowDays]);
  const cached=salesActivityCache.get(cacheKey);if(!force&&cached&&Date.now()<cached.expiresAt)return cached.value;
  if(!force){const persistent=await readAnalyticsCache(persistentKey);if(persistent){salesActivityCache.set(cacheKey,{value:persistent,expiresAt:Date.now()+cacheSeconds*1000});return{...persistent,cache:{status:'PERSISTENT_HIT'}}}}
  const select=[c.fields.product,c.fields.name,c.fields.net,c.fields.quantity,c.fields.salesUnit,c.fields.date,c.fields.status,c.fields.store,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
@@ -198,22 +212,22 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
      const rows=chunkResults.flatMap(x=>x.value||[]),rowCount=chunkResults.reduce((s,x)=>s+Number(x.rowCount||0),0),pages=chunkResults.reduce((s,x)=>s+Number(x.pages||0),0),truncated=chunkResults.some(x=>x.truncated)||rowCount>c.maxRows;
      const byProduct=new Map();
      for(const row of rows){
-      const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
+      if(!includedRetailSaleRow(row,c))continue;
       const productNumber=clean(row[c.fields.product]);if(!productNumber)continue;
-      const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;
+      const saleValue=num(row[c.fields.net])*c.sign;
       const current=byProduct.get(productNumber)||{productNumber,name:clean(c.fields.name?row[c.fields.name]:'')||productNumber,saleRows:0,salesValue:0,units:0,salesUnit:clean(c.fields.salesUnit?row[c.fields.salesUnit]:'')||null,lastSaleDate:null};
       current.saleRows+=1;current.salesValue+=saleValue;if(current.name===productNumber&&c.fields.name&&clean(row[c.fields.name]))current.name=clean(row[c.fields.name]);if(!current.salesUnit&&c.fields.salesUnit&&clean(row[c.fields.salesUnit]))current.salesUnit=clean(row[c.fields.salesUnit]);if(c.fields.quantity)current.units+=Math.abs(num(row[c.fields.quantity]));const saleDay=dateOnly(c.fields.date?row[c.fields.date]:null);if(saleDay&&(!current.lastSaleDate||saleDay>current.lastSaleDate))current.lastSaleDate=saleDay;
       byProduct.set(productNumber,current);
      }
      const products=[...byProduct.values()].map(x=>({...x,salesValue:round2(x.salesValue),units:round3(x.units)})).sort((a,b)=>b.salesValue-a.salesValue||a.productNumber.localeCompare(b.productNumber));
      const result={status:truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,windowDays,startDay:start,endDay:end,products,rowCount,pages,truncated,chunkDays,chunks:chunks.length,config:{storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode}};
-     if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v2',result,21600);return result}
+     if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v3',result,21600);return result}
      firstEmpty=firstEmpty||result;
     }catch(error){lastError=error}
    }
   }
  }
- if(firstEmpty){salesActivityCache.set(cacheKey,{value:firstEmpty,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v2',firstEmpty,21600);return firstEmpty}
+ if(firstEmpty){salesActivityCache.set(cacheKey,{value:firstEmpty,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v3',firstEmpty,21600);return firstEmpty}
  throw lastError||Object.assign(new Error('Lecture activité ventes D365 impossible.'),{code:'D365_SALES_ACTIVITY_READ_FAILED'});
 }
 
@@ -233,8 +247,8 @@ export async function readStoreProductSalesVelocity(storeId,productNumber,{busin
      if(fetched.truncated){const value={status:'TRUNCATED',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,dailySales7:null,dailySales28:null,rowCount:fetched.rowCount,pages:fetched.pages,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode};velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value}
      let units7=0,unitsWindow=0,sales7=0,salesWindow=0,lastSaleDate=null,saleRows=0;
      for(const row of fetched.value||[]){
-      const rowStatus=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(rowStatus))continue;
-      const saleValue=num(row[c.fields.net])*c.sign;if(!(saleValue>0))continue;
+      if(!includedRetailSaleRow(row,c))continue;
+      const saleValue=num(row[c.fields.net])*c.sign;
       saleRows+=1;const day=dateOnly(row[c.fields.date]),qty=Math.abs(num(row[c.fields.quantity]));unitsWindow+=qty;salesWindow+=saleValue;
       if(day&&(!lastSaleDate||day>lastSaleDate))lastSaleDate=day;if(day&&day>=start7&&day<=end){units7+=qty;sales7+=saleValue}
      }
@@ -293,7 +307,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v5',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v6',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -319,6 +333,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
       const batch=chunks.slice(i,i+concurrency);
       const fetchedBatch=await Promise.all(batch.map(async chunk=>{
        const filters=[storeFilter,dateRangeFilter(c.fields.date,chunk.start,chunk.end,mode)];
+       if(c.fields.net)filters.push(c.sign<0?`${c.fields.net} lt 0 and ${c.fields.net} gt -100000`:`${c.fields.net} gt 0 and ${c.fields.net} lt 100000`);
        if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
        return odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
       }));
@@ -345,7 +360,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   if(c.fields.customer){
    const customer=clean(row[c.fields.customer]),upper=customer.toUpperCase();
    if(customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(upper)){
-    const status=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();if(['VOIDED','CANCELLED','CANCELED'].includes(status))continue;
+    if(!includedRetailSaleRow(row,c))continue;
     const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
     const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),dates:new Set(),weekdays:new Map(),hours:new Map(),firstDate:null,lastDate:null};
     cur.sales+=sales;cur.units+=qty;if(tx)cur.transactions.add(tx);
@@ -365,8 +380,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   if(c.fields.staff){
     const staffId=clean(row[c.fields.staff]);
     if(staffId){
-      const status=clean(c.fields.status?row[c.fields.status]:'').toUpperCase();
-      if(!['VOIDED','CANCELLED','CANCELED'].includes(status)){
+      if(includedRetailSaleRow(row,c)){
         const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
         const identified=!!customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(customer);
         const cur=staffMap.get(staffId)||{staffId,sales:0,transactions:new Set(),identifiedTransactions:new Set(),identifiedSales:0};
@@ -419,6 +433,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v5',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v6',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
