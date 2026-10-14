@@ -12,6 +12,8 @@ function returnToStoreOps(){
   location.assign('/');
 }
 
+const analyticsAsset=path=>`${path}?v=${encodeURIComponent(window.RETAIL_INTELLIGENCE_BUILD||'dev')}`;
+
 async function start(){
   try{
     const h=await health();
@@ -28,13 +30,13 @@ async function start(){
     window.RETAIL_INTELLIGENCE_API=api;
     window.RETAIL_INTELLIGENCE_HEALTH=h;
 
-    await import('/analytics/tenants.js');
-    await import('/analytics/analytics.js');
-    await import('/analytics/categories.js');
-    await import('/analytics/inventory.js');
-    await import('/analytics/loyalty.js');
-    await import('/analytics/promotions.js');
-    await import('/analytics/decision.js');
+    await import(analyticsAsset('/analytics/tenants.js'));
+    await import(analyticsAsset('/analytics/analytics.js'));
+    await import(analyticsAsset('/analytics/categories.js'));
+    await import(analyticsAsset('/analytics/inventory.js'));
+    await import(analyticsAsset('/analytics/loyalty.js'));
+    await import(analyticsAsset('/analytics/promotions.js'));
+    await import(analyticsAsset('/analytics/decision.js'));
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);
     if(Number(error?.status)===401||Number(error?.status)===403)return returnToStoreOps();
