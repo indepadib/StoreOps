@@ -64,7 +64,7 @@
     if (!api || !$('#loyaltyKpis')) return;
     const a = loyaltyAggregate();
     const appState = api.getState?.() || {};
-    const totalStores = appState.selectedStore === 'ALL' ? appState.stores?.length || 0 : 1;
+    const totalStores = api.getSelectedStores?.().length || 0;
 
     $('#loyaltyCoverage').textContent = `${a.coverage}/${totalStores} magasin(s) disponible(s)`;
 
@@ -258,9 +258,7 @@
     const appState = api?.getState?.();
     if (!appState) return { stores: [], date: null, start: null, end: null };
     return {
-      stores: appState.selectedStore === 'ALL'
-        ? appState.stores
-        : appState.stores.filter(s => s.id === appState.selectedStore),
+      stores: api.getSelectedStores?.() || appState.stores || [],
       date: appState.businessDate,
       start: appState.periodStart || appState.businessDate,
       end: appState.periodEnd || appState.businessDate
