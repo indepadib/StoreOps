@@ -39,21 +39,28 @@ function mergeDaily(results=[]){
   }
   return[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(x=>({date:x.date,sales:round2(x.sales),tickets:x.tickets,units:round2(x.units),averageBasket:x.tickets?round2(x.sales/x.tickets):null,marginValue:x.marginKnown?round2(x.marginValue):null,identifiedSales:x.identifiedKnown?round2(x.identifiedSales):null}))
 }
-function mergeCustomers(results=[]){
+function mergeCustomers(results=[],endDate=null){
   const map=new Map();
   for(const result of results)for(const row of result?.customers||[]){
     const key=String(row.customerAccount||'').trim();if(!key)continue;
-    const cur=map.get(key)||{customerAccount:key,sales:0,units:0,tickets:0,firstDate:null,lastDate:null,products:new Map(),stores:new Set()};
-    cur.sales+=num(row.sales);cur.units+=num(row.units);cur.tickets+=num(row.tickets);
+    const cur=map.get(key)||{customerAccount:key,sales:0,units:0,tickets:0,activeDays:0,firstDate:null,lastDate:null,products:new Map(),stores:new Set(),weekdays:new Map(),hours:new Map()};
+    cur.sales+=num(row.sales);cur.units+=num(row.units);cur.tickets+=num(row.tickets);cur.activeDays+=num(row.activeDays);
     if(row.firstDate&&(!cur.firstDate||row.firstDate<cur.firstDate))cur.firstDate=row.firstDate;
     if(row.lastDate&&(!cur.lastDate||row.lastDate>cur.lastDate))cur.lastDate=row.lastDate;
     for(const p of row.topProducts||[])cur.products.set(p.productNumber,(cur.products.get(p.productNumber)||0)+num(p.sales));
+    if(row.favouriteWeekday)cur.weekdays.set(row.favouriteWeekday,(cur.weekdays.get(row.favouriteWeekday)||0)+Math.max(1,num(row.activeDays)));
+    if(row.favouriteHour!=null)cur.hours.set(String(row.favouriteHour),(cur.hours.get(String(row.favouriteHour))||0)+Math.max(1,num(row.tickets)));
     if(result.storeId)cur.stores.add(result.storeId);
     map.set(key,cur)
   }
-  const rows=[...map.values()].map(x=>({customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.tickets,averageBasket:x.tickets?round2(x.sales/x.tickets):null,firstDate:x.firstDate,lastDate:x.lastDate,storeCount:x.stores.size,topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,5).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))})).sort((a,b)=>b.sales-a.sales);
-  const totalSales=rows.reduce((s,x)=>s+x.sales,0),highValueThreshold=rows.length?rows[Math.max(0,Math.ceil(rows.length*.2)-1)]?.sales||0:0;
-  return rows.map(x=>({...x,segment:x.tickets>=4&&x.sales>=highValueThreshold?'HIGH_VALUE_FREQUENT':x.sales>=highValueThreshold?'HIGH_VALUE':x.tickets>=4?'FREQUENT':x.tickets>=2?'REPEAT':'SINGLE_VISIT',shareIdentifiedSalesPct:totalSales?round2(x.sales/totalSales*100):null}))
+  const fav=m=>{let key=null,best=-1;for(const [k,v] of m)if(v>best){key=k;best=v}return key};
+  const rows=[...map.values()].map(x=>{
+    const recency=x.lastDate&&endDate?Math.max(0,Math.round((Date.parse(endDate+'T12:00:00Z')-Date.parse(x.lastDate+'T12:00:00Z'))/86400000)):null;
+    return{customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.tickets,activeDays:x.activeDays,averageBasket:x.tickets?round2(x.sales/x.tickets):null,averageUnitsPerBasket:x.tickets?round2(x.units/x.tickets):null,firstDate:x.firstDate,lastDate:x.lastDate,recencyDays:recency,storeCount:x.stores.size,distinctProducts:x.products.size,favouriteWeekday:fav(x.weekdays),favouriteHour:fav(x.hours),topProducts:[...x.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,12).map(([productNumber,sales])=>({productNumber,sales:round2(sales)}))}
+  }).sort((a,b)=>b.sales-a.sales);
+  const totalSales=rows.reduce((s,x)=>s+x.sales,0),highValue=rows.length?rows[Math.max(0,Math.ceil(rows.length*.2)-1)]?.sales||0:0;
+  const basketValues=rows.map(x=>num(x.averageBasket)).sort((a,b)=>a-b),breadthValues=rows.map(x=>num(x.distinctProducts)).sort((a,b)=>a-b),p80=a=>a.length?a[Math.max(0,Math.ceil(a.length*.8)-1)]:0,highBasket=p80(basketValues),broad=p80(breadthValues);
+  return rows.map(x=>{let persona='REPEAT_TO_GROW';if(x.tickets>=4&&x.sales>=highValue)persona='VIP_REGULAR';else if(x.tickets<=2&&x.averageBasket>=highBasket)persona='BIG_BASKET_OCCASIONAL';else if(x.distinctProducts>=broad&&x.tickets>=2)persona='EXPLORER';else if(x.tickets>=4)persona='ROUTINE_REGULAR';else if(x.tickets<=1)persona='ONE_SHOT';return{...x,segment:x.tickets>=4&&x.sales>=highValue?'HIGH_VALUE_FREQUENT':x.sales>=highValue?'HIGH_VALUE':x.tickets>=4?'FREQUENT':x.tickets>=2?'REPEAT':'SINGLE_VISIT',persona,shareIdentifiedSalesPct:totalSales?round2(x.sales/totalSales*100):null}})
 }
 function sumSummary(results=[]){
   let sales=0,tickets=0,units=0,marginValue=0,marginKnown=true,identifiedSales=0,identifiedKnown=true,identifiedTickets=0,identifiedTicketsKnown=true;
