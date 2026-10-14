@@ -172,14 +172,16 @@ export function peekStockSignals(storeId,{businessDate=null,allowStale=true}={})
 }
 
 export async function getStockSignals(storeId,{businessDate=null,force=false}={}){
-  const key=`${clean(storeId)}|${clean(businessDate)||'today'}`;
+  const day=clean(businessDate)||new Date().toISOString().slice(0,10),key=`${clean(storeId)}|${day}`,persistentKey=analyticsCacheKey('stock-signals-v2',[storeId,day]);
   const ttl=stockSignalsCacheSeconds()*1000,now=Date.now(),cached=signalCache.get(key);
   if(!force&&cached&&now<cached.expiresAt)return {...cached.value,cache:{status:'HIT',ttlSeconds:stockSignalsCacheSeconds()}};
+  if(!force){const persistent=await readAnalyticsCache(persistentKey);if(persistent){signalCache.set(key,{value:persistent,expiresAt:Date.now()+ttl});return {...persistent,cache:{status:'PERSISTENT_HIT',ttlSeconds:stockSignalsCacheSeconds()}}}}
   if(!force&&signalInflight.has(key))return signalInflight.get(key);
 
   const promise=(async()=>{
-    const value=await computeStockSignals(storeId,{businessDate});
+    const value=await computeStockSignals(storeId,{businessDate:day});
     signalCache.set(key,{value,expiresAt:Date.now()+ttl});
+    await writeAnalyticsCache(persistentKey,'stock-signals-v2',value,stockSignalsCacheSeconds());
     return {...value,cache:{status:'MISS',ttlSeconds:stockSignalsCacheSeconds()}}
   })();
   signalInflight.set(key,promise);
