@@ -141,7 +141,7 @@
     state.catalogLoading=true;state.catalog=new Map();
     const skus=catalogSkuList(),batches=[];for(let i=0;i<skus.length;i+=50)batches.push(skus.slice(i,i+50));
     let cursor=0;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);renderPerformance();renderCrm();renderContributors('negative');renderContributors('positive')}catch{}}};
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
     state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
   }
@@ -152,10 +152,11 @@
     const key=queryKey(s); if(!force&&state.key===key&&state.data){render();return}
     state.loading=true; setLoading(); setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
     try{
-      state.data=await loadDecisionChunked(api,s,force); state.key=key; render();
+      state.data=await loadDecisionChunked(api,s,force); state.key=key;
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data}}));
-      loadCatalog(force).catch(()=>{});
+      loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')});
+      render();
     }catch(error){renderError(error)}
     finally{state.loading=false}
   }
@@ -174,7 +175,8 @@
     const k=$('#decisionSalesKpis');if(k)k.innerHTML=`<div class="decision-kpi"><small>Source</small><strong>N/A</strong><span>${msg}</span></div>`;
   }
 
-  function render(){if(!state.data)return;renderExecutive();renderSales();renderBenchmark();renderPerformance();renderCrm()}
+  function safeRenderPart(name,fn){try{fn()}catch(error){console.error('Retail Intelligence render failure',name,error)}}
+  function render(){if(!state.data)return;safeRenderPart('executive',renderExecutive);safeRenderPart('sales',renderSales);safeRenderPart('benchmark',renderBenchmark);safeRenderPart('performance',renderPerformance);safeRenderPart('crm',renderCrm)}
 
   function renderExecutive(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{},app=sectionState()||{};
