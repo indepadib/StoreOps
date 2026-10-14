@@ -26,8 +26,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
+          while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js frontend/analytics -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
           node --check frontend/sw.js
+      - name: Analytics selector contract
+        run: node backend/tests/analytics-selector-contract.mjs
       - name: Version contract test
         run: node backend/tests/version-contract.mjs
       - name: Article identity, UB rankings and temperature register
