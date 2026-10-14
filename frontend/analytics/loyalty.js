@@ -347,32 +347,35 @@
       renderCashiers();
     });
 
-    document.addEventListener('retail-intelligence:data', () => {
-      renderLoyalty();
-      loadCashiers(false);
-      loadWallet(false);
-    });
-    document.addEventListener('retail-intelligence:decision', () => {
-      renderLoyalty();
-      loadWallet(false);
-    });
-    document.addEventListener('retail-intelligence:period', () => {
-      state.walletKey = null;
-      loadWallet(false);
-    });
-    document.addEventListener('retail-intelligence:section', () => {
+    const loadVisibleModule = () => {
       const section = core()?.getState?.()?.section;
       if (section === 'loyalty') {
         renderLoyalty();
         loadWallet(false);
+      } else if (section === 'cashiers') {
+        loadCashiers(false);
       }
+    };
+
+    document.addEventListener('retail-intelligence:data', () => {
+      renderLoyalty();
+      loadVisibleModule();
     });
+    document.addEventListener('retail-intelligence:decision', () => {
+      renderLoyalty();
+      if (core()?.getState?.()?.section === 'loyalty') loadWallet(false);
+    });
+    document.addEventListener('retail-intelligence:period', () => {
+      state.walletKey = null;
+      state.cashierKey = null;
+      loadVisibleModule();
+    });
+    document.addEventListener('retail-intelligence:section', loadVisibleModule);
 
     const existing = core()?.getState?.();
     if (existing?.pulses?.length) {
       renderLoyalty();
-      loadCashiers(false);
-      loadWallet(false);
+      loadVisibleModule();
     }
   }
 
