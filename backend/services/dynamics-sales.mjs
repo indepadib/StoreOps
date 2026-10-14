@@ -3,6 +3,7 @@ import { odataGetAll } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 import { effectiveD365SalesMapping,salesStoreIdentifiers } from './d365-sales-mapping.mjs';
+import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -291,8 +292,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`;
- const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range',[storeId,start,end]);
+ const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
+ if(!force){
+  const persistent=await readAnalyticsCache(persistentKey);
+  if(persistent){salesRangeCache.set(cacheKey,{value:persistent,expiresAt:Date.now()+cacheSeconds*1000});return{...persistent,cache:{status:'PERSISTENT_HIT'}}}
+ }
 
  const margin=validatedMarginConfig(c);
  const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
@@ -412,5 +417,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
+ const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
+ await writeAnalyticsCache(persistentKey,'sales-range',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
