@@ -37,6 +37,28 @@
     return{rows,sales,tickets,identifiedSales:identifiedKnown?identifiedSales:null,identifiedShare:identifiedKnown&&sales?identifiedSales/sales*100:null,identifiedTickets:ticketKnown?identifiedTickets:null,identifiedTicketRate:ticketKnown&&tickets?identifiedTickets/tickets*100:null,recruitments:recruitmentKnown?recruitments:null,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:recruitmentKnown&&nonMemberTickets>0?recruitments/nonMemberTickets*100:null,memberBasket,nonMemberBasket,uplift,coverage:rows.length,identifiedCustomers:null,repeatRate:null,frequentCustomers:null}
   }
 
+  function aggregatePaymentMix(){
+    const map=new Map();
+    for(const result of state.walletStores){
+      if(!result.ok)continue;
+      for(const row of result.data?.paymentMix||[]){
+        const key=row.kind||row.label||row.id,cur=map.get(key)||{key,kind:row.kind||'OTHER',label:row.label||row.id||key,amount:0,transactions:0};
+        cur.amount+=Number(row.amount||0);cur.transactions+=Number(row.transactions||0);map.set(key,cur)
+      }
+    }
+    const rows=[...map.values()].sort((a,b)=>b.amount-a.amount),total=rows.reduce((s,x)=>s+x.amount,0);
+    return rows.map(x=>({...x,sharePct:total?x.amount/total*100:null}))
+  }
+
+  function renderPaymentMix(){
+    const api=core(),panel=$('#paymentMixPanel');if(!api||!panel)return;
+    const rows=aggregatePaymentMix();
+    if(state.walletLoading&&!rows.length){panel.innerHTML='<div class="table-loading">Chargement des paiements…</div>';return}
+    if(!rows.length){panel.innerHTML='<div class="table-loading">Répartition des paiements indisponible.</div>';return}
+    const label={CASH:'Espèces',CARD:'Carte',WALLET:'Wallet',OTHER:'Autres'};
+    panel.innerHTML=rows.map(r=>`<div class="payment-mix-row"><div class="payment-mix-head"><strong>${api.escapeHtml(label[r.kind]||r.label)}</strong><span>${api.money(r.amount,true)} · ${api.percent(r.sharePct)}</span></div><div class="payment-mix-track"><span style="width:${Math.min(100,Math.max(0,r.sharePct||0))}%"></span></div><small>${api.number(r.transactions)} transaction(s) · ${api.escapeHtml(r.label)}</small></div>`).join('')
+  }
+
   function renderLoyalty() {
     const api = core();
     if (!api || !$('#loyaltyKpis')) return;
@@ -69,6 +91,7 @@
     renderLoyaltyTable();
     renderBasketUplift(a);
     renderWalletStatus();
+    renderPaymentMix();
   }
 
   function renderLoyaltyTable() {
