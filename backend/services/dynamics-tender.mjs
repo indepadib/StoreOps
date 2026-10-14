@@ -79,6 +79,7 @@ async function discoverPaymentSchema(){
     'RetailTransactionPaymentTrans',
     'RetailTransactionPaymentTransEntity',
     'RetailPaymentTransactions',
+    'RetailTransactionPaymentTransBIEntity',
     'RetailTransactionPaymentTransBIEntities',
     'RetailTransactionPaymentTransactionsBIEntities',
     'RetailTransactionTenderTransBIEntities',
