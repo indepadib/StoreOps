@@ -22,68 +22,19 @@
     return core()?.readyRows?.() || [];
   }
 
+  function decisionData(){return window.RETAIL_DECISION_INTELLIGENCE?.getData?.()||null}
   function loyaltyAggregate() {
-    const rows = pulseRows();
-    let sales = 0;
-    let identifiedSales = 0;
-    let identifiedSalesKnown = 0;
-    let tickets = 0;
-    let identifiedTickets = 0;
-    let identifiedTicketsKnown = 0;
-    let recruitments = 0;
-    let recruitmentsKnown = 0;
-    let nonLoyaltyTickets = 0;
-    let nonLoyaltyTicketsKnown = 0;
-
-    for (const { pulse } of rows) {
-      const k = pulse?.snapshot?.kpis || {};
-      sales += Number(k.netSales || 0);
-      tickets += Number(k.tickets || 0);
-      if (k.identifiedSales != null) {
-        identifiedSales += Number(k.identifiedSales || 0);
-        identifiedSalesKnown += 1;
-      }
-      if (k.identifiedTickets != null) {
-        identifiedTickets += Number(k.identifiedTickets || 0);
-        identifiedTicketsKnown += 1;
-      }
-      if (k.recruitments != null) {
-        recruitments += Number(k.recruitments || 0);
-        recruitmentsKnown += 1;
-      }
-      if (k.nonLoyaltyTickets != null) {
-        nonLoyaltyTickets += Number(k.nonLoyaltyTickets || 0);
-        nonLoyaltyTicketsKnown += 1;
-      }
+    const d=decisionData(),cur=d?.summary?.current||null;
+    if(cur){
+      const sales=safe(cur.sales)||0,tickets=safe(cur.tickets)||0,identifiedSales=safe(cur.identifiedSales),identifiedTickets=safe(cur.identifiedTickets);
+      const nonLoyaltySales=identifiedSales!=null?sales-identifiedSales:null,nonMemberTickets=identifiedTickets!=null?Math.max(0,tickets-identifiedTickets):null;
+      const memberBasket=identifiedTickets>0?identifiedSales/identifiedTickets:null,nonMemberBasket=nonLoyaltySales!=null&&nonMemberTickets>0?nonLoyaltySales/nonMemberTickets:null,uplift=memberBasket!=null&&nonMemberBasket?((memberBasket/nonMemberBasket)-1)*100:null;
+      return{rows:d.stores||[],sales,tickets,identifiedSales,identifiedShare:safe(cur.identifiedSalesShare),identifiedTickets,identifiedTicketRate:safe(cur.identifiedTicketRate),recruitments:null,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:null,memberBasket,nonMemberBasket,uplift,coverage:d.coverage?.currentStoresReady||0,identifiedCustomers:d.crm?.identifiedCustomers??null,repeatRate:d.crm?.repeatRate??null,frequentCustomers:d.crm?.frequentCustomers??null}
     }
-
-    const identifiedKnown = identifiedSalesKnown > 0;
-    const ticketKnown = identifiedTicketsKnown > 0;
-    const recruitmentKnown = recruitmentsKnown > 0;
-    const nonLoyaltyKnown = nonLoyaltyTicketsKnown > 0;
-
-    const nonLoyaltySales = identifiedKnown ? sales - identifiedSales : null;
-    const memberBasket = ticketKnown && identifiedTickets > 0 ? identifiedSales / identifiedTickets : null;
-    const nonMemberTickets = nonLoyaltyKnown ? nonLoyaltyTickets : (ticketKnown ? Math.max(0, tickets - identifiedTickets) : null);
-    const nonMemberBasket = nonLoyaltySales != null && nonMemberTickets > 0 ? nonLoyaltySales / nonMemberTickets : null;
-    const uplift = memberBasket != null && nonMemberBasket ? (memberBasket / nonMemberBasket - 1) * 100 : null;
-
-    return {
-      rows,
-      sales,
-      tickets,
-      identifiedSales: identifiedKnown ? identifiedSales : null,
-      identifiedShare: identifiedKnown && sales ? identifiedSales / sales * 100 : null,
-      identifiedTickets: ticketKnown ? identifiedTickets : null,
-      identifiedTicketRate: ticketKnown && tickets ? identifiedTickets / tickets * 100 : null,
-      recruitments: recruitmentKnown ? recruitments : null,
-      nonLoyaltyTickets: nonMemberTickets,
-      recruitmentRate: recruitmentKnown && nonMemberTickets > 0 ? recruitments / nonMemberTickets * 100 : null,
-      memberBasket,
-      nonMemberBasket,
-      uplift,
-      coverage: rows.length
-    };
+    const rows=pulseRows();let sales=0,identifiedSales=0,identifiedSalesKnown=0,tickets=0,identifiedTickets=0,identifiedTicketsKnown=0,recruitments=0,recruitmentsKnown=0,nonLoyaltyTickets=0,nonLoyaltyTicketsKnown=0;
+    for(const {pulse} of rows){const k=pulse?.snapshot?.kpis||{};sales+=Number(k.netSales||0);tickets+=Number(k.tickets||0);if(k.identifiedSales!=null){identifiedSales+=Number(k.identifiedSales||0);identifiedSalesKnown++}if(k.identifiedTickets!=null){identifiedTickets+=Number(k.identifiedTickets||0);identifiedTicketsKnown++}if(k.recruitments!=null){recruitments+=Number(k.recruitments||0);recruitmentsKnown++}if(k.nonLoyaltyTickets!=null){nonLoyaltyTickets+=Number(k.nonLoyaltyTickets||0);nonLoyaltyTicketsKnown++}}
+    const identifiedKnown=identifiedSalesKnown>0,ticketKnown=identifiedTicketsKnown>0,recruitmentKnown=recruitmentsKnown>0,nonLoyaltyKnown=nonLoyaltyTicketsKnown>0,nonLoyaltySales=identifiedKnown?sales-identifiedSales:null,memberBasket=ticketKnown&&identifiedTickets>0?identifiedSales/identifiedTickets:null,nonMemberTickets=nonLoyaltyKnown?nonLoyaltyTickets:(ticketKnown?Math.max(0,tickets-identifiedTickets):null),nonMemberBasket=nonLoyaltySales!=null&&nonMemberTickets>0?nonLoyaltySales/nonMemberTickets:null,uplift=memberBasket!=null&&nonMemberBasket?(memberBasket/nonMemberBasket-1)*100:null;
+    return{rows,sales,tickets,identifiedSales:identifiedKnown?identifiedSales:null,identifiedShare:identifiedKnown&&sales?identifiedSales/sales*100:null,identifiedTickets:ticketKnown?identifiedTickets:null,identifiedTicketRate:ticketKnown&&tickets?identifiedTickets/tickets*100:null,recruitments:recruitmentKnown?recruitments:null,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:recruitmentKnown&&nonMemberTickets>0?recruitments/nonMemberTickets*100:null,memberBasket,nonMemberBasket,uplift,coverage:rows.length,identifiedCustomers:null,repeatRate:null,frequentCustomers:null}
   }
 
   function renderLoyalty() {
