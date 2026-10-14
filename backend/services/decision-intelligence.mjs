@@ -73,8 +73,25 @@ function driverDecomposition(current,previous){
  return{trafficEffect,basketEffect,totalDelta:round2(current.sales-previous.sales),reconciliationGap:round2((current.sales-previous.sales)-trafficEffect-basketEffect)}
 }
 function hierarchyFromProducts(currentProducts,previousProducts){
- const currentAttached=attachRetailHierarchy(currentProducts),previousAttached=attachRetailHierarchy(previousProducts);
- return rankRetailHierarchy(currentAttached,previousAttached)
+ const currentAttached=attachRetailHierarchy(currentProducts),previousAttached=attachRetailHierarchy(previousProducts),ranked=rankRetailHierarchy(currentAttached,previousAttached);
+ const levels=['department','rayon','family','subfamily','subsubfamily','ub'];
+ const margins=(rows,level)=>{
+  const map=new Map();
+  for(const p of rows){
+   const node=p.hierarchy?.levels?.[level],key=node?.id||'__UNCLASSIFIED__',cur=map.get(key)||{marginValue:0,marginKnown:true};
+   if(p.marginValue===null||p.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(p.marginValue);
+   map.set(key,cur)
+  }
+  return map
+ };
+ for(const level of levels){
+  const cur=margins(currentAttached,level),prev=margins(previousAttached,level);
+  ranked[level]=ranked[level].map(row=>{
+   const cm=cur.get(row.key),pm=prev.get(row.key),marginValue=cm?.marginKnown?round2(cm.marginValue):null,previousMarginValue=pm?.marginKnown?round2(pm.marginValue):null;
+   return{...row,marginValue,marginRate:marginValue!==null&&row.sales?round2(marginValue/row.sales*100):null,previousMarginValue,deltaMargin:marginValue!==null&&previousMarginValue!==null?round2(marginValue-previousMarginValue):null}
+  })
+ }
+ return ranked
 }
 function storeComparison(store,current,previous){
  const c=current?.summary||{},p=previous?.summary||{};
