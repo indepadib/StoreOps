@@ -298,12 +298,13 @@
     const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','crm','loyalty','cashiers']);
-    if (decisionSections.has(state.section)) {
+    const snapshotSections = new Set(['inventory']);
+    if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
       const scope = storeScopeLabel();
       if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
-      setFreshness('live', 'Analyse période');
-      document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
+      setFreshness('live', snapshotSections.has(state.section)?`Stock au ${formatDate(state.periodEnd)}`:'Analyse période');
+      document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force, snapshotDate: state.periodEnd } }));
       state.loading = false;
       return;
     }
@@ -438,7 +439,7 @@
       inventory: {
         eyebrow: 'STOCK',
         title: 'Disponibilité & risque commercial',
-        subtitle: 'Ruptures, faible couverture, stock négatif et exposition commerciale, sans masquer les limites de la donnée.'
+        subtitle: `Photo de stock au ${formatDate(state.periodEnd)} uniquement : ruptures, couverture et risque commercial. La période sélectionnée n'est pas additionnée au stock.`
       },
       loyalty: {
         eyebrow: 'FIDÉLITÉ',
