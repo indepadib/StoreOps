@@ -160,7 +160,7 @@
     state.catalogLoading=true;
     const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=80)batches.push(missing.slice(i,i+80));
     let cursor=0;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();safeRenderPart('sales-margin-enrichment',renderSales);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
     state.catalogKey=key;state.catalogLoading=false;renderPerformance();renderCrm()
   }
@@ -248,15 +248,26 @@
 
   function renderSales(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{};
+    let displayMargin=cur.marginValue,displayRate=cur.marginRate,estimated=false,marginCoverage=null;
+    if(displayMargin==null&&state.catalog.size){
+      let margin=0,coveredSales=0;
+      for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null)continue;margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
+      if(coveredSales>0){displayMargin=margin;displayRate=margin/coveredSales*100;marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;estimated=true}
+    }
     const badge=$('#marginStatusBadge');
-    if(badge){badge.textContent=d.margin?.available?'Marge · coût validé':d.margin?.status==='UNVALIDATED'?'Marge · coût à valider':'Marge · indisponible';badge.className='margin-status '+(d.margin?.available?'valid':'warning')}
+    if(badge){
+      if(d.margin?.available){badge.textContent='Marge · coût transactionnel validé';badge.className='margin-status valid'}
+      else if(estimated){badge.textContent=`Marge ~ coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' CA couvert'}`;badge.className='margin-status warning'}
+      else{badge.textContent=d.margin?.status==='UNVALIDATED'?'Marge · coût à valider':'Marge · enrichissement coût en cours';badge.className='margin-status warning'}
+    }
     $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s)`;
+    const marginLabel=estimated?'Marge estimée ~':'Marge DH',rateLabel=estimated?'Taux marge ~':'Taux de marge',marginSub=estimated?`coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:'coût transactionnel validé uniquement';
     const cards=[
       ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
       ['Tickets',api.number(cur.tickets),signed(api,s.ticketsChangePct),'fréquentation'],
       ['Panier moyen',api.money(cur.averageBasket),signed(api,s.basketChangePct),'effet panier'],
-      ['Marge DH',api.money(cur.marginValue,true),signed(api,s.marginChangePct),'coût transactionnel validé uniquement'],
-      ['Taux de marge',api.percent(cur.marginRate),s.marginRateDelta==null?'<span class="metric-na">N/A</span>':signed(api,s.marginRateDelta),'écart en points'],
+      [marginLabel,displayMargin==null?'N/A':(estimated?'~ ':'')+api.money(displayMargin,true),estimated?'<span class="metric-na">estimation</span>':signed(api,s.marginChangePct),marginSub],
+      [rateLabel,displayRate==null?'N/A':(estimated?'~ ':'')+api.percent(displayRate),estimated?'<span class="metric-na">estimation</span>':s.marginRateDelta==null?'<span class="metric-na">N/A</span>':signed(api,s.marginRateDelta),estimated?'pas une marge comptable historique':'écart en points'],
       ['CA fidélisé',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'<span class="metric-na">N/A</span>':api.money(cur.identifiedSales,true),'poids du CA identifié']
     ];
     $('#decisionSalesKpis').innerHTML=cards.map(([l,v,delta,sub])=>`<div class="decision-kpi"><small>${l}</small><strong>${v}</strong><span>${delta} · ${sub}</span></div>`).join('');
