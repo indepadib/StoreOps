@@ -2,7 +2,7 @@ import { db, uid } from '../db.mjs';
 import { canAccessStore } from './permissions.mjs';
 import { productDataMany } from './product-data.mjs';
 import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './dynamics-stock.mjs';
-import { readWalletBurn } from './dynamics-tender.mjs';
+import { readWalletBurn, readWalletBurnRange } from './dynamics-tender.mjs';
 import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 import { readAnalyticsCatalog } from './analytics-catalog.mjs';
@@ -108,6 +108,13 @@ export async function handleAnalyticsApi({ req, url, user }){
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     return{status:200,data:await readPromotionAnalytics(storeId,{businessDate,force})};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/wallet-range'){
+    const storeId=clean(url.searchParams.get('storeId')),startDate=clean(url.searchParams.get('start')),endDate=clean(url.searchParams.get('end')),force=url.searchParams.get('force')==='1';
+    if(!storeId)return{status:400,data:{error:'storeId requis.'}};
+    if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
+    return{status:200,data:await readWalletBurnRange(storeId,{startDate,endDate,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/wallet'){
