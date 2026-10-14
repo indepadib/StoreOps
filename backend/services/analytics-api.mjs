@@ -5,6 +5,7 @@ import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './d
 import { readWalletBurn } from './dynamics-tender.mjs';
 import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
+import { readAnalyticsCatalog } from './analytics-catalog.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -75,6 +76,13 @@ export async function handleAnalyticsApi({ req, url, user }){
     const id=decodeURIComponent(viewMatch[1]);
     const result=db.prepare('DELETE FROM analytics_saved_views WHERE id=? AND user_id=?').run(id,user.id);
     return{status:result.changes?200:404,data:result.changes?{ok:true}:{error:'Vue introuvable.'}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/catalog'){
+    const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
+    if(!products.length)return{status:400,data:{error:'products requis.'}};
+    if(products.length>80)return{status:400,data:{error:'80 articles maximum par requête.'}};
+    return{status:200,data:await readAnalyticsCatalog(products)};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/decision'){
