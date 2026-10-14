@@ -11,16 +11,17 @@ function transientReadResponse(r){
   const type=String(r.headers?.get?.('content-type')||'').toLowerCase();
   return Number(r.status)===500&&!type.includes('application/json')
 }
-async function fetchSafeRead(url,init={},method='GET'){
+async function fetchSafeRead(url,init={},method='GET',maxAttempts=2){
   let lastError=null;
-  for(let attempt=0;attempt<2;attempt++){
+  const attempts=Math.max(1,Number(maxAttempts)||1);
+  for(let attempt=0;attempt<attempts;attempt++){
     try{
       const r=await fetch(url,init);
-      if(method==='GET'&&attempt===0&&transientReadResponse(r)){await wait(250);continue}
+      if(method==='GET'&&attempt<attempts-1&&transientReadResponse(r)){await wait(250);continue}
       return r
     }catch(error){
       lastError=error;
-      if(method!=='GET'||attempt>0)throw error;
+      if(method!=='GET'||attempt>=attempts-1)throw error;
       await wait(250);
     }
   }
@@ -78,9 +79,10 @@ async function parseJsonResponse(r,url){
 export async function api(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
-  const headers=applyAuth({'content-type':'application/json',...(options.headers||{})}),url=apiUrl(path),method=methodOf(options);let r;
-  const body=options.body!=null&&typeof options.body==='object'&&!(options.body instanceof FormData)&&!(options.body instanceof Blob)?JSON.stringify(options.body):options.body;
-  try{r=await fetchSafeRead(url,{...options,body,headers},method)}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie la connexion réseau puis réessaie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
+  const {noRetry=false,...requestOptions}=options||{};
+  const headers=applyAuth({'content-type':'application/json',...(requestOptions.headers||{})}),url=apiUrl(path),method=methodOf(requestOptions);let r;
+  const body=requestOptions.body!=null&&typeof requestOptions.body==='object'&&!(requestOptions.body instanceof FormData)&&!(requestOptions.body instanceof Blob)?JSON.stringify(requestOptions.body):requestOptions.body;
+  try{r=await fetchSafeRead(url,{...requestOptions,body,headers},method,noRetry?1:2)}catch{const e=new Error(`Impossible de joindre l'API StoreOps. Vérifie la connexion réseau puis réessaie. URL : ${url}`);e.code='API_UNREACHABLE';throw e}
   const data=await parseJsonResponse(r,url);if(!r.ok){const e=new Error(data.error||`Erreur HTTP ${r.status}`);e.status=r.status;e.code=data.code;e.details=data.details||data.issues;throw e}return data
 }
 export async function health(){
