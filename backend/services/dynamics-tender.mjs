@@ -146,6 +146,25 @@ function derivedBurn(profile){
   return{amount:null,signMode:'MIXED_SIGN_VALIDATION_REQUIRED'};
 }
 
+function paymentKind(raw,label,nameMap,walletIds){
+  if(isWalletValue(raw,nameMap,walletIds))return'WALLET';
+  const text=(clean(label)+' '+clean(raw)).toLowerCase();
+  if(/cash|esp[eè]ce|espece/.test(text))return'CASH';
+  if(/card|carte|visa|master|cb|bank/.test(text))return'CARD';
+  return'OTHER'
+}
+function paymentMix(rows,fields,tenderTypes,walletIds){
+  const map=new Map();
+  for(const row of rows||[]){
+    const raw=clean(row?.[fields.tender])||'UNKNOWN',label=clean(tenderTypes.map.get(raw))||raw,amount=Number(row?.[fields.amount]),tx=clean(fields.transaction?row?.[fields.transaction]:'');
+    if(!Number.isFinite(amount))continue;
+    const cur=map.get(raw)||{id:raw,label,kind:paymentKind(raw,label,tenderTypes.map,walletIds),net:0,gross:0,transactions:new Set()};
+    cur.net+=amount;cur.gross+=Math.abs(amount);if(tx)cur.transactions.add(tx);map.set(raw,cur)
+  }
+  const rowsOut=[...map.values()].map(x=>({id:x.id,label:x.label,kind:x.kind,amount:Math.round(Math.abs(x.net)*100)/100,grossAbsoluteAmount:Math.round(x.gross*100)/100,transactions:x.transactions.size})).sort((a,b)=>b.amount-a.amount),total=rowsOut.reduce((s,x)=>s+x.amount,0);
+  return rowsOut.map(x=>({...x,sharePct:total?Math.round(x.amount/total*10000)/100:null}))
+}
+
 export async function readWalletBurn(storeId,{businessDate=new Date().toISOString().slice(0,10),force=false}={}){
   const day=/^\d{4}-\d{2}-\d{2}$/.test(clean(businessDate))?clean(businessDate):new Date().toISOString().slice(0,10);
   const key=`${storeId}|${day}`,hit=cache.get(key);
@@ -263,7 +282,7 @@ export async function readWalletBurnRange(storeId,{startDate,endDate,force=false
   if(selectedRows===null&&firstEmpty){selectedRows=firstEmpty.rows;selectedMeta=firstEmpty.meta}
   if(selectedRows===null)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_PAYMENT_READ_FAILED',error:{code:lastError?.code||'D365_PAYMENT_READ_FAILED',message:lastError?.message||String(lastError||'Lecture paiement impossible')}};
 
-  const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,walletIds)),profile=signProfile(walletRows,schema.fields.amount),burn=derivedBurn(profile);
-  const value={status:burn.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
+  const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,walletIds)),profile=signProfile(walletRows,schema.fields.amount),burn=derivedBurn(profile),mix=paymentMix(selectedRows,schema.fields,tenderTypes,walletIds);
+  const value={status:burn.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
   cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
 }
