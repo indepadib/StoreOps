@@ -1212,7 +1212,7 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','attentionRail','insights','kpis','hourly','mix','network','departments','dataQuality'],
+    overview: ['executiveDeck','decisionSales'],
     sales: ['decisionSales'],
     network: ['storeBenchmark'],
     categories: ['productPerformance'],
