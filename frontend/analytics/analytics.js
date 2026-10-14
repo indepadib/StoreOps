@@ -11,6 +11,7 @@
     stores: [],
     pulses: [],
     selectedStore: 'ALL',
+    selectedStoreIds: [],
     section: 'overview',
     periodPreset: '30d',
     periodStart: shiftDate(isoDate(new Date()), -29),
@@ -259,29 +260,47 @@
     }
   }
 
+  function selectedStores(){
+    if(!Array.isArray(state.selectedStoreIds)||!state.selectedStoreIds.length)return state.stores;
+    const wanted=new Set(state.selectedStoreIds);
+    return state.stores.filter(s=>wanted.has(s.id))
+  }
+
+  function syncStoreSelectionState(){
+    const valid=(state.selectedStoreIds||[]).filter(id=>state.stores.some(s=>s.id===id));
+    state.selectedStoreIds=[...new Set(valid)];
+    state.selectedStore=state.selectedStoreIds.length===0?'ALL':state.selectedStoreIds.length===1?state.selectedStoreIds[0]:'MULTI';
+  }
+
+  function storeScopeLabel(){
+    const rows=selectedStores();
+    if(!state.selectedStoreIds.length)return 'Tous les magasins';
+    if(rows.length===1)return rows[0]?.name||'1 magasin';
+    if(rows.length<=3)return rows.map(x=>x.name).join(' + ');
+    return `${rows.length} magasins sélectionnés`
+  }
+
   function hydrateStoreFilter() {
-    const select = $('#storeFilter');
-    const current = state.selectedStore;
-    select.innerHTML = '<option value="ALL">Tous les magasins</option>' +
-      state.stores.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('');
-    select.value = state.stores.some(s => s.id === current) ? current : 'ALL';
-    state.selectedStore = select.value;
+    syncStoreSelectionState();
+    const host=$('#storeMultiOptions'),all=$('#storeAllCheck'),label=$('#storeSelectionLabel');
+    if(host){
+      const selected=new Set(state.selectedStoreIds);
+      host.innerHTML=state.stores.map(s=>`<label class="store-option"><input type="checkbox" value="${escapeHtml(s.id)}" ${selected.has(s.id)?'checked':''}><span>${escapeHtml(s.name)}</span></label>`).join('');
+    }
+    if(all)all.checked=state.selectedStoreIds.length===0;
+    if(label)label.textContent=storeScopeLabel();
   }
 
   async function loadData(force = false) {
     if (state.loading) return;
     state.loading = true;
 
-    const targetStores = state.selectedStore === 'ALL'
-      ? state.stores
-      : state.stores.filter(s => s.id === state.selectedStore);
+    const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','crm','loyalty','cashiers']);
     if (decisionSections.has(state.section)) {
       state.pulses = [];
-      const scope = state.selectedStore === 'ALL'
-        ? `${targetStores.length} magasin(s)`
-        : targetStores[0]?.name || 'Magasin';
+      const scope = storeScopeLabel();
       if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
       setFreshness('live', 'Analyse période');
       document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force } }));
@@ -384,9 +403,8 @@
   }
 
   function updateHeadings(agg) {
-    const store = state.selectedStore === 'ALL'
-      ? null
-      : state.stores.find(s => s.id === state.selectedStore);
+    const scopedStores=selectedStores();
+    const store = scopedStores.length===1 ? scopedStores[0] : null;
     const tenant = TENANTS[state.tenant] || {};
     const storeLabel = tenant.terminology?.store || 'Magasin';
     const sectionCopy = {
@@ -491,9 +509,9 @@
     $('#executiveComparisonValue').textContent = a.comparison == null ? 'N/A' : money(a.comparison, true);
     $('#executiveSalesGap').textContent = gap == null ? 'N/A' : `${gap > 0 ? '+' : ''}${money(gap, true)}`;
     $('#executiveSalesGap').className = gap == null ? '' : gap > 0 ? 'executive-positive' : gap < 0 ? 'executive-negative' : '';
-    $('#executiveScopeValue').textContent = state.selectedStore === 'ALL'
+    $('#executiveScopeValue').textContent = state.selectedStoreIds.length===0
       ? `${a.ready}/${a.totalStores} magasins`
-      : state.stores.find(s => s.id === state.selectedStore)?.name || 'Magasin';
+      : storeScopeLabel();
 
     $('#executiveTickets').textContent = number(a.tickets);
     $('#executiveTrafficDelta').innerHTML = signedPercentHtml(drivers.traffic);
@@ -656,14 +674,14 @@
     const storeRows = networkRows().filter(r => r.status === 'READY' && r.change != null);
     const best = [...storeRows].sort((x, y) => y.change - x.change)[0];
     const worst = [...storeRows].sort((x, y) => x.change - y.change)[0];
-    if (best && state.selectedStore === 'ALL') {
+    if (best && selectedStores().length > 1) {
       items.push({
         tone: best.change >= 0 ? 'positive' : 'warning',
         title: `${best.name} affiche la meilleure dynamique réseau.`,
         detail: `${best.change >= 0 ? '+' : ''}${best.change.toFixed(1).replace('.', ',')} % vs J-7 · ${money(best.sales)} de CA.`
       });
     }
-    if (worst && best?.storeId !== worst.storeId && state.selectedStore === 'ALL') {
+    if (worst && best?.storeId !== worst.storeId && selectedStores().length > 1) {
       items.push({
         tone: worst.change < 0 ? 'negative' : 'warning',
         title: `${worst.name} est le magasin à surveiller en priorité.`,
@@ -881,8 +899,9 @@
     $$('tbody tr[data-store]', body).forEach(tr => {
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', () => {
-        state.selectedStore = tr.dataset.store;
-        $('#storeFilter').value = state.selectedStore;
+        state.selectedStoreIds=[tr.dataset.store];
+        syncStoreSelectionState();
+        hydrateStoreFilter();
         loadData();
       });
     });
@@ -970,9 +989,16 @@
   }
 
   function bindEvents() {
-    $('#storeFilter').addEventListener('change', e => {
-      state.selectedStore = e.target.value;
-      refreshForPeriod(false);
+    $('#storeAllCheck')?.addEventListener('change',e=>{
+      if(e.target.checked)state.selectedStoreIds=[];
+      else if(!state.selectedStoreIds.length)state.selectedStoreIds=state.stores.slice(0,1).map(s=>s.id);
+      syncStoreSelectionState();hydrateStoreFilter();refreshForPeriod(false)
+    });
+    $('#storeMultiOptions')?.addEventListener('change',e=>{
+      const input=e.target.closest('input[type="checkbox"]');if(!input)return;
+      const selected=new Set(state.selectedStoreIds);
+      if(input.checked)selected.add(input.value);else selected.delete(input.value);
+      state.selectedStoreIds=[...selected];syncStoreSelectionState();hydrateStoreFilter();refreshForPeriod(false)
     });
 
     $('#periodPreset')?.addEventListener('change', e => {
@@ -1086,6 +1112,7 @@
     return {
       tenant: state.tenant,
       selectedStore: state.selectedStore,
+      selectedStoreIds: [...state.selectedStoreIds],
       section: state.section,
       businessDate: state.businessDate,
       periodPreset: state.periodPreset,
@@ -1178,10 +1205,14 @@
     savePrefs();
     applyPreferences();
 
-    const requestedStore = payload.selectedStore || 'ALL';
-    state.selectedStore = requestedStore === 'ALL' || state.stores.some(s => s.id === requestedStore) ? requestedStore : 'ALL';
+    const requestedIds=Array.isArray(payload.selectedStoreIds)?payload.selectedStoreIds.filter(id=>state.stores.some(s=>s.id===id)):[];
+    if(requestedIds.length)state.selectedStoreIds=requestedIds;
+    else{
+      const requestedStore=payload.selectedStore||'ALL';
+      state.selectedStoreIds=requestedStore!=='ALL'&&state.stores.some(s=>s.id===requestedStore)?[requestedStore]:[];
+    }
+    syncStoreSelectionState();
     hydrateStoreFilter();
-    $('#storeFilter').value = state.selectedStore;
 
     updatePeriodSummary();
     closeDrawer();
@@ -1225,7 +1256,7 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','decisionSales'],
+    overview: ['executiveDeck','storeBenchmark'],
     sales: ['decisionSales'],
     network: ['storeBenchmark'],
     categories: ['productPerformance'],
@@ -1317,7 +1348,7 @@
     let rows=visibleTableRows();
     if(!rows.length)rows=decisionFallbackRows();
     if(!rows.length)return toast('Aucune donnée visible à exporter');
-    const scope=state.selectedStore==='ALL'?'reseau':state.selectedStore;
+    const scope=state.selectedStoreIds.length?state.selectedStoreIds.join('-'):'reseau';
     downloadCsv(`retail-intelligence-${state.section}-${scope}-${state.periodStart}-${state.periodEnd}.csv`,rows);
     toast('Export de la vue généré');
   }
@@ -1333,6 +1364,9 @@
 
   window.RETAIL_INTELLIGENCE = {
     getState: () => state,
+    getSelectedStores: () => selectedStores(),
+    getStoreScopeKey: () => state.selectedStoreIds.length ? [...state.selectedStoreIds].sort().join(',') : 'ALL',
+    getStoreScopeLabel: () => storeScopeLabel(),
     api,
     money,
     number,
