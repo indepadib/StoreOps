@@ -71,64 +71,58 @@ function mappingComplete(fields={}){
 async function discoverPaymentSchema(){
   if(paymentSchemaPromise)return paymentSchemaPromise;
   paymentSchemaPromise=(async()=>{
-  const explicit=clean(process.env.D365_TENDER_PAYMENT_ENTITY);
-  const metadata=await listDataEntities('payment').catch(()=>[]);
-  const names=unique([
-    explicit,
-    'RetailTransactionPaymentTransactions',
-    'RetailTransactionPaymentTrans',
-    'RetailTransactionPaymentTransEntity',
-    'RetailPaymentTransactions',
-    'RetailTransactionPaymentTransBIEntity',
-    'RetailTransactionPaymentTransBIEntities',
-    'RetailTransactionPaymentTransactionsBIEntities',
-    'RetailTransactionTenderTransBIEntities',
-    ...metadata.map(metaEntityName).filter(n=>/payment/i.test(n)&&/transaction|retail/i.test(n))
-  ]).filter(validName);
-
-  let lastError=null;
-  for(const entity of names){
-    try{
-      const probe=await probeDataEntity(entity,{top:5,extra:config.dynamics.dataAreaId?'cross-company=true':''});
-      const sample=probe?.rows?.find(row=>Object.keys(row||{}).length)||probe?.rows?.[0]||null;
-      if(!probe?.ok||!sample)continue;
-      const fields=paymentFieldMap(sample);
-      if(mappingComplete(fields))return{status:'READY',entity,fields,sampleKeys:Object.keys(sample)};
-    }catch(error){lastError=error}
-  }
-  return{status:'UNAVAILABLE',entity:null,fields:null,error:{code:lastError?.code||'D365_TENDER_ENTITY_UNMAPPED',message:lastError?.message||'Aucune Data Entity de paiements retail exploitable détectée.'}};
+    const explicit=clean(process.env.D365_TENDER_PAYMENT_ENTITY);
+    const primary=unique([
+      explicit,
+      'RetailTransactionPaymentTransBIEntities',
+      'RetailTransactionPaymentTransactionsBIEntities',
+      'RetailTransactionTenderTransBIEntities',
+      'RetailTransactionPaymentTransactions',
+      'RetailTransactionPaymentTrans',
+      'RetailTransactionPaymentTransEntity',
+      'RetailPaymentTransactions'
+    ]).filter(validName);
+    let lastError=null;
+    const probeNames=async names=>{
+      for(const entity of names){
+        try{
+          const probe=await probeDataEntity(entity,{top:5,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+          const sample=probe?.rows?.find(row=>Object.keys(row||{}).length)||probe?.rows?.[0]||null;
+          if(!probe?.ok||!sample)continue;
+          const fields=paymentFieldMap(sample);
+          if(mappingComplete(fields))return{status:'READY',entity,fields,sampleKeys:Object.keys(sample)};
+        }catch(error){lastError=error}
+      }
+      return null
+    };
+    const direct=await probeNames(primary);if(direct)return direct;
+    const metadata=await listDataEntities('payment').catch(()=>[]),fallback=unique(metadata.map(metaEntityName).filter(n=>/payment|tender/i.test(n)&&/transaction|retail/i.test(n))).filter(n=>!primary.includes(n)&&validName(n));
+    const discovered=await probeNames(fallback);if(discovered)return discovered;
+    return{status:'UNAVAILABLE',entity:null,fields:null,error:{code:lastError?.code||'D365_TENDER_ENTITY_UNMAPPED',message:lastError?.message||'Aucune Data Entity de paiements retail exploitable détectée.'}};
   })();
   try{return await paymentSchemaPromise}catch(error){paymentSchemaPromise=null;throw error}
 }
 async function tenderNameMap(){
   if(tenderMapPromise)return tenderMapPromise;
   tenderMapPromise=(async()=>{
-  const explicit=clean(process.env.D365_TENDER_TYPE_ENTITY);
-  const metadata=await listDataEntities('tender').catch(()=>[]);
-  const names=unique([
-    explicit,
-    'RetailTenderTypeEntity',
-    'RetailTenderTypes',
-    ...metadata.map(metaEntityName).filter(n=>/tender/i.test(n)&&/type|payment/i.test(n))
-  ]).filter(validName);
-
-  for(const entity of names){
-    try{
-      const probe=await probeDataEntity(entity,{top:5,extra:config.dynamics.dataAreaId?'cross-company=true':''});
-      const sample=probe?.rows?.find(row=>Object.keys(row||{}).length)||probe?.rows?.[0]||null;
-      if(!sample)continue;
-      const idField=keyMatch(sample,['PaymentMethodNumber','TenderTypeId','tenderTypeId','PaymentMethodId','Id']);
-      const nameField=keyMatch(sample,['Name','name','Description','PaymentMethodName']);
-      if(!idField||!nameField)continue;
-      const payload=await odataGetAll(entity,{select:`${idField},${nameField}`,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:3000});
-      const map=new Map();
-      for(const row of payload.value||[]){
-        const id=clean(row[idField]),name=clean(row[nameField]);if(id)map.set(id,name||id);
+    const explicit=clean(process.env.D365_TENDER_TYPE_ENTITY),primary=unique([explicit,'RetailTenderTypeEntity','RetailTenderTypes']).filter(validName);
+    const tryNames=async names=>{
+      for(const entity of names){
+        try{
+          const probe=await probeDataEntity(entity,{top:5,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+          const sample=probe?.rows?.find(row=>Object.keys(row||{}).length)||probe?.rows?.[0]||null;if(!sample)continue;
+          const idField=keyMatch(sample,['PaymentMethodNumber','TenderTypeId','tenderTypeId','PaymentMethodId','Id']),nameField=keyMatch(sample,['Name','name','Description','PaymentMethodName']);
+          if(!idField||!nameField)continue;
+          const payload=await odataGetAll(entity,{select:`${idField},${nameField}`,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:3000}),map=new Map();
+          for(const row of payload.value||[]){const id=clean(row[idField]),name=clean(row[nameField]);if(id)map.set(id,name||id)}
+          return{status:'READY',entity,idField,nameField,map}
+        }catch{}
       }
-      return{status:'READY',entity,idField,nameField,map};
-    }catch{}
-  }
-  return{status:'UNAVAILABLE',entity:null,map:new Map()};
+      return null
+    };
+    const direct=await tryNames(primary);if(direct)return direct;
+    const metadata=await listDataEntities('tender').catch(()=>[]),fallback=unique(metadata.map(metaEntityName).filter(n=>/tender|payment/i.test(n)&&/type|method/i.test(n))).filter(n=>!primary.includes(n)&&validName(n));
+    return await tryNames(fallback)||{status:'UNAVAILABLE',entity:null,map:new Map()}
   })();
   try{return await tenderMapPromise}catch(error){tenderMapPromise=null;throw error}
 }
