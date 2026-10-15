@@ -316,7 +316,9 @@
       else if(marginQuality==='IMPLAUSIBLE_ESTIMATE'){badge.textContent='Marge N/A · incohérence coût/unité détectée';badge.className='margin-status warning'}
       else{badge.textContent=d.margin?.status==='UNVALIDATED'?'Marge · coût transactionnel à valider':'Marge · coût indisponible';badge.className='margin-status warning'}
     }
-    $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s)`;
+    const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
+    $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;
+    $('#decisionCoverage').title=(q.issues||[]).map(x=>x.message).join(' · ');
     const marginLabel=estimated?'Marge estimée ~':'Marge DH',rateLabel=estimated?'Taux marge ~':'Taux de marge',marginSub=estimated?`coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:'coût transactionnel validé uniquement';
     const cards=[
       ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
