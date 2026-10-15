@@ -222,7 +222,21 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  if(identifiedTicketGapPct!=null&&identifiedTicketGapPct>1)qualityIssues.push({code:'IDENTIFIED_TICKET_RECONCILIATION',level:'WARN',message:`Tickets clients ≠ tickets identifiés (${round2(identifiedTicketGapPct)} % d'écart)`});
  if(marginStatus==='VALIDATED'&&currentSummary.marginRate!=null&&(currentSummary.marginRate>85||currentSummary.marginRate<-50))qualityIssues.push({code:'MARGIN_IMPLAUSIBLE',level:'ERROR',message:'Taux de marge transactionnel incohérent'});
  if(unknownUnitProducts)qualityIssues.push({code:'UNIT_COVERAGE',level:'INFO',message:`${unknownUnitProducts} article(s) vendus sans unité transactionnelle`});
- const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts,productSales,productSalesGapPct,storeSales,storeSalesGapPct,customerIdentifiedSales:customerSales,summaryIdentifiedSales:currentSummary.identifiedSales,identifiedSalesGapPct,customerIdentifiedTickets:customerTickets,summaryIdentifiedTickets:currentSummary.identifiedTickets,identifiedTicketGapPct}};
+ const filterCoverage=currentResults.map(x=>x?.diagnostics?.filterCoverage||{}),mappedFields=currentResults.map(x=>x?.diagnostics?.mappedFields||{});
+ const officialFilterCoverage={
+  amountBounds:filterCoverage.every(x=>x.amountBounds===true),
+  transactionStatus:filterCoverage.every(x=>x.transactionStatus===true),
+  returnNoSale:filterCoverage.every(x=>x.returnNoSale===true),
+  taxItemGroup:filterCoverage.every(x=>x.taxItemGroup===true)
+ };
+ if(!officialFilterCoverage.returnNoSale||!officialFilterCoverage.taxItemGroup)qualityIssues.push({code:'OFFICIAL_CA_FILTER_COVERAGE',level:'WARN',message:'Filtres CA officiels returnNoSale / ExoColl non garantis sur toutes les sources ventes'});
+ const fieldCoverage={
+  product:mappedFields.every(x=>x.product===true),productName:mappedFields.every(x=>x.productName===true),quantity:mappedFields.every(x=>x.quantity===true),
+  salesUnit:mappedFields.every(x=>x.salesUnit===true),customer:mappedFields.every(x=>x.customer===true),staff:mappedFields.every(x=>x.staff===true),time:mappedFields.every(x=>x.time===true)
+ };
+ if(!fieldCoverage.customer)qualityIssues.push({code:'CUSTOMER_FIELD_COVERAGE',level:'ERROR',message:'Champ client non disponible sur toute la période : KPIs CRM bloqués'});
+ if(!fieldCoverage.product)qualityIssues.push({code:'PRODUCT_FIELD_COVERAGE',level:'ERROR',message:'Champ article non disponible : analyses produits bloquées'});
+ const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts,officialFilterCoverage,fieldCoverage,productSales,productSalesGapPct,storeSales,storeSalesGapPct,customerIdentifiedSales:customerSales,summaryIdentifiedSales:currentSummary.identifiedSales,identifiedSalesGapPct,customerIdentifiedTickets:customerTickets,summaryIdentifiedTickets:currentSummary.identifiedTickets,identifiedTicketGapPct}};
  return{
   status:currentResults.length?'READY':'UNAVAILABLE',
   period:{startDate,endDate,days:currentResults[0]?.days||null},
