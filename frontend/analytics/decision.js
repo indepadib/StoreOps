@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v19:';
+  const decisionCachePrefix='retail-intelligence:decision:v20:';
   const catalogCacheKey='retail-intelligence:catalog:v5';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -145,8 +145,13 @@
     const el=$('#executiveSalesValue');if(el)el.textContent=done>=total?'Finalisation…':`Analyse ${done}/${total}`;
     const foot=$('#executiveComparisonValue');if(foot)foot.textContent='Lecture Dynamics par blocs';
   }
-  async function fetchDecisionSlice(api,s,cur,cmp,force=false){
-    const scope=storeScopeKey(s),q=new URLSearchParams({storeId:scope==='ALL'?'ALL':'MULTI',start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});if(scope!=='ALL')q.set('storeIds',scope);
+  function selectedStoreIds(s){
+    const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds.filter(Boolean):[];
+    if(ids.length)return [...new Set(ids)];
+    return (s?.stores||[]).map(x=>x.id).filter(Boolean)
+  }
+  async function fetchSingleStoreSlice(api,storeId,cur,cmp,force=false){
+    const q=new URLSearchParams({storeId,start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
     if(force)q.set('force','1');
     try{return await api.api(`/api/analytics/decision?${q}`,{noRetry:true})}
     catch(error){
@@ -154,14 +159,23 @@
       const cd=rangeDays(cur.start,cur.end),pd=rangeDays(cmp.start,cmp.end);
       if(retryable&&cd>1&&pd>1){
         const cparts=splitRange(cur.start,cur.end,2),pparts=splitRange(cmp.start,cmp.end,2);
-        const [left,right]=await Promise.all([
-          fetchDecisionSlice(api,s,cparts[0],pparts[0],force),
-          fetchDecisionSlice(api,s,cparts[1],pparts[1],force)
-        ]);
+        // Keep recursive retries sequential: D365 is the bottleneck and parallel
+        // retries were multiplying throttling / Netlify 504s.
+        const left=await fetchSingleStoreSlice(api,storeId,cparts[0],pparts[0],force);
+        const right=await fetchSingleStoreSlice(api,storeId,cparts[1],pparts[1],force);
         return mergeDecisionParts([left,right],{startDate:cur.start,endDate:cur.end,days:cd},{startDate:cmp.start,endDate:cmp.end,days:pd})
       }
       throw error
     }
+  }
+  async function fetchDecisionSlice(api,s,cur,cmp,force=false){
+    const ids=selectedStoreIds(s);
+    if(ids.length<=1)return fetchSingleStoreSlice(api,ids[0]||s.selectedStore||'ALL',cur,cmp,force);
+
+    const results=new Array(ids.length);let next=0;
+    const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force)}};
+    await Promise.all(Array.from({length:Math.min(2,ids.length)},worker));
+    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:rangeDays(cur.start,cur.end)},{startDate:cmp.start,endDate:cmp.end,days:rangeDays(cmp.start,cmp.end)})
   }
   async function loadDecisionChunked(api,s,force=false){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
