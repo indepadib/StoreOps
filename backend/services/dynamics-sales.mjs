@@ -462,6 +462,11 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
      marginEval={...primaryEval,status:'UNVALIDATED',available:false,reason:semanticValidation.reason,marginValue:null,marginRate:null};
    }
  }
+ const businessMarginMin=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0;
+ const businessMarginMax=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):30;
+ if(marginEval.available===true&&Number.isFinite(Number(marginEval.marginRate))&&(Number(marginEval.marginRate)<businessMarginMin||Number(marginEval.marginRate)>businessMarginMax)){
+   marginEval={...marginEval,status:'UNVALIDATED',available:false,reason:'BUSINESS_MARGIN_SANITY_FAILED',marginValue:null,marginRate:null}
+ }
  const margin={
    status:marginEval.status,
    available:marginEval.available===true,
