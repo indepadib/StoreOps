@@ -10,14 +10,15 @@ function mergeRows(groups=[],keyField='key'){
   for(const rows of groups){
     for(const row of rows||[]){
       const key=String(row?.[keyField]??row?.key??'').trim();if(!key)continue;
-      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true,quantityUnits:new Set()};
+      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginSalesBase:0,marginValue:0,marginKnown:true,marginBaseKnown:true,quantityUnits:new Set()};
       cur.sales+=num(row.sales);cur.units+=num(row.units);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));
+      if(row.marginSalesBase===null||row.marginSalesBase===undefined)cur.marginBaseKnown=false;else cur.marginSalesBase+=num(row.marginSalesBase);
       if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(row.marginValue);
       if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
       map.set(key,cur);
     }
   }
-  return[...map.values()].map(x=>{const sales=round2(x.sales),marginValue=x.marginKnown?round2(x.marginValue):null,quantityUnit=x.quantityUnits.size===1?[...x.quantityUnits][0]:null;return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit,marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
+  return[...map.values()].map(x=>{const sales=round2(x.sales),marginSalesBase=x.marginBaseKnown?round2(x.marginSalesBase):null,marginValue=x.marginKnown?round2(x.marginValue):null,quantityUnit=x.quantityUnits.size===1?[...x.quantityUnits][0]:null;return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit,marginSalesBase,marginValue,marginRate:marginValue!==null&&marginSalesBase?round2(marginValue/marginSalesBase*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
 function compareRows(current=[],previous=[]){
   const prev=new Map(previous.map(x=>[x.key,x])),all=[...current],seen=new Set(current.map(x=>x.key));
@@ -25,19 +26,20 @@ function compareRows(current=[],previous=[]){
   const currentTotal=current.reduce((s,x)=>s+num(x.sales),0);
   return all.sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr')).map((x,i)=>{
     const p=prev.get(x.key),previousSales=num(p?.sales),delta=round2(num(x.sales)-previousSales);
-    return{...x,rank:i+1,previousSales:round2(previousSales),deltaSales:delta,changePct:previousSales?pct(num(x.sales),previousSales):null,sharePct:currentTotal?round2(num(x.sales)/currentTotal*100):null,previousMarginValue:p?.marginValue??null,deltaMargin:x.marginValue!=null&&p?.marginValue!=null?round2(x.marginValue-p.marginValue):null}
+    return{...x,rank:i+1,previousSales:round2(previousSales),deltaSales:delta,changePct:previousSales?pct(num(x.sales),previousSales):null,sharePct:currentTotal?round2(num(x.sales)/currentTotal*100):null,previousMarginSalesBase:p?.marginSalesBase??null,previousMarginValue:p?.marginValue??null,deltaMargin:x.marginValue!=null&&p?.marginValue!=null?round2(x.marginValue-p.marginValue):null}
   })
 }
 function mergeDaily(results=[]){
   const map=new Map();
   for(const result of results)for(const d of result?.daily||[]){
-    const cur=map.get(d.date)||{date:d.date,sales:0,tickets:0,units:0,marginValue:0,marginKnown:true,identifiedSales:0,identifiedKnown:true};
+    const cur=map.get(d.date)||{date:d.date,sales:0,tickets:0,units:0,marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true,identifiedSales:0,identifiedKnown:true};
     cur.sales+=num(d.sales);cur.tickets+=num(d.tickets);cur.units+=num(d.units);
+    if(d.marginSalesBase===null||d.marginSalesBase===undefined)cur.marginBaseKnown=false;else cur.marginSalesBase+=num(d.marginSalesBase);
     if(d.marginValue===null||d.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(d.marginValue);
     if(d.identifiedSales===null||d.identifiedSales===undefined)cur.identifiedKnown=false;else cur.identifiedSales+=num(d.identifiedSales);
     map.set(d.date,cur)
   }
-  return[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(x=>({date:x.date,sales:round2(x.sales),tickets:x.tickets,units:round2(x.units),averageBasket:x.tickets?round2(x.sales/x.tickets):null,marginValue:x.marginKnown?round2(x.marginValue):null,identifiedSales:x.identifiedKnown?round2(x.identifiedSales):null}))
+  return[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)).map(x=>{const marginSalesBase=x.marginBaseKnown?round2(x.marginSalesBase):null,marginValue=x.marginKnown?round2(x.marginValue):null;return{date:x.date,sales:round2(x.sales),tickets:x.tickets,units:round2(x.units),averageBasket:x.tickets?round2(x.sales/x.tickets):null,marginSalesBase,marginValue,marginRate:marginValue!==null&&marginSalesBase?round2(marginValue/marginSalesBase*100):null,identifiedSales:x.identifiedKnown?round2(x.identifiedSales):null}})
 }
 function mergeCustomers(results=[],endDate=null){
   const map=new Map();
@@ -139,14 +141,16 @@ function enrichCustomerPricePreferences(customers=[],tierMap=new Map()){
 }
 
 function sumSummary(results=[]){
-  let sales=0,tickets=0,units=0,marginValue=0,marginKnown=true,identifiedSales=0,identifiedKnown=true,identifiedTickets=0,identifiedTicketsKnown=true;
+  let sales=0,tickets=0,units=0,marginSalesBase=0,marginBaseKnown=true,marginValue=0,marginKnown=true,identifiedSales=0,identifiedKnown=true,identifiedTickets=0,identifiedTicketsKnown=true;
   for(const r of results){
     const s=r?.summary||{};sales+=num(s.sales);tickets+=num(s.tickets);units+=num(s.units);
+    if(s.marginSalesBase===null||s.marginSalesBase===undefined)marginBaseKnown=false;else marginSalesBase+=num(s.marginSalesBase);
     if(s.marginValue===null||s.marginValue===undefined)marginKnown=false;else marginValue+=num(s.marginValue);
     if(s.identifiedSales===null||s.identifiedSales===undefined)identifiedKnown=false;else identifiedSales+=num(s.identifiedSales);
     if(s.identifiedTickets===null||s.identifiedTickets===undefined)identifiedTicketsKnown=false;else identifiedTickets+=num(s.identifiedTickets)
   }
-  return{sales:round2(sales),tickets,units:round2(units),averageBasket:tickets?round2(sales/tickets):null,marginValue:marginKnown?round2(marginValue):null,marginRate:marginKnown&&sales?round2(marginValue/sales*100):null,identifiedSales:identifiedKnown?round2(identifiedSales):null,identifiedSalesShare:identifiedKnown&&sales?round2(identifiedSales/sales*100):null,identifiedTickets:identifiedTicketsKnown?identifiedTickets:null,identifiedTicketRate:identifiedTicketsKnown&&tickets?round2(identifiedTickets/tickets*100):null}
+  const marginBase=marginBaseKnown?round2(marginSalesBase):null,margin=marginKnown?round2(marginValue):null;
+  return{sales:round2(sales),tickets,units:round2(units),averageBasket:tickets?round2(sales/tickets):null,marginSalesBase:marginBase,marginValue:margin,marginRate:margin!==null&&marginBase?round2(margin/marginBase*100):null,identifiedSales:identifiedKnown?round2(identifiedSales):null,identifiedSalesShare:identifiedKnown&&sales?round2(identifiedSales/sales*100):null,identifiedTickets:identifiedTicketsKnown?identifiedTickets:null,identifiedTicketRate:identifiedTicketsKnown&&tickets?round2(identifiedTickets/tickets*100):null}
 }
 function driverDecomposition(current,previous){
  const prevBasket=previous.averageBasket,currentBasket=current.averageBasket;
@@ -161,7 +165,8 @@ function hierarchyFromProducts(currentProducts,previousProducts){
  const margins=(rows,level)=>{
   const map=new Map();
   for(const p of rows){
-   const node=p.hierarchy?.levels?.[level],key=node?.id||'__UNCLASSIFIED__',cur=map.get(key)||{marginValue:0,marginKnown:true};
+   const node=p.hierarchy?.levels?.[level],key=node?.id||'__UNCLASSIFIED__',cur=map.get(key)||{marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true};
+   if(p.marginSalesBase===null||p.marginSalesBase===undefined)cur.marginBaseKnown=false;else cur.marginSalesBase+=num(p.marginSalesBase);
    if(p.marginValue===null||p.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(p.marginValue);
    map.set(key,cur)
   }
@@ -170,15 +175,15 @@ function hierarchyFromProducts(currentProducts,previousProducts){
  for(const level of levels){
   const cur=margins(currentAttached,level),prev=margins(previousAttached,level);
   ranked[level]=ranked[level].map(row=>{
-   const cm=cur.get(row.key),pm=prev.get(row.key),marginValue=cm?.marginKnown?round2(cm.marginValue):null,previousMarginValue=pm?.marginKnown?round2(pm.marginValue):null;
-   return{...row,marginValue,marginRate:marginValue!==null&&row.sales?round2(marginValue/row.sales*100):null,previousMarginValue,deltaMargin:marginValue!==null&&previousMarginValue!==null?round2(marginValue-previousMarginValue):null}
+   const cm=cur.get(row.key),pm=prev.get(row.key),marginSalesBase=cm?.marginBaseKnown?round2(cm.marginSalesBase):null,marginValue=cm?.marginKnown?round2(cm.marginValue):null,previousMarginSalesBase=pm?.marginBaseKnown?round2(pm.marginSalesBase):null,previousMarginValue=pm?.marginKnown?round2(pm.marginValue):null;
+   return{...row,marginSalesBase,marginValue,marginRate:marginValue!==null&&marginSalesBase?round2(marginValue/marginSalesBase*100):null,previousMarginSalesBase,previousMarginValue,deltaMargin:marginValue!==null&&previousMarginValue!==null?round2(marginValue-previousMarginValue):null}
   })
  }
  return ranked
 }
 function storeComparison(store,current,previous){
  const c=current?.summary||{},p=previous?.summary||{};
- return{storeId:store.id,storeName:store.name,storeCode:store.code,sales:c.sales??null,previousSales:p.sales??null,changePct:p.sales?pct(c.sales,p.sales):null,deltaSales:c.sales!=null&&p.sales!=null?round2(c.sales-p.sales):null,tickets:c.tickets??null,previousTickets:p.tickets??null,ticketsChangePct:p.tickets?pct(c.tickets,p.tickets):null,averageBasket:c.averageBasket??null,previousAverageBasket:p.averageBasket??null,basketChangePct:p.averageBasket?pct(c.averageBasket,p.averageBasket):null,marginValue:c.marginValue??null,marginRate:c.marginRate??null,previousMarginValue:p.marginValue??null,deltaMargin:c.marginValue!=null&&p.marginValue!=null?round2(c.marginValue-p.marginValue):null,marginChangePct:p.marginValue?pct(c.marginValue,p.marginValue):null,identifiedSalesShare:c.identifiedSalesShare??null,identifiedTicketRate:c.identifiedTicketRate??null,status:current?.status||'UNAVAILABLE'}
+ return{storeId:store.id,storeName:store.name,storeCode:store.code,sales:c.sales??null,previousSales:p.sales??null,changePct:p.sales?pct(c.sales,p.sales):null,deltaSales:c.sales!=null&&p.sales!=null?round2(c.sales-p.sales):null,tickets:c.tickets??null,previousTickets:p.tickets??null,ticketsChangePct:p.tickets?pct(c.tickets,p.tickets):null,averageBasket:c.averageBasket??null,previousAverageBasket:p.averageBasket??null,basketChangePct:p.averageBasket?pct(c.averageBasket,p.averageBasket):null,marginSalesBase:c.marginSalesBase??null,marginValue:c.marginValue??null,marginRate:c.marginRate??null,previousMarginSalesBase:p.marginSalesBase??null,previousMarginValue:p.marginValue??null,deltaMargin:c.marginValue!=null&&p.marginValue!=null?round2(c.marginValue-p.marginValue):null,marginChangePct:p.marginValue?pct(c.marginValue,p.marginValue):null,identifiedSalesShare:c.identifiedSalesShare??null,identifiedTicketRate:c.identifiedTicketRate??null,status:current?.status||'UNAVAILABLE'}
 }
 async function mapLimit(items,limit,worker){
  const out=new Array(items.length);let cursor=0;
