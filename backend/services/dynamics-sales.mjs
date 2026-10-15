@@ -5,7 +5,7 @@ import { storeOperationalSettings } from './store-settings.mjs';
 import { effectiveD365SalesMapping,salesStoreIdentifiers } from './d365-sales-mapping.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
-import { inferTransactionCostKind, evaluateTransactionMarginRows } from './sales-margin-engine.mjs';
+import { inferTransactionCostKind, evaluateTransactionMarginRows, selectTransactionCostSemantics } from './sales-margin-engine.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -375,7 +375,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v16|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v16',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v17|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v17',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -422,14 +422,34 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
  const includedRows=selected.rows.filter(row=>includedRetailSaleRow(row,c));
- const costKind=inferTransactionCostKind(c.fields.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
+ const detectedCostKind=inferTransactionCostKind(c.fields.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
  let marginRefs=new Map();
- const needsUnitRefs=costKind==='UNIT_COST_INVENTORY'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0}));
+ // CostAmount is semantically ambiguous in this environment: on weighted / multi-qty
+ // lines it can behave like an inventory-unit cost rather than a line-total COGS.
+ // Load only product UOM metadata (not product-master cost) so both interpretations
+ // can be tested against the same transaction values.
+ const needsUnitRefs=detectedCostKind==='UNIT_COST_INVENTORY'||detectedCostKind==='LINE_AMOUNT'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0}));
  if(needsUnitRefs&&c.fields.product){
    const marginSkus=[...new Set(includedRows.map(row=>clean(row[c.fields.product])).filter(Boolean))];
    marginRefs=await releasedProductSourcingMany(marginSkus);
  }
- const marginEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind});
+ const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
+ let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null;
+ if(detectedCostKind==='LINE_AMOUNT'){
+   const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY'});
+   semanticValidation=selectTransactionCostSemantics({
+     lineAmountEval:primaryEval,
+     unitCostEval:unitEval,
+     min:Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0,
+     max:Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):30
+   });
+   if(semanticValidation.status==='VALIDATED'&&semanticValidation.evaluation){
+     marginEval=semanticValidation.evaluation;
+     costKind=semanticValidation.selected;
+   }else{
+     marginEval={...primaryEval,status:'UNVALIDATED',available:false,reason:semanticValidation.reason,marginValue:null,marginRate:null};
+   }
+ }
  const margin={
    status:marginEval.status,
    available:marginEval.available===true,
@@ -437,6 +457,8 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    costField:c.fields.cost||null,
    fallbackCostField:c.fields.costUnitPrice||null,
    costKind,
+   detectedCostKind,
+   semanticValidation:semanticValidation?{status:semanticValidation.status,selected:semanticValidation.selected,reason:semanticValidation.reason,rateGapPctPoints:semanticValidation.rateGapPctPoints??null,lineAmountRate:primaryEval?.diagnosticMarginRate??null,unitCostRate:semanticValidation.selected==='UNIT_COST_INVENTORY'?marginEval?.diagnosticMarginRate??null:null}:null,
    method:marginEval.method||null,
    basisCoveragePct:marginEval.basisCoveragePct??null,
    coveragePct:marginEval.coveragePct??null,
@@ -558,6 +580,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v16',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v17',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
