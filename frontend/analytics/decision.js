@@ -394,13 +394,13 @@
     const margin=marginDisplay(d),displayMargin=margin.value,displayRate=margin.rate,estimated=margin.estimated,marginCoverage=margin.coverage,marginQuality=margin.quality;
     const badge=$('#marginStatusBadge');
     if(badge){
-      if(d.margin?.available){badge.textContent=`Marge validée · ${d.margin?.costKind==='UNIT_COST_INVENTORY'?'CostPrice × quantité inventaire':'coût transactionnel'} · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' CA couvert'}`;badge.className='margin-status valid'}
+      if(d.margin?.available){badge.textContent=`Marge brute HT validée · ${d.margin?.salesBasis==='DERIVED_TTC_MINUS_TAX'?'TTC − taxe':'CA HT D365'} · ${d.margin?.costKind==='UNIT_COST_INVENTORY'?'CostPrice × quantité inventaire':'coût transactionnel'} · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' coût couvert'}`;badge.className='margin-status valid'}
       else{badge.textContent=`Marge N/A · ${marginCoverage==null?'couverture inconnue':api.percent(marginCoverage,0)+' CA couvert'} · ${d.margin?.reason||'coût transactionnel non validé'}`;badge.className='margin-status warning'}
     }
     const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
     $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;
     $('#decisionCoverage').title=(q.issues||[]).map(x=>x.message).join(' · ');
-    const marginLabel='Marge DH',rateLabel='Taux de marge',marginSub=displayMargin==null?`transaction cost · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:`transaction cost · ${margin.method==='TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY'?'coût × quantité unité inventaire':'coût de ligne'}`;
+    const marginLabel='Marge brute HT',rateLabel='Taux de marge HT',marginSub=displayMargin==null?`transaction cost · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:`transaction cost · ${margin.method==='TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY'?'coût × quantité unité inventaire':'coût de ligne'}`;
     const cards=[
       ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
       ['Tickets',api.number(cur.tickets),signed(api,s.ticketsChangePct),'fréquentation'],
