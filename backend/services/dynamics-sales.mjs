@@ -317,7 +317,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v9',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v10',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -333,12 +333,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
    for(const mode of dateModes){
     try{
-     const chunkDays=Math.max(7,Math.min(31,Number(process.env.RETAIL_ANALYTICS_RANGE_CHUNK_DAYS)||31)),chunks=[];
+     const chunkDays=Math.max(5,Math.min(31,Number(process.env.RETAIL_ANALYTICS_RANGE_CHUNK_DAYS)||10)),chunks=[];
      for(let chunkStart=start;chunkStart<=end;chunkStart=nextDate(chunkStart,chunkDays)){
       const candidate=nextDate(chunkStart,chunkDays-1);chunks.push({start:chunkStart,end:candidate>end?end:candidate})
      }
      const rows=[];let pages=0,truncated=false,rowCount=0;
-     const concurrency=Math.max(1,Math.min(4,Number(process.env.RETAIL_ANALYTICS_RANGE_CONCURRENCY)||3));
+     const concurrency=Math.max(1,Math.min(4,Number(process.env.RETAIL_ANALYTICS_RANGE_CONCURRENCY)||2));
      for(let i=0;i<chunks.length;i+=concurrency){
       const batch=chunks.slice(i,i+concurrency);
       const fetchedBatch=await Promise.all(batch.map(async chunk=>{
@@ -456,6 +456,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v9',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v10',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
