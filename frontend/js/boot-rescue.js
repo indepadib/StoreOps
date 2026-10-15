@@ -1,4 +1,4 @@
-const BOOT_KEY='storeops_boot_rescue_v2402';
+const BOOT_KEY='storeops_boot_rescue_v2404';
 const CACHE_PREFIX='storeops-shell-';
 
 async function clearStoreOpsShell(){
