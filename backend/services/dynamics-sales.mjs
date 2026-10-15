@@ -375,7 +375,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v18|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v18',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v19|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v19',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -434,9 +434,14 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    marginRefs=await releasedProductSourcingMany(marginSkus);
  }
  const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
- let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null;
+ let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null,unitEvalDiagnostic=null;
  if(detectedCostKind==='LINE_AMOUNT'){
-   const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY'});
+   // Do not reinterpret CostAmount as a unit price when D365 also exposes a
+   // dedicated CostPrice/UnitCost field. For weighted items the latter is the
+   // only semantically correct candidate: inventory unit can be g while the
+   // sales quantity is kg, so the quantity must be converted before valuation.
+   const unitFields=c.fields.costUnitPrice?{...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null}:c.fields;
+   const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:unitFields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY'});unitEvalDiagnostic=unitEval;
    semanticValidation=selectTransactionCostSemantics({
      lineAmountEval:primaryEval,
      unitCostEval:unitEval,
@@ -453,12 +458,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const margin={
    status:marginEval.status,
    available:marginEval.available===true,
-   source:c.fields.cost?('D365/'+c.entity+'.'+c.fields.cost):null,
-   costField:c.fields.cost||null,
+   source:(costKind==='UNIT_COST_INVENTORY'&&c.fields.costUnitPrice?('D365/'+c.entity+'.'+c.fields.costUnitPrice):c.fields.cost?('D365/'+c.entity+'.'+c.fields.cost):null),
+   costField:costKind==='UNIT_COST_INVENTORY'&&c.fields.costUnitPrice?c.fields.costUnitPrice:(c.fields.cost||null),
    fallbackCostField:c.fields.costUnitPrice||null,
    costKind,
    detectedCostKind,
-   semanticValidation:semanticValidation?{status:semanticValidation.status,selected:semanticValidation.selected,reason:semanticValidation.reason,rateGapPctPoints:semanticValidation.rateGapPctPoints??null,lineAmountRate:primaryEval?.diagnosticMarginRate??null,unitCostRate:semanticValidation.selected==='UNIT_COST_INVENTORY'?marginEval?.diagnosticMarginRate??null:null}:null,
+   semanticValidation:semanticValidation?{status:semanticValidation.status,selected:semanticValidation.selected,reason:semanticValidation.reason,rateGapPctPoints:semanticValidation.rateGapPctPoints??null,lineAmountRate:primaryEval?.diagnosticMarginRate??null,unitCostRate:unitEvalDiagnostic?.diagnosticMarginRate??null}:null,
    method:marginEval.method||null,
    basisCoveragePct:marginEval.basisCoveragePct??null,
    coveragePct:marginEval.coveragePct??null,
@@ -580,6 +585,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v18',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v19',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
