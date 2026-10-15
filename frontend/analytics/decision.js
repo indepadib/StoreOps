@@ -298,17 +298,22 @@
 
   function renderSales(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{};
-    let displayMargin=cur.marginValue,displayRate=cur.marginRate,estimated=false,marginCoverage=null;
+    let displayMargin=cur.marginValue,displayRate=cur.marginRate,estimated=false,marginCoverage=null,marginQuality='TRANSACTION';
     if(displayMargin==null&&state.catalog.size){
-      let margin=0,coveredSales=0;
-      for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null)continue;margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
-      if(coveredSales>0){displayMargin=margin;displayRate=margin/coveredSales*100;marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;estimated=true}
+      let margin=0,coveredSales=0,invalidSales=0;
+      for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null){invalidSales+=Number(row.sales||0);continue}margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
+      marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;
+      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=70&&candidateRate!=null&&candidateRate>=-20&&candidateRate<=80;
+      if(qualityReady){displayMargin=margin;displayRate=candidateRate;estimated=true;marginQuality='CURRENT_COST_ESTIMATE'}
+      else{displayMargin=null;displayRate=null;marginQuality=marginCoverage!=null&&marginCoverage<70?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE'}
     }
     const badge=$('#marginStatusBadge');
     if(badge){
       if(d.margin?.available){badge.textContent='Marge · coût transactionnel validé';badge.className='margin-status valid'}
       else if(estimated){badge.textContent=`Marge ~ coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' CA couvert'}`;badge.className='margin-status warning'}
-      else{badge.textContent=d.margin?.status==='UNVALIDATED'?'Marge · coût à valider':'Marge · enrichissement coût en cours';badge.className='margin-status warning'}
+      else if(marginQuality==='INSUFFICIENT_COVERAGE'){badge.textContent=`Marge N/A · seulement ${api.percent(marginCoverage,0)} du CA avec coût exploitable`;badge.className='margin-status warning'}
+      else if(marginQuality==='IMPLAUSIBLE_ESTIMATE'){badge.textContent='Marge N/A · incohérence coût/unité détectée';badge.className='margin-status warning'}
+      else{badge.textContent=d.margin?.status==='UNVALIDATED'?'Marge · coût transactionnel à valider':'Marge · coût indisponible';badge.className='margin-status warning'}
     }
     $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s)`;
     const marginLabel=estimated?'Marge estimée ~':'Marge DH',rateLabel=estimated?'Taux marge ~':'Taux de marge',marginSub=estimated?`coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:'coût transactionnel validé uniquement';
