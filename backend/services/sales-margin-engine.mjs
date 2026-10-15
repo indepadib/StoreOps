@@ -126,8 +126,8 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     const computeUnitAwareCost=(unitPrice)=>{
       const ref=product?productRefs.get(product):null;
       if(!product){missingProductLines++;return{status:'PRODUCT_MISSING',total:null}}
-      saleUnit=clean(fields.salesUnit?row?.[fields.salesUnit]:'')||clean(ref?.salesUnit)||clean(ref?.inventoryUnit);
-      costUnit=clean(ref?.inventoryUnit)||saleUnit;
+      saleUnit=clean(fields.salesUnit?row?.[fields.salesUnit]:'')||clean(ref?.salesUnit)||clean(fields.inventoryUnit?row?.[fields.inventoryUnit]:'')||clean(ref?.inventoryUnit);
+      costUnit=clean(fields.inventoryUnit?row?.[fields.inventoryUnit]:'')||clean(ref?.inventoryUnit)||saleUnit;
       if(!saleUnit||!costUnit||!(qty>0)){unknownUnitLines++;return{status:'UNIT_OR_QUANTITY_MISSING',total:null}}
       const valuation=valueByBasis({quantity:qty,quantityUnit:saleUnit,amount:Math.abs(unitPrice),basisUnit:costUnit,basisQuantity:1});
       if(valuation.status!=='READY'){unknownUnitLines++;return{status:valuation.status,total:null}}
