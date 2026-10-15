@@ -26,6 +26,7 @@ async function resolveMarginFields(cfg){
    else if(explicitCost)c.fields.cost=explicitCost;
    if(cached.lineAmountField&&cached.unitCostField&&cached.unitCostField!==c.fields.cost)c.fields.costUnitPrice=cached.unitCostField;
    if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
+   if(!c.fields.inventoryUnit&&cached.inventoryUnit)c.fields.inventoryUnit=cached.inventoryUnit;
    if(!c.fields.name&&cached.productName)c.fields.name=cached.productName;
    if((!c.fields.staff||c.fields.staff==='staffId')&&cached.staff)c.fields.staff=cached.staff;
    if(cached.marginNet)c.fields.marginNet=cached.marginNet;
@@ -44,14 +45,16 @@ async function resolveMarginFields(cfg){
    const preferredCost=explicitCost||lineAmountField||c.fields.cost||unitCostField;
    const present=field=>field&&keys.some(k=>k.toLowerCase()===String(field).toLowerCase());
    const salesUnit=present(c.fields.salesUnit)?c.fields.salesUnit:pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
+   const inventoryUnit=present(c.fields.inventoryUnit)?c.fields.inventoryUnit:pick(['InventoryUnit','InventoryUnitSymbol','InventUnit','InventoryUnitId','InventoryUnitOfMeasure']);
    const productName=present(c.fields.name)?c.fields.name:pick(['ProductName','productName','ItemName','itemName','Name','Description']);
    const staff=present(c.fields.staff)?c.fields.staff:pick(['StaffId','staffId','OperatorId','operatorId','PersonnelNumber','EmployeeId']);
    const marginNet=pick(['NetAmount','netAmount','NetAmountExclTax','NetAmountExcludingTax','NetAmountWithoutTax','AmountExclTax']);
    const taxAmount=pick(['TaxAmount','taxAmount','SalesTaxAmount','SalesTax','TaxValue']);
-   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,productName,staff,marginNet,taxAmount,expiresAt:Date.now()+30*60*1000});
+   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,inventoryUnit,productName,staff,marginNet,taxAmount,expiresAt:Date.now()+30*60*1000});
    if(preferredCost)c.fields.cost=preferredCost;
    if(lineAmountField&&unitCostField&&unitCostField!==preferredCost)c.fields.costUnitPrice=unitCostField;
    if(salesUnit)c.fields.salesUnit=salesUnit;
+   if(inventoryUnit)c.fields.inventoryUnit=inventoryUnit;
    if(productName)c.fields.name=productName;
    if(staff)c.fields.staff=staff;
    if(marginNet&&marginNet!==c.fields.net)c.fields.marginNet=marginNet;
@@ -136,6 +139,7 @@ export function salesIntegrationConfig(storeId=null){
   net:clean(saved?.fields?.net)||field('D365_SALES_NET_FIELD','netAmountInclTax'),
   quantity:clean(saved?.fields?.quantity)||field('D365_SALES_QTY_FIELD','qty'),
   salesUnit:clean(saved?.fields?.salesUnit)||field('D365_SALES_UNIT_FIELD',''),
+  inventoryUnit:field('D365_SALES_INVENTORY_UNIT_FIELD',''),
   product:clean(saved?.fields?.product)||field('D365_SALES_PRODUCT_FIELD','itemId'),
   name:clean(saved?.fields?.productName)||field('D365_SALES_PRODUCT_NAME_FIELD',''),
   cost:clean(saved?.fields?.cost)||field('D365_SALES_COST_FIELD',''),
@@ -455,8 +459,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  // can be tested against the same transaction values.
  const needsUnitRefs=detectedCostKind==='UNIT_COST_INVENTORY'||detectedCostKind==='LINE_AMOUNT'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0}));
  if(needsUnitRefs&&c.fields.product){
-   const marginSkus=[...new Set(includedRows.map(row=>clean(row[c.fields.product])).filter(Boolean))];
-   marginRefs=await releasedProductSourcingMany(marginSkus);
+   const marginSkus=[...new Set(includedRows.filter(row=>{
+     const saleUnit=clean(c.fields.salesUnit?row[c.fields.salesUnit]:'');
+     const inventoryUnit=clean(c.fields.inventoryUnit?row[c.fields.inventoryUnit]:'');
+     return !saleUnit||!inventoryUnit
+   }).map(row=>clean(row[c.fields.product])).filter(Boolean))];
+   if(marginSkus.length)marginRefs=await releasedProductSourcingMany(marginSkus);
  }
  const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:evaluationFields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
  let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null,unitEvalDiagnostic=null;
@@ -609,7 +617,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
       taxItemGroup:!!c.fields.taxItemGroup
     },
     mappedFields:{
-      product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,
+      product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,inventoryUnit:!!c.fields.inventoryUnit,
       customer:!!c.fields.customer,staff:!!c.fields.staff,cost:!!c.fields.cost,time:!!c.fields.time,marginNet:!!c.fields.marginNet,taxAmount:!!c.fields.taxAmount
     }
   }
