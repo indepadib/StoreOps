@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { evaluateTransactionMarginRows, inferTransactionCostKind } from '../services/sales-margin-engine.mjs';
+import { evaluateTransactionMarginRows, inferTransactionCostKind, selectTransactionCostSemantics } from '../services/sales-margin-engine.mjs';
 
 const fields={net:'net',quantity:'qty',product:'sku',date:'date',cost:'costPrice',salesUnit:'unit'};
 
@@ -85,6 +85,19 @@ assert.equal(inferTransactionCostKind('CostAmount'),'LINE_AMOUNT');
   });
   assert.equal(result.available,false);
   assert.equal(result.reason,'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99');
+}
+
+
+{
+  const refs=new Map([['W2',{inventoryUnit:'G',salesUnit:'KG'}]]);
+  const rows=[{netAmount:-100,qty:2,sku:'W2',date:'2026-10-15',costAmount:0.04,unit:'KG'}];
+  const f={net:'netAmount',quantity:'qty',product:'sku',date:'date',cost:'costAmount',salesUnit:'unit'};
+  const line=evaluateTransactionMarginRows({rows,fields:f,salesSign:-1,productRefs:refs,costKind:'LINE_AMOUNT'});
+  const unit=evaluateTransactionMarginRows({rows,fields:f,salesSign:-1,productRefs:refs,costKind:'UNIT_COST_INVENTORY'});
+  assert.equal(unit.marginRate,20,'2 kg => 2000 g x 0.04 DH/g = 80 DH cost on 100 DH HT sales');
+  const selected=selectTransactionCostSemantics({lineAmountEval:line,unitCostEval:unit,min:0,max:30});
+  assert.equal(selected.status,'VALIDATED');
+  assert.equal(selected.selected,'UNIT_COST_INVENTORY','implausible raw CostAmount must be rejected when unit-aware interpretation is business-plausible');
 }
 
 console.log('sales margin engine tests passed');
