@@ -500,12 +500,13 @@
 
   function renderCrm(){
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],k=$('#crmKpis');if(!k)return;
-    const totalSales=customers.reduce((s,x)=>s+Number(x.sales||0),0),avg=customers.length?totalSales/customers.length:null,top10=totalSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,top20=totalSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/totalSales*100:null,ba=crm.basketAnalysis||{};
+    const identifiedSales=Number(crm.identifiedSales||0),identifiedTickets=Number(state.data?.summary?.current?.identifiedTickets||0),top10=identifiedSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,top20=identifiedSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,ba=crm.basketAnalysis||{},memberBasket=identifiedTickets?identifiedSales/identifiedTickets:null;
     k.innerHTML=[
       ['Clients identifiés',api.number(crm.identifiedCustomers),'comptes custAccount distincts ayant acheté sur la période'],
       ['CA identifié',api.money(crm.identifiedSales,true),'CA rattaché à un client connu'],
       ['Clients revenus',api.percent(crm.repeatRate),'clients avec ≥ 2 tickets distincts sur la période'],
       ['Visites / client',api.number(crm.averageVisitsPerCustomer,1),'nombre moyen de tickets distincts par client identifié'],
+      ['Panier client',api.money(memberBasket),'CA identifié / tickets identifiés'],
       ['Réf. / panier',api.number(ba.averageDistinctProducts,1),'références distinctes par panier identifié'],
       ['Top 10 clients',api.percent(top10),'part du CA identifié portée par les 10 premiers clients affichés']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
@@ -514,7 +515,7 @@
     const prefPanel=$('#crmPricePreference');
     if(prefPanel){
       const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
-      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):'<div class="table-loading">Position prix en cours de calcul.</div>'
+      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):state.catalogLoading?'<div class="table-loading">Position prix en cours de calcul…</div>':'<div class="table-loading">Position prix non calculable : hiérarchie, unité ou prix article insuffisant sur la période.</div>'
     }
     const insightPanel=$('#crmInsights');
     if(insightPanel){
