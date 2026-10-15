@@ -211,18 +211,31 @@
     return{value,rate,estimated:true,quality:'CURRENT_COST_INVENTORY_UNIT',costValue,pricedQty,quantityUnit,costBasis,conversionFactor:factor}
   }
   function catalogSkuList(){
-    const d=state.data||{},set=new Set((d.products||[]).slice(0,500).map(x=>x.key));
-    for(const x of d.crm?.customers||[])for(const p of x.topProducts||[])set.add(p.productNumber);
-    for(const p of d.crm?.basketAnalysis?.topProducts||[])set.add(p.productNumber);
-    for(const p of d.crm?.basketAnalysis?.topProductPairs||[]){set.add(p.productA);set.add(p.productB)}
-    return[...set].filter(Boolean).slice(0,650)
+    const d=state.data||{},section=sectionState()?.section||'overview',set=new Set();
+    const add=x=>{const sku=String(x||'').trim();if(sku)set.add(sku)};
+    if(section==='sales'){
+      for(const p of d.contributors?.negativeProducts||[])add(p.key);
+      for(const p of d.contributors?.positiveProducts||[])add(p.key);
+      for(const p of (d.products||[]).slice(0,40))add(p.key);
+    }else if(section==='categories'){
+      for(const p of (d.products||[]).slice(0,650))add(p.key);
+    }else if(section==='crm'){
+      for(const p of (d.products||[]).slice(0,650))add(p.key);
+      for(const x of d.crm?.customers||[])for(const p of x.topProducts||[])add(p.productNumber);
+      for(const p of d.crm?.basketAnalysis?.topProducts||[])add(p.productNumber);
+      for(const p of d.crm?.basketAnalysis?.topProductPairs||[]){add(p.productA);add(p.productB)}
+    }else{
+      for(const p of (d.products||[]).slice(0,24))add(p.key);
+    }
+    return[...set].slice(0,750)
   }
   async function loadCatalog(force=false){
     const api=core(),s=sectionState();if(!api||!state.data||state.catalogLoading)return;
-    const key=queryKey(s);if(!state.catalog.size)hydrateCatalogCache();
-    if(!force&&state.catalogKey===key&&state.catalog.size)return;
+    const key=queryKey(s)+'|'+(s?.section||'overview');if(!state.catalog.size)hydrateCatalogCache();
+    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku));
+    if(!missing.length){state.catalogKey=key;safeRenderPart('catalog-cache-render',render);return}
     state.catalogLoading=true;
-    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
+    const batches=[];for(let i=0;i<missing.length;i+=120)batches.push(missing.slice(i,i+120));
     let cursor=0,progressiveRendered=false;
     const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('performance-first-labels',()=>renderPerformance(false));safeRenderPart('crm-first-labels',renderCrm)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
@@ -232,10 +245,11 @@
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','crm','loyalty','cashiers'].includes(s?.section)}
   function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','crm'].includes(s?.section)}
   function warmCatalogSoon(){
-    const s=sectionState();if(!s||sectionNeedsCatalog(s))return;
+    const s=sectionState();if(!s||!['sales','categories','crm'].includes(s.section))return;
     const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
-    if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:2500});else setTimeout(run,1200)
+    if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1500});else setTimeout(run,700)
   }
+
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
   async function load(force=false){
     const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
