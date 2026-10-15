@@ -19,23 +19,28 @@ const velocityCache=new Map();
 const salesActivityCache=new Map();
 const marginFieldCache=new Map();
 async function resolveMarginFields(cfg){
- const c={...cfg,fields:{...(cfg.fields||{})}},cacheKey=c.entity;
+ const c={...cfg,fields:{...(cfg.fields||{})}},cacheKey=c.entity,explicitCost=clean(process.env.D365_SALES_COST_FIELD);
  const cached=marginFieldCache.get(cacheKey);
  if(cached&&Date.now()<cached.expiresAt){
-   if(!c.fields.cost&&cached.cost)c.fields.cost=cached.cost;
+   if(!explicitCost&&cached.preferredCost)c.fields.cost=cached.preferredCost;
+   else if(explicitCost)c.fields.cost=explicitCost;
    if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
    return c
  }
- if(c.fields.cost&&c.fields.salesUnit)return c;
  try{
    const probe=await probeDataEntity(c.entity,{top:3,extra:config.dynamics.dataAreaId?'cross-company=true':''});
    const row=(probe?.rows||[]).find(x=>Object.keys(x||{}).length)||null,keys=Object.keys(row||{});
    const pick=names=>{for(const name of names){const hit=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(hit)return hit}return''};
-   const cost=c.fields.cost||pick(['CostPrice','costPrice','UnitCost','CostAmount','costAmount','CostValue','COGS','Cost']);
-   const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','UnitId','Unit','UnitOfMeasure']);
-   marginFieldCache.set(cacheKey,{cost,salesUnit,expiresAt:Date.now()+30*60*1000});
-   if(cost)c.fields.cost=cost;if(salesUnit)c.fields.salesUnit=salesUnit
- }catch{}
+   // Prefer CostAmount/COGS because RetailTransactionSalesTrans CostAmount is already
+   // the historical line cost amount. CostPrice/UnitCost is only a fallback and then
+   // needs unit-aware quantity conversion (e.g. kg sold vs g inventory).
+   const lineAmountField=pick(['CostAmount','costAmount','CostValue','costValue','COGS','Cogs','TotalCost','LineCost']);
+   const unitCostField=pick(['CostPrice','costPrice','UnitCost','unitCost','InventoryCostPrice']);
+   const preferredCost=explicitCost||lineAmountField||c.fields.cost||unitCostField;
+   const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
+   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,expiresAt:Date.now()+30*60*1000});
+   if(preferredCost)c.fields.cost=preferredCost;if(salesUnit)c.fields.salesUnit=salesUnit
+ }catch{if(explicitCost)c.fields.cost=explicitCost}
  return c
 }
 
