@@ -35,6 +35,10 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       rayonLabel:ref.rayonLabel||null,
       salesUnit:ref.salesUnit||null,
       inventoryUnit:ref.inventoryUnit||null,
+      purchaseUnit:ref.purchaseUnit||null,
+      primaryVendorAccount:ref.primaryVendorAccount||null,
+      supplyMode:ref.supplyMode||null,
+      salesPrice:Number.isFinite(Number(ref.salesPrice))?Number(ref.salesPrice):null,
       rawUnitCost:Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
       rawCostBasisUnit:ref.inventoryUnit||null,
       currentUnitCost:cost.unitCost,
@@ -53,6 +57,8 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       resolvedNames:items.filter(x=>x.productName).length,
       resolvedHierarchy:items.filter(x=>x.hierarchyStatus==='RESOLVED').length,
       costReady:items.filter(x=>x.currentCostStatus==='READY').length,
+      vendorResolved:items.filter(x=>x.primaryVendorAccount).length,
+      supplyModeResolved:items.filter(x=>x.supplyMode).length,
       hierarchySource:context?.diagnostics?.source||null,
       hierarchyStatus:context?.diagnostics?.status||null
     }
