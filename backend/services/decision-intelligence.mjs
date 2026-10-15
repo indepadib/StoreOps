@@ -66,12 +66,28 @@ function mergeCustomers(results=[],endDate=null){
 }
 
 function mergeBasketAnalysis(results=[]){
-  const products=new Map(),pairs=new Map();let baskets=0,weightedUnits=0,weightedDistinct=0,singleWeighted=0;
-  for(const r of results){const b=r?.basketAnalysis||{},n=num(b.identifiedBaskets);baskets+=n;if(b.averageUnits!=null)weightedUnits+=num(b.averageUnits)*n;if(b.averageDistinctProducts!=null)weightedDistinct+=num(b.averageDistinctProducts)*n;if(b.singleItemBasketRate!=null)singleWeighted+=num(b.singleItemBasketRate)*n;
+  const products=new Map(),penetration=new Map(),pairs=new Map();let baskets=0,weightedUnits=0,weightedDistinct=0,singleWeighted=0,weightedValue=0;
+  for(const r of results){
+    const b=r?.basketAnalysis||{},n=num(b.identifiedBaskets);baskets+=n;
+    if(b.averageUnits!=null)weightedUnits+=num(b.averageUnits)*n;
+    if(b.averageDistinctProducts!=null)weightedDistinct+=num(b.averageDistinctProducts)*n;
+    if(b.singleItemBasketRate!=null)singleWeighted+=num(b.singleItemBasketRate)*n;
+    if(b.averageBasketValue!=null)weightedValue+=num(b.averageBasketValue)*n;
     for(const x of b.topProducts||[])products.set(x.productNumber,(products.get(x.productNumber)||0)+num(x.sales));
+    for(const x of b.topProductsByPenetration||[]){const cur=penetration.get(x.productNumber)||{tickets:0,sales:0};cur.tickets+=num(x.tickets);cur.sales+=num(x.sales);penetration.set(x.productNumber,cur)}
     for(const x of b.topProductPairs||[]){const a=String(x.productA||''),d=String(x.productB||''),key=a<d?`${a}|${d}`:`${d}|${a}`,cur=pairs.get(key)||{productA:a<d?a:d,productB:a<d?d:a,tickets:0};cur.tickets+=num(x.tickets);pairs.set(key,cur)}
   }
-  return{identifiedBaskets:baskets,averageUnits:baskets?round2(weightedUnits/baskets):null,averageDistinctProducts:baskets?round2(weightedDistinct/baskets):null,singleItemBasketRate:baskets?round2(singleWeighted/baskets):null,topProducts:[...products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,30).map(([productNumber,sales])=>({productNumber,sales:round2(sales)})),topProductPairs:[...pairs.values()].sort((a,b)=>b.tickets-a.tickets).slice(0,40).map(x=>({...x,sharePct:baskets?round2(x.tickets/baskets*100):null}))}
+  return{
+    identifiedBaskets:baskets,
+    averageBasketValue:baskets?round2(weightedValue/baskets):null,
+    averageUnits:baskets?round2(weightedUnits/baskets):null,
+    averageDistinctProducts:baskets?round2(weightedDistinct/baskets):null,
+    singleItemBasketRate:baskets?round2(singleWeighted/baskets):null,
+    multiProductBasketRate:baskets?round2(100-singleWeighted/baskets):null,
+    topProducts:[...products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,30).map(([productNumber,sales])=>({productNumber,sales:round2(sales)})),
+    topProductsByPenetration:[...penetration.entries()].map(([productNumber,v])=>({productNumber,tickets:v.tickets,sales:round2(v.sales),sharePct:baskets?round2(v.tickets/baskets*100):null})).sort((a,b)=>b.tickets-a.tickets||b.sales-a.sales).slice(0,30),
+    topProductPairs:[...pairs.values()].sort((a,b)=>b.tickets-a.tickets).slice(0,50).map(x=>({...x,sharePct:baskets?round2(x.tickets/baskets*100):null}))
+  }
 }
 function customerCohorts(customers=[]){
   const map=new Map();
