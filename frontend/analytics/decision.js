@@ -177,25 +177,30 @@
     return null
   }
   function estimateMargin(row){
-    const sales=Number(row?.sales),directValue=Number(row?.marginValue),directRate=Number(row?.marginRate);
+    const sales=Number(row?.sales),directValue=row?.marginValue==null?null:Number(row.marginValue),directRate=row?.marginRate==null?null:Number(row.marginRate);
     if(Number.isFinite(directValue)){
       const rate=Number.isFinite(directRate)?directRate:(sales?directValue/sales*100:null);
-      if(rate!=null&&(rate>100||rate<-200))return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
+      if(rate==null||rate>85||rate<-50)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
       return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'};
     }
-    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),costBasis=ref?.currentCostBasisUnit||ref?.salesUnit||null,unitBreakdown=Object.entries(row?.quantityByUnit||{}).filter(([,v])=>Number(v)!==0);
+
+    // Current-cost estimate: D365 UnitCost is treated as cost per INVENTORY unit.
+    // Convert the sold transaction quantity to that inventory unit exactly once.
+    const ref=catalogItem(row?.key),rawUnitCost=Number(ref?.rawUnitCost),costBasis=ref?.rawCostBasisUnit||ref?.inventoryUnit||null,
+      units=Number(row?.units),unitBreakdown=Object.entries(row?.quantityByUnit||{}).filter(([,v])=>Number(v)!==0);
     if(unitBreakdown.length>1)return{value:null,rate:null,estimated:false,quality:'MIXED_QUANTITY_UNITS'};
-    let quantityUnit=row?.quantityUnit||(unitBreakdown.length===1?unitBreakdown[0][0]:null),quantityUnitSource=(row?.quantityUnit||unitBreakdown.length===1)?'TRANSACTION':'INFERRED';
-    if(!quantityUnit){
-      const inv=ref?.inventoryUnit||null,sale=ref?.salesUnit||null;
-      if(inv&&sale&&normalizeQtyUnit(inv)!==normalizeQtyUnit(sale)){quantityUnit=inv;quantityUnitSource='INFERRED_INVENTORY_UNIT'}
-      else{quantityUnit=sale||inv;quantityUnitSource='PRODUCT_MASTER'}
-    }
+    const quantityUnit=row?.quantityUnit||(unitBreakdown.length===1?unitBreakdown[0][0]:null);
     const factor=unitFactor(quantityUnit,costBasis);
-    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(sales)||!quantityUnit||!costBasis||factor==null)return{value:null,rate:null,estimated:false,quality:'UNIT_OR_COST_UNAVAILABLE'};
-    const pricedQty=Math.abs(units)*factor,costValue=pricedQty*unitCost,value=sales-costValue,rate=sales?value/sales*100:null;
-    if(!Number.isFinite(rate)||rate>100||rate<-200)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_CURRENT_COST',costValue,pricedQty,quantityUnit,costBasis,conversionFactor:factor};
-    return{value,rate,estimated:true,quality:'CURRENT_COST',costValue,pricedQty,quantityUnit,costBasis,quantityUnitSource,conversionFactor:factor}
+    if(!Number.isFinite(rawUnitCost)||rawUnitCost<=0||!Number.isFinite(units)||!Number.isFinite(sales)||sales<=0||!quantityUnit||!costBasis||factor==null){
+      return{value:null,rate:null,estimated:false,quality:'UNIT_OR_COST_UNAVAILABLE'};
+    }
+    const pricedQty=Math.abs(units)*factor,costValue=pricedQty*rawUnitCost,value=sales-costValue,rate=value/sales*100;
+    // Never publish obviously corrupted estimates. Negative SKU margin can exist, but
+    // ratios beyond this envelope are treated as a unit/cost-quality failure.
+    if(!Number.isFinite(rate)||rate>85||rate<-50||costValue>sales*1.5){
+      return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_CURRENT_COST',costValue,pricedQty,quantityUnit,costBasis,conversionFactor:factor};
+    }
+    return{value,rate,estimated:true,quality:'CURRENT_COST_INVENTORY_UNIT',costValue,pricedQty,quantityUnit,costBasis,conversionFactor:factor}
   }
   function catalogSkuList(){
     const d=state.data||{},set=new Set((d.products||[]).slice(0,500).map(x=>x.key));
@@ -304,14 +309,14 @@
       let margin=0,coveredSales=0,invalidSales=0;
       for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null){invalidSales+=Number(row.sales||0);continue}margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
       marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;
-      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=70&&candidateRate!=null&&candidateRate>=-20&&candidateRate<=80;
+      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=90&&candidateRate!=null&&candidateRate>=0&&candidateRate<=60;
       if(qualityReady){displayMargin=margin;displayRate=candidateRate;estimated=true;marginQuality='CURRENT_COST_ESTIMATE'}
-      else{displayMargin=null;displayRate=null;marginQuality=marginCoverage!=null&&marginCoverage<70?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE'}
+      else{displayMargin=null;displayRate=null;marginQuality=marginCoverage!=null&&marginCoverage<90?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE'}
     }
     const badge=$('#marginStatusBadge');
     if(badge){
       if(d.margin?.available){badge.textContent='Marge · coût transactionnel validé';badge.className='margin-status valid'}
-      else if(estimated){badge.textContent=`Marge ~ coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' CA couvert'}`;badge.className='margin-status warning'}
+      else if(estimated){badge.textContent=`Marge ~ coût courant (base unité inventaire) · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' CA couvert'}`;badge.className='margin-status warning'}
       else if(marginQuality==='INSUFFICIENT_COVERAGE'){badge.textContent=`Marge N/A · seulement ${api.percent(marginCoverage,0)} du CA avec coût exploitable`;badge.className='margin-status warning'}
       else if(marginQuality==='IMPLAUSIBLE_ESTIMATE'){badge.textContent='Marge N/A · incohérence coût/unité détectée';badge.className='margin-status warning'}
       else{badge.textContent=d.margin?.status==='UNVALIDATED'?'Marge · coût transactionnel à valider':'Marge · coût indisponible';badge.className='margin-status warning'}
@@ -319,7 +324,7 @@
     const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
     $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;
     $('#decisionCoverage').title=(q.issues||[]).map(x=>x.message).join(' · ');
-    const marginLabel=estimated?'Marge estimée ~':'Marge DH',rateLabel=estimated?'Taux marge ~':'Taux de marge',marginSub=estimated?`coût courant · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:'coût transactionnel validé uniquement';
+    const marginLabel=estimated?'Marge estimée ~':'Marge DH',rateLabel=estimated?'Taux marge ~':'Taux de marge',marginSub=estimated?`coût courant / unité inventaire · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:'coût transactionnel validé uniquement';
     const cards=[
       ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
       ['Tickets',api.number(cur.tickets),signed(api,s.ticketsChangePct),'fréquentation'],
