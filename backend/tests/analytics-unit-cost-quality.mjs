@@ -55,6 +55,22 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   assert.equal(result.method,'TRANSACTION_COST_AMOUNT_WITH_UNIT_COST_FALLBACK');
 }
 {
+  // Business-confirmed Franprix case: transaction cost is per inventory gram
+  // while the sale quantity is expressed in kilograms.
+  const result=evaluateTransactionMarginRows({
+    rows:[{ttc:-13.2,tax:-1.2,qty:0.2,sku:'HS-00001',date:'2026-10-15',costPrice:0.05,unit:'KG'}],
+    fields:{net:'ttc',taxAmount:'tax',quantity:'qty',product:'sku',date:'date',cost:'costPrice',salesUnit:'unit'},
+    salesSign:-1,
+    productRefs:new Map([['HS-00001',{inventoryUnit:'G',salesUnit:'KG'}]]),
+    costKind:'UNIT_COST_INVENTORY'
+  });
+  assert.equal(result.totalCost,10,'0.2 kg => 200 g × 0.05 DH/g = 10 DH');
+  assert.equal(result.valuedMarginSales,12,'13.2 TTC - 1.2 tax = 12 DH HT');
+  assert.equal(result.marginValue,2);
+  assert.equal(result.marginRate,16.67);
+  assert.equal(result.weightedConversions,1);
+}
+{
   const impossible=convertQuantity(1,'PC','KG');
   assert.equal(impossible.status,'INCOMPATIBLE_UNIT');
 }
@@ -74,7 +90,7 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
   assert.match(salesSource,/evaluateTransactionMarginRows/);
   assert.match(salesSource,/releasedProductSourcingMany/);
-  assert.match(salesSource,/sales-range-v20/);
+  assert.match(salesSource,/sales-range-v22/);
 }
 {
   const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
