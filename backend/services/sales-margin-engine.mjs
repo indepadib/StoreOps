@@ -15,7 +15,7 @@ export function inferTransactionCostKind(fieldName='',explicit=''){
 }
 
 function mainSalesFieldLooksTaxInclusive(field=''){
-  return /incltax|includingtax|gross/i.test(clean(field));
+  return /incltax|includingtax|gross|ttc/i.test(clean(field));
 }
 
 function marginSalesBasis(row,fields,salesSign){
