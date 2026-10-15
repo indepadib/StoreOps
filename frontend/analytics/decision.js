@@ -293,7 +293,10 @@
     set('#healthLoyalty',api.percent(cur.identifiedSalesShare));
     set('#healthRecruitment','N/A');
     set('#healthOos','Voir stock');
-    set('#healthCoverage',d.coverage?.storesRequested?api.percent((d.coverage.currentStoresReady||0)/d.coverage.storesRequested*100,0):'N/A');
+    const quality=d.quality||{},qualityText=quality.status==='OK'?'Contrôlée':quality.status==='ERROR'?'À corriger':'À surveiller';
+    set('#healthCoverage',qualityText);
+    const dataMetric=$('#healthCoverage')?.closest('.health-metric');
+    if(dataMetric)dataMetric.title=(quality.issues||[]).map(x=>x.message).join(' · ')||'Contrôles de cohérence CA, clients, tickets, unités et couverture magasins.';
     const label=$('#executiveHealthLabel');
     if(label){
       const sales=s.salesChangePct,margin=s.marginChangePct;
