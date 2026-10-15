@@ -107,7 +107,7 @@ export async function handleAnalyticsApi({ req, url, user }){
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins demandés sont interdits ou inconnus.'}};
     if(!requestedIds.length&&requestedStore!=='ALL'&&requestedStore!=='MULTI'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
-    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v10',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
+    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v14',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
     if(!force){
       const cached=await readAnalyticsCache(cacheKey);
       if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
