@@ -253,15 +253,15 @@
     state.catalogLoading=true;
     const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
     let cursor=0,progressiveRendered=false;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('performance-first-labels',()=>renderPerformance(false));safeRenderPart('crm-first-labels',renderCrm)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('performance-first-labels',()=>renderPerformance(false));safeRenderPart('supplier-first-labels',renderSupplier);safeRenderPart('crm-first-labels',renderCrm)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
-    state.catalogKey=key;state.catalogLoading=false;safeRenderPart('sales-margin-enrichment',renderSales);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))
+    state.catalogKey=key;state.catalogLoading=false;safeRenderPart('sales-margin-enrichment',renderSales);safeRenderPart('performance-enrichment',renderPerformance);safeRenderPart('supplier-enrichment',renderSupplier);safeRenderPart('crm-enrichment',renderCrm);safeRenderPart('negative-contributors',()=>renderContributors('negative'));safeRenderPart('positive-contributors',()=>renderContributors('positive'))
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','suppliers','crm','loyalty','cashiers'].includes(s?.section)}
   function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','suppliers','crm'].includes(s?.section)}
   function warmCatalogSoon(){
-    const s=sectionState();if(!s||!['sales','categories','crm'].includes(s.section))return;
+    const s=sectionState();if(!s||!['sales','categories','suppliers','crm'].includes(s.section))return;
     const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
     if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1200});else setTimeout(run,500)
   }
@@ -312,7 +312,7 @@
   }
 
   function setLoading(){
-    for(const id of ['decisionSalesKpis','benchmarkSummary','performanceQuadrants','crmKpis']){
+    for(const id of ['decisionSalesKpis','benchmarkSummary','performanceQuadrants','supplierKpis','crmKpis']){
       const h=$('#'+id);if(h)h.innerHTML='<div class="decision-kpi skeleton-card"></div><div class="decision-kpi skeleton-card"></div><div class="decision-kpi skeleton-card"></div>';
     }
     for(const id of ['benchmarkBody','performanceBody','crmBody']){
@@ -326,7 +326,7 @@
   }
 
   function safeRenderPart(name,fn){try{fn()}catch(error){console.error('Retail Intelligence render failure',name,error)}}
-  function render(){if(!state.data)return;safeRenderPart('executive',renderExecutive);safeRenderPart('sales',renderSales);safeRenderPart('benchmark',renderBenchmark);safeRenderPart('performance',renderPerformance);safeRenderPart('crm',renderCrm)}
+  function render(){if(!state.data)return;safeRenderPart('executive',renderExecutive);safeRenderPart('sales',renderSales);safeRenderPart('benchmark',renderBenchmark);safeRenderPart('performance',renderPerformance);safeRenderPart('supplier',renderSupplier);safeRenderPart('crm',renderCrm)}
 
   function marginDisplay(d=state.data){
     const cur=d?.summary?.current||{},value=cur.marginValue==null?null:Number(cur.marginValue),rate=cur.marginRate==null?null:Number(cur.marginRate),coverage=d?.margin?.coveragePct??null;
@@ -805,9 +805,11 @@
     $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
-    document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force)});
+    $('#supplierModeFilter')?.addEventListener('change',e=>{state.supplierMode=e.target.value||'';renderSupplier()});
+    $('#supplierSearch')?.addEventListener('input',e=>{state.supplierSearch=e.target.value||'';renderSupplier()});
+    document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force);if(sectionState()?.section==='suppliers')loadSupplierOps(!!e.detail?.force)});
     document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
-    document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false);if(state.data&&sectionNeedsCatalog())maybeLoadCatalog(false)});
+    document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false);if(state.data&&sectionNeedsCatalog())maybeLoadCatalog(false);if(sectionState()?.section==='suppliers')loadSupplierOps(false)});
     const s=sectionState();if(s?.stores?.length&&sectionNeedsDecision(s))load(false);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
