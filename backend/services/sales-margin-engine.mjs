@@ -33,7 +33,7 @@ function bucketPublic(map){
 export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,productRefs=new Map(),costKind='UNKNOWN'}={}){
   const list=Array.isArray(rows)?rows:[];
   const byProduct=new Map(),byDate=new Map();
-  let totalSales=0,valuedSales=0,totalCost=0,eligibleLines=0,valuedLines=0,unknownUnitLines=0,missingCostLines=0,missingProductLines=0,implausibleLines=0,weightedConversions=0;
+  let totalSales=0,valuedSales=0,totalCost=0,eligibleLines=0,valuedLines=0,unknownUnitLines=0,missingCostLines=0,missingProductLines=0,implausibleLines=0,weightedConversions=0,fallbackUnitCostLines=0;
   const examples=[];
 
   if(!fields.cost)return{status:'UNAVAILABLE',available:false,reason:'TRANSACTION_COST_FIELD_UNMAPPED',costKind:'UNKNOWN',coveragePct:0,marginValue:null,marginRate:null,byProduct:{},byDate:{}};
@@ -45,26 +45,29 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     const product=clean(fields.product?row?.[fields.product]:'')||null;
     const day=clean(fields.date?row?.[fields.date]:'').slice(0,10)||null;
     const qty=Math.abs(finite(fields.quantity?row?.[fields.quantity]:null)??0);
-    const rawCost=finite(row?.[fields.cost]);
+    const rawCost=finite(row?.[fields.cost]),rawFallbackCost=finite(fields.costUnitPrice?row?.[fields.costUnitPrice]:null);
     totalSales+=sales;eligibleLines++;
 
-    let lineCost=null,converted=false,reason=null,saleUnit=null,costUnit=null,conversionFactor=null;
-    if(rawCost===null||rawCost===0){
-      missingCostLines++;reason='COST_MISSING';
-    }else if(costKind==='LINE_AMOUNT'){
-      lineCost=Math.abs(rawCost);
-    }else{
+    let lineCost=null,converted=false,reason=null,saleUnit=null,costUnit=null,conversionFactor=null,usedFallback=false;
+    const unitAwareCost=(unitPrice)=>{
       const ref=product?productRefs.get(product):null;
-      if(!product){missingProductLines++;reason='PRODUCT_MISSING'}
+      if(!product){missingProductLines++;reason='PRODUCT_MISSING';return}
       saleUnit=clean(fields.salesUnit?row?.[fields.salesUnit]:'')||clean(ref?.salesUnit)||clean(ref?.inventoryUnit);
       costUnit=clean(ref?.inventoryUnit)||saleUnit;
-      if(!saleUnit||!costUnit||!(qty>0)){unknownUnitLines++;reason='UNIT_OR_QUANTITY_MISSING'}
-      else{
-        const valuation=valueByBasis({quantity:qty,quantityUnit:saleUnit,amount:Math.abs(rawCost),basisUnit:costUnit,basisQuantity:1});
-        if(valuation.status==='READY'){
-          lineCost=Number(valuation.total);conversionFactor=valuation.conversionFactor;converted=valuation.conversionFactor!==1;if(converted)weightedConversions++;
-        }else{unknownUnitLines++;reason=valuation.status}
-      }
+      if(!saleUnit||!costUnit||!(qty>0)){unknownUnitLines++;reason='UNIT_OR_QUANTITY_MISSING';return}
+      const valuation=valueByBasis({quantity:qty,quantityUnit:saleUnit,amount:Math.abs(unitPrice),basisUnit:costUnit,basisQuantity:1});
+      if(valuation.status==='READY'){
+        lineCost=Number(valuation.total);conversionFactor=valuation.conversionFactor;converted=valuation.conversionFactor!==1;if(converted)weightedConversions++;
+      }else{unknownUnitLines++;reason=valuation.status}
+    };
+
+    if(costKind==='LINE_AMOUNT'){
+      if(rawCost!==null&&rawCost!==0)lineCost=Math.abs(rawCost);
+      else if(rawFallbackCost!==null&&rawFallbackCost!==0){usedFallback=true;fallbackUnitCostLines++;unitAwareCost(rawFallbackCost)}
+      else{missingCostLines++;reason='COST_MISSING'}
+    }else{
+      if(rawCost===null||rawCost===0){missingCostLines++;reason='COST_MISSING'}
+      else unitAwareCost(rawCost)
     }
 
     let valued=Number.isFinite(lineCost)&&lineCost>=0;
@@ -76,7 +79,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     }
 
     if(valued){valuedSales+=sales;totalCost+=lineCost;valuedLines++}
-    if(examples.length<20&&(!valued||converted))examples.push({product,sales:round2(sales),quantity:qty,saleUnit:saleUnit||null,costFieldValue:rawCost,costUnit:costUnit||null,conversionFactor,computedCost:round2(lineCost),valued,reason});
+    if(examples.length<20&&(!valued||converted||usedFallback))examples.push({product,sales:round2(sales),quantity:qty,saleUnit:saleUnit||null,costFieldValue:rawCost,fallbackCostFieldValue:rawFallbackCost,usedFallback,costUnit:costUnit||null,conversionFactor,computedCost:round2(lineCost),valued,reason});
 
     bucketAdd(byProduct,product,{sales,cost:lineCost||0,valued,converted});
     bucketAdd(byDate,day,{sales,cost:lineCost||0,valued,converted});
@@ -95,7 +98,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     status:available?'VALIDATED':'UNVALIDATED',
     available,
     reason,
-    method:costKind==='UNIT_COST_INVENTORY'?'TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY':'TRANSACTION_LINE_COST_AMOUNT',
+    method:costKind==='UNIT_COST_INVENTORY'?'TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY':fallbackUnitCostLines?'TRANSACTION_COST_AMOUNT_WITH_UNIT_COST_FALLBACK':'TRANSACTION_LINE_COST_AMOUNT',
     costKind,
     coveragePct:round2(coveragePct),
     totalSales:round2(totalSales),
@@ -105,7 +108,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     marginRate:available?round2(marginRate):null,
     diagnosticMarginValue:round2(marginValue),
     diagnosticMarginRate:round2(marginRate),
-    eligibleLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,
+    eligibleLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,fallbackUnitCostLines,
     byProduct:bucketPublic(byProduct),
     byDate:bucketPublic(byDate),
     examples
