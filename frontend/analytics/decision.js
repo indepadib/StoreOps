@@ -583,6 +583,12 @@
     body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${quantityBreakdown(r,api)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
   }
 
+  function isCheckoutBagSku(sku){
+    const ref=catalogItem(sku),label=String(ref?.productName||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+    if(!label||!label.includes('sac'))return false;
+    return /\b(petit|grand)\b/.test(label)||/\bsac\s+(caisse|checkout|bretelle)\b/.test(label)
+  }
+
   function clientPricePreferences(customers=[]){
     const priceBasis=unit=>{
       const u=normalizeQtyUnit(unit);
@@ -668,16 +674,18 @@
     const personaMap=new Map((crm.personas||[]).map(x=>[x.persona,x]));
     $('#crmPersonas').innerHTML=Object.keys(personaLabels).map(key=>{const x=personaMap.get(key)||{};return`<div class="persona-card"><small>${personaLabels[key]}</small><strong>${api.number(x.count||0)}</strong><span>${x.sharePct==null?'':api.percent(x.sharePct)+' · '}${personaNotes[key]}</span></div>`}).join('');
 
+    const penetrated=(ba.topProductsByPenetration||[]).filter(p=>!isCheckoutBagSku(p.productNumber)).slice(0,6);
     $('#crmBasketDna').innerHTML=`<div class="basket-dna-grid">
-      <div><small>Paniers identifiés</small><strong>${api.number(ba.identifiedBaskets)}</strong></div>
+      <div><small>Panier moyen identifié</small><strong>${api.money(ba.averageBasketValue)}</strong></div>
       <div><small>Réf. distinctes / panier</small><strong>${api.number(ba.averageDistinctProducts,1)}</strong></div>
-      <div><small>Quantités</small><strong>Séparées par unité</strong></div>
+      <div><small>Paniers multi-produits</small><strong>${api.percent(ba.multiProductBasketRate)}</strong></div>
       <div><small>Paniers mono-produit</small><strong>${api.percent(ba.singleItemBasketRate)}</strong></div>
     </div>
-    <div class="basket-top-products">${(ba.topProducts||[]).slice(0,6).map((p,i)=>`<div><span>#${i+1} ${api.escapeHtml(productLabel(p.productNumber,p.productNumber))}</span><strong>${api.money(p.sales,true)}</strong></div>`).join('')||'<div class="table-loading">Données panier en cours de consolidation.</div>'}</div>`;
+    <div class="basket-dna-caption">Lecture sur les tickets identifiés de la période. Les quantités physiques restent séparées par unité (KG, PC, L) et ne sont jamais additionnées entre elles.</div>
+    <div class="basket-top-products">${penetrated.map((p,i)=>`<div><span>#${i+1} ${api.escapeHtml(productLabel(p.productNumber,p.productNumber))}</span><strong>${api.percent(p.sharePct)} des paniers · ${api.money(p.sales,true)}</strong></div>`).join('')||'<div class="table-loading">Pénétration panier en cours de consolidation.</div>'}</div>`;
 
-    const pairs=(ba.topProductPairs||[]).slice(0,8);
-    $('#crmAffinities').innerHTML=pairs.length?pairs.map(p=>`<div class="affinity-row"><div><strong>${api.escapeHtml(productLabel(p.productA,p.productA))}</strong><span>+</span><strong>${api.escapeHtml(productLabel(p.productB,p.productB))}</strong></div><small>${api.number(p.tickets)} panier(s) · ${api.percent(p.sharePct)}</small></div>`).join(''):'<div class="table-loading">Pas encore assez de paniers multi-produits pour calculer les affinités.</div>';
+    const pairs=(ba.topProductPairs||[]).filter(p=>!isCheckoutBagSku(p.productA)&&!isCheckoutBagSku(p.productB)).slice(0,8);
+    $('#crmAffinities').innerHTML=pairs.length?pairs.map(p=>`<div class="affinity-row"><div><strong>${api.escapeHtml(productLabel(p.productA,p.productA))}</strong><span>+</span><strong>${api.escapeHtml(productLabel(p.productB,p.productB))}</strong></div><small>${api.number(p.tickets)} panier(s) · ${api.percent(p.sharePct)}</small></div>`).join(''):`<div class="table-loading">${state.catalogLoading?'Calcul des affinités après enrichissement des libellés…':'Pas assez de paniers multi-produits hors sacs caisse pour calculer les affinités.'}</div>`;
 
     const catPanel=$('#crmCategoryPreferences'),visitPanel=$('#crmVisitPatterns');
     if(catPanel){
