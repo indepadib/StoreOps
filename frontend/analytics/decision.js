@@ -326,8 +326,26 @@
   function safeRenderPart(name,fn){try{fn()}catch(error){console.error('Retail Intelligence render failure',name,error)}}
   function render(){if(!state.data)return;safeRenderPart('executive',renderExecutive);safeRenderPart('sales',renderSales);safeRenderPart('benchmark',renderBenchmark);safeRenderPart('performance',renderPerformance);safeRenderPart('crm',renderCrm)}
 
+  function marginDisplay(d=state.data){
+    const cur=d?.summary?.current||{},directValue=cur.marginValue==null?null:Number(cur.marginValue),directRate=cur.marginRate==null?null:Number(cur.marginRate);
+    if(d?.margin?.available&&Number.isFinite(directValue)&&Number.isFinite(directRate)&&directRate>=-20&&directRate<=80){
+      return{value:directValue,rate:directRate,estimated:false,coverage:100,quality:'TRANSACTION_VALIDATED',invalidCount:0}
+    }
+    if(!state.catalog.size)return{value:null,rate:null,estimated:false,coverage:null,quality:'CATALOG_PENDING',invalidCount:null};
+    let margin=0,coveredSales=0,invalidSales=0,invalidCount=0,convertedWeighted=0;
+    for(const raw of d?.products||[]){
+      const row=productWithCatalog(raw),m=estimateMargin(row),sales=Number(row.sales||0);
+      if(m.value==null){invalidSales+=sales;invalidCount++;continue}
+      margin+=Number(m.value);coveredSales+=sales;
+      if(m.conversionFactor!=null&&m.conversionFactor!==1)convertedWeighted++
+    }
+    const totalSales=Number(cur.sales||0),coverage=totalSales?coveredSales/totalSales*100:null,rate=coveredSales?margin/coveredSales*100:null;
+    const valid=coverage!=null&&coverage>=95&&rate!=null&&rate>=0&&rate<=60;
+    return{value:valid?margin:null,rate:valid?rate:null,estimated:valid,coverage,quality:valid?'CURRENT_COST_ESTIMATE':coverage!=null&&coverage<95?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE',invalidCount,invalidSales,coveredSales,convertedWeighted}
+  }
+
   function renderExecutive(){
-    const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{},app=sectionState()||{};
+    const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{},crm=d.crm||{},stores=d.stores||[],margin=marginDisplay(d);
     const set=(id,value,html=false)=>{const el=$(id);if(!el)return;if(html)el.innerHTML=value;else el.textContent=value};
     set('#executiveSalesValue',api.money(cur.sales,true));
     set('#executiveSalesDelta',signed(api,s.salesChangePct),true);
@@ -340,34 +358,68 @@
     set('#executiveBasket',api.money(cur.averageBasket));
     set('#executiveBasketDelta',signed(api,s.basketChangePct),true);
     set('#healthLoyalty',api.percent(cur.identifiedSalesShare));
-    set('#healthRecruitment','N/A');
-    set('#healthOos','Voir stock');
+    set('#healthCustomers',api.number(crm.identifiedCustomers));
+    set('#healthRepeat',api.percent(crm.repeatRate));
+
+    const trafficBar=$('#executiveTrafficBar'),basketBar=$('#executiveBasketBar');
+    if(trafficBar)trafficBar.style.width=`${Math.min(100,Math.max(4,50+Number(s.ticketsChangePct||0)*2))}%`;
+    if(basketBar)basketBar.style.width=`${Math.min(100,Math.max(4,50+Number(s.basketChangePct||0)*2))}%`;
+
     const quality=d.quality||{},qualityText=quality.status==='OK'?'Contrôlée':quality.status==='ERROR'?'À corriger':'À surveiller';
     set('#healthCoverage',qualityText);
     const dataMetric=$('#healthCoverage')?.closest('.health-metric');
     if(dataMetric)dataMetric.title=(quality.issues||[]).map(x=>x.message).join(' · ')||'Contrôles de cohérence CA, clients, tickets, unités et couverture magasins.';
+
     const label=$('#executiveHealthLabel');
     if(label){
-      const sales=s.salesChangePct,margin=s.marginChangePct;
+      const sales=s.salesChangePct;
       let text='Stable',tone='stable';
-      if(sales!=null&&sales>5&&(margin==null||margin>=0)){text='Solide';tone='strong'}
-      else if((sales!=null&&sales<-5)||(margin!=null&&margin<-5)){text='Sous tension';tone='risk'}
+      if(quality.status==='ERROR'){text='Data à corriger';tone='risk'}
+      else if(sales!=null&&sales>5){text='Solide';tone='strong'}
+      else if(sales!=null&&sales<-5){text='Sous tension';tone='risk'}
       else if(sales!=null&&sales>0){text='En progression';tone='positive'}
       label.textContent=text;label.className=`health-label ${tone}`;
     }
+
+    const growing=stores.filter(x=>Number(x.changePct)>0).length,declining=stores.filter(x=>Number(x.changePct)<0).length;
+    const command=$('#executiveCommandGrid');
+    if(command){
+      const marginValue=margin.value==null?'N/A':(margin.estimated?'~ ':'')+api.percent(margin.rate);
+      const cards=[
+        ['Évolution CA',signed(api,s.salesChangePct),'écart '+(gap==null?'N/A':(gap>0?'+':'')+api.money(gap,true))],
+        ['Fréquentation',signed(api,s.ticketsChangePct),api.number(cur.tickets)+' tickets'],
+        ['Panier moyen',api.money(cur.averageBasket),signed(api,s.basketChangePct).replace(/<[^>]+>/g,'')+' vs comparaison'],
+        ['Marge',marginValue,margin.value==null?(margin.coverage==null?'coût en cours':'couverture coût '+api.percent(margin.coverage,0)):(margin.estimated?'estimation coût courant':'transactionnelle')],
+        ['CA identifié',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'N/A':api.money(cur.identifiedSales,true)],
+        ['Clients identifiés',api.number(crm.identifiedCustomers),crm.averageVisitsPerCustomer==null?'visites/client N/A':api.number(crm.averageVisitsPerCustomer,2)+' visites/client'],
+        ['Repeat',api.percent(crm.repeatRate),'clients avec ≥2 tickets sur la période'],
+        ['Magasins',`${growing} ↑ / ${declining} ↓`,`${stores.length} magasin(s) analysé(s)`]
+      ];
+      command.innerHTML=cards.map(([l,v,sub])=>`<div class="executive-command-kpi"><small>${l}</small><strong>${v}</strong><span>${sub}</span></div>`).join('')
+    }
+
+    const actions=[],actionHost=$('#executiveActionList');
+    if(s.salesChangePct!=null&&s.salesChangePct<0)actions.push({tone:'risk',title:'CA en baisse',text:'Prioriser les causes trafic, panier et catégories.',value:api.percent(s.salesChangePct)});
+    if(s.ticketsChangePct!=null&&s.ticketsChangePct<0)actions.push({tone:'warning',title:'Trafic à reconquérir',text:'La fréquentation recule vs période comparée.',value:api.percent(s.ticketsChangePct)});
+    if(s.basketChangePct!=null&&s.basketChangePct<0)actions.push({tone:'warning',title:'Panier sous pression',text:'Travailler mix, cross-sell et disponibilité des produits moteurs.',value:api.percent(s.basketChangePct)});
+    if(cur.identifiedSalesShare!=null&&cur.identifiedSalesShare<50)actions.push({tone:'info',title:'Identification client',text:'Une part importante du CA reste non identifiée.',value:api.percent(cur.identifiedSalesShare)});
+    if(margin.value==null)actions.push({tone:'warning',title:'Marge non certifiée',text:margin.quality==='INSUFFICIENT_COVERAGE'?'Couverture coût insuffisante pour publier un taux fiable.':'Le coût/unité n’est pas encore suffisamment fiable pour décision.',value:margin.coverage==null?'N/A':api.percent(margin.coverage,0)});
+    if(quality.status!=='OK')actions.push({tone:'risk',title:'Qualité data',text:(quality.issues||[])[0]?.message||'Contrôles de cohérence à traiter.',value:quality.status});
+    if(!actions.length)actions.push({tone:'positive',title:'Alerte majeure absente',text:'Les KPI de premier niveau ne signalent pas de rupture forte.',value:'OK'});
+    if(actionHost)actionHost.innerHTML=actions.slice(0,5).map(x=>`<div class="executive-action-item"><i class="executive-action-dot ${x.tone}"></i><div class="executive-action-copy"><strong>${api.escapeHtml(x.title)}</strong><span>${api.escapeHtml(x.text)}</span></div><b class="executive-action-value">${api.escapeHtml(x.value)}</b></div>`).join('');
+
+    const drivers=[],driverHost=$('#executiveDriverList'),drv=s.drivers||{};
+    if(drv.trafficEffect!=null)drivers.push({tone:Number(drv.trafficEffect)>=0?'positive':'risk',title:'Effet fréquentation',text:'Impact estimé des tickets sur le CA',value:(Number(drv.trafficEffect)>0?'+':'')+api.money(drv.trafficEffect,true)});
+    if(drv.basketEffect!=null)drivers.push({tone:Number(drv.basketEffect)>=0?'positive':'risk',title:'Effet panier',text:'Impact estimé du panier moyen',value:(Number(drv.basketEffect)>0?'+':'')+api.money(drv.basketEffect,true)});
+    const neg=d.contributors?.negativeProducts?.[0],pos=d.contributors?.positiveProducts?.[0];
+    if(neg)drivers.push({tone:'risk',title:'1er frein article',text:productLabel(neg.key,neg.label),value:api.money(neg.deltaSales,true)});
+    if(pos)drivers.push({tone:'positive',title:'1er moteur article',text:productLabel(pos.key,pos.label),value:'+'+api.money(pos.deltaSales,true)});
+    if(driverHost)driverHost.innerHTML=drivers.slice(0,5).map(x=>`<div class="executive-action-item"><i class="executive-action-dot ${x.tone}"></i><div class="executive-action-copy"><strong>${api.escapeHtml(x.title)}</strong><span>${api.escapeHtml(x.text)}</span></div><b class="executive-action-value">${api.escapeHtml(x.value)}</b></div>`).join('');
   }
 
   function renderSales(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{};
-    let displayMargin=cur.marginValue,displayRate=cur.marginRate,estimated=false,marginCoverage=null,marginQuality='TRANSACTION';
-    if(displayMargin==null&&state.catalog.size){
-      let margin=0,coveredSales=0,invalidSales=0;
-      for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null){invalidSales+=Number(row.sales||0);continue}margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
-      marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;
-      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=95&&candidateRate!=null&&candidateRate>=0&&candidateRate<=60;
-      if(qualityReady){displayMargin=margin;displayRate=candidateRate;estimated=true;marginQuality='CURRENT_COST_ESTIMATE'}
-      else{displayMargin=null;displayRate=null;marginQuality=marginCoverage!=null&&marginCoverage<90?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE'}
-    }
+    const margin=marginDisplay(d),displayMargin=margin.value,displayRate=margin.rate,estimated=margin.estimated,marginCoverage=margin.coverage,marginQuality=margin.quality;
     const badge=$('#marginStatusBadge');
     if(badge){
       if(d.margin?.available){badge.textContent='Marge · coût transactionnel validé';badge.className='margin-status valid'}
