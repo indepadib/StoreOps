@@ -34,6 +34,6 @@ assert.doesNotMatch(inventory,/id="invQuickUnit"/,'express inventory must not ex
 assert.doesNotMatch(inventory,/data-count-unit/,'advanced inventory must use the Dynamics unit automatically');
 assert.match(inventory,/countUnit:null/,'inventory count payload must defer to the canonical Dynamics unit');
 assert.match(server,/ensureDirector\(user\).*isPlatformAdmin\(user\)/,'platform admin must be accepted by director-only network endpoints');
-assert.match(network,/safe\(api\('\/api\/network'\),7000\)/,'network bootstrap must have a timeout');
+assert.match(network,/read\('\/api\/network',10000,/,'network bootstrap must use the abortable bounded network read');
 
 console.log('v2.39.2 manager/mobile inventory hotfix contract: OK');
