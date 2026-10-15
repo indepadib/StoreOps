@@ -7,6 +7,7 @@ import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 import { readAnalyticsCatalog } from './analytics-catalog.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
+import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -82,12 +83,12 @@ export async function handleAnalyticsApi({ req, url, user }){
   if(req.method==='GET'&&url.pathname==='/api/analytics/catalog'){
     const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
     if(!products.length)return{status:400,data:{error:'products requis.'}};
-    if(products.length>80)return{status:400,data:{error:'80 articles maximum par requête.'}};
-    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v3',sorted);
+    if(products.length>240)return{status:400,data:{error:'240 articles maximum par requête.'}};
+    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v4',sorted);
     const cached=await readAnalyticsCache(cacheKey);
     if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     const data=await readAnalyticsCatalog(sorted);
-    await writeAnalyticsCache(cacheKey,'catalog-v3',data,7*24*3600);
+    await writeAnalyticsCache(cacheKey,'catalog-v4',data,7*24*3600);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
@@ -106,15 +107,25 @@ export async function handleAnalyticsApi({ req, url, user }){
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins demandés sont interdits ou inconnus.'}};
     if(!requestedIds.length&&requestedStore!=='ALL'&&requestedStore!=='MULTI'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
-    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v6',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
+    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v8',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
     if(!force){
       const cached=await readAnalyticsCache(cacheKey);
       if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     }
     const data=await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force});
     const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:24*3600;
-    await writeAnalyticsCache(cacheKey,'decision-v6',data,ttl);
+    await writeAnalyticsCache(cacheKey,'decision-v8',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/loyalty-range'){
+    const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))?clean(v):null,startDate=iso(url.searchParams.get('start')),endDate=iso(url.searchParams.get('end')),includeStaff=url.searchParams.get('includeStaff')==='1',force=url.searchParams.get('force')==='1';
+    if(!startDate||!endDate)return{status:400,data:{error:'start et end requis au format YYYY-MM-DD.'}};
+    const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
+    const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
+    const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
+    if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
+    return{status:200,data:await readLoyaltyRange(stores,{startDate,endDate,includeStaff,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
@@ -123,18 +134,23 @@ export async function handleAnalyticsApi({ req, url, user }){
     const force=url.searchParams.get('force')==='1';
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
-    return{status:200,data:await readPromotionAnalytics(storeId,{businessDate,force})};
+    const cacheKey=analyticsCacheKey('promotions-v2',[storeId,businessDate]);
+    if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
+    const data=await readPromotionAnalytics(storeId,{businessDate,force});
+    const today=new Date().toISOString().slice(0,10),ttl=businessDate>=today?900:24*3600;
+    await writeAnalyticsCache(cacheKey,'promotions-v2',data,ttl);
+    return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/wallet-range'){
     const storeId=clean(url.searchParams.get('storeId')),startDate=clean(url.searchParams.get('start')),endDate=clean(url.searchParams.get('end')),force=url.searchParams.get('force')==='1';
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
-    const cacheKey=analyticsCacheKey('wallet-v2',[storeId,startDate,endDate]);
+    const cacheKey=analyticsCacheKey('wallet-v3',[storeId,startDate,endDate]);
     if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
     const data=await readWalletBurnRange(storeId,{startDate,endDate,force});
     const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:6*3600;
-    await writeAnalyticsCache(cacheKey,'wallet-v2',data,ttl);
+    await writeAnalyticsCache(cacheKey,'wallet-v3',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 

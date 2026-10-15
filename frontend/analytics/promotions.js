@@ -11,7 +11,7 @@
     if(!s)return{stores:[],date:null};
     return{
       stores:core()?.getSelectedStores?.()||s.stores||[],
-      date:s.businessDate
+      date:s.periodEnd||s.businessDate
     };
   }
   function stateLabel(v){
@@ -161,8 +161,11 @@
       state.view=btn.dataset.promoView||'ALL';renderTable();
     }));
     $('#promotionSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderTable()});
-    document.addEventListener('retail-intelligence:data',()=>load(false));
-    const existing=core()?.getState?.();if(existing?.pulses?.length)load(false);
+    const loadIfVisible=()=>{if(core()?.getState?.()?.section==='promotions')load(false)};
+    document.addEventListener('retail-intelligence:data',loadIfVisible);
+    document.addEventListener('retail-intelligence:period',loadIfVisible);
+    document.addEventListener('retail-intelligence:section',loadIfVisible);
+    const existing=core()?.getState?.();if(existing?.section==='promotions')load(false);
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();

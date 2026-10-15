@@ -33,9 +33,10 @@ export async function writeAnalyticsCache(key,group,payload,ttlSeconds){
   const expiresAt=now()+ttl*1000;memory.set(k,{payload,expiresAt});
   try{
     const database=await getAnalyticsDatabase();
+    const payloadJson=JSON.stringify(payload);
     await database.sql`
       INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at)
-      VALUES(${k},${g},${payload},NOW(),NOW()+${ttl}*INTERVAL '1 second')
+      VALUES(${k},${g},CAST(${payloadJson} AS JSONB),NOW(),NOW()+${ttl}*INTERVAL '1 second')
       ON CONFLICT(cache_key) DO UPDATE
       SET cache_group=EXCLUDED.cache_group,payload=EXCLUDED.payload,generated_at=NOW(),expires_at=EXCLUDED.expires_at
     `;

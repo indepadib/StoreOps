@@ -25,9 +25,10 @@ export async function productDataMany(productNumbers=[], {readReleased=releasedP
   }
   const c=config.dynamics;
   if(c.mode==='live'&&valid(c.barcodeEntity)&&valid(c.barcodeProductField)){
-    for(let i=0;i<missing.length;i+=30){
-      const chunk=missing.slice(i,i+30);
-      const filters=[`(${chunk.map(sku=>`${c.barcodeProductField} eq '${esc(sku)}'`).join(' or ')})`];
+    const chunks=[];for(let i=0;i<missing.length;i+=30)chunks.push(missing.slice(i,i+30));
+    let cursor=0;const workers=Math.min(4,Math.max(1,chunks.length));
+    await Promise.all(Array.from({length:workers},async()=>{while(cursor<chunks.length){
+      const chunk=chunks[cursor++],filters=[`(${chunk.map(sku=>`${c.barcodeProductField} eq '${esc(sku)}'`).join(' or ')})`];
       if(c.dataAreaId)filters.push(`${c.dataAreaField} eq '${esc(c.dataAreaId)}'`);
       try{
         const payload=await readRows(c.barcodeEntity,{filter:filters.join(' and '),pageSize:500,maxRows:10000,extra:c.dataAreaId?'cross-company=true':''});
@@ -40,7 +41,7 @@ export async function productDataMany(productNumbers=[], {readReleased=releasedP
           rememberProductIdentity({ean:clean(row[c.barcodeField])||`ITEM:${sku}`,productNumber:sku,name:ref.productName,unit:row[c.barcodeUnitField]||null,source:ref.productNameSource});
         }
       }catch(error){for(const sku of chunk)refs.get(sku).identityError=error.code||'PRODUCT_LABEL_READ_FAILED'}
-    }
+    }}));
   }
   for(const sku of skus){const ref=refs.get(sku);if(!ref.productName&&searchFallbacks.has(sku)){ref.productName=searchFallbacks.get(sku);ref.productNameSource='RELEASED_PRODUCTS_SEARCH_FALLBACK';ref.identityStatus='FALLBACK'}else ref.identityStatus=usableProductName(ref.productName,sku)?'RESOLVED':'MISSING';}
   return refs;

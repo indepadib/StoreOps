@@ -34,7 +34,7 @@
     const stores = c.getSelectedStores?.() || appState.stores || [];
     return {
       stores,
-      businessDate: appState.businessDate,
+      businessDate: appState.periodEnd || appState.businessDate,
       selectedStore: appState.selectedStore,
       selectedStoreIds: appState.selectedStoreIds || []
     };
@@ -88,6 +88,8 @@
       }
 
       state.loadedKey = key;
+      const badge=$('#inventorySnapshotBadge'),checked=state.summaries.map(x=>x.checkedAt).filter(Boolean).sort().at(-1);
+      if(badge)badge.textContent=checked?`Image stock D365 · ${new Date(checked).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`:'Image stock D365 · dernière disponibilité';
       render();
       window.RETAIL_INVENTORY = {
         getState: () => state,

@@ -17,7 +17,7 @@ function salesUnitCost(ref={}){
 }
 
 export async function readAnalyticsCatalog(productNumbers=[]){
-  const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))].slice(0,80);
+  const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))].slice(0,240);
   if(!skus.length)return{status:'READY',items:[],diagnostics:{requested:0,resolvedNames:0,resolvedHierarchy:0,costReady:0}};
   const [refs,context]=await Promise.all([productDataMany(skus),readRetailHierarchyContext(skus)]);
   const items=skus.map(productNumber=>{
@@ -35,7 +35,10 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       rayonLabel:ref.rayonLabel||null,
       salesUnit:ref.salesUnit||null,
       inventoryUnit:ref.inventoryUnit||null,
+      rawUnitCost:Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
+      rawCostBasisUnit:ref.inventoryUnit||null,
       currentUnitCost:cost.unitCost,
+      currentCostBasisUnit:cost.status==='READY'?cost.salesUnit||null:null,
       currentCostStatus:cost.status,
       costReason:cost.reason||null,
       costSource:ref.unitCost!=null?'D365/ReleasedProductsV2.UnitCost':null,

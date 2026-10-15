@@ -79,11 +79,17 @@ function customerCohorts(customers=[]){
 
 
 function mergeStaff(results=[]){
- const rows=[];
+ const map=new Map();
  for(const r of results){
-  for(const s of r?.staff||[])rows.push({...s,storeId:r.storeId||null});
+  for(const s of r?.staff||[]){
+   const storeId=r.storeId||null,staffId=String(s.staffId||'').trim();if(!staffId)continue;
+   const key=`${storeId||''}|${staffId}`,cur=map.get(key)||{storeId,staffId,sales:0,tickets:0,identifiedTickets:0,identifiedSales:0,nonLoyaltyTickets:0,recruitments:0,recruitmentsKnown:false};
+   cur.sales+=num(s.sales);cur.tickets+=num(s.tickets);cur.identifiedTickets+=num(s.identifiedTickets);cur.identifiedSales+=num(s.identifiedSales);cur.nonLoyaltyTickets+=num(s.nonLoyaltyTickets);
+   if(s.recruitments!=null){cur.recruitments+=num(s.recruitments);cur.recruitmentsKnown=true}
+   map.set(key,cur)
+  }
  }
- return rows.sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
+ return[...map.values()].map(x=>({...x,identifiedTicketRate:x.tickets?round2(x.identifiedTickets/x.tickets*100):null,identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,recruitments:x.recruitmentsKnown?x.recruitments:null,recruitmentRateNonLoyalty:x.recruitmentsKnown&&x.nonLoyaltyTickets?round2(x.recruitments/x.nonLoyaltyTickets*100):null})).sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
 }
 
 function buildPriceTierMap(products=[]){
@@ -184,11 +190,20 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const storesComparison=pairs.map(x=>storeComparison(x.store,x.current,x.previous)).sort((a,b)=>num(b.sales)-num(a.sales));
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
  const identifiedSales=customers.reduce((s,x)=>s+x.sales,0),repeatCustomers=customers.filter(x=>x.tickets>=2).length,frequentCustomers=customers.filter(x=>x.tickets>=4).length;
+ const qualityIssues=[],truncatedStores=currentResults.filter(x=>x?.diagnostics?.truncated||x?.status==='TRUNCATED').length,unknownUnitProducts=currentProducts.filter(x=>num(x.units)!==0&&!x.quantityUnit).length;
+ if(currentResults.length<stores.length)qualityIssues.push({code:'STORE_COVERAGE',level:'WARN',message:`${currentResults.length}/${stores.length} magasins ventes disponibles`});
+ if(truncatedStores)qualityIssues.push({code:'SALES_TRUNCATED',level:'ERROR',message:`${truncatedStores} magasin(s) avec lecture ventes tronquée`});
+ if(currentSummary.identifiedTickets!=null&&customers.length>currentSummary.identifiedTickets)qualityIssues.push({code:'CUSTOMER_CARDINALITY',level:'ERROR',message:'Clients distincts supérieurs aux tickets identifiés'});
+ if(currentSummary.identifiedSales!=null&&currentSummary.sales&&currentSummary.identifiedSales>currentSummary.sales*1.001)qualityIssues.push({code:'IDENTIFIED_SALES_GT_TOTAL',level:'ERROR',message:'CA identifié supérieur au CA total'});
+ if(marginStatus==='VALIDATED'&&currentSummary.marginRate!=null&&(currentSummary.marginRate>100||currentSummary.marginRate<-200))qualityIssues.push({code:'MARGIN_IMPLAUSIBLE',level:'ERROR',message:'Taux de marge transactionnel incohérent'});
+ if(unknownUnitProducts)qualityIssues.push({code:'UNIT_COVERAGE',level:'INFO',message:`${unknownUnitProducts} article(s) vendus sans unité transactionnelle`});
+ const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts}};
  return{
   status:currentResults.length?'READY':'UNAVAILABLE',
   period:{startDate,endDate,days:currentResults[0]?.days||null},
   comparison:{startDate:compareStartDate,endDate:compareEndDate,days:previousResults[0]?.days||null},
   coverage:{storesRequested:stores.length,currentStoresReady:currentResults.length,comparisonStoresReady:previousResults.length},
+  quality,
   summary:{
     current:currentSummary,previous:previousSummary,
     salesChangePct:previousSummary.sales?pct(currentSummary.sales,previousSummary.sales):null,
@@ -205,7 +220,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   hierarchy,
   contributors:{negativeProducts,positiveProducts,negativeStores:[...storesComparison].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...storesComparison].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},
   cashiers:{status:cashiers.length?'READY':'UNAVAILABLE',items:cashiers,source:'SALES_RANGE_REUSE'},
-  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,averageVisitsPerCustomer:customers.length?round2(customers.reduce((s,x)=>s+num(x.tickets),0)/customers.length):null,cohorts,basketAnalysis,segments:Object.entries(customers.reduce((a,x)=>(a[x.segment]=(a[x.segment]||0)+1,a),{})).map(([segment,count])=>({segment,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),pricePreferences:Object.entries(customers.reduce((a,x)=>(a[x.pricePreference]=(a[x.pricePreference]||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customers:customers.slice(0,500)},
+  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,averageVisitsPerCustomer:customers.length?round2(customers.reduce((s,x)=>s+num(x.tickets),0)/customers.length):null,cohorts,basketAnalysis,segments:Object.entries(customers.reduce((a,x)=>(a[x.segment]=(a[x.segment]||0)+1,a),{})).map(([segment,count])=>({segment,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),pricePreferences:Object.entries(customers.reduce((a,x)=>(a[x.pricePreference]=(a[x.pricePreference]||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customerMergeRows:customers.slice(0,5000).map(x=>({customerAccount:x.customerAccount,sales:x.sales,units:x.units,tickets:x.tickets,activeDays:x.activeDays,firstDate:x.firstDate,lastDate:x.lastDate,storeCount:x.storeCount,distinctProducts:x.distinctProducts,favouriteWeekday:x.favouriteWeekday,favouriteHour:x.favouriteHour,pricePreference:x.pricePreference,priceMix:x.priceMix,topProducts:(x.topProducts||[]).slice(0,5)})),customers:customers.slice(0,750)},
   generatedAt:new Date().toISOString()
  }
 }

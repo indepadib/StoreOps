@@ -299,12 +299,13 @@
     const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','crm','loyalty','cashiers']);
-    const snapshotSections = new Set(['inventory']);
+    const snapshotSections = new Set(['inventory','promotions']);
     if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
       const scope = storeScopeLabel();
       if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
-      setFreshness('live', snapshotSections.has(state.section)?`Stock au ${formatDate(state.periodEnd)}`:'Analyse période');
+      const snapshotLabel=state.section==='inventory'?`Stock au ${formatDate(state.periodEnd)}`:state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
+      setFreshness('live', snapshotSections.has(state.section)?snapshotLabel:'Analyse période');
       document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force, snapshotDate: state.periodEnd } }));
       state.loading = false;
       return;
