@@ -167,7 +167,12 @@
     return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
-  function productLabel(sku,fallback=''){const ref=catalogItem(sku);return ref?.productName||fallback||sku}
+  function productLabel(sku,fallback=''){
+    const ref=catalogItem(sku),raw=String(fallback||'').trim(),code=String(sku||'').trim();
+    if(ref?.productName)return ref.productName;
+    if(raw&&raw!==code&&!/^HS[-_]/i.test(raw))return raw;
+    return state.catalogKey?'Libellé indisponible':'Libellé en cours…'
+  }
   function productSubLabel(sku){const ref=catalogItem(sku);return ref?.productName?sku:''}
   function hierarchyNode(sku,level){return catalogItem(sku)?.hierarchy?.[level]||null}
   function unitFactor(from,to){
@@ -238,7 +243,7 @@
     if(!force&&state.freshKey===key&&state.data){render();return}
     const cached=!force?cachedDecision(key):null;
     if(cached&&state.key!==key){
-      state.data=cached;state.key=key;
+      state.data=cached;state.key=key;if(!state.catalog.size)hydrateCatalogCache();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
@@ -250,7 +255,7 @@
     setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
     try{
       const fresh=await loadDecisionChunked(api,s,force);
-      state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);
+      state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);if(!state.catalog.size)hydrateCatalogCache();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
       maybeLoadCatalog(force);
