@@ -205,6 +205,9 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const products=compareRows(currentProducts,previousProducts),hierarchy=hierarchyFromProducts(currentProducts,previousProducts);
  const priceTierMap=buildPriceTierMap(currentProducts),customers=enrichCustomerPricePreferences(mergeCustomers(currentResults,endDate),priceTierMap),basketAnalysis=mergeBasketAnalysis(currentResults),cohorts=customerCohorts(customers),cashiers=mergeStaff(currentResults);
  const marginStatuses=[...new Set(currentResults.map(x=>x.margin?.status).filter(Boolean))],marginStatus=marginStatuses.length===1?marginStatuses[0]:marginStatuses.includes('UNVALIDATED')?'UNVALIDATED':marginStatuses.includes('UNAVAILABLE')?'UNAVAILABLE':'MIXED';
+ const marginSales=currentResults.reduce((s,x)=>s+num(x?.summary?.sales),0),marginCoveredSales=currentResults.reduce((s,x)=>s+num(x?.summary?.sales)*Math.min(100,Math.max(0,num(x?.margin?.coveragePct)))/100,0),marginCoveragePct=marginSales?round2(marginCoveredSales/marginSales*100):null;
+ const marginKinds=[...new Set(currentResults.map(x=>x?.margin?.costKind).filter(Boolean))],marginMethods=[...new Set(currentResults.map(x=>x?.margin?.method).filter(Boolean))],marginFields=[...new Set(currentResults.map(x=>x?.margin?.costField).filter(Boolean))];
+ const marginReasons=[...new Set(currentResults.map(x=>x?.margin?.reason).filter(Boolean))];
  const storesComparison=pairs.map(x=>storeComparison(x.store,x.current,x.previous)).sort((a,b)=>num(b.sales)-num(a.sales));
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
  const identifiedSales=customers.reduce((s,x)=>s+x.sales,0),repeatCustomers=customers.filter(x=>x.tickets>=2).length,frequentCustomers=customers.filter(x=>x.tickets>=4).length;
@@ -252,7 +255,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
     marginRateDelta:currentSummary.marginRate!=null&&previousSummary.marginRate!=null?round2(currentSummary.marginRate-previousSummary.marginRate):null,
     drivers:driverDecomposition(currentSummary,previousSummary)
   },
-  margin:{status:marginStatus,available:marginStatus==='VALIDATED',message:marginStatus==='VALIDATED'?'Coût transactionnel validé.':marginStatus==='UNVALIDATED'?'Champ coût détecté mais non validé comme coût historique transactionnel.':'Coût transactionnel indisponible.'},
+  margin:{status:marginStatus,available:marginStatus==='VALIDATED',coveragePct:marginCoveragePct,costKind:marginKinds.length===1?marginKinds[0]:'MIXED',method:marginMethods.length===1?marginMethods[0]:'MIXED',costField:marginFields.length===1?marginFields[0]:marginFields.join(',')||null,reason:marginStatus==='VALIDATED'?null:marginReasons.join(',')||'TRANSACTION_MARGIN_NOT_VALIDATED',weightedConversions:currentResults.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0),fallbackUnitCostLines:currentResults.reduce((s,x)=>s+num(x?.margin?.fallbackUnitCostLines),0),implausibleLines:currentResults.reduce((s,x)=>s+num(x?.margin?.implausibleLines),0),message:marginStatus==='VALIDATED'?'Coût transactionnel validé par couverture et plausibilité.':marginStatus==='UNVALIDATED'?'Coût transactionnel détecté mais non publiable tant que les contrôles qualité ne passent pas.':'Coût transactionnel indisponible.'},
   daily:{current:mergeDaily(currentResults),previous:mergeDaily(previousResults)},
   stores:storesComparison,
   products,
