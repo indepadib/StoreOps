@@ -211,6 +211,7 @@
     }
 
     const ready = state.walletStores.filter(x => x.ok && x.data?.status === 'READY');
+    const mixOnly = state.walletStores.filter(x => x.ok && x.data?.status === 'PAYMENT_MIX_READY_WALLET_UNMAPPED');
     const signIssues = state.walletStores.filter(x => x.ok && x.data?.status === 'SIGN_VALIDATION_REQUIRED');
     const unavailable = state.walletStores.filter(x => !x.ok || x.data?.status === 'UNAVAILABLE');
 
@@ -226,6 +227,11 @@
       const transactions = ready.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
       value.textContent = api.money(burn, true);
       status.textContent = `${transactions} transaction(s) Wallet · ${ready.length}/${state.walletStores.length} magasin(s) lus directement depuis la transaction de paiement Dynamics.`;
+      return;
+    }
+    if(mixOnly.length){
+      value.textContent='N/A';
+      status.textContent='Les transactions de paiement sont disponibles, mais le code Tender correspondant à Wallet n’est pas encore identifié de façon fiable. La répartition Espèces / Carte / Autres reste affichée sans inventer le burn.';
       return;
     }
 
