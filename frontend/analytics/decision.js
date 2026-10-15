@@ -584,7 +584,7 @@
     const prefPanel=$('#crmPricePreference');
     if(prefPanel){
       const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
-      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):state.catalogLoading?'<div class="table-loading">Position prix en cours de calcul…</div>':'<div class="table-loading">Position prix non calculable : au moins 60 % du CA client doit être classé dans des familles avec ≥ 5 articles comparables et une unité homogène.</div>'
+      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):`<div class="table-loading">Position prix N/A : couverture insuffisante pour une classification fiable.${state.catalogLoading?' Les libellés / familles continuent de s’enrichir en arrière-plan.':''}</div>`
     }
     const insightPanel=$('#crmInsights');
     if(insightPanel){
