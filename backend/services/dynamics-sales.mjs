@@ -382,7 +382,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v20|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v20',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v22|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v22',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -429,7 +429,25 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
  const includedRows=selected.rows.filter(row=>includedRetailSaleRow(row,c));
- const detectedCostKind=inferTransactionCostKind(c.fields.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
+ const configuredCostKind=clean(process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'').toUpperCase();
+ let evaluationFields=c.fields;
+ let detectedCostKind=inferTransactionCostKind(c.fields.cost,configuredCostKind);
+ // Franprix-confirmed semantics: the transaction "cost" is a unit cost expressed
+ // in the inventory UOM. For weighted items sold in KG while inventory is in G,
+ // COGS = quantity_kg * 1000 * cost_per_g. For pieces, factor = 1.
+ // When a dedicated CostPrice/UnitCost field is present, never reinterpret
+ // CostAmount as a unit cost.
+ if(configuredCostKind==='UNIT_COST_INVENTORY'){
+   if(c.fields.costUnitPrice){
+     evaluationFields={...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null};
+     detectedCostKind='UNIT_COST_INVENTORY';
+   }else{
+     const inferredPrimary=inferTransactionCostKind(c.fields.cost,'');
+     if(inferredPrimary!=='UNIT_COST_INVENTORY'){
+       detectedCostKind='UNKNOWN';
+     }
+   }
+ }
  let marginRefs=new Map();
  // CostAmount is semantically ambiguous in this environment: on weighted / multi-qty
  // lines it can behave like an inventory-unit cost rather than a line-total COGS.
@@ -440,9 +458,9 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    const marginSkus=[...new Set(includedRows.map(row=>clean(row[c.fields.product])).filter(Boolean))];
    marginRefs=await releasedProductSourcingMany(marginSkus);
  }
- const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
+ const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:evaluationFields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
  let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null,unitEvalDiagnostic=null;
- if(detectedCostKind==='LINE_AMOUNT'){
+ if(detectedCostKind==='LINE_AMOUNT'&&configuredCostKind!=='UNIT_COST_INVENTORY'){
    // Do not reinterpret CostAmount as a unit price when D365 also exposes a
    // dedicated CostPrice/UnitCost field. For weighted items the latter is the
    // only semantically correct candidate: inventory unit can be g while the
@@ -470,11 +488,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const margin={
    status:marginEval.status,
    available:marginEval.available===true,
-   source:(costKind==='UNIT_COST_INVENTORY'&&c.fields.costUnitPrice?('D365/'+c.entity+'.'+c.fields.costUnitPrice):c.fields.cost?('D365/'+c.entity+'.'+c.fields.cost):null),
-   costField:costKind==='UNIT_COST_INVENTORY'&&c.fields.costUnitPrice?c.fields.costUnitPrice:(c.fields.cost||null),
+   source:evaluationFields.cost?('D365/'+c.entity+'.'+evaluationFields.cost):null,
+   costField:evaluationFields.cost||null,
    fallbackCostField:c.fields.costUnitPrice||null,
    costKind,
    detectedCostKind,
+   configuredCostKind:configuredCostKind||null,
    semanticValidation:semanticValidation?{status:semanticValidation.status,selected:semanticValidation.selected,reason:semanticValidation.reason,rateGapPctPoints:semanticValidation.rateGapPctPoints??null,lineAmountRate:primaryEval?.diagnosticMarginRate??null,unitCostRate:unitEvalDiagnostic?.diagnosticMarginRate??null}:null,
    method:marginEval.method||null,
    basisCoveragePct:marginEval.basisCoveragePct??null,
