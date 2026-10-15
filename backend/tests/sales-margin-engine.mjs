@@ -47,7 +47,7 @@ assert.equal(inferTransactionCostKind('CostAmount'),'LINE_AMOUNT');
     fields,salesSign:-1,productRefs:refs,costKind:'UNIT_COST_INVENTORY'
   });
   assert.equal(result.available,false);
-  assert.equal(result.reason,'COST_COVERAGE_BELOW_95');
+  assert.equal(result.reason,'COST_COVERAGE_BELOW_99');
   assert.equal(result.implausibleLines,1);
 }
 
