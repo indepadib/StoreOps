@@ -424,7 +424,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    salesBasis:marginEval.salesBasis||null,
    salesBasisField:marginEval.salesBasisField||null,
    taxField:marginEval.taxField||null,
-   marginSalesBase:marginEval.totalMarginSales??null,
+   marginSalesBase:marginEval.valuedMarginSales??null,
    valuedMarginSales:marginEval.valuedMarginSales??null,
    totalCost:marginEval.totalCost??null,
    costCrossCheckPct:marginEval.costCrossCheckPct??null,
@@ -513,7 +513,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
-  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginSalesBase:margin.status==='VALIDATED'?marginEval.totalMarginSales:null,marginValue:margin.status==='VALIDATED'?marginEval.marginValue:null,marginRate:margin.status==='VALIDATED'?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
+  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginSalesBase:margin.status==='VALIDATED'?marginEval.valuedMarginSales:null,marginValue:margin.status==='VALIDATED'?marginEval.marginValue:null,marginRate:margin.status==='VALIDATED'?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
   margin,
   daily,
   products:productRowsWithMargin,
