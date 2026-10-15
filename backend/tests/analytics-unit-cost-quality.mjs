@@ -90,7 +90,7 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
   assert.match(salesSource,/evaluateTransactionMarginRows/);
   assert.match(salesSource,/releasedProductSourcingMany/);
-  assert.match(salesSource,/sales-range-v24/);
+  assert.match(salesSource,/sales-range-v25/);
 }
 {
   const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
