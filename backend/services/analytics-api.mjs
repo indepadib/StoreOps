@@ -156,11 +156,11 @@ export async function handleAnalyticsApi({ req, url, user }){
     const storeId=clean(url.searchParams.get('storeId')),startDate=clean(url.searchParams.get('start')),endDate=clean(url.searchParams.get('end')),force=url.searchParams.get('force')==='1';
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
-    const cacheKey=analyticsCacheKey('wallet-v6',[storeId,startDate,endDate]);
+    const cacheKey=analyticsCacheKey('wallet-v7',[storeId,startDate,endDate]);
     if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
     const data=await readWalletBurnRange(storeId,{startDate,endDate,force});
     const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:6*3600;
-    await writeAnalyticsCache(cacheKey,'wallet-v6',data,ttl);
+    await writeAnalyticsCache(cacheKey,'wallet-v7',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
