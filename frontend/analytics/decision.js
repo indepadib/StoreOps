@@ -180,22 +180,25 @@
   }
   async function loadDecisionChunked(api,s,force=false){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
-    // Never burn the Netlify timeout budget on a known-heavy full-period request.
-    // For >15 days, go directly to 15-day analytical slices; each slice has its own
-    // persistent backend cache and can recursively split only if D365 is still slow.
-    if(maxDays<=15){
-      setProgress(0,1);
-      const full=await fetchDecisionSlice(api,s,cur,cmp,force);
-      setProgress(1,1);
-      return full
-    }
-    const blocks=Math.max(2,Math.ceil(maxDays/15)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
+    const selectedCount=selectedStoreIds(s).length||1;
+    // Cold D365 reads must never spend the full ~30 s gateway budget before splitting.
+    // Multi-store scopes use 5-day slices; single-store scopes use 7-day slices.
+    // Exact slices are persisted server-side, so subsequent periods re-use them.
+    const sliceDays=selectedCount>1?5:7;
+    const blocks=Math.max(1,Math.ceil(maxDays/sliceDays));
+    const currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);
+    let next=0,done=0;
     setProgress(0,blocks);
-    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-    const selectedCount=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds.length:0;
-    const workers=selectedCount>1||storeScopeKey(s)==='ALL'?1:Math.min(2,blocks);
+    const worker=async()=>{while(true){
+      const i=next++;if(i>=blocks)return;
+      results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);
+      done++;setProgress(done,blocks)
+    }};
+    // One analytical block at a time for multi-store: each block already reads selected
+    // stores concurrently. Single-store can safely process two short blocks at once.
+    const workers=selectedCount>1?1:Math.min(2,blocks);
     await Promise.all(Array.from({length:workers},worker));
-    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
+    return blocks===1?results[0]:mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
   function productLabel(sku,fallback=''){
