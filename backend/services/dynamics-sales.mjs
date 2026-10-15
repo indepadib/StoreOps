@@ -155,8 +155,27 @@ function taxonomyLabels(productNumber){
  return{department:sorted[0]?.category_name||null,category:sorted.at(-1)?.category_name||null};
 }
 
+function amountFieldLooksTaxInclusive(field=''){
+ return /incltax|includingtax|gross|totalamount/i.test(clean(field))
+}
+
+/**
+ * Business-facing CA is TTC. Some persisted/auto-discovered D365 mappings point at
+ * NetAmount (HT) while RetailTransactionSalesTrans also exposes TaxAmount.
+ * Reconstruct TTC deterministically instead of silently publishing HT as CA.
+ */
+export function retailDisplaySalesAmount(row,cfg={}){
+ const f=cfg.fields||{},sign=Number(cfg.sign||-1),raw=Number(row?.[f.net]);
+ if(!Number.isFinite(raw))return 0;
+ const base=raw*sign;
+ if(amountFieldLooksTaxInclusive(f.net))return round2(base);
+ const taxRaw=f.taxAmount?Number(row?.[f.taxAmount]):NaN;
+ if(Number.isFinite(taxRaw))return round2(base+Math.abs(taxRaw));
+ return round2(base)
+}
+
 function includedRetailSaleRow(row,cfg={}){
- const f=cfg.fields||{},sign=Number(cfg.sign||-1),rawSales=Number(row?.[f.net]),sales=Number.isFinite(rawSales)?rawSales*sign:0;
+ const f=cfg.fields||{},sales=retailDisplaySalesAmount(row,cfg);
  if(!(sales>0&&sales<100000))return false;
  const status=clean(f.status?row?.[f.status]:'').toUpperCase();
  if(['VOIDED','CANCELLED','CANCELED'].includes(status))return false;
@@ -175,7 +194,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
-  const tx=clean(r[f.transaction]),rawSales=num(r[f.net]),sales=round2(rawSales*sign);
+  const tx=clean(r[f.transaction]),sales=retailDisplaySalesAmount(r,cfg);
   if(!includedRetailSaleRow(r,cfg)){
    excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);continue;
   }
@@ -356,7 +375,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v15|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v15',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v16|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v16',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -454,7 +473,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    const customer=clean(row[c.fields.customer]),upper=customer.toUpperCase();
    if(customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(upper)){
     if(!includedRetailSaleRow(row,c))continue;
-    const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
+    const sales=retailDisplaySalesAmount(row,c),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
     const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),dates:new Set(),weekdays:new Map(),hours:new Map(),firstDate:null,lastDate:null};
     cur.sales+=sales;cur.units+=qty;if(tx)cur.transactions.add(tx);
     if(product){const cp=cur.products.get(product)||{sales:0,units:0};cp.sales+=sales;cp.units+=qty;cur.products.set(product,cp)}
@@ -474,7 +493,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     const staffId=clean(row[c.fields.staff]);
     if(staffId){
       if(includedRetailSaleRow(row,c)){
-        const sales=round2(num(row[c.fields.net])*c.sign),tx=clean(row[c.fields.transaction]),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
+        const sales=retailDisplaySalesAmount(row,c),tx=clean(row[c.fields.transaction]),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
         const identified=!!customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(customer);
         const cur=staffMap.get(staffId)||{staffId,sales:0,transactions:new Set(),identifiedTransactions:new Set(),identifiedSales:0};
         cur.sales+=sales;if(tx)cur.transactions.add(tx);if(identified){cur.identifiedSales+=sales;if(tx)cur.identifiedTransactions.add(tx)}
@@ -539,6 +558,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v15',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v16',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
