@@ -41,6 +41,7 @@ const PRICE_ROLES={
 
 const ROLE_EXACT_PRIORITY={
  channel:['store','storeid','retailchannelid','retailchannel','channelid','terminalstore','channel'],
+ net:['netamountincltax','amountincltax','grossamount','totalamount','netamount','salesamount','amount'],
  time:['transtime','transactiontime','time']
 };
 function infer(rows,roles){
