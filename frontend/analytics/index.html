@@ -62,6 +62,9 @@
         <button data-section="categories">
           <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg></span><span>Catégories & Produits</span>
         </button>
+        <button data-section="suppliers">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg></span><span>Fournisseurs</span>
+        </button>
         <button data-section="crm">
           <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="4"/><path d="M2.5 21a6.5 6.5 0 0 1 13 0"/><circle cx="18" cy="9" r="3"/><path d="M15.5 21a5.5 5.5 0 0 1 6-5.4"/></svg></span><span>Clients & CRM</span>
         </button>
@@ -290,6 +293,42 @@
               <tbody id="performanceBody"></tbody>
             </table>
           </div>
+        </section>
+
+        <section class="decision-dashboard supplier-intelligence" id="supplierIntelligence" data-widget="supplierIntelligence" hidden>
+          <div class="decision-head">
+            <div>
+              <span class="eyebrow">SUPPLIER INTELLIGENCE</span>
+              <h2>Fournisseurs, ventes et qualité d'approvisionnement</h2>
+              <p>Lecture CA, dynamique, dépendance fournisseur, Direct vs DC et suivi des réceptions. Le taux de service n'est affiché que lorsqu'il repose sur des lignes réceptionnées et contrôlées.</p>
+            </div>
+            <div class="decision-controls">
+              <select id="supplierModeFilter">
+                <option value="">Tous les modes</option>
+                <option value="DIRECT_SUPPLIER">Direct fournisseur</option>
+                <option value="WAREHOUSE">Entrepôt / DC</option>
+              </select>
+              <input id="supplierSearch" type="search" placeholder="Fournisseur ou article">
+            </div>
+          </div>
+          <div class="crm-kpis" id="supplierKpis"></div>
+          <div class="decision-grid">
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">DÉPENDANCE</span><h3>Poids des fournisseurs dans le CA</h3></div></div>
+              <div id="supplierConcentration" class="supplier-bars"></div>
+            </article>
+            <article class="decision-card">
+              <div class="decision-card-head"><div><span class="mini-kicker">À PILOTER</span><h3>Fournisseurs à surveiller</h3></div></div>
+              <div id="supplierActions" class="decision-action-list"></div>
+            </article>
+          </div>
+          <div class="decision-table-wrap">
+            <table class="decision-table">
+              <thead><tr><th>Fournisseur</th><th>Appro</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>SKU vendus</th><th>Top article</th><th>Marge</th><th>PO ouverts</th><th>Reste à recevoir</th><th>Taux service 90j</th></tr></thead>
+              <tbody id="supplierBody"><tr><td colspan="11"><div class="table-loading">Chargement fournisseurs…</div></td></tr></tbody>
+            </table>
+          </div>
+          <p class="metric-footnote" id="supplierServiceDefinition">Taux service : N/A tant que la couverture réception contrôlée n'est pas suffisante.</p>
         </section>
 
         <section class="decision-dashboard crm-intelligence" id="crmIntelligence" data-widget="crmIntelligence" hidden>
