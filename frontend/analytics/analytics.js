@@ -529,8 +529,8 @@
     $('#executiveBasketBar').className = drivers.basket != null && drivers.basket < 0 ? 'negative' : '';
 
     $('#healthLoyalty').textContent = percent(a.identifiedShare);
-    $('#healthRecruitment').textContent = percent(a.recruitmentRate);
-    $('#healthOos').textContent = number(a.oos);
+    if ($('#healthRecruitment')) $('#healthRecruitment').textContent = percent(a.recruitmentRate);
+    if ($('#healthOos')) $('#healthOos').textContent = number(a.oos);
     $('#healthCoverage').textContent = a.totalStores ? `${Math.round(a.ready / a.totalStores * 100)} %` : 'N/A';
 
     let health = 'Stable';
