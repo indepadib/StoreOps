@@ -201,7 +201,7 @@
     const key=queryKey(s);if(!state.catalog.size)hydrateCatalogCache();
     if(!force&&state.catalogKey===key&&state.catalog.size)return;
     state.catalogLoading=true;
-    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=80)batches.push(missing.slice(i,i+80));
+    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku)),batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
     let cursor=0,progressiveRendered=false;
     const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('performance-first-labels',()=>renderPerformance(false));safeRenderPart('crm-first-labels',renderCrm)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
