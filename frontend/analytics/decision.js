@@ -183,8 +183,9 @@
       if(rate!=null&&(rate>100||rate<-200))return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
       return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'};
     }
-    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),costBasis=ref?.currentCostBasisUnit||ref?.salesUnit||null;
-    let quantityUnit=row?.quantityUnit||null,quantityUnitSource='TRANSACTION';
+    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),costBasis=ref?.currentCostBasisUnit||ref?.salesUnit||null,unitBreakdown=Object.entries(row?.quantityByUnit||{}).filter(([,v])=>Number(v)!==0);
+    if(unitBreakdown.length>1)return{value:null,rate:null,estimated:false,quality:'MIXED_QUANTITY_UNITS'};
+    let quantityUnit=row?.quantityUnit||(unitBreakdown.length===1?unitBreakdown[0][0]:null),quantityUnitSource=(row?.quantityUnit||unitBreakdown.length===1)?'TRANSACTION':'INFERRED';
     if(!quantityUnit){
       const inv=ref?.inventoryUnit||null,sale=ref?.salesUnit||null;
       if(inv&&sale&&normalizeQtyUnit(inv)!==normalizeQtyUnit(sale)){quantityUnit=inv;quantityUnitSource='INFERRED_INVENTORY_UNIT'}
