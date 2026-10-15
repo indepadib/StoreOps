@@ -271,12 +271,12 @@ export async function readWalletBurnRange(storeId,{startDate,endDate,force=false
   const key=`RANGE|${storeId}|${start}|${end}`,hit=cache.get(key);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
   if(config.dynamics.mode!=='live')return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_NOT_LIVE'};
 
-  const schema=await discoverPaymentSchema();if(schema.status!=='READY')return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'PAYMENT_ENTITY_UNMAPPED',diagnostics:schema};
-  const tenderTypes=await tenderNameMap(),walletIds=configuredWalletIds(),identifiers=salesStoreIdentifiers(storeId,schema.fields.store);
+  const schema=await discoverPaymentSchema();if(schema.status!=='READY')return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,paymentMix:[],source:'PAYMENT_ENTITY_UNMAPPED',diagnostics:schema};
+  const tenderTypesPromise=tenderNameMap(),walletIds=configuredWalletIds(),identifiers=salesStoreIdentifiers(storeId,schema.fields.store);
   if(!identifiers.length)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'STORE_IDENTIFIER_UNMAPPED',entity:schema.entity,fields:schema.fields};
 
   const select=unique([schema.fields.transaction,schema.fields.store,schema.fields.date,schema.fields.amount,schema.fields.tender,schema.fields.currency,schema.fields.terminal,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null]).join(',');
-  const chunks=[];for(let cursor=start;cursor<=end;cursor=addDays(cursor,7)){const candidate=addDays(cursor,6);chunks.push({start:cursor,end:candidate>end?end:candidate})}
+  const chunks=[];for(let cursor=start;cursor<=end;cursor=addDays(cursor,15)){const candidate=addDays(cursor,14);chunks.push({start:cursor,end:candidate>end?end:candidate})}
   let selectedRows=null,selectedMeta=null,lastError=null,firstEmpty=null;
   outer:for(const identifier of identifiers){
     for(const sf of storeFilters(schema.fields.store,identifier.value)){
@@ -295,7 +295,8 @@ export async function readWalletBurnRange(storeId,{startDate,endDate,force=false
   if(selectedRows===null&&firstEmpty){selectedRows=firstEmpty.rows;selectedMeta=firstEmpty.meta}
   if(selectedRows===null)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_PAYMENT_READ_FAILED',error:{code:lastError?.code||'D365_PAYMENT_READ_FAILED',message:lastError?.message||String(lastError||'Lecture paiement impossible')}};
 
-  const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,walletIds)),profile=signProfile(walletRows,schema.fields.amount),burn=derivedBurn(profile),mix=paymentMix(selectedRows,schema.fields,tenderTypes,walletIds);
-  const value={status:burn.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
+  const tenderTypes=await tenderTypesPromise.catch(()=>({status:'UNAVAILABLE',entity:null,map:new Map()})),resolvedWalletIds=[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],rawWalletPresent=selectedRows.some(row=>/wallet/i.test(clean(row?.[schema.fields.tender]))),walletMappingKnown=resolvedWalletIds.length>0||rawWalletPresent;
+  const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,resolvedWalletIds)),profile=signProfile(walletRows,schema.fields.amount),derived=derivedBurn(profile),burn=walletMappingKnown?derived:{amount:null,signMode:'WALLET_MAPPING_REQUIRED'},mix=paymentMix(selectedRows,schema.fields,tenderTypes,resolvedWalletIds);
+  const value={status:burn.amount===null?(walletMappingKnown?'SIGN_VALIDATION_REQUIRED':'PAYMENT_MIX_READY_WALLET_UNMAPPED'):'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:resolvedWalletIds,tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
   cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
 }
