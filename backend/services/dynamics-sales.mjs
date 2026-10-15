@@ -154,8 +154,9 @@ function includedRetailSaleRow(row,cfg={}){
 }
 
 export function aggregateSalesRows(rows=[],cfg={}){
- const f=cfg.fields||{},sign=Number(cfg.sign||-1),costSign=Number(cfg.costSign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
- let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost,excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0;
+ const f=cfg.fields||{},sign=Number(cfg.sign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
+ const directCostKind=inferTransactionCostKind(f.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
+ let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost&&directCostKind==='LINE_AMOUNT',excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0;
  const hourTickets=new Map();
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
@@ -165,7 +166,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
    excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);continue;
   }
   includedRows+=1;
-  const rawQty=num(f.quantity?r[f.quantity]:0),qty=f.quantity?(rawQty===0?0:(sales===0?Math.abs(rawQty):Math.sign(sales)*Math.abs(rawQty))):0,cost=f.cost?round2(num(r[f.cost])*costSign):0;
+  const rawQty=num(f.quantity?r[f.quantity]:0),qty=f.quantity?(rawQty===0?0:(sales===0?Math.abs(rawQty):Math.sign(sales)*Math.abs(rawQty))):0,cost=costMapped?round2(Math.abs(num(r[f.cost]))):0;
   netSales+=sales;units+=qty;costValue+=cost;if(tx)tickets.add(tx);
   const identified=identifiedCustomer(f.customer?r[f.customer]:'');if(identified){identifiedNetSales+=sales;if(tx)identifiedTickets.add(tx)}
   const productNumber=clean(f.product?r[f.product]:'')||'UNMAPPED',name=clean(f.name?r[f.name]:'')||productNumber,tax=taxonomyLabels(productNumber),salesUnit=clean(f.salesUnit?r[f.salesUnit]:'');
