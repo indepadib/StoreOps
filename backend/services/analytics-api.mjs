@@ -83,7 +83,7 @@ export async function handleAnalyticsApi({ req, url, user }){
   if(req.method==='GET'&&url.pathname==='/api/analytics/catalog'){
     const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
     if(!products.length)return{status:400,data:{error:'products requis.'}};
-    if(products.length>80)return{status:400,data:{error:'80 articles maximum par requête.'}};
+    if(products.length>240)return{status:400,data:{error:'240 articles maximum par requête.'}};
     const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v3',sorted);
     const cached=await readAnalyticsCache(cacheKey);
     if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
