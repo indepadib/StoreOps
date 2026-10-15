@@ -51,8 +51,8 @@
     const map=new Map();
     for(const part of parts)for(const row of getRows(part)||[]){
       const key=String(row.key||'');if(!key)continue;
-      const cur=map.get(key)||{key,label:row.label||key,sales:0,previousSales:0,units:0,marginValue:0,previousMarginValue:0,marginKnown:true,previousMarginKnown:true,quantityUnits:new Set()};
-      cur.sales+=Number(row.sales||0);cur.previousSales+=Number(row[previousField]??row.previous??0);cur.units+=Number(row.units||0);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));
+      const cur=map.get(key)||{key,label:row.label||key,sales:0,previousSales:0,units:0,marginValue:0,previousMarginValue:0,marginKnown:true,previousMarginKnown:true,quantityUnits:new Set(),quantityByUnit:new Map()};
+      cur.sales+=Number(row.sales||0);cur.previousSales+=Number(row[previousField]??row.previous??0);cur.units+=Number(row.units||0);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));for(const [u,v] of Object.entries(row.quantityByUnit||{})){if(u){cur.quantityUnits.add(u);cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+Number(v||0))}}
       if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=Number(row.marginValue||0);
       if(row.previousMarginValue===null||row.previousMarginValue===undefined)cur.previousMarginKnown=false;else cur.previousMarginValue+=Number(row.previousMarginValue||0);
       if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
@@ -61,7 +61,7 @@
     const rows=[...map.values()],total=rows.reduce((s,x)=>s+x.sales,0),prevSorted=[...rows].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
     return rows.sort((a,b)=>b.sales-a.sales).map((x,i)=>{
       const marginValue=x.marginKnown?x.marginValue:null,previousMarginValue=x.previousMarginKnown?x.previousMarginValue:null;
-      return{key:x.key,label:x.label,sales:x.sales,previousSales:x.previousSales,previous:x.previousSales,deltaSales:x.sales-x.previousSales,delta:x.sales-x.previousSales,changePct:pct(x.sales,x.previousSales),sharePct:total?x.sales/total*100:null,units:x.units,quantityUnit:x.quantityUnits.size===1?[...x.quantityUnits][0]:null,marginValue,marginRate:marginValue!=null&&x.sales?marginValue/x.sales*100:null,previousMarginValue,deltaMargin:marginValue!=null&&previousMarginValue!=null?marginValue-previousMarginValue:null,rank:i+1,previousRank:prevRank.get(x.key)||null,deltaRank:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}
+      return{key:x.key,label:x.label,sales:x.sales,previousSales:x.previousSales,previous:x.previousSales,deltaSales:x.sales-x.previousSales,delta:x.sales-x.previousSales,changePct:pct(x.sales,x.previousSales),sharePct:total?x.sales/total*100:null,units:x.units,quantityUnit:x.quantityUnits.size===1?[...x.quantityUnits][0]:null,quantityByUnit:Object.fromEntries(x.quantityByUnit),marginValue,marginRate:marginValue!=null&&x.sales?marginValue/x.sales*100:null,previousMarginValue,deltaMargin:marginValue!=null&&previousMarginValue!=null?marginValue-previousMarginValue:null,rank:i+1,previousRank:prevRank.get(x.key)||null,deltaRank:prevRank.has(x.key)?prevRank.get(x.key)-(i+1):null}
     })
   }
   function mergeStores(parts){
