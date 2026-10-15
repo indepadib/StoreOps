@@ -7,6 +7,7 @@ import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 import { readAnalyticsCatalog } from './analytics-catalog.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
+import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -115,6 +116,16 @@ export async function handleAnalyticsApi({ req, url, user }){
     const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:24*3600;
     await writeAnalyticsCache(cacheKey,'decision-v6',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/loyalty-range'){
+    const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))?clean(v):null,startDate=iso(url.searchParams.get('start')),endDate=iso(url.searchParams.get('end')),includeStaff=url.searchParams.get('includeStaff')==='1',force=url.searchParams.get('force')==='1';
+    if(!startDate||!endDate)return{status:400,data:{error:'start et end requis au format YYYY-MM-DD.'}};
+    const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
+    const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
+    const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
+    if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
+    return{status:200,data:await readLoyaltyRange(stores,{startDate,endDate,includeStaff,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
