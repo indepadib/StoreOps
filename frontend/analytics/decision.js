@@ -173,7 +173,9 @@
     const blocks=Math.max(2,Math.ceil(maxDays/15)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
     setProgress(0,blocks);
     const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-    await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
+    const selectedCount=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds.length:0;
+    const workers=selectedCount>1||storeScopeKey(s)==='ALL'?1:Math.min(2,blocks);
+    await Promise.all(Array.from({length:workers},worker));
     return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
