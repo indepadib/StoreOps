@@ -33,6 +33,7 @@ jobs:
       - name: Analytics unit and margin quality contract
         run: |
           node backend/tests/analytics-unit-cost-quality.mjs
+          node backend/tests/sales-margin-engine.mjs
           node backend/tests/v233-unit-aware-margin.mjs
       - name: Analytics performance and cache contract
         run: node backend/tests/analytics-performance-contract.mjs
