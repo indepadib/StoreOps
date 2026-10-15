@@ -274,12 +274,20 @@ function daySpan(startDay,endDay){
 }
 function validatedMarginConfig(c){
  const raw=clean(process.env.D365_SALES_COST_RELIABILITY||process.env.RETAIL_MARGIN_COST_RELIABILITY).toUpperCase();
- const validated=['VALIDATED','TRUSTED','POSTED','TRANSACTIONAL'].includes(raw);
+ const kind=clean(process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND).toUpperCase();
+ const reliabilityValidated=['VALIDATED','TRUSTED','POSTED','TRANSACTIONAL'].includes(raw);
+ // We only aggregate a mapped transaction cost when it is explicitly certified as
+ // the TOTAL COST AMOUNT OF THE SALE LINE. CostPrice / unit-cost fields must never
+ // be summed as line amounts because weighted products (inventory unit = g) explode
+ // the margin by factors such as 1,000.
+ const semanticsValidated=kind==='LINE_AMOUNT'||kind==='TOTAL_LINE_COST'||kind==='COGS_LINE_AMOUNT';
+ const validated=reliabilityValidated&&semanticsValidated;
  return{
   status:!c.fields.cost?'UNAVAILABLE':validated?'VALIDATED':'UNVALIDATED',
   costField:c.fields.cost||null,
+  costKind:kind||null,
   source:c.fields.cost?`D365/${c.entity}.${c.fields.cost}`:null,
-  reason:!c.fields.cost?'COST_FIELD_UNMAPPED':validated?null:'TRANSACTION_COST_NOT_VALIDATED'
+  reason:!c.fields.cost?'COST_FIELD_UNMAPPED':!reliabilityValidated?'TRANSACTION_COST_NOT_VALIDATED':!semanticsValidated?'TRANSACTION_COST_SEMANTICS_UNCONFIRMED':null
  }
 }
 function publicMarginRow(row,margin){
@@ -309,7 +317,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const c=salesIntegrationConfig(storeId),end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v8',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v9',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -431,10 +439,23 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   customers,
   staff,
   basketAnalysis,
-  diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
+  diagnostics:{
+    rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,
+    storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode,
+    filterCoverage:{
+      amountBounds:true,
+      transactionStatus:!!c.fields.status,
+      returnNoSale:!!c.fields.returnNoSale,
+      taxItemGroup:!!c.fields.taxItemGroup
+    },
+    mappedFields:{
+      product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,
+      customer:!!c.fields.customer,staff:!!c.fields.staff,cost:!!c.fields.cost,time:!!c.fields.time
+    }
+  }
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v8',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v9',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }

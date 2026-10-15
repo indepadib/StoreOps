@@ -366,11 +366,12 @@
 
     const readyStores = state.cashierStores.filter(x=>x.ok);
     const allItems = readyStores.flatMap(x=>x.data?.items || []);
-    const eligible = allItems.filter(x=>x.rateEligible);
-    const totalTickets = allItems.reduce((s,x)=>s+Number(x.tickets||0),0);
-    const totalRecruitments = allItems.reduce((s,x)=>s+Number(x.recruitments||0),0);
+    const eligible = rows.filter(x=>x.rateEligible);
+    const totalTickets = rows.reduce((s,x)=>s+Number(x.tickets||0),0);
+    const totalRecruitmentsKnown=rows.some(x=>x.recruitments!=null);
+    const totalRecruitments = totalRecruitmentsKnown?rows.reduce((s,x)=>s+Number(x.recruitments||0),0):null;
     const weightedIdentification = totalTickets
-      ? allItems.reduce((s,x)=>s+Number(x.identifiedTickets||0),0)/totalTickets*100
+      ? rows.reduce((s,x)=>s+Number(x.identifiedTickets||0),0)/totalTickets*100
       : null;
 
     $('#cashierSummary').innerHTML = [
@@ -418,10 +419,13 @@
       const section = core()?.getState?.()?.section;
       if (section === 'loyalty') {
         renderLoyalty();
+        loadRecruitment(false,{includeStaff:false});
         loadWallet(false);
       } else if (section === 'cashiers') {
-        if(decisionData()?.cashiers?.items?.length) loadCashiers(false);
-        else if($('#cashierBody')) $('#cashierBody').innerHTML='<tr><td colspan="9"><div class="table-loading">Analyse des caissiers depuis les ventes de la période…</div></td></tr>';
+        // Always try the already-loaded decision rows first, then fall back to the
+        // dedicated staff endpoint if the sales mapping doesn't expose staffId.
+        loadRecruitment(false,{includeStaff:true});
+        loadCashiers(false);
       }
     };
 
@@ -437,6 +441,7 @@
       state.walletKey = null;
       state.cashierKey = null;
       state.recruitmentKey = null;
+      state.recruitmentData = null;
       loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:section', loadVisibleModule);

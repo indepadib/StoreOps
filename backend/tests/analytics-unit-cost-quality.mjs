@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {convertQuantity,valueByBasis} from '../services/unit-conversion.mjs';
 
 {
@@ -28,6 +29,20 @@ import {convertQuantity,valueByBasis} from '../services/unit-conversion.mjs';
 {
   const impossible=convertQuantity(1,'PC','KG');
   assert.equal(impossible.status,'INCOMPATIBLE_UNIT');
+}
+
+
+{
+  const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
+  assert.match(salesSource,/D365_SALES_COST_KIND/);
+  assert.match(salesSource,/LINE_AMOUNT/);
+  assert.match(salesSource,/TRANSACTION_COST_SEMANTICS_UNCONFIRMED/);
+}
+{
+  const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
+  assert.match(decisionSource,/marginCoverage>=90/);
+  assert.match(decisionSource,/IMPLAUSIBLE_CURRENT_COST/);
+  assert.match(decisionSource,/rawCostBasisUnit/);
 }
 
 console.log('Retail Intelligence unit/cost quality contract passed.');

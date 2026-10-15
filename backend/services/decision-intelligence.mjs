@@ -92,31 +92,49 @@ function mergeStaff(results=[]){
  return[...map.values()].map(x=>({...x,identifiedTicketRate:x.tickets?round2(x.identifiedTickets/x.tickets*100):null,identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,recruitments:x.recruitmentsKnown?x.recruitments:null,recruitmentRateNonLoyalty:x.recruitmentsKnown&&x.nonLoyaltyTickets?round2(x.recruitments/x.nonLoyaltyTickets*100):null})).sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
 }
 
+function normalizedPriceBasis(unitValue){
+ const u=String(unitValue||'').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ if(['KG','KGS','KILOGRAM','KILOGRAMME','KILOGRAMMES'].includes(u))return{basis:'KG',priceFactor:1};
+ if(['G','GR','GRAM','GRAMME','GRAMMES'].includes(u))return{basis:'KG',priceFactor:1000};
+ if(['L','LT','LITRE','LITER','LITRES','LITERS'].includes(u))return{basis:'L',priceFactor:1};
+ if(['ML','MILLILITRE','MILLILITER','MILLILITRES','MILLILITERS'].includes(u))return{basis:'L',priceFactor:1000};
+ if(['PC','PCS','EA','EACH','PIECE','PIECE','PIECES','UNIT','UN','U'].includes(u))return{basis:'PC',priceFactor:1};
+ return u?{basis:u,priceFactor:1}:null
+}
+
 function buildPriceTierMap(products=[]){
  const attached=attachRetailHierarchy(products),groups=new Map(),map=new Map();
  for(const p of attached){
-  const units=Math.abs(num(p.units)),sales=num(p.sales),unit=String(p.quantityUnit||'').trim().toUpperCase();
-  if(!units||!sales||!unit)continue;
-  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||'__ALL__',key=`${family}|${unit}`,price=sales/units;
+  const units=Math.abs(num(p.units)),sales=num(p.sales),basis=normalizedPriceBasis(p.quantityUnit);
+  if(!units||!sales||!basis)continue;
+  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||null;
+  if(!family)continue;
+  const key=`${family}|${basis.basis}`,price=sales/units*basis.priceFactor;
   if(!Number.isFinite(price)||price<=0)continue;
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push({key:p.key,price})
  }
  for(const rows of groups.values()){
+  // A relative price position is meaningless when there are too few comparable SKUs.
+  if(rows.length<5)continue;
   const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
-  if(n<3){for(const r of sorted)map.set(r.key,{tier:'CORE',score:null});continue}
-  const q1=sorted[Math.floor((n-1)*.33)].price,q2=sorted[Math.floor((n-1)*.67)].price;
-  for(const r of sorted)map.set(r.key,{tier:r.price<=q1?'VALUE':r.price>=q2?'PREMIUM':'CORE',score:r.price})
+  const qLow=sorted[Math.floor((n-1)*.30)].price,qHigh=sorted[Math.floor((n-1)*.70)].price;
+  for(const r of sorted)map.set(r.key,{tier:r.price<=qLow?'VALUE':r.price>=qHigh?'PREMIUM':'CORE',score:r.price,comparableSkuCount:n})
  }
  return map
 }
 
 function enrichCustomerPricePreferences(customers=[],tierMap=new Map()){
  return customers.map(c=>{
-  const mix={VALUE:0,CORE:0,PREMIUM:0};let known=0;
-  for(const p of c.topProducts||[]){const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;const weight=Math.max(0,num(p.sales));mix[tier]+=weight;known+=weight}
+  const mix={VALUE:0,CORE:0,PREMIUM:0};let classifiedSales=0;
+  for(const p of c.topProducts||[]){
+   const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;
+   const weight=Math.max(0,num(p.sales));mix[tier]+=weight;classifiedSales+=weight
+  }
+  const customerSales=Math.max(0,num(c.sales)),coveragePct=customerSales?classifiedSales/customerSales*100:null;
+  const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]),dominant=ranked[0],dominantPct=classifiedSales&&dominant?dominant[1]/classifiedSales*100:null;
   let pricePreference='UNKNOWN';
-  if(known>0){const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]);pricePreference=ranked[0][0]}
-  return{...c,pricePreference,priceMix:known?{valuePct:round2(mix.VALUE/known*100),corePct:round2(mix.CORE/known*100),premiumPct:round2(mix.PREMIUM/known*100),coverageSales:round2(known)}:null}
+  if(coveragePct!=null&&coveragePct>=60&&dominantPct!=null)pricePreference=dominantPct>=55?dominant[0]:'MIXED';
+  return{...c,pricePreference,priceMix:classifiedSales?{valuePct:round2(mix.VALUE/classifiedSales*100),corePct:round2(mix.CORE/classifiedSales*100),premiumPct:round2(mix.PREMIUM/classifiedSales*100),coverageSales:round2(classifiedSales),coveragePct:round2(coveragePct),dominantPct:round2(dominantPct)}:null}
  })
 }
 
@@ -191,13 +209,34 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
  const identifiedSales=customers.reduce((s,x)=>s+x.sales,0),repeatCustomers=customers.filter(x=>x.tickets>=2).length,frequentCustomers=customers.filter(x=>x.tickets>=4).length;
  const qualityIssues=[],truncatedStores=currentResults.filter(x=>x?.diagnostics?.truncated||x?.status==='TRUNCATED').length,unknownUnitProducts=currentProducts.filter(x=>num(x.units)!==0&&!x.quantityUnit).length;
+ const productSales=round2(currentProducts.reduce((s,x)=>s+num(x.sales),0)),storeSales=round2(storesComparison.reduce((s,x)=>s+num(x.sales),0)),customerSales=round2(customers.reduce((s,x)=>s+num(x.sales),0)),customerTickets=customers.reduce((s,x)=>s+num(x.tickets),0);
+ const gapPct=(a,b)=>Math.abs(num(a)-num(b))/Math.max(1,Math.abs(num(b)))*100;
+ const productSalesGapPct=gapPct(productSales,currentSummary.sales),storeSalesGapPct=gapPct(storeSales,currentSummary.sales),identifiedSalesGapPct=currentSummary.identifiedSales==null?null:gapPct(customerSales,currentSummary.identifiedSales),identifiedTicketGapPct=currentSummary.identifiedTickets==null?null:gapPct(customerTickets,currentSummary.identifiedTickets);
  if(currentResults.length<stores.length)qualityIssues.push({code:'STORE_COVERAGE',level:'WARN',message:`${currentResults.length}/${stores.length} magasins ventes disponibles`});
  if(truncatedStores)qualityIssues.push({code:'SALES_TRUNCATED',level:'ERROR',message:`${truncatedStores} magasin(s) avec lecture ventes tronquée`});
+ if(productSalesGapPct>0.5)qualityIssues.push({code:'PRODUCT_SALES_RECONCILIATION',level:'ERROR',message:`Somme CA articles ≠ CA total (${round2(productSalesGapPct)} % d'écart)`});
+ if(storeSalesGapPct>0.1)qualityIssues.push({code:'STORE_SALES_RECONCILIATION',level:'ERROR',message:`Somme CA magasins ≠ CA réseau (${round2(storeSalesGapPct)} % d'écart)`});
  if(currentSummary.identifiedTickets!=null&&customers.length>currentSummary.identifiedTickets)qualityIssues.push({code:'CUSTOMER_CARDINALITY',level:'ERROR',message:'Clients distincts supérieurs aux tickets identifiés'});
  if(currentSummary.identifiedSales!=null&&currentSummary.sales&&currentSummary.identifiedSales>currentSummary.sales*1.001)qualityIssues.push({code:'IDENTIFIED_SALES_GT_TOTAL',level:'ERROR',message:'CA identifié supérieur au CA total'});
- if(marginStatus==='VALIDATED'&&currentSummary.marginRate!=null&&(currentSummary.marginRate>100||currentSummary.marginRate<-200))qualityIssues.push({code:'MARGIN_IMPLAUSIBLE',level:'ERROR',message:'Taux de marge transactionnel incohérent'});
+ if(identifiedSalesGapPct!=null&&identifiedSalesGapPct>1)qualityIssues.push({code:'IDENTIFIED_SALES_RECONCILIATION',level:'ERROR',message:`CA clients ≠ CA identifié (${round2(identifiedSalesGapPct)} % d'écart)`});
+ if(identifiedTicketGapPct!=null&&identifiedTicketGapPct>1)qualityIssues.push({code:'IDENTIFIED_TICKET_RECONCILIATION',level:'WARN',message:`Tickets clients ≠ tickets identifiés (${round2(identifiedTicketGapPct)} % d'écart)`});
+ if(marginStatus==='VALIDATED'&&currentSummary.marginRate!=null&&(currentSummary.marginRate>85||currentSummary.marginRate<-50))qualityIssues.push({code:'MARGIN_IMPLAUSIBLE',level:'ERROR',message:'Taux de marge transactionnel incohérent'});
  if(unknownUnitProducts)qualityIssues.push({code:'UNIT_COVERAGE',level:'INFO',message:`${unknownUnitProducts} article(s) vendus sans unité transactionnelle`});
- const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts}};
+ const filterCoverage=currentResults.map(x=>x?.diagnostics?.filterCoverage||{}),mappedFields=currentResults.map(x=>x?.diagnostics?.mappedFields||{});
+ const officialFilterCoverage={
+  amountBounds:filterCoverage.every(x=>x.amountBounds===true),
+  transactionStatus:filterCoverage.every(x=>x.transactionStatus===true),
+  returnNoSale:filterCoverage.every(x=>x.returnNoSale===true),
+  taxItemGroup:filterCoverage.every(x=>x.taxItemGroup===true)
+ };
+ if(!officialFilterCoverage.returnNoSale||!officialFilterCoverage.taxItemGroup)qualityIssues.push({code:'OFFICIAL_CA_FILTER_COVERAGE',level:'WARN',message:'Filtres CA officiels returnNoSale / ExoColl non garantis sur toutes les sources ventes'});
+ const fieldCoverage={
+  product:mappedFields.every(x=>x.product===true),productName:mappedFields.every(x=>x.productName===true),quantity:mappedFields.every(x=>x.quantity===true),
+  salesUnit:mappedFields.every(x=>x.salesUnit===true),customer:mappedFields.every(x=>x.customer===true),staff:mappedFields.every(x=>x.staff===true),time:mappedFields.every(x=>x.time===true)
+ };
+ if(!fieldCoverage.customer)qualityIssues.push({code:'CUSTOMER_FIELD_COVERAGE',level:'ERROR',message:'Champ client non disponible sur toute la période : KPIs CRM bloqués'});
+ if(!fieldCoverage.product)qualityIssues.push({code:'PRODUCT_FIELD_COVERAGE',level:'ERROR',message:'Champ article non disponible : analyses produits bloquées'});
+ const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts,officialFilterCoverage,fieldCoverage,productSales,productSalesGapPct,storeSales,storeSalesGapPct,customerIdentifiedSales:customerSales,summaryIdentifiedSales:currentSummary.identifiedSales,identifiedSalesGapPct,customerIdentifiedTickets:customerTickets,summaryIdentifiedTickets:currentSummary.identifiedTickets,identifiedTicketGapPct}};
  return{
   status:currentResults.length?'READY':'UNAVAILABLE',
   period:{startDate,endDate,days:currentResults[0]?.days||null},

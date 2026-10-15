@@ -92,13 +92,14 @@
   }
   function renderKpis(){
     const api=core(),a=aggregate();if(!api||!$('#promotionKpis'))return;
+    const unavailable=a.ready===0;
     const cards=[
-      ['Offres actives',api.number(a.offers),`${a.ready}/${a.total} magasin(s)`,''],
-      ['Articles promo',api.number(a.articles),'SKU couverts',''],
-      ['Remise moyenne',api.percent(a.avgDiscount),'moyenne non pondérée',''],
-      ['Expire bientôt',api.number(a.ending),'≤ 3 jours',a.ending?'warning':''],
-      ['Promo en rupture',api.number(a.out),'stock signal OUT',a.out?'danger':''],
-      ['Promo stock faible',api.number(a.low),'couverture faible',a.low?'warning':'']
+      ['Offres actives',unavailable?'N/A':api.number(a.offers),`${a.ready}/${a.total} magasin(s) source promo disponible`,unavailable?'warning':''],
+      ['Articles promo',unavailable?'N/A':api.number(a.articles),unavailable?'source D365 indisponible':'SKU couverts',unavailable?'warning':''],
+      ['Remise moyenne',unavailable?'N/A':api.percent(a.avgDiscount),unavailable?'aucune estimation':'moyenne non pondérée',unavailable?'warning':''],
+      ['Expire bientôt',unavailable?'N/A':api.number(a.ending),unavailable?'source indisponible':'≤ 3 jours',!unavailable&&a.ending?'warning':''],
+      ['Promo en rupture',unavailable?'N/A':api.number(a.out),unavailable?'source indisponible':'stock signal OUT',!unavailable&&a.out?'danger':''],
+      ['Promo stock faible',unavailable?'N/A':api.number(a.low),unavailable?'source indisponible':'couverture faible',!unavailable&&a.low?'warning':'']
     ];
     $('#promotionKpis').innerHTML=cards.map(([label,value,sub,tone])=>`
       <div class="promotion-kpi ${tone}">
