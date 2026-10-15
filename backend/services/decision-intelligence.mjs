@@ -92,31 +92,49 @@ function mergeStaff(results=[]){
  return[...map.values()].map(x=>({...x,identifiedTicketRate:x.tickets?round2(x.identifiedTickets/x.tickets*100):null,identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,recruitments:x.recruitmentsKnown?x.recruitments:null,recruitmentRateNonLoyalty:x.recruitmentsKnown&&x.nonLoyaltyTickets?round2(x.recruitments/x.nonLoyaltyTickets*100):null})).sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
 }
 
+function normalizedPriceBasis(unitValue){
+ const u=String(unitValue||'').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ if(['KG','KGS','KILOGRAM','KILOGRAMME','KILOGRAMMES'].includes(u))return{basis:'KG',priceFactor:1};
+ if(['G','GR','GRAM','GRAMME','GRAMMES'].includes(u))return{basis:'KG',priceFactor:1000};
+ if(['L','LT','LITRE','LITER','LITRES','LITERS'].includes(u))return{basis:'L',priceFactor:1};
+ if(['ML','MILLILITRE','MILLILITER','MILLILITRES','MILLILITERS'].includes(u))return{basis:'L',priceFactor:1000};
+ if(['PC','PCS','EA','EACH','PIECE','PIECE','PIECES','UNIT','UN','U'].includes(u))return{basis:'PC',priceFactor:1};
+ return u?{basis:u,priceFactor:1}:null
+}
+
 function buildPriceTierMap(products=[]){
  const attached=attachRetailHierarchy(products),groups=new Map(),map=new Map();
  for(const p of attached){
-  const units=Math.abs(num(p.units)),sales=num(p.sales),unit=String(p.quantityUnit||'').trim().toUpperCase();
-  if(!units||!sales||!unit)continue;
-  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||'__ALL__',key=`${family}|${unit}`,price=sales/units;
+  const units=Math.abs(num(p.units)),sales=num(p.sales),basis=normalizedPriceBasis(p.quantityUnit);
+  if(!units||!sales||!basis)continue;
+  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||null;
+  if(!family)continue;
+  const key=`${family}|${basis.basis}`,price=sales/units*basis.priceFactor;
   if(!Number.isFinite(price)||price<=0)continue;
   if(!groups.has(key))groups.set(key,[]);groups.get(key).push({key:p.key,price})
  }
  for(const rows of groups.values()){
+  // A relative price position is meaningless when there are too few comparable SKUs.
+  if(rows.length<5)continue;
   const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
-  if(n<3){for(const r of sorted)map.set(r.key,{tier:'CORE',score:null});continue}
-  const q1=sorted[Math.floor((n-1)*.33)].price,q2=sorted[Math.floor((n-1)*.67)].price;
-  for(const r of sorted)map.set(r.key,{tier:r.price<=q1?'VALUE':r.price>=q2?'PREMIUM':'CORE',score:r.price})
+  const qLow=sorted[Math.floor((n-1)*.30)].price,qHigh=sorted[Math.floor((n-1)*.70)].price;
+  for(const r of sorted)map.set(r.key,{tier:r.price<=qLow?'VALUE':r.price>=qHigh?'PREMIUM':'CORE',score:r.price,comparableSkuCount:n})
  }
  return map
 }
 
 function enrichCustomerPricePreferences(customers=[],tierMap=new Map()){
  return customers.map(c=>{
-  const mix={VALUE:0,CORE:0,PREMIUM:0};let known=0;
-  for(const p of c.topProducts||[]){const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;const weight=Math.max(0,num(p.sales));mix[tier]+=weight;known+=weight}
+  const mix={VALUE:0,CORE:0,PREMIUM:0};let classifiedSales=0;
+  for(const p of c.topProducts||[]){
+   const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;
+   const weight=Math.max(0,num(p.sales));mix[tier]+=weight;classifiedSales+=weight
+  }
+  const customerSales=Math.max(0,num(c.sales)),coveragePct=customerSales?classifiedSales/customerSales*100:null;
+  const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]),dominant=ranked[0],dominantPct=classifiedSales&&dominant?dominant[1]/classifiedSales*100:null;
   let pricePreference='UNKNOWN';
-  if(known>0){const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]);pricePreference=ranked[0][0]}
-  return{...c,pricePreference,priceMix:known?{valuePct:round2(mix.VALUE/known*100),corePct:round2(mix.CORE/known*100),premiumPct:round2(mix.PREMIUM/known*100),coverageSales:round2(known)}:null}
+  if(coveragePct!=null&&coveragePct>=60&&dominantPct!=null)pricePreference=dominantPct>=55?dominant[0]:'MIXED';
+  return{...c,pricePreference,priceMix:classifiedSales?{valuePct:round2(mix.VALUE/classifiedSales*100),corePct:round2(mix.CORE/classifiedSales*100),premiumPct:round2(mix.PREMIUM/classifiedSales*100),coverageSales:round2(classifiedSales),coveragePct:round2(coveragePct),dominantPct:round2(dominantPct)}:null}
  })
 }
 
