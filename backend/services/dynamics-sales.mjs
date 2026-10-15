@@ -431,7 +431,20 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   customers,
   staff,
   basketAnalysis,
-  diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode}
+  diagnostics:{
+    rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,
+    storeIdentifierKind:selected.identifier?.kind||null,storeIdentifier:selected.identifier?.value||null,dateFilterMode:selected.mode,
+    filterCoverage:{
+      amountBounds:true,
+      transactionStatus:!!c.fields.status,
+      returnNoSale:!!c.fields.returnNoSale,
+      taxItemGroup:!!c.fields.taxItemGroup
+    },
+    mappedFields:{
+      product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,
+      customer:!!c.fields.customer,staff:!!c.fields.staff,cost:!!c.fields.cost,time:!!c.fields.time
+    }
+  }
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
