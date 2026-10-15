@@ -488,29 +488,42 @@
   }
 
   function clientPricePreferences(customers=[]){
+    const priceBasis=unit=>{
+      const u=normalizeQtyUnit(unit);
+      if(u==='KG')return{basis:'KG',factor:1};
+      if(u==='G')return{basis:'KG',factor:1000};
+      if(u==='L')return{basis:'L',factor:1};
+      if(['ML','MILLILITRE','MILLILITER'].includes(u))return{basis:'L',factor:1000};
+      if(u==='PC')return{basis:'PC',factor:1};
+      return u&&u!=='INCONNUE'?{basis:u,factor:1}:null
+    };
     const groups=new Map(),tierBySku=new Map();
     for(const raw of state.data?.products||[]){
-      const p=productWithCatalog(raw),units=Math.abs(Number(p.units||0)),sales=Number(p.sales||0),unit=normalizeQtyUnit(p.quantityUnit);
+      const p=productWithCatalog(raw),units=Math.abs(Number(p.units||0)),sales=Number(p.sales||0),basis=priceBasis(p.quantityUnit);
       const family=p.hierarchy?.family?.id||p.hierarchy?.rayon?.id||null;
-      if(!family||!unit||unit==='INCONNUE'||!units||!Number.isFinite(sales)||sales<=0)continue;
-      const price=sales/units,key=family+'|'+unit;if(!groups.has(key))groups.set(key,[]);groups.get(key).push({sku:p.key,price})
+      if(!family||!basis||!units||!Number.isFinite(sales)||sales<=0)continue;
+      const price=sales/units*basis.factor,key=family+'|'+basis.basis;
+      if(!groups.has(key))groups.set(key,[]);groups.get(key).push({sku:p.key,price})
     }
     for(const rows of groups.values()){
+      if(rows.length<5)continue;
       const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
-      if(!n)continue;
-      const q1=sorted[Math.floor((n-1)*.33)]?.price,q2=sorted[Math.floor((n-1)*.67)]?.price;
-      for(const r of sorted)tierBySku.set(r.sku,n<3?'CORE':r.price<=q1?'VALUE':r.price>=q2?'PREMIUM':'CORE')
+      const qLow=sorted[Math.floor((n-1)*.30)]?.price,qHigh=sorted[Math.floor((n-1)*.70)]?.price;
+      for(const r of sorted)tierBySku.set(r.sku,r.price<=qLow?'VALUE':r.price>=qHigh?'PREMIUM':'CORE')
     }
-    const byCustomer=new Map(),counts={VALUE:0,CORE:0,PREMIUM:0,UNKNOWN:0};
+    const byCustomer=new Map(),counts={VALUE:0,CORE:0,PREMIUM:0,MIXED:0,UNKNOWN:0};
+    let classifiedCustomers=0;
     for(const customer of customers){
-      const mix={VALUE:0,CORE:0,PREMIUM:0};let known=0;
-      for(const p of customer.topProducts||[]){const tier=tierBySku.get(p.productNumber);if(!tier)continue;const w=Math.max(0,Number(p.sales||0));mix[tier]+=w;known+=w}
-      const pref=known?Object.entries(mix).sort((a,b)=>b[1]-a[1])[0][0]:'UNKNOWN';byCustomer.set(customer.customerAccount,pref);counts[pref]=(counts[pref]||0)+1
+      const mix={VALUE:0,CORE:0,PREMIUM:0};let classified=0;
+      for(const p of customer.topProducts||[]){const tier=tierBySku.get(p.productNumber);if(!tier)continue;const w=Math.max(0,Number(p.sales||0));mix[tier]+=w;classified+=w}
+      const sales=Math.max(0,Number(customer.sales||0)),coverage=sales?classified/sales*100:null,ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]),dominant=ranked[0],dominantPct=classified&&dominant?dominant[1]/classified*100:null;
+      let pref='UNKNOWN';
+      if(coverage!=null&&coverage>=60&&dominantPct!=null){pref=dominantPct>=55?dominant[0]:'MIXED';classifiedCustomers++}
+      byCustomer.set(customer.customerAccount,pref);counts[pref]=(counts[pref]||0)+1
     }
     const total=customers.length||1,rows=Object.entries(counts).map(([preference,count])=>({preference,count,sharePct:count/total*100}));
-    return{byCustomer,rows,coveragePct:customers.length?(customers.length-(counts.UNKNOWN||0))/customers.length*100:null}
+    return{byCustomer,rows,coveragePct:customers.length?classifiedCustomers/customers.length*100:null}
   }
-
   function renderCrm(){
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],analysisCustomers=crm.customerMergeRows?.length?crm.customerMergeRows:customers,k=$('#crmKpis');if(!k)return;
     const identifiedSales=Number(crm.identifiedSales||0),identifiedTickets=Number(state.data?.summary?.current?.identifiedTickets||0),top10=identifiedSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,top20=identifiedSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,ba=crm.basketAnalysis||{},memberBasket=identifiedTickets?identifiedSales/identifiedTickets:null;
@@ -524,11 +537,11 @@
       ['Top 10 clients',api.percent(top10),'part du CA identifié portée par les 10 premiers clients affichés']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
-    const prefLabels={VALUE:'Entrée de gamme',CORE:'Cœur de gamme',PREMIUM:'Premium',UNKNOWN:'Non classé'},derivedPrefs=clientPricePreferences(analysisCustomers),prefs=(derivedPrefs.rows||[]).some(x=>x.preference!=='UNKNOWN'&&x.count>0)?derivedPrefs.rows:(crm.pricePreferences||[]);
+    const prefLabels={VALUE:'Plutôt entrée de gamme',CORE:'Plutôt cœur de gamme',PREMIUM:'Plutôt premium',MIXED:'Mix prix',UNKNOWN:'Non classé'},derivedPrefs=clientPricePreferences(analysisCustomers),prefs=(derivedPrefs.rows||[]).some(x=>x.preference!=='UNKNOWN'&&x.count>0)?derivedPrefs.rows:(crm.pricePreferences||[]);
     const prefPanel=$('#crmPricePreference');
     if(prefPanel){
       const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
-      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):state.catalogLoading?'<div class="table-loading">Position prix en cours de calcul…</div>':'<div class="table-loading">Position prix non calculable : hiérarchie, unité ou prix article insuffisant sur la période.</div>'
+      prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):state.catalogLoading?'<div class="table-loading">Position prix en cours de calcul…</div>':'<div class="table-loading">Position prix non calculable : au moins 60 % du CA client doit être classé dans des familles avec ≥ 5 articles comparables et une unité homogène.</div>'
     }
     const insightPanel=$('#crmInsights');
     if(insightPanel){
