@@ -399,7 +399,8 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const includedRows=selected.rows.filter(row=>includedRetailSaleRow(row,c));
  const costKind=inferTransactionCostKind(c.fields.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
  let marginRefs=new Map();
- if(costKind==='UNIT_COST_INVENTORY'&&c.fields.product){
+ const needsUnitRefs=costKind==='UNIT_COST_INVENTORY'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0}));
+ if(needsUnitRefs&&c.fields.product){
    const marginSkus=[...new Set(includedRows.map(row=>clean(row[c.fields.product])).filter(Boolean))];
    marginRefs=await releasedProductSourcingMany(marginSkus);
  }
@@ -409,6 +410,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    available:marginEval.available===true,
    source:c.fields.cost?('D365/'+c.entity+'.'+c.fields.cost):null,
    costField:c.fields.cost||null,
+   fallbackCostField:c.fields.costUnitPrice||null,
    costKind,
    method:marginEval.method||null,
    coveragePct:marginEval.coveragePct??null,
@@ -416,6 +418,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    diagnosticMarginValue:marginEval.diagnosticMarginValue??null,
    diagnosticMarginRate:marginEval.diagnosticMarginRate??null,
    weightedConversions:marginEval.weightedConversions||0,
+   fallbackUnitCostLines:marginEval.fallbackUnitCostLines||0,
    eligibleLines:marginEval.eligibleLines||0,
    valuedLines:marginEval.valuedLines||0,
    missingCostLines:marginEval.missingCostLines||0,
