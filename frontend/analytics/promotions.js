@@ -83,13 +83,63 @@
     };
   }
 
+  function offerRows(){
+    const map=new Map();
+    for(const row of allRows().filter(x=>x.state!=='ENDED')){
+      const key=row.offerId||row.promoLabel||row.sourceKey||[row.mechanic,row.validFrom,row.validTo].filter(Boolean).join('|')||'OFFRE_NON_IDENTIFIEE';
+      const cur=map.get(key)||{key,label:row.promoLabel||row.offerId||'Offre sans libellé',mechanic:row.mechanic||null,stores:new Set(),articles:new Set(),discountSum:0,discountCount:0,out:0,low:0,rows:0,validFrom:null,validTo:null};
+      cur.rows++;if(row.storeId)cur.stores.add(row.storeId);if(row.productNumber)cur.articles.add(row.productNumber);
+      if(row.discountPct!=null&&Number.isFinite(Number(row.discountPct))){cur.discountSum+=Number(row.discountPct);cur.discountCount++}
+      if(row.stockSignal==='OUT')cur.out++;if(row.stockSignal==='LOW')cur.low++;
+      if(row.validFrom&&(!cur.validFrom||row.validFrom<cur.validFrom))cur.validFrom=row.validFrom;
+      if(row.validTo&&(!cur.validTo||row.validTo>cur.validTo))cur.validTo=row.validTo;
+      map.set(key,cur)
+    }
+    return[...map.values()].map(x=>({
+      ...x,
+      storeCount:x.stores.size,
+      articleCount:x.articles.size,
+      averageDiscountPct:x.discountCount?x.discountSum/x.discountCount:null,
+      availabilityPct:x.rows?Math.max(0,(x.rows-x.out)/x.rows*100):null
+    })).sort((a,b)=>b.articleCount-a.articleCount||b.storeCount-a.storeCount||String(a.label).localeCompare(String(b.label),'fr'))
+  }
+
+  function renderOfferPerformance(){
+    const api=core(),kpis=$('#promotionGlobalKpis'),body=$('#promotionOfferBody');if(!api||!kpis||!body)return;
+    const offers=offerRows(),rows=allRows().filter(x=>x.state!=='ENDED'),storeCount=new Set(rows.map(x=>x.storeId).filter(Boolean)).size,articleCount=new Set(rows.map(x=>x.productNumber).filter(Boolean)).size,totalRows=rows.length,out=rows.filter(x=>x.stockSignal==='OUT').length,low=rows.filter(x=>x.stockSignal==='LOW').length,discounts=rows.map(x=>safe(x.discountPct)).filter(x=>x!=null);
+    const availability=totalRows?(totalRows-out)/totalRows*100:null;
+    kpis.innerHTML=[
+      ['Offres',api.number(offers.length),'promotions actives consolidées'],
+      ['Magasins couverts',api.number(storeCount),'sur le périmètre sélectionné'],
+      ['Articles couverts',api.number(articleCount),'références distinctes'],
+      ['Remise moyenne',api.percent(discounts.length?discounts.reduce((s,x)=>s+x,0)/discounts.length:null),'moyenne non pondérée'],
+      ['Disponibilité promo',api.percent(availability),'lignes promo non en rupture'],
+      ['À risque stock',api.number(out+low),`${api.number(out)} rupture(s) · ${api.number(low)} faible(s)`]
+    ].map(([l,v,s])=>`<div class="promotion-global-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
+
+    if(!offers.length){body.innerHTML='<tr><td colspan="8"><div class="table-loading">Aucune offre active consolidée.</div></td></tr>';return}
+    body.innerHTML=offers.slice(0,120).map(o=>`
+      <tr>
+        <td><div class="promo-product"><strong>${api.escapeHtml(o.label)}</strong><small>${api.escapeHtml(o.key)}</small></div></td>
+        <td>${api.number(o.storeCount)}</td>
+        <td>${api.number(o.articleCount)}</td>
+        <td>${api.percent(o.averageDiscountPct)}</td>
+        <td>${api.percent(o.availabilityPct)}</td>
+        <td>${api.number(o.out)}</td>
+        <td>${api.number(o.low)}</td>
+        <td>${api.escapeHtml([o.validFrom,o.validTo].filter(Boolean).join(' → ')||'N/A')}</td>
+      </tr>`).join('')
+  }
+
   function setLoading(){
     if($('#promotionKpis'))$('#promotionKpis').innerHTML=Array.from({length:6},()=>'<div class="promotion-kpi skeleton-card"></div>').join('');
+    if($('#promotionGlobalKpis'))$('#promotionGlobalKpis').innerHTML=Array.from({length:6},()=>'<div class="promotion-global-kpi skeleton-card"></div>').join('');
+    if($('#promotionOfferBody'))$('#promotionOfferBody').innerHTML='<tr><td colspan="8"><div class="table-loading">Chargement performance offres…</div></td></tr>';
     if($('#promotionBody'))$('#promotionBody').innerHTML='<tr><td colspan="10"><div class="table-loading">Chargement promotions…</div></td></tr>';
   }
 
   function render(){
-    renderKpis();renderTable();renderMeasurement();renderRisk();
+    renderKpis();renderOfferPerformance();renderTable();renderMeasurement();renderRisk();
   }
   function renderKpis(){
     const api=core(),a=aggregate();if(!api||!$('#promotionKpis'))return;
