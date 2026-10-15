@@ -10,7 +10,7 @@ assert.match(decision,/Math\.ceil\(maxDays\/15\)/,'fallback must use materially 
 assert.match(decision,/decision:v15/,'browser analytical cache version must match the new full-range strategy');
 assert.match(sales,/RETAIL_ANALYTICS_RANGE_CHUNK_DAYS\)\|\|10/,'backend should internally bound cold D365 reads');
 assert.match(sales,/RETAIL_ANALYTICS_RANGE_CONCURRENCY\)\|\|2/,'backend should avoid over-throttling D365');
-assert.match(sales,/sales-range-v13/,'store-range results must use persistent cache v10');
+assert.match(sales,/sales-range-v14/,'store-range results must use persistent cache v10');
 assert.match(api,/decision-v14/,'full decision result must have a persistent exact-range cache');
 
 console.log('Retail Intelligence performance/cache contract passed.');
