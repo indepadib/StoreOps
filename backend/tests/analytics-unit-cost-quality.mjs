@@ -42,6 +42,19 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   assert.equal(result.weightedConversions,1);
 }
 {
+  const result=evaluateTransactionMarginRows({
+    rows:[{net:-30,qty:1.2,sku:'W',date:'2026-10-01',costAmount:0,costPrice:0.01,unit:'KG'}],
+    fields:{net:'net',quantity:'qty',product:'sku',date:'date',cost:'costAmount',costUnitPrice:'costPrice',salesUnit:'unit'},
+    salesSign:-1,
+    productRefs:new Map([['W',{inventoryUnit:'G',salesUnit:'KG'}]]),
+    costKind:'LINE_AMOUNT'
+  });
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.totalCost,12);
+  assert.equal(result.fallbackUnitCostLines,1);
+  assert.equal(result.method,'TRANSACTION_COST_AMOUNT_WITH_UNIT_COST_FALLBACK');
+}
+{
   const impossible=convertQuantity(1,'PC','KG');
   assert.equal(impossible.status,'INCOMPATIBLE_UNIT');
 }
