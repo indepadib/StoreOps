@@ -2,6 +2,7 @@
   const $=(sel,root=document)=>root.querySelector(sel);
   const $$=(sel,root=document)=>[...root.querySelectorAll(sel)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
+  function withTimeout(promise,ms,label='Source'){let timer;return Promise.race([promise,new Promise((_,reject)=>{timer=setTimeout(()=>{const e=new Error(`${label} trop lente (> ${Math.round(ms/1000)} s)`);e.code='ANALYTICS_OPTIONAL_TIMEOUT';reject(e)},ms)})]).finally(()=>clearTimeout(timer))}
 
   const state={view:'ALL',search:'',key:null,loading:false,stores:[]};
 
@@ -36,7 +37,7 @@
     try{
       state.stores=await Promise.all(scope.stores.map(async store=>{
         try{
-          const data=await api.api(`/api/analytics/promotions?storeId=${encodeURIComponent(store.id)}&date=${encodeURIComponent(scope.date)}${force?'&force=1':''}`);
+          const data=await withTimeout(api.api(`/api/analytics/promotions?storeId=${encodeURIComponent(store.id)}&date=${encodeURIComponent(scope.date)}${force?'&force=1':''}`,{noRetry:true}),25000,'Promotions D365');
           return{store,ok:data?.status==='READY',data};
         }catch(error){return{store,ok:false,error}}
       }));
