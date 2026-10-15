@@ -1,6 +1,6 @@
 import {isDirector} from './state.js';
 
-const BUILD='2403';
+const BUILD='2404';
 
 const modules=[
   './pwa.js',
