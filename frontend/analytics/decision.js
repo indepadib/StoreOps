@@ -160,12 +160,24 @@
     return null
   }
   function estimateMargin(row){
-    if(row?.marginValue!=null)return{value:Number(row.marginValue),rate:row.marginRate,estimated:false};
-    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),saleUnit=row?.quantityUnit||ref?.salesUnit,costUnit=ref?.inventoryUnit||ref?.salesUnit;
-    const factor=unitFactor(saleUnit,costUnit);
-    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(Number(row?.sales))||factor==null)return{value:null,rate:null,estimated:false};
-    const costQty=Math.abs(units)*factor,value=Number(row.sales)-costQty*unitCost;
-    return{value,rate:Number(row.sales)?value/Number(row.sales)*100:null,estimated:true,costQty,costUnit,conversionFactor:factor}
+    const sales=Number(row?.sales),directValue=Number(row?.marginValue),directRate=Number(row?.marginRate);
+    if(Number.isFinite(directValue)){
+      const rate=Number.isFinite(directRate)?directRate:(sales?directValue/sales*100:null);
+      if(rate!=null&&(rate>100||rate<-200))return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
+      return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'};
+    }
+    const ref=catalogItem(row?.key),unitCost=Number(ref?.currentUnitCost),units=Number(row?.units),costBasis=ref?.currentCostBasisUnit||ref?.salesUnit||null;
+    let quantityUnit=row?.quantityUnit||null,quantityUnitSource='TRANSACTION';
+    if(!quantityUnit){
+      const inv=ref?.inventoryUnit||null,sale=ref?.salesUnit||null;
+      if(inv&&sale&&normalizeQtyUnit(inv)!==normalizeQtyUnit(sale)){quantityUnit=inv;quantityUnitSource='INFERRED_INVENTORY_UNIT'}
+      else{quantityUnit=sale||inv;quantityUnitSource='PRODUCT_MASTER'}
+    }
+    const factor=unitFactor(quantityUnit,costBasis);
+    if(!Number.isFinite(unitCost)||!Number.isFinite(units)||!Number.isFinite(sales)||!quantityUnit||!costBasis||factor==null)return{value:null,rate:null,estimated:false,quality:'UNIT_OR_COST_UNAVAILABLE'};
+    const pricedQty=Math.abs(units)*factor,costValue=pricedQty*unitCost,value=sales-costValue,rate=sales?value/sales*100:null;
+    if(!Number.isFinite(rate)||rate>100||rate<-200)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_CURRENT_COST',costValue,pricedQty,quantityUnit,costBasis,conversionFactor:factor};
+    return{value,rate,estimated:true,quality:'CURRENT_COST',costValue,pricedQty,quantityUnit,costBasis,quantityUnitSource,conversionFactor:factor}
   }
   function catalogSkuList(){
     const d=state.data||{},set=new Set((d.products||[]).slice(0,500).map(x=>x.key));
