@@ -442,22 +442,23 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  // When a dedicated CostPrice/UnitCost field is present, never reinterpret
  // CostAmount as a unit cost.
  if(configuredCostKind==='UNIT_COST_INVENTORY'){
-   if(c.fields.costUnitPrice){
-     evaluationFields={...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null};
-     detectedCostKind='UNIT_COST_INVENTORY';
-   }else{
-     const inferredPrimary=inferTransactionCostKind(c.fields.cost,'');
-     if(inferredPrimary!=='UNIT_COST_INVENTORY'){
-       detectedCostKind='UNKNOWN';
-     }
-   }
+   // Business-confirmed Franprix semantics: the transaction cost represents a
+   // UNIT COST in the inventory UOM. Field naming is not authoritative here:
+   // weighted products can expose a generic/cost-amount-looking field while the
+   // numeric value is still cost per inventory unit (often g). Prefer an explicit
+   // CostPrice/UnitCost field when present, otherwise use the mapped transaction
+   // cost and convert sold quantity from sales UOM to inventory UOM.
+   evaluationFields=c.fields.costUnitPrice
+     ? {...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null}
+     : c.fields;
+   detectedCostKind='UNIT_COST_INVENTORY';
  }
  let marginRefs=new Map();
  // CostAmount is semantically ambiguous in this environment: on weighted / multi-qty
  // lines it can behave like an inventory-unit cost rather than a line-total COGS.
  // Load only product UOM metadata (not product-master cost) so both interpretations
  // can be tested against the same transaction values.
- const needsUnitRefs=detectedCostKind==='UNIT_COST_INVENTORY'||detectedCostKind==='LINE_AMOUNT'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0}));
+ const needsUnitRefs=!!c.fields.cost&&(detectedCostKind==='UNIT_COST_INVENTORY'||detectedCostKind==='LINE_AMOUNT'||detectedCostKind==='UNKNOWN'||(c.fields.costUnitPrice&&includedRows.some(row=>{const primary=Number(row[c.fields.cost]),fallback=Number(row[c.fields.costUnitPrice]);return(!Number.isFinite(primary)||primary===0)&&Number.isFinite(fallback)&&fallback!==0})));
  if(needsUnitRefs&&c.fields.product){
    const marginSkus=[...new Set(includedRows.filter(row=>{
      const saleUnit=clean(c.fields.salesUnit?row[c.fields.salesUnit]:'');
@@ -468,24 +469,31 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  }
  const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:evaluationFields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
  let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null,unitEvalDiagnostic=null;
- if(detectedCostKind==='LINE_AMOUNT'&&configuredCostKind!=='UNIT_COST_INVENTORY'){
-   // Do not reinterpret CostAmount as a unit price when D365 also exposes a
-   // dedicated CostPrice/UnitCost field. For weighted items the latter is the
-   // only semantically correct candidate: inventory unit can be g while the
-   // sales quantity is kg, so the quantity must be converted before valuation.
+ if((detectedCostKind==='LINE_AMOUNT'&&configuredCostKind!=='UNIT_COST_INVENTORY')||detectedCostKind==='UNKNOWN'){
+   // If the field name does not establish semantics, evaluate BOTH interpretations
+   // against the same real transaction rows. This is deliberately strict: only one
+   // model may be published unless both models agree within tolerance. It prevents
+   // the historic 1,000x g/kg failure mode from ever surfacing as a margin KPI.
+   const lineFields=c.fields;
+   const lineEval=detectedCostKind==='LINE_AMOUNT'
+     ? primaryEval
+     : evaluateTransactionMarginRows({rows:includedRows,fields:lineFields,salesSign:c.sign,productRefs:marginRefs,costKind:'LINE_AMOUNT'});
    const unitFields=c.fields.costUnitPrice?{...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null}:c.fields;
    const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:unitFields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY'});unitEvalDiagnostic=unitEval;
    semanticValidation=selectTransactionCostSemantics({
-     lineAmountEval:primaryEval,
+     lineAmountEval:lineEval,
      unitCostEval:unitEval,
      min:Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0,
-     max:Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):30
+     max:Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):30,
+     tolerancePctPoints:Number.isFinite(Number(process.env.RETAIL_MARGIN_MODEL_TOLERANCE_PCT_POINTS))?Number(process.env.RETAIL_MARGIN_MODEL_TOLERANCE_PCT_POINTS):3
    });
    if(semanticValidation.status==='VALIDATED'&&semanticValidation.evaluation){
      marginEval=semanticValidation.evaluation;
      costKind=semanticValidation.selected;
+     evaluationFields=costKind==='UNIT_COST_INVENTORY'?unitFields:lineFields;
    }else{
-     marginEval={...primaryEval,status:'UNVALIDATED',available:false,reason:semanticValidation.reason,marginValue:null,marginRate:null};
+     const diagnostic=unitEval?.diagnosticMarginRate!=null?unitEval:lineEval;
+     marginEval={...diagnostic,status:'UNVALIDATED',available:false,reason:semanticValidation.reason,marginValue:null,marginRate:null};
    }
  }
  const businessMarginMin=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0;
