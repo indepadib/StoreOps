@@ -35,7 +35,7 @@
     const stores = c.getSelectedStores?.() || appState.stores || [];
     return {
       stores,
-      businessDate: appState.periodEnd || appState.businessDate,
+      businessDate: new Date().toISOString().slice(0,10),
       selectedStore: appState.selectedStore,
       selectedStoreIds: appState.selectedStoreIds || []
     };
@@ -319,9 +319,6 @@
     });
 
     document.addEventListener('retail-intelligence:data', () => {
-      if(core()?.getState?.()?.section==='inventory')load(false)
-    });
-    document.addEventListener('retail-intelligence:period', () => {
       if(core()?.getState?.()?.section==='inventory')load(false)
     });
     document.addEventListener('retail-intelligence:section', () => {
