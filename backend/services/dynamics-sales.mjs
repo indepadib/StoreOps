@@ -274,12 +274,20 @@ function daySpan(startDay,endDay){
 }
 function validatedMarginConfig(c){
  const raw=clean(process.env.D365_SALES_COST_RELIABILITY||process.env.RETAIL_MARGIN_COST_RELIABILITY).toUpperCase();
- const validated=['VALIDATED','TRUSTED','POSTED','TRANSACTIONAL'].includes(raw);
+ const kind=clean(process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND).toUpperCase();
+ const reliabilityValidated=['VALIDATED','TRUSTED','POSTED','TRANSACTIONAL'].includes(raw);
+ // We only aggregate a mapped transaction cost when it is explicitly certified as
+ // the TOTAL COST AMOUNT OF THE SALE LINE. CostPrice / unit-cost fields must never
+ // be summed as line amounts because weighted products (inventory unit = g) explode
+ // the margin by factors such as 1,000.
+ const semanticsValidated=kind==='LINE_AMOUNT'||kind==='TOTAL_LINE_COST'||kind==='COGS_LINE_AMOUNT';
+ const validated=reliabilityValidated&&semanticsValidated;
  return{
   status:!c.fields.cost?'UNAVAILABLE':validated?'VALIDATED':'UNVALIDATED',
   costField:c.fields.cost||null,
+  costKind:kind||null,
   source:c.fields.cost?`D365/${c.entity}.${c.fields.cost}`:null,
-  reason:!c.fields.cost?'COST_FIELD_UNMAPPED':validated?null:'TRANSACTION_COST_NOT_VALIDATED'
+  reason:!c.fields.cost?'COST_FIELD_UNMAPPED':!reliabilityValidated?'TRANSACTION_COST_NOT_VALIDATED':!semanticsValidated?'TRANSACTION_COST_SEMANTICS_UNCONFIRMED':null
  }
 }
 function publicMarginRow(row,margin){
