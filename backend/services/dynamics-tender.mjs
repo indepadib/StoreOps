@@ -1,6 +1,7 @@
 import { config } from '../config.mjs';
 import { listDataEntities, probeDataEntity, odataGetAll } from './dynamics.mjs';
 import { salesStoreIdentifiers } from './d365-sales-mapping.mjs';
+import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 
 const clean=v=>String(v??'').trim();
 const esc=v=>String(v).replaceAll("'","''");
@@ -59,10 +60,10 @@ function paymentFieldMap(row={}){
     transaction:keyMatch(row,['TransactionId','transactionId','RetailTransactionId','TransactionNumber']),
     store:keyMatch(row,['StoreId','storeId','Store','RetailStoreId','ChannelReferenceId','RetailChannelId','Channel']),
     date:keyMatch(row,['BusinessDate','businessDate','TransactionDate','TransDate','Date','CreatedDate']),
-    amount:keyMatch(row,['Amount','PaymentAmount','TenderAmount','AmountCur','AmountInTransactionCurrency','PaymentAmountInTransactionCurrency']),
+    amount:keyMatch(row,['Amount','PaymentAmount','TenderAmount','AmountTendered','AmountCur','AmountMST','AmountMSTPOS','AmountTenderedPOS','AmountInTransactionCurrency','PaymentAmountInTransactionCurrency']),
     tender:keyMatch(row,['TenderTypeId','tenderTypeId','TenderType','PaymentMethodId','PaymentMethodNumber','PaymentMethod','TenderId']),
-    currency:keyMatch(row,['Currency','CurrencyCode','TransactionCurrencyCode']),
-    terminal:keyMatch(row,['TerminalId','terminalId','RegisterId'])
+    currency:keyMatch(row,['Currency','CurrencyCode','TransactionCurrencyCode','POSCurrency']),
+    terminal:keyMatch(row,['TerminalId','terminalId','RegisterId','Terminal'])
   };
 }
 function mappingComplete(fields={}){
@@ -71,6 +72,10 @@ function mappingComplete(fields={}){
 async function discoverPaymentSchema(){
   if(paymentSchemaPromise)return paymentSchemaPromise;
   paymentSchemaPromise=(async()=>{
+    const cacheKey=analyticsCacheKey('tender-schema-v2',['payment']);
+    const cached=await readAnalyticsCache(cacheKey).catch(()=>null);
+    if(cached?.status==='READY'&&cached.entity&&cached.fields)return cached;
+
     const explicit=clean(process.env.D365_TENDER_PAYMENT_ENTITY);
     const primary=unique([
       explicit,
@@ -90,7 +95,11 @@ async function discoverPaymentSchema(){
           const sample=probe?.rows?.find(row=>Object.keys(row||{}).length)||probe?.rows?.[0]||null;
           if(!probe?.ok||!sample)continue;
           const fields=paymentFieldMap(sample);
-          if(mappingComplete(fields))return{status:'READY',entity,fields,sampleKeys:Object.keys(sample)};
+          if(mappingComplete(fields)){
+            const value={status:'READY',entity,fields,sampleKeys:Object.keys(sample)};
+            await writeAnalyticsCache(cacheKey,'tender-schema',value,24*3600).catch(()=>{});
+            return value
+          }
         }catch(error){lastError=error}
       }
       return null
@@ -98,13 +107,18 @@ async function discoverPaymentSchema(){
     const direct=await probeNames(primary);if(direct)return direct;
     const metadata=await listDataEntities('payment').catch(()=>[]),fallback=unique(metadata.map(metaEntityName).filter(n=>/payment|tender/i.test(n)&&/transaction|retail/i.test(n))).filter(n=>!primary.includes(n)&&validName(n));
     const discovered=await probeNames(fallback);if(discovered)return discovered;
-    return{status:'UNAVAILABLE',entity:null,fields:null,error:{code:lastError?.code||'D365_TENDER_ENTITY_UNMAPPED',message:lastError?.message||'Aucune Data Entity de paiements retail exploitable détectée.'}};
+    const value={status:'UNAVAILABLE',entity:null,fields:null,error:{code:lastError?.code||'D365_TENDER_ENTITY_UNMAPPED',message:lastError?.message||'Aucune Data Entity de paiements retail exploitable détectée.'}};
+    await writeAnalyticsCache(cacheKey,'tender-schema',value,900).catch(()=>{});
+    return value
   })();
   try{return await paymentSchemaPromise}catch(error){paymentSchemaPromise=null;throw error}
 }
 async function tenderNameMap(){
   if(tenderMapPromise)return tenderMapPromise;
   tenderMapPromise=(async()=>{
+    const cacheKey=analyticsCacheKey('tender-types-v2',['map']),cached=await readAnalyticsCache(cacheKey).catch(()=>null);
+    if(cached?.status==='READY'&&Array.isArray(cached.entries))return{...cached,map:new Map(cached.entries)};
+
     const explicit=clean(process.env.D365_TENDER_TYPE_ENTITY),primary=unique([explicit,'RetailTenderTypeEntity','RetailTenderTypes']).filter(validName);
     const tryNames=async names=>{
       for(const entity of names){
@@ -115,14 +129,17 @@ async function tenderNameMap(){
           if(!idField||!nameField)continue;
           const payload=await odataGetAll(entity,{select:`${idField},${nameField}`,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:3000}),map=new Map();
           for(const row of payload.value||[]){const id=clean(row[idField]),name=clean(row[nameField]);if(id)map.set(id,name||id)}
-          return{status:'READY',entity,idField,nameField,map}
+          const persisted={status:'READY',entity,idField,nameField,entries:[...map.entries()]};
+          await writeAnalyticsCache(cacheKey,'tender-types',persisted,24*3600).catch(()=>{});
+          return{...persisted,map}
         }catch{}
       }
       return null
     };
     const direct=await tryNames(primary);if(direct)return direct;
-    const metadata=await listDataEntities('tender').catch(()=>[]),fallback=unique(metadata.map(metaEntityName).filter(n=>/tender|payment/i.test(n)&&/type|method/i.test(n))).filter(n=>!primary.includes(n)&&validName(n));
-    return await tryNames(fallback)||{status:'UNAVAILABLE',entity:null,map:new Map()}
+    const metadata=await listDataEntities('tender').catch(()=>[]),fallback=unique(metadata.map(metaEntityName).filter(n=>/tender/i.test(n)&&/type|payment/i.test(n))).filter(n=>!primary.includes(n)&&validName(n)),discovered=await tryNames(fallback);
+    if(discovered)return discovered;
+    return{status:'UNAVAILABLE',entity:null,map:new Map()}
   })();
   try{return await tenderMapPromise}catch(error){tenderMapPromise=null;throw error}
 }
