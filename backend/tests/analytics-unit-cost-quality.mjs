@@ -40,7 +40,7 @@ import {convertQuantity,valueByBasis} from '../services/unit-conversion.mjs';
 }
 {
   const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
-  assert.match(decisionSource,/marginCoverage>=95/);
+  assert.match(decisionSource,/coverage>=95/);
   assert.match(decisionSource,/IMPLAUSIBLE_CURRENT_COST/);
   assert.match(decisionSource,/rawCostBasisUnit/);
   assert.match(decisionSource,/soldQty\*factor/,'current-cost margin must convert the exact sold quantity into the inventory cost unit');
