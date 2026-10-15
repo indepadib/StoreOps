@@ -1,9 +1,9 @@
 import {api} from '../api.js';
 import {app,isDirector} from '../state.js';
 import {$,esc,status,fmtMoney} from '../ui.js';
-import {assessNetworkStore,controlOverview,selectControlRows,CONTROL_STATES,networkSalesStatus,networkSalesEvidence} from '../network-control-model.js';
-import {NETWORK_ACTIONS} from '../network-navigation.js';
-import {NetworkSalesQueue} from '../network-sales-queue.js';
+import {assessNetworkStore,controlOverview,selectControlRows,CONTROL_STATES,networkSalesStatus,networkSalesEvidence} from '../network-control-model.js?v=2404';
+import {NETWORK_ACTIONS} from '../network-navigation.js?v=2404';
+import {NetworkSalesQueue} from '../network-sales-queue.js?v=2404';
 let generation=0,disposeRender=()=>{},viewOwner=null;
 let remembered={filter:'ATTENTION',query:'',limit:20,selected:null,pulses:new Map()};
 const localNetworkBase=()=>Array.isArray(app.stores)?app.stores.map(s=>({...s,dataHealth:{network:false}})):[];
@@ -12,12 +12,12 @@ const time=v=>v&&Number.isFinite(Date.parse(v))?new Date(v).toLocaleTimeString('
 const action=(id,page,label=NETWORK_ACTIONS[page]||NETWORK_ACTIONS.today)=>`<button class="btn soft" data-network-store="${esc(id)}" data-network-page="${esc(page)}">${esc(label)} →</button>`;
 async function read(path,timeout=12000,signal){const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,timeout);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();try{return await api(path,{signal:controller.signal})}finally{clearTimeout(timer);signal?.removeEventListener('abort',abort)}}
 export async function renderNetwork(){
- if(!isDirector())return;
+ if(!isDirector()){const denied=$('#networkContent');if(denied)denied.innerHTML='<div class="banner ban-danger"><strong>Accès Réseau réservé à la Direction</strong><span>Ce profil n’a pas accès à la chambre de contrôle réseau.</span></div>';return;}
  const host=$('#networkContent');if(!host)return;const token=++generation;disposeRender();
  const owner=app.user?.id||app.user?.role;if(viewOwner!==owner){remembered={filter:'ATTENTION',query:'',limit:20,selected:null,pulses:new Map()};viewOwner=owner}
  const pageController=new AbortController();let loader,clockTimer;disposeRender=()=>{pageController.abort();loader?.dispose();clearInterval(clockTimer)};
  const active=()=>token===generation&&host.isConnected&&app.page==='network';
- if(!document.getElementById('network-control-css')){const link=document.createElement('link');link.id='network-control-css';link.rel='stylesheet';link.href='/network-control.css';document.head.appendChild(link)}
+ if(!document.getElementById('network-control-css')){const link=document.createElement('link');link.id='network-control-css';link.rel='stylesheet';link.href='/network-control.css?v=2404';document.head.appendChild(link)}
  host.innerHTML='<div class="card" role="status">Chargement de la chambre de contrôle…</div>';
  let base,networkLive=true;
  try{base=await read('/api/network',10000,pageController.signal);if(!Array.isArray(base))throw new Error('Situation réseau indisponible')}catch{networkLive=false;base=localNetworkBase();if(!base.length)try{base=(await read('/api/stores',12000,pageController.signal)).map(s=>({...s,dataHealth:{network:false}}))}catch{}}
