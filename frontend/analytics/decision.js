@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v9:';
+  const decisionCachePrefix='retail-intelligence:decision:v10:';
   const catalogCacheKey='retail-intelligence:catalog:v5';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -161,18 +161,21 @@
   }
   async function loadDecisionChunked(api,s,force=false){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
-    if(maxDays<=7){
-      setProgress(0,1);
-      const single=await fetchDecisionSlice(api,s,cur,cmp,force);
-      setProgress(1,1);return single
+    // The backend now chunks D365 internally and persists the complete range.
+    // Always try one full-period request first so repeated views hit one exact cache key.
+    setProgress(0,1);
+    try{
+      const full=await fetchDecisionSlice(api,s,cur,cmp,force);
+      setProgress(1,1);return full
+    }catch(error){
+      const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON'||error?.code==='API_UNREACHABLE';
+      if(!retryable||maxDays<=7)throw error;
+      const blocks=Math.max(2,Math.ceil(maxDays/15)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
+      setProgress(0,blocks);
+      const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
+      await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
+      return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
     }
-    // D365 live reads routinely hit the 30s gateway ceiling on 15-30 day requests.
-    // Split proactively instead of wasting one guaranteed timeout before falling back.
-    const blocks=Math.max(2,Math.ceil(maxDays/7)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
-    setProgress(0,blocks);
-    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-    await Promise.all(Array.from({length:Math.min(3,blocks)},worker));
-    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
   function productLabel(sku,fallback=''){
@@ -224,7 +227,7 @@
     if(section==='sales'){
       for(const p of d.contributors?.negativeProducts||[])add(p.key);
       for(const p of d.contributors?.positiveProducts||[])add(p.key);
-      for(const p of (d.products||[]).slice(0,40))add(p.key);
+      for(const p of (d.products||[]).slice(0,750))add(p.key);
     }else if(section==='categories'){
       for(const p of (d.products||[]).slice(0,650))add(p.key);
     }else if(section==='crm'){
@@ -243,7 +246,7 @@
     const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku));
     if(!missing.length){state.catalogKey=key;safeRenderPart('catalog-cache-render',render);return}
     state.catalogLoading=true;
-    const batches=[];for(let i=0;i<missing.length;i+=120)batches.push(missing.slice(i,i+120));
+    const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
     let cursor=0,progressiveRendered=false;
     const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('performance-first-labels',()=>renderPerformance(false));safeRenderPart('crm-first-labels',renderCrm)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
@@ -255,7 +258,21 @@
   function warmCatalogSoon(){
     const s=sectionState();if(!s||!['sales','categories','crm'].includes(s.section))return;
     const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
-    if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1500});else setTimeout(run,700)
+    if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1200});else setTimeout(run,500)
+  }
+  function prewarmFullCatalog(){
+    if(!state.data||state.catalogLoading)return;
+    const all=(state.data.products||[]).slice(0,750).map(x=>String(x.key||'').trim()).filter(Boolean);
+    const missing=all.filter(sku=>!state.catalog.has(sku));if(!missing.length)return;
+    const api=core();if(!api)return;
+    const run=async()=>{
+      const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
+      let cursor=0;
+      const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache()}catch(error){console.debug('Catalog prewarm skipped',error?.code||error?.message)}}};
+      await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
+      if(sectionNeedsCatalog())safeRenderPart('catalog-prewarm',render)
+    };
+    if('requestIdleCallback' in window)window.requestIdleCallback(()=>run(),{timeout:2200});else setTimeout(run,1200)
   }
 
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
@@ -271,6 +288,7 @@
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
       maybeLoadCatalog(false);
       warmCatalogSoon();
+      prewarmFullCatalog();
     }
     state.loading=true;
     if(!cached)setLoading();
@@ -282,6 +300,7 @@
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
       maybeLoadCatalog(force);
       warmCatalogSoon();
+      prewarmFullCatalog();
       render();
     }catch(error){if(!cached)renderError(error)}
     finally{state.loading=false}
