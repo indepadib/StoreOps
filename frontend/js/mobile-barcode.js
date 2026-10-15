@@ -8,18 +8,20 @@ const STATIC_TARGETS=[
   {selector:'#lossEan',action:null}
 ];
 const HTML5_QRCODE_URLS=['https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js','https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'];
+const QUAGGA2_URLS=['https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js','https://unpkg.com/@ericblade/quagga2@1.12.1/dist/quagga.min.js'];
 const LINEAR_FORMAT_KEYS=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','ITF'];
-const SCANNER_DOM_VERSION='2403';
-const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2403';
+const QUAGGA_READERS=['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader'];
+const SCANNER_DOM_VERSION='2404';
+const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2404';
 
-let activeStream=null,activeFrame=null,activeHtml5=null,scanBusy=false,lastDetect=0,html5Loader=null,activeFallbackTimer=null;
+let activeStream=null,activeFrame=null,activeHtml5=null,activeQuagga=false,quaggaDetectedHandler=null,scanBusy=false,lastDetect=0,html5Loader=null,quaggaLoader=null,activeFallbackTimer=null;
 let activeTargetInput=null,activeAfterScan=null,activeCameraCandidates=[],activeCameraIndex=0,scanToken=0;
 const isAppleMobile=()=>/iP(hone|ad|od)/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const normalizeCameraLabel=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
 function setScanStatus(text,tone=''){const el=document.querySelector('#storeopsBarcodeStatus');if(!el)return;el.textContent=text||'';el.dataset.tone=tone||'';}
 function setScannerMode(mode='linear'){const host=document.querySelector('#storeopsBarcodeScanner');if(host)host.dataset.scanMode=mode;}
 
-function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2403';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
+function ensureStyles(){if(document.querySelector('link[data-storeops-barcode-style]'))return;const l=document.createElement('link');l.rel='stylesheet';l.href='/mobile-barcode.css?v=2404';l.dataset.storeopsBarcodeStyle='1';document.head.appendChild(l)}
 function scannerShell(){
   let host=document.querySelector('#storeopsBarcodeScanner');
   if(host&&host.dataset.storeopsScannerVersion!==SCANNER_DOM_VERSION){host.remove();host=null}
@@ -53,6 +55,12 @@ function scannerShell(){
 
 
 function stopTracks(){if(activeStream){for(const track of activeStream.getTracks())track.stop();activeStream=null}}
+async function shutdownQuagga(){
+  if(!activeQuagga&&!quaggaDetectedHandler)return;
+  try{if(quaggaDetectedHandler&&window.Quagga?.offDetected)window.Quagga.offDetected(quaggaDetectedHandler)}catch{}
+  quaggaDetectedHandler=null;
+  if(activeQuagga){try{window.Quagga?.stop?.()}catch{}activeQuagga=false}
+}
 async function shutdownHtml5(){
   const scanner=activeHtml5;activeHtml5=null;
   if(scanner){
@@ -67,7 +75,7 @@ function clearTimers(){
   activeFallbackTimer=null;activeFrame=null;scanBusy=false;lastDetect=0;
 }
 function stopScanner(){
-  scanToken+=1;clearTimers();stopTracks();void shutdownHtml5();
+  scanToken+=1;clearTimers();stopTracks();void shutdownHtml5();void shutdownQuagga();
   activeTargetInput=null;activeAfterScan=null;activeCameraCandidates=[];activeCameraIndex=0;
   const host=document.querySelector('#storeopsBarcodeScanner');if(host)host.hidden=true;
   const video=document.querySelector('#storeopsBarcodeVideo');if(video){try{video.pause()}catch{}video.srcObject=null;video.hidden=false}
@@ -81,6 +89,23 @@ async function supportedDetector(){
     const formats=wanted.filter(x=>!supported.length||supported.includes(x));
     return formats.length?new window.BarcodeDetector({formats}):new window.BarcodeDetector();
   }catch{return null}
+}
+function loadQuagga2(){
+  if(window.Quagga)return Promise.resolve(true);
+  if(quaggaLoader)return quaggaLoader;
+  quaggaLoader=new Promise(resolve=>{
+    const existing=document.querySelector('script[data-storeops-quagga2]');
+    if(existing){existing.addEventListener('load',()=>resolve(!!window.Quagga),{once:true});existing.addEventListener('error',()=>resolve(false),{once:true});return}
+    const tryUrl=index=>{
+      if(index>=QUAGGA2_URLS.length){quaggaLoader=null;resolve(false);return}
+      const s=document.createElement('script');s.src=QUAGGA2_URLS[index];s.async=true;s.crossOrigin='anonymous';s.dataset.storeopsQuagga2='1';
+      s.onload=()=>window.Quagga?resolve(true):(s.remove(),tryUrl(index+1));
+      s.onerror=()=>{s.remove();tryUrl(index+1)};
+      document.head.appendChild(s);
+    };
+    tryUrl(0);
+  });
+  return quaggaLoader;
 }
 function loadHtml5Qrcode(){
   if(window.Html5Qrcode)return Promise.resolve(true);
@@ -158,6 +183,49 @@ async function startNativeScanner(detector,input,afterScan,token){
   };
   activeFrame=requestAnimationFrame(tick);
 }
+async function startQuaggaFallback(input,afterScan,token){
+  if(token!==scanToken)return;
+  if(activeFallbackTimer)clearTimeout(activeFallbackTimer);activeFallbackTimer=null;
+  await shutdownHtml5();await shutdownQuagga();stopTracks();
+  if(token!==scanToken)return;
+  const loaded=await loadQuagga2();if(token!==scanToken)return;
+  const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');
+  host.hidden=false;video.hidden=true;reader.hidden=false;reader.innerHTML='';setScannerMode('multi-angle');
+  if(!loaded){setScanStatus('Le second moteur EAN n’a pas pu se charger. Utilise « Photo du code » ou saisis l’EAN.','photo');host.querySelector('.barcode-photo-action')?.classList.add('recommended');return}
+  const candidate=activeCameraCandidates[activeCameraIndex]||null;
+  setScanStatus('Lecture EAN renforcée · garde le code net, même s’il est vertical ou incliné.','switching');
+  const constraints={facingMode:'environment',width:{ideal:1920},height:{ideal:1080}};
+  if(candidate?.id)constraints.deviceId={exact:candidate.id};
+  try{
+    await new Promise((resolve,reject)=>window.Quagga.init({
+      inputStream:{name:'StoreOpsEAN',type:'LiveStream',target:reader,constraints},
+      locator:{patchSize:'medium',halfSample:true},
+      decoder:{readers:QUAGGA_READERS,multiple:false},
+      locate:true,
+      frequency:isAppleMobile()?14:12,
+      numOfWorkers:Math.max(1,Math.min(4,(navigator.hardwareConcurrency||2)-1))
+    },err=>err?reject(err):resolve()));
+    if(token!==scanToken){try{window.Quagga.stop()}catch{}return}
+    quaggaDetectedHandler=data=>{
+      if(token!==scanToken)return;
+      const raw=String(data?.codeResult?.code||'').trim();
+      const errors=(data?.codeResult?.decodedCodes||[]).map(x=>Number(x.error)).filter(Number.isFinite);
+      const avgError=errors.length?errors.reduce((a,b)=>a+b,0)/errors.length:0;
+      if(raw&&avgError<=0.35)fillScanned(input,raw,afterScan);
+    };
+    window.Quagga.onDetected(quaggaDetectedHandler);window.Quagga.start();activeQuagga=true;
+    setScanStatus('EAN prêt · lecture renforcée active. Le code peut être horizontal, vertical ou incliné.','ready');
+    activeFallbackTimer=setTimeout(()=>{
+      if(token!==scanToken)return;
+      setScanStatus('Toujours rien ? Approche à 15–20 cm, évite le reflet, puis utilise « Photo du code » si besoin.','photo');
+      host.querySelector('.barcode-photo-action')?.classList.add('recommended');
+    },9000);
+  }catch{
+    activeQuagga=false;
+    setScanStatus('La lecture live renforcée n’a pas démarré. Utilise « Photo du code » ou saisis l’EAN.','photo');
+    host.querySelector('.barcode-photo-action')?.classList.add('recommended');
+  }
+}
 async function startHtml5Candidate(input,afterScan,token,scanMode='linear'){
   if(token!==scanToken)return;
   if(activeFallbackTimer)clearTimeout(activeFallbackTimer);
@@ -189,16 +257,16 @@ async function startHtml5Candidate(input,afterScan,token,scanMode='linear'){
         setScanStatus(`Code non lu · essai automatique d’un autre objectif (${activeCameraIndex+1}/${activeCameraCandidates.length})…`,'switching');
         return startHtml5Candidate(input,afterScan,token,'linear');
       }
-      setScanStatus('Le live n’a pas obtenu une image assez nette. Utilise « Photo du code » pour une capture haute définition, ou relance le live.','photo');
-      host.querySelector('.barcode-photo-action')?.classList.add('recommended');
+      setScanStatus('Le premier décodeur n’a rien lu · passage au moteur EAN renforcé…','switching');
+      return startQuaggaFallback(input,afterScan,token);
     },scanMode==='linear'?3200:4800);
   }catch(e){
     if(token!==scanToken)return;
     if(scanMode==='linear')return startHtml5Candidate(input,afterScan,token,'multi-angle');
     if(activeCameraIndex<activeCameraCandidates.length-1){activeCameraIndex+=1;return startHtml5Candidate(input,afterScan,token,'linear')}
-    setScanStatus('Le live caméra est indisponible. Utilise « Photo du code » ou saisis l’EAN manuellement.','photo');
-    host.querySelector('.barcode-photo-action')?.classList.add('recommended');
-    if(e?.name==='NotAllowedError')toast('Autorise la caméra pour scanner, ou saisis le code manuellement.');
+    if(e?.name==='NotAllowedError'){setScanStatus('Autorise la caméra pour scanner, ou saisis l’EAN manuellement.','photo');toast('Autorise la caméra pour scanner, ou saisis le code manuellement.');return}
+    setScanStatus('Le premier décodeur live est indisponible · essai du moteur EAN renforcé…','switching');
+    return startQuaggaFallback(input,afterScan,token);
   }
 }
 
