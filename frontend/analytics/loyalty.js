@@ -20,6 +20,13 @@
   function safe(v) {
     return v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v);
   }
+  function withTimeout(promise,ms,label='Source'){
+    let timer;
+    return Promise.race([
+      promise,
+      new Promise((_,reject)=>{timer=setTimeout(()=>{const error=new Error(`${label} trop lente (> ${Math.round(ms/1000)} s)`);error.code='ANALYTICS_OPTIONAL_TIMEOUT';reject(error)},ms)})
+    ]).finally(()=>clearTimeout(timer))
+  }
 
   function pulseRows() {
     return core()?.readyRows?.() || [];
@@ -270,7 +277,7 @@
           try {
             const qs = new URLSearchParams({ storeId: store.id, start: scope.start, end: scope.end });
             if (force) qs.set('force','1');
-            const data = await api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true });
+            const data = await withTimeout(api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true }),25000,'Paiements Wallet');
             results[i] = { store, ok: true, data };
           } catch (error) {
             results[i] = { store, ok: false, error };
@@ -327,7 +334,7 @@
     try {
       state.cashierStores = await Promise.all(scope.stores.map(async store => {
         try {
-          const data = await api.api(`/api/stores/${encodeURIComponent(store.id)}/cashier-performance?date=${encodeURIComponent(scope.date)}&days=${state.cashierDays}`);
+          const data = await withTimeout(api.api(`/api/stores/${encodeURIComponent(store.id)}/cashier-performance?date=${encodeURIComponent(scope.date)}&days=${state.cashierDays}`,{noRetry:true}),25000,'Performance caissiers');
           return { store, ok: data?.status === 'READY' || data?.status === 'TRUNCATED', data };
         } catch (error) {
           return { store, ok: false, error };
