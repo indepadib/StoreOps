@@ -26,6 +26,8 @@ async function resolveMarginFields(cfg){
    else if(explicitCost)c.fields.cost=explicitCost;
    if(cached.lineAmountField&&cached.unitCostField&&cached.unitCostField!==c.fields.cost)c.fields.costUnitPrice=cached.unitCostField;
    if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
+   if(!c.fields.name&&cached.productName)c.fields.name=cached.productName;
+   if((!c.fields.staff||c.fields.staff==='staffId')&&cached.staff)c.fields.staff=cached.staff;
    if(cached.marginNet)c.fields.marginNet=cached.marginNet;
    if(cached.taxAmount)c.fields.taxAmount=cached.taxAmount;
    return c
@@ -40,13 +42,18 @@ async function resolveMarginFields(cfg){
    const lineAmountField=pick(['CostAmount','costAmount','CostValue','costValue','COGS','Cogs','TotalCost','LineCost']);
    const unitCostField=pick(['CostPrice','costPrice','UnitCost','unitCost','InventoryCostPrice']);
    const preferredCost=explicitCost||lineAmountField||c.fields.cost||unitCostField;
-   const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
+   const present=field=>field&&keys.some(k=>k.toLowerCase()===String(field).toLowerCase());
+   const salesUnit=present(c.fields.salesUnit)?c.fields.salesUnit:pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
+   const productName=present(c.fields.name)?c.fields.name:pick(['ProductName','productName','ItemName','itemName','Name','Description']);
+   const staff=present(c.fields.staff)?c.fields.staff:pick(['StaffId','staffId','OperatorId','operatorId','PersonnelNumber','EmployeeId']);
    const marginNet=pick(['NetAmount','netAmount','NetAmountExclTax','NetAmountExcludingTax','NetAmountWithoutTax','AmountExclTax']);
    const taxAmount=pick(['TaxAmount','taxAmount','SalesTaxAmount','SalesTax','TaxValue']);
-   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,marginNet,taxAmount,expiresAt:Date.now()+30*60*1000});
+   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,productName,staff,marginNet,taxAmount,expiresAt:Date.now()+30*60*1000});
    if(preferredCost)c.fields.cost=preferredCost;
    if(lineAmountField&&unitCostField&&unitCostField!==preferredCost)c.fields.costUnitPrice=unitCostField;
    if(salesUnit)c.fields.salesUnit=salesUnit;
+   if(productName)c.fields.name=productName;
+   if(staff)c.fields.staff=staff;
    if(marginNet&&marginNet!==c.fields.net)c.fields.marginNet=marginNet;
    if(taxAmount)c.fields.taxAmount=taxAmount
  }catch{if(explicitCost)c.fields.cost=explicitCost}
