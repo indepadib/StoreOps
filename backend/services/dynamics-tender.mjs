@@ -156,9 +156,10 @@ function isWalletValue(value,nameMap,walletIds){
   const raw=clean(value);
   if(!raw)return false;
   if(walletIds.includes(raw))return true;
-  if(/wallet/i.test(raw))return true;
+  const walletLike=v=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(v));
+  if(walletLike(raw))return true;
   const label=clean(nameMap.get(raw));
-  return /wallet/i.test(label);
+  return walletLike(label);
 }
 function signProfile(rows,amountField){
   let positive=0,negative=0,zero=0,sum=0,gross=0;
@@ -259,7 +260,7 @@ export async function readWalletBurn(storeId,{businessDate=new Date().toISOStrin
     fields:schema.fields,
     walletIds:[...new Set([
       ...walletIds,
-      ...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)
+      ...[...tenderTypes.map.entries()].filter(([,name])=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(name))).map(([id])=>id)
     ])],
     tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,
     signProfile:profile,
@@ -313,7 +314,7 @@ export async function readWalletBurnRange(storeId,{startDate,endDate,force=false
   if(selectedRows===null&&firstEmpty){selectedRows=firstEmpty.rows;selectedMeta=firstEmpty.meta}
   if(selectedRows===null)return{status:'UNAVAILABLE',storeId,startDate:start,endDate:end,burn:null,source:'D365_PAYMENT_READ_FAILED',error:{code:lastError?.code||'D365_PAYMENT_READ_FAILED',message:lastError?.message||String(lastError||'Lecture paiement impossible')}};
 
-  const tenderTypes=await tenderTypesPromise.catch(()=>({status:'UNAVAILABLE',entity:null,map:new Map()})),resolvedWalletIds=[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/wallet/i.test(clean(name))).map(([id])=>id)])],rawWalletPresent=selectedRows.some(row=>/wallet/i.test(clean(row?.[schema.fields.tender]))),walletMappingKnown=resolvedWalletIds.length>0||rawWalletPresent;
+  const tenderTypes=await tenderTypesPromise.catch(()=>({status:'UNAVAILABLE',entity:null,map:new Map()})),resolvedWalletIds=[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(name))).map(([id])=>id)])],rawWalletPresent=selectedRows.some(row=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(row?.[schema.fields.tender]))),walletMappingKnown=resolvedWalletIds.length>0||rawWalletPresent;
   const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,resolvedWalletIds)),profile=signProfile(walletRows,schema.fields.amount),derived=derivedBurn(profile),burn=walletMappingKnown?derived:{amount:null,signMode:'WALLET_MAPPING_REQUIRED'},mix=paymentMix(selectedRows,schema.fields,tenderTypes,resolvedWalletIds);
   const value={status:burn.amount===null?(walletMappingKnown?'SIGN_VALIDATION_REQUIRED':'PAYMENT_MIX_READY_WALLET_UNMAPPED'):'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:resolvedWalletIds,tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
   cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
