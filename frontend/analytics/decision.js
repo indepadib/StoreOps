@@ -504,7 +504,7 @@
   }
 
   function renderCrm(){
-    const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],k=$('#crmKpis');if(!k)return;
+    const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],analysisCustomers=crm.customerMergeRows?.length?crm.customerMergeRows:customers,k=$('#crmKpis');if(!k)return;
     const identifiedSales=Number(crm.identifiedSales||0),identifiedTickets=Number(state.data?.summary?.current?.identifiedTickets||0),top10=identifiedSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,top20=identifiedSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,ba=crm.basketAnalysis||{},memberBasket=identifiedTickets?identifiedSales/identifiedTickets:null;
     k.innerHTML=[
       ['Clients identifiés',api.number(crm.identifiedCustomers),'comptes custAccount distincts ayant acheté sur la période'],
@@ -516,7 +516,7 @@
       ['Top 10 clients',api.percent(top10),'part du CA identifié portée par les 10 premiers clients affichés']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
-    const prefLabels={VALUE:'Entrée de gamme',CORE:'Cœur de gamme',PREMIUM:'Premium',UNKNOWN:'Non classé'},derivedPrefs=clientPricePreferences(customers),prefs=(derivedPrefs.rows||[]).some(x=>x.preference!=='UNKNOWN'&&x.count>0)?derivedPrefs.rows:(crm.pricePreferences||[]);
+    const prefLabels={VALUE:'Entrée de gamme',CORE:'Cœur de gamme',PREMIUM:'Premium',UNKNOWN:'Non classé'},derivedPrefs=clientPricePreferences(analysisCustomers),prefs=(derivedPrefs.rows||[]).some(x=>x.preference!=='UNKNOWN'&&x.count>0)?derivedPrefs.rows:(crm.pricePreferences||[]);
     const prefPanel=$('#crmPricePreference');
     if(prefPanel){
       const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
@@ -555,7 +555,7 @@
     const catPanel=$('#crmCategoryPreferences'),visitPanel=$('#crmVisitPatterns');
     if(catPanel){
       const categories=new Map();
-      for(const customer of customers)for(const p of customer.topProducts||[]){
+      for(const customer of analysisCustomers)for(const p of customer.topProducts||[]){
         const ref=catalogItem(p.productNumber),node=ref?.hierarchy?.department||ref?.hierarchy?.rayon;if(!node?.label)continue;
         const key=node.id||node.label,cur=categories.get(key)||{label:node.label,sales:0};cur.sales+=Number(p.sales||0);categories.set(key,cur)
       }
@@ -564,7 +564,7 @@
     }
     if(visitPanel){
       const weekdays=new Map(),dayparts=new Map();
-      for(const customer of customers){
+      for(const customer of analysisCustomers){
         if(customer.favouriteWeekday)weekdays.set(customer.favouriteWeekday,(weekdays.get(customer.favouriteWeekday)||0)+1);
         const h=Number(customer.favouriteHour);if(Number.isFinite(h)){const key=h<11?'Matin':h<14?'Midi':h<18?'Après-midi':'Soir';dayparts.set(key,(dayparts.get(key)||0)+1)}
       }
