@@ -349,7 +349,7 @@ function validatedMarginConfig(c){
  // the TOTAL COST AMOUNT OF THE SALE LINE. CostPrice / unit-cost fields must never
  // be summed as line amounts because weighted products (inventory unit = g) explode
  // the margin by factors such as 1,000.
- const semanticsValidated=kind==='LINE_AMOUNT'||kind==='TOTAL_LINE_COST'||kind==='COGS_LINE_AMOUNT';
+ const semanticsValidated=kind==='LINE_AMOUNT'||kind==='TOTAL_LINE_COST'||kind==='COGS_LINE_AMOUNT'||kind==='UNIT_COST_INVENTORY'||kind==='UNIT_COST'||kind==='COST_PRICE'||kind==='INVENTORY_UNIT_COST';
  const validated=reliabilityValidated&&semanticsValidated;
  return{
   status:!c.fields.cost?'UNAVAILABLE':validated?'VALIDATED':'UNVALIDATED',
