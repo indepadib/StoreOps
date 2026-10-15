@@ -578,7 +578,7 @@
     for(const p of(state.data?.products||[])){const ref=catalogItem(p.key);if(ref?.primaryVendorAccount)vendorMap.set(ref.primaryVendorAccount,ref.primaryVendorAccount)}
     setOptions('#filterVendor','Tous les fournisseurs',[...vendorMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])),state.filters.vendor);
     if($('#filterSupplyMode'))$('#filterSupplyMode').value=state.filters.supplyMode||'';
-    $('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
+    $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
     const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
     if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
