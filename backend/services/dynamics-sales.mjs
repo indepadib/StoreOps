@@ -185,6 +185,9 @@ export function retailDisplaySalesAmount(row,cfg={}){
  return round2(base)
 }
 
+function excludedTaxItemGroups(){
+ return new Set(clean(process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS||'').split(',').map(x=>x.replace(/\s+/g,'').toUpperCase()).filter(Boolean))
+}
 function includedRetailSaleRow(row,cfg={}){
  const f=cfg.fields||{},sales=retailDisplaySalesAmount(row,cfg);
  if(!(sales>0&&sales<100000))return false;
@@ -193,7 +196,7 @@ function includedRetailSaleRow(row,cfg={}){
  const noSale=clean(f.returnNoSale?row?.[f.returnNoSale]:'').toUpperCase();
  if(['YES','Y','TRUE','1'].includes(noSale))return false;
  const tax=clean(f.taxItemGroup?row?.[f.taxItemGroup]:'').replace(/\s+/g,'').toUpperCase();
- if(tax==='EXOCOLL')return false;
+ if(tax&&excludedTaxItemGroups().has(tax))return false;
  return true
 }
 
@@ -215,7 +218,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
     const status=clean(f.status?r?.[f.status]:'').toUpperCase(),noSale=clean(f.returnNoSale?r?.[f.returnNoSale]:'').toUpperCase(),tax=clean(f.taxItemGroup?r?.[f.taxItemGroup]:'').replace(/\s+/g,'').toUpperCase();
     if(['VOIDED','CANCELLED','CANCELED'].includes(status)){exclusionReasons.status.rows++;exclusionReasons.status.sales+=Math.abs(sales)}
     else if(['YES','Y','TRUE','1'].includes(noSale)){exclusionReasons.returnNoSale.rows++;exclusionReasons.returnNoSale.sales+=Math.abs(sales)}
-    else if(tax==='EXOCOLL'){exclusionReasons.taxItemGroup.rows++;exclusionReasons.taxItemGroup.sales+=Math.abs(sales)}
+    else if(tax&&excludedTaxItemGroups().has(tax)){exclusionReasons.taxItemGroup.rows++;exclusionReasons.taxItemGroup.sales+=Math.abs(sales)}
    }
    continue;
   }
@@ -232,7 +235,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const finish=map=>[...map.values()].map(x=>{const q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>Number(v)!==0);return{key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null}}).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
  const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
- return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),rawPositiveSales:round2(rawPositiveSales),filteredSales:round2(netSales),filterGap:round2(rawPositiveSales-netSales),exclusionReasons:Object.fromEntries(Object.entries(exclusionReasons).map(([k,v])=>[k,{rows:v.rows,sales:round2(v.sales)}])),reason:'OFFICIAL_RETAIL_SALE_FILTERS'}};
+ return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),rawPositiveSales:round2(rawPositiveSales),filteredSales:round2(netSales),filterGap:round2(rawPositiveSales-netSales),exclusionReasons:Object.fromEntries(Object.entries(exclusionReasons).map(([k,v])=>[k,{rows:v.rows,sales:round2(v.sales)}])),excludedTaxItemGroups:[...excludedTaxItemGroups()],reason:'STORE_SALES_PARITY_FILTERS'}};
 }
 
 function literalFilters(field,value){
@@ -396,7 +399,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v26|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v26',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v27|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v27',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -646,7 +649,8 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
       amountBounds:true,
       transactionStatus:!!c.fields.status,
       returnNoSale:!!c.fields.returnNoSale,
-      taxItemGroup:!!c.fields.taxItemGroup
+      taxItemGroupMapped:!!c.fields.taxItemGroup,
+      taxItemGroupExclusionConfigured:excludedTaxItemGroups().size>0
     },
     mappedFields:{
       product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,inventoryUnit:!!c.fields.inventoryUnit,
@@ -656,6 +660,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v26',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v27',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
