@@ -330,7 +330,7 @@
 
   function marginDisplay(d=state.data){
     const cur=d?.summary?.current||{},value=cur.marginValue==null?null:Number(cur.marginValue),rate=cur.marginRate==null?null:Number(cur.marginRate),coverage=d?.margin?.coveragePct??null;
-    const valid=d?.margin?.available===true&&Number.isFinite(value)&&Number.isFinite(rate)&&rate>=-20&&rate<=80;
+    const valid=d?.margin?.available===true&&Number.isFinite(value)&&Number.isFinite(rate)&&rate>=0&&rate<=30;
     return{value:valid?value:null,rate:valid?rate:null,estimated:false,coverage,quality:valid?'TRANSACTION_VALIDATED':d?.margin?.reason||d?.margin?.status||'UNAVAILABLE',invalidCount:d?.margin?.implausibleLines??null,method:d?.margin?.method||null,costKind:d?.margin?.costKind||null}
   }
 
@@ -416,8 +416,7 @@
       else{badge.textContent=`Marge N/A · ${marginCoverage==null?'couverture inconnue':api.percent(marginCoverage,0)+' CA couvert'} · ${d.margin?.reason||'coût transactionnel non validé'}`;badge.className='margin-status warning'}
     }
     const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
-    $('#decisionCoverage').textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;
-    $('#decisionCoverage').title=(q.issues||[]).map(x=>x.message).join(' · ');
+    const coverage=$('#decisionCoverage');if(coverage){coverage.textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;coverage.title=(q.issues||[]).map(x=>x.message).join(' · ')}
     const marginLabel='Marge brute HT',rateLabel='Taux de marge HT',marginSub=displayMargin==null?`transaction cost · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:`transaction cost · ${margin.method==='TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY'?'coût × quantité unité inventaire':'coût de ligne'}`;
     const cards=[
       ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
