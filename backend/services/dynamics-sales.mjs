@@ -24,6 +24,7 @@ async function resolveMarginFields(cfg){
  if(cached&&Date.now()<cached.expiresAt){
    if(!explicitCost&&cached.preferredCost)c.fields.cost=cached.preferredCost;
    else if(explicitCost)c.fields.cost=explicitCost;
+   if(cached.lineAmountField&&cached.unitCostField&&cached.unitCostField!==c.fields.cost)c.fields.costUnitPrice=cached.unitCostField;
    if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
    return c
  }
@@ -39,7 +40,9 @@ async function resolveMarginFields(cfg){
    const preferredCost=explicitCost||lineAmountField||c.fields.cost||unitCostField;
    const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
    marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,expiresAt:Date.now()+30*60*1000});
-   if(preferredCost)c.fields.cost=preferredCost;if(salesUnit)c.fields.salesUnit=salesUnit
+   if(preferredCost)c.fields.cost=preferredCost;
+   if(lineAmountField&&unitCostField&&unitCostField!==preferredCost)c.fields.costUnitPrice=unitCostField;
+   if(salesUnit)c.fields.salesUnit=salesUnit
  }catch{if(explicitCost)c.fields.cost=explicitCost}
  return c
 }
