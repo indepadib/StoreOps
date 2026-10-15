@@ -206,14 +206,17 @@
     // Current-cost estimate: D365 UnitCost is treated as cost per INVENTORY unit.
     // Convert the sold transaction quantity to that inventory unit exactly once.
     const ref=catalogItem(row?.key),rawUnitCost=Number(ref?.rawUnitCost),costBasis=ref?.rawCostBasisUnit||ref?.inventoryUnit||null,
-      units=Number(row?.units),unitBreakdown=Object.entries(row?.quantityByUnit||{}).filter(([,v])=>Number(v)!==0);
+      unitBreakdown=Object.entries(row?.quantityByUnit||{}).filter(([,v])=>Number(v)!==0);
     if(unitBreakdown.length>1)return{value:null,rate:null,estimated:false,quality:'MIXED_QUANTITY_UNITS'};
-    const quantityUnit=row?.quantityUnit||(unitBreakdown.length===1?unitBreakdown[0][0]:null);
+    const quantityUnit=row?.quantityUnit||(unitBreakdown.length===1?unitBreakdown[0][0]:ref?.salesUnit||null),
+      soldQty=unitBreakdown.length===1?Math.abs(Number(unitBreakdown[0][1])):Math.abs(Number(row?.units));
     const factor=unitFactor(quantityUnit,costBasis);
-    if(!Number.isFinite(rawUnitCost)||rawUnitCost<=0||!Number.isFinite(units)||!Number.isFinite(sales)||sales<=0||!quantityUnit||!costBasis||factor==null){
+    if(!Number.isFinite(rawUnitCost)||rawUnitCost<=0||!Number.isFinite(soldQty)||!Number.isFinite(sales)||sales<=0||!quantityUnit||!costBasis||factor==null){
       return{value:null,rate:null,estimated:false,quality:'UNIT_OR_COST_UNAVAILABLE'};
     }
-    const pricedQty=Math.abs(units)*factor,costValue=pricedQty*rawUnitCost,value=sales-costValue,rate=value/sales*100;
+    // UnitCost is valued in the inventory unit. Example: 2.5 KG sold with inventory
+    // unit G => pricedQty = 2.5 × 1000 = 2500 G, then cost = 2500 × cost/G.
+    const pricedQty=soldQty*factor,costValue=pricedQty*rawUnitCost,value=sales-costValue,rate=value/sales*100;
     // Never publish obviously corrupted estimates. Negative SKU margin can exist, but
     // ratios beyond this envelope are treated as a unit/cost-quality failure.
     if(!Number.isFinite(rate)||rate>85||rate<-50||costValue>sales*1.5){
@@ -361,7 +364,7 @@
       let margin=0,coveredSales=0,invalidSales=0;
       for(const raw of d.products||[]){const row=productWithCatalog(raw),m=estimateMargin(row);if(m.value==null){invalidSales+=Number(row.sales||0);continue}margin+=Number(m.value);coveredSales+=Number(row.sales||0)}
       marginCoverage=cur.sales?coveredSales/Number(cur.sales)*100:null;
-      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=90&&candidateRate!=null&&candidateRate>=0&&candidateRate<=60;
+      const candidateRate=coveredSales?margin/coveredSales*100:null,qualityReady=marginCoverage!=null&&marginCoverage>=95&&candidateRate!=null&&candidateRate>=0&&candidateRate<=60;
       if(qualityReady){displayMargin=margin;displayRate=candidateRate;estimated=true;marginQuality='CURRENT_COST_ESTIMATE'}
       else{displayMargin=null;displayRate=null;marginQuality=marginCoverage!=null&&marginCoverage<90?'INSUFFICIENT_COVERAGE':'IMPLAUSIBLE_ESTIMATE'}
     }
