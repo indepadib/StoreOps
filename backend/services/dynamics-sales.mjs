@@ -1,9 +1,11 @@
 import { config } from '../config.mjs';
-import { odataGetAll } from './dynamics.mjs';
+import { odataGetAll, probeDataEntity } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 import { effectiveD365SalesMapping,salesStoreIdentifiers } from './d365-sales-mapping.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
+import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
+import { inferTransactionCostKind, evaluateTransactionMarginRows } from './sales-margin-engine.mjs';
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -15,6 +17,28 @@ const round2=v=>Math.round((num(v)+Number.EPSILON)*100)/100;
 const round3=v=>Math.round((num(v)+Number.EPSILON)*1000)/1000;
 const velocityCache=new Map();
 const salesActivityCache=new Map();
+const marginFieldCache=new Map();
+async function resolveMarginFields(cfg){
+ const c={...cfg,fields:{...(cfg.fields||{})}},cacheKey=c.entity;
+ const cached=marginFieldCache.get(cacheKey);
+ if(cached&&Date.now()<cached.expiresAt){
+   if(!c.fields.cost&&cached.cost)c.fields.cost=cached.cost;
+   if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
+   return c
+ }
+ if(c.fields.cost&&c.fields.salesUnit)return c;
+ try{
+   const probe=await probeDataEntity(c.entity,{top:3,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+   const row=(probe?.rows||[]).find(x=>Object.keys(x||{}).length)||null,keys=Object.keys(row||{});
+   const pick=names=>{for(const name of names){const hit=keys.find(k=>k.toLowerCase()===name.toLowerCase());if(hit)return hit}return''};
+   const cost=c.fields.cost||pick(['CostPrice','costPrice','UnitCost','CostAmount','costAmount','CostValue','COGS','Cost']);
+   const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','UnitId','Unit','UnitOfMeasure']);
+   marginFieldCache.set(cacheKey,{cost,salesUnit,expiresAt:Date.now()+30*60*1000});
+   if(cost)c.fields.cost=cost;if(salesUnit)c.fields.salesUnit=salesUnit
+ }catch{}
+ return c
+}
+
 
 function parseMap(raw=''){
  const s=clean(raw);if(!s)return{};
