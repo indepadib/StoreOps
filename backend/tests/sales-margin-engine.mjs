@@ -100,4 +100,18 @@ assert.equal(inferTransactionCostKind('CostAmount'),'LINE_AMOUNT');
   assert.equal(selected.selected,'UNIT_COST_INVENTORY','implausible raw CostAmount must be rejected when unit-aware interpretation is business-plausible');
 }
 
+
+{
+  const result=evaluateTransactionMarginRows({
+    rows:[{netAmount:-100,taxAmount:-20,qty:1,sku:'P1',date:'2026-10-15',costAmount:-84,unit:'PC'}],
+    fields:{net:'netAmount',taxAmount:'taxAmount',quantity:'qty',product:'sku',date:'date',cost:'costAmount',salesUnit:'unit'},
+    salesSign:-1,productRefs:new Map(),costKind:'LINE_AMOUNT'
+  });
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.valuedMarginSales,100);
+  assert.equal(result.totalCost,84);
+  assert.equal(result.marginRate,16,'NetAmount is already HT; tax must not be subtracted twice');
+  assert.equal(result.salesBasis,'MAIN_FIELD_EXCL_TAX');
+}
+
 console.log('sales margin engine tests passed');
