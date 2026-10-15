@@ -559,6 +559,16 @@
   }
   function renderCrm(){
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],analysisCustomers=crm.customerMergeRows?.length?crm.customerMergeRows:customers,k=$('#crmKpis');if(!k)return;
+    const quality=state.data?.quality||{},issues=quality.issues||[],crmBlockCodes=new Set(['CUSTOMER_CARDINALITY','IDENTIFIED_SALES_GT_TOTAL','IDENTIFIED_SALES_RECONCILIATION','CUSTOMER_FIELD_COVERAGE']),crmBlocked=issues.some(x=>x.level==='ERROR'&&crmBlockCodes.has(x.code)),crmWarn=!crmBlocked&&issues.some(x=>['IDENTIFIED_TICKET_RECONCILIATION','OFFICIAL_CA_FILTER_COVERAGE'].includes(x.code));
+    const badge=$('#crmQualityBadge');
+    if(badge){badge.textContent=crmBlocked?'Qualité CRM à corriger':crmWarn?'Qualité CRM à surveiller':'Qualité CRM contrôlée';badge.className='coverage-badge'+(crmBlocked?' danger':crmWarn?' warning':'')}
+    if(crmBlocked){
+      const reason=issues.filter(x=>crmBlockCodes.has(x.code)).map(x=>x.message).join(' · ')||'Réconciliation CRM impossible.';
+      k.innerHTML=`<div class="crm-kpi"><small>Données clients</small><strong>N/A</strong><span>${api.escapeHtml(reason)}</span></div>`;
+      for(const id of ['crmInsights','crmPricePreference','crmSegments','crmPersonas','crmBasketDna','crmAffinities','crmCategoryPreferences','crmVisitPatterns','crmCohorts','crmConcentration']){const el=$('#'+id);if(el)el.innerHTML=`<div class="table-loading">Analyse masquée tant que la qualité client n'est pas réconciliée.</div>`}
+      const body=$('#crmBody');if(body)body.innerHTML=`<tr><td colspan="12"><div class="table-loading">CRM N/A — ${api.escapeHtml(reason)}</div></td></tr>`;
+      return
+    }
     const identifiedSales=Number(crm.identifiedSales||0),identifiedTickets=Number(state.data?.summary?.current?.identifiedTickets||0),top10=identifiedSales?customers.slice(0,10).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,top20=identifiedSales?customers.slice(0,20).reduce((s,x)=>s+Number(x.sales||0),0)/identifiedSales*100:null,ba=crm.basketAnalysis||{},memberBasket=identifiedTickets?identifiedSales/identifiedTickets:null;
     k.innerHTML=[
       ['Clients identifiés',api.number(crm.identifiedCustomers),'comptes custAccount distincts ayant acheté sur la période'],
