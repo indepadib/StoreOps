@@ -142,7 +142,10 @@
       const cd=rangeDays(cur.start,cur.end),pd=rangeDays(cmp.start,cmp.end);
       if(retryable&&cd>1&&pd>1){
         const cparts=splitRange(cur.start,cur.end,2),pparts=splitRange(cmp.start,cmp.end,2);
-        const left=await fetchDecisionSlice(api,s,cparts[0],pparts[0],force),right=await fetchDecisionSlice(api,s,cparts[1],pparts[1],force);
+        const [left,right]=await Promise.all([
+          fetchDecisionSlice(api,s,cparts[0],pparts[0],force),
+          fetchDecisionSlice(api,s,cparts[1],pparts[1],force)
+        ]);
         return mergeDecisionParts([left,right],{startDate:cur.start,endDate:cur.end,days:cd},{startDate:cmp.start,endDate:cmp.end,days:pd})
       }
       throw error
