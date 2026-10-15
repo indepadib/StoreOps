@@ -190,11 +190,20 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const storesComparison=pairs.map(x=>storeComparison(x.store,x.current,x.previous)).sort((a,b)=>num(b.sales)-num(a.sales));
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
  const identifiedSales=customers.reduce((s,x)=>s+x.sales,0),repeatCustomers=customers.filter(x=>x.tickets>=2).length,frequentCustomers=customers.filter(x=>x.tickets>=4).length;
+ const qualityIssues=[],truncatedStores=currentResults.filter(x=>x?.diagnostics?.truncated||x?.status==='TRUNCATED').length,unknownUnitProducts=currentProducts.filter(x=>num(x.units)!==0&&!x.quantityUnit).length;
+ if(currentResults.length<stores.length)qualityIssues.push({code:'STORE_COVERAGE',level:'WARN',message:`${currentResults.length}/${stores.length} magasins ventes disponibles`});
+ if(truncatedStores)qualityIssues.push({code:'SALES_TRUNCATED',level:'ERROR',message:`${truncatedStores} magasin(s) avec lecture ventes tronquée`});
+ if(currentSummary.identifiedTickets!=null&&customers.length>currentSummary.identifiedTickets)qualityIssues.push({code:'CUSTOMER_CARDINALITY',level:'ERROR',message:'Clients distincts supérieurs aux tickets identifiés'});
+ if(currentSummary.identifiedSales!=null&&currentSummary.sales&&currentSummary.identifiedSales>currentSummary.sales*1.001)qualityIssues.push({code:'IDENTIFIED_SALES_GT_TOTAL',level:'ERROR',message:'CA identifié supérieur au CA total'});
+ if(marginStatus==='VALIDATED'&&currentSummary.marginRate!=null&&(currentSummary.marginRate>100||currentSummary.marginRate<-200))qualityIssues.push({code:'MARGIN_IMPLAUSIBLE',level:'ERROR',message:'Taux de marge transactionnel incohérent'});
+ if(unknownUnitProducts)qualityIssues.push({code:'UNIT_COVERAGE',level:'INFO',message:`${unknownUnitProducts} article(s) vendus sans unité transactionnelle`});
+ const quality={status:qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK',issues:qualityIssues,checks:{storesRequested:stores.length,storesReady:currentResults.length,truncatedStores,identifiedCustomers:customers.length,identifiedTickets:currentSummary.identifiedTickets,unknownUnitProducts}};
  return{
   status:currentResults.length?'READY':'UNAVAILABLE',
   period:{startDate,endDate,days:currentResults[0]?.days||null},
   comparison:{startDate:compareStartDate,endDate:compareEndDate,days:previousResults[0]?.days||null},
   coverage:{storesRequested:stores.length,currentStoresReady:currentResults.length,comparisonStoresReady:previousResults.length},
+  quality,
   summary:{
     current:currentSummary,previous:previousSummary,
     salesChangePct:previousSummary.sales?pct(currentSummary.sales,previousSummary.sales):null,
