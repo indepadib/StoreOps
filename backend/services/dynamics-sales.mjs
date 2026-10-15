@@ -26,6 +26,8 @@ async function resolveMarginFields(cfg){
    else if(explicitCost)c.fields.cost=explicitCost;
    if(cached.lineAmountField&&cached.unitCostField&&cached.unitCostField!==c.fields.cost)c.fields.costUnitPrice=cached.unitCostField;
    if(!c.fields.salesUnit&&cached.salesUnit)c.fields.salesUnit=cached.salesUnit;
+   if(cached.marginNet)c.fields.marginNet=cached.marginNet;
+   if(cached.taxAmount)c.fields.taxAmount=cached.taxAmount;
    return c
  }
  try{
@@ -39,10 +41,14 @@ async function resolveMarginFields(cfg){
    const unitCostField=pick(['CostPrice','costPrice','UnitCost','unitCost','InventoryCostPrice']);
    const preferredCost=explicitCost||lineAmountField||c.fields.cost||unitCostField;
    const salesUnit=c.fields.salesUnit||pick(['SalesUnit','SalesUnitSymbol','salesUnit','Unit','UnitId','UnitOfMeasure']);
-   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,expiresAt:Date.now()+30*60*1000});
+   const marginNet=pick(['NetAmount','netAmount','NetAmountExclTax','NetAmountExcludingTax','NetAmountWithoutTax','AmountExclTax']);
+   const taxAmount=pick(['TaxAmount','taxAmount','SalesTaxAmount','SalesTax','TaxValue']);
+   marginFieldCache.set(cacheKey,{preferredCost,lineAmountField,unitCostField,salesUnit,marginNet,taxAmount,expiresAt:Date.now()+30*60*1000});
    if(preferredCost)c.fields.cost=preferredCost;
    if(lineAmountField&&unitCostField&&unitCostField!==preferredCost)c.fields.costUnitPrice=unitCostField;
-   if(salesUnit)c.fields.salesUnit=salesUnit
+   if(salesUnit)c.fields.salesUnit=salesUnit;
+   if(marginNet&&marginNet!==c.fields.net)c.fields.marginNet=marginNet;
+   if(taxAmount)c.fields.taxAmount=taxAmount
  }catch{if(explicitCost)c.fields.cost=explicitCost}
  return c
 }
@@ -350,7 +356,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v13|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v14',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v15|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v15',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -413,7 +419,15 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    fallbackCostField:c.fields.costUnitPrice||null,
    costKind,
    method:marginEval.method||null,
+   basisCoveragePct:marginEval.basisCoveragePct??null,
    coveragePct:marginEval.coveragePct??null,
+   salesBasis:marginEval.salesBasis||null,
+   salesBasisField:marginEval.salesBasisField||null,
+   taxField:marginEval.taxField||null,
+   marginSalesBase:marginEval.totalMarginSales??null,
+   valuedMarginSales:marginEval.valuedMarginSales??null,
+   totalCost:marginEval.totalCost??null,
+   costCrossCheckPct:marginEval.costCrossCheckPct??null,
    reason:marginEval.reason||marginConfig.reason||null,
    diagnosticMarginValue:marginEval.diagnosticMarginValue??null,
    diagnosticMarginRate:marginEval.diagnosticMarginRate??null,
@@ -429,7 +443,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const marginProductMap=marginEval.byProduct||{},marginDateMap=marginEval.byDate||{};
  const productRowsWithMargin=totalRaw.products.map(row=>{
    const m=marginProductMap[row.key],ref=marginRefs.get(row.key),label=ref?.productName||row.label;
-   return{...row,label,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginRate:null,marginCoveragePct:m?.coveragePct??null}
+   return{...row,label,marginSalesBase:m?.marginSalesBase??null,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginRate:null,marginCoveragePct:m?.coveragePct??null,marginBasisCoveragePct:m?.basisCoveragePct??null}
  });
  const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map(),staffMap=new Map();
  const weekdayNames=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
@@ -470,7 +484,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   }
  }
  const daily=[...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{
-  const x=aggregateSalesRows(rows,c),m=marginDateMap[date];return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
+  const x=aggregateSalesRows(rows,c),m=marginDateMap[date];return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginSalesBase:m?.marginSalesBase??null,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
  });
  const customers=[...customerMap.values()].map(x=>({
   customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,
@@ -499,7 +513,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
-  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginValue:margin.status==='VALIDATED'?marginEval.marginValue:null,marginRate:margin.status==='VALIDATED'?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
+  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginSalesBase:margin.status==='VALIDATED'?marginEval.totalMarginSales:null,marginValue:margin.status==='VALIDATED'?marginEval.marginValue:null,marginRate:margin.status==='VALIDATED'?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
   margin,
   daily,
   products:productRowsWithMargin,
@@ -519,12 +533,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     },
     mappedFields:{
       product:!!c.fields.product,productName:!!c.fields.name,quantity:!!c.fields.quantity,salesUnit:!!c.fields.salesUnit,
-      customer:!!c.fields.customer,staff:!!c.fields.staff,cost:!!c.fields.cost,time:!!c.fields.time
+      customer:!!c.fields.customer,staff:!!c.fields.staff,cost:!!c.fields.cost,time:!!c.fields.time,marginNet:!!c.fields.marginNet,taxAmount:!!c.fields.taxAmount
     }
   }
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v14',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v15',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
