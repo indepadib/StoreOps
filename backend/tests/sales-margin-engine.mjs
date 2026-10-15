@@ -51,4 +51,40 @@ assert.equal(inferTransactionCostKind('CostAmount'),'LINE_AMOUNT');
   assert.equal(result.implausibleLines,1);
 }
 
+{
+  const result=evaluateTransactionMarginRows({
+    rows:[{netAmountInclTax:-120,netAmount:-100,taxAmount:-20,qty:1,sku:'P1',date:'2026-10-01',costAmount:-84,unit:'PC'}],
+    fields:{net:'netAmountInclTax',marginNet:'netAmount',taxAmount:'taxAmount',quantity:'qty',product:'sku',date:'date',cost:'costAmount',salesUnit:'unit'},
+    salesSign:-1,productRefs:new Map(),costKind:'LINE_AMOUNT'
+  });
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.totalDisplaySales,120);
+  assert.equal(result.valuedMarginSales,100);
+  assert.equal(result.totalCost,84);
+  assert.equal(result.marginValue,16);
+  assert.equal(result.marginRate,16,'gross margin must be calculated on sales excluding tax');
+  assert.equal(result.salesBasis,'EXCL_TAX_FIELD');
+}
+
+{
+  const result=evaluateTransactionMarginRows({
+    rows:[{netAmountInclTax:-120,taxAmount:-20,qty:1,sku:'P1',date:'2026-10-01',costAmount:-84,unit:'PC'}],
+    fields:{net:'netAmountInclTax',taxAmount:'taxAmount',quantity:'qty',product:'sku',date:'date',cost:'costAmount',salesUnit:'unit'},
+    salesSign:-1,productRefs:new Map(),costKind:'LINE_AMOUNT'
+  });
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.marginRate,16);
+  assert.equal(result.salesBasis,'DERIVED_TTC_MINUS_TAX');
+}
+
+{
+  const result=evaluateTransactionMarginRows({
+    rows:[{netAmountInclTax:-120,qty:1,sku:'P1',date:'2026-10-01',costAmount:-84,unit:'PC'}],
+    fields:{net:'netAmountInclTax',quantity:'qty',product:'sku',date:'date',cost:'costAmount',salesUnit:'unit'},
+    salesSign:-1,productRefs:new Map(),costKind:'LINE_AMOUNT'
+  });
+  assert.equal(result.available,false);
+  assert.equal(result.reason,'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99');
+}
+
 console.log('sales margin engine tests passed');
