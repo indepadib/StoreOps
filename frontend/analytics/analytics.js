@@ -1263,6 +1263,7 @@
     sales: ['decisionSales'],
     network: ['storeBenchmark'],
     categories: ['productPerformance'],
+    suppliers: ['supplierIntelligence'],
     crm: ['crmIntelligence'],
     inventory: ['inventory'],
     loyalty: ['loyalty'],
