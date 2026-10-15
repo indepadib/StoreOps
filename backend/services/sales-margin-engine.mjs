@@ -29,16 +29,18 @@ function marginSalesBasis(row,fields,salesSign){
     }
   }
 
+  // If the mapped sales field is already NetAmount / HT, it is the correct
+  // gross-margin denominator. TaxAmount must NOT be subtracted a second time.
+  if(!mainSalesFieldLooksTaxInclusive(fields.net)){
+    return{status:'READY',displaySales,marginSales:displaySales,source:'MAIN_FIELD_EXCL_TAX',field:fields.net,taxAmount:fields.taxAmount?Math.abs(finite(row?.[fields.taxAmount])??0):null}
+  }
+
   if(fields.taxAmount){
     const taxRaw=finite(row?.[fields.taxAmount]),tax=taxRaw===null?null:Math.abs(taxRaw);
     const amount=tax===null?null:displaySales-tax;
     if(amount>0&&amount<=displaySales*1.001){
       return{status:'READY',displaySales,marginSales:amount,source:'DERIVED_TTC_MINUS_TAX',field:fields.net,taxField:fields.taxAmount,taxAmount:tax}
     }
-  }
-
-  if(!mainSalesFieldLooksTaxInclusive(fields.net)){
-    return{status:'READY',displaySales,marginSales:displaySales,source:'MAIN_FIELD_EXCL_TAX',field:fields.net,taxAmount:null}
   }
 
   return{status:'MARGIN_NET_EXCL_TAX_UNAVAILABLE',displaySales,marginSales:null,source:null}
