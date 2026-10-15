@@ -289,8 +289,10 @@ function publicMarginRow(row,margin){
 }
 function mergeMetricRows(target,rows=[]){
  for(const row of rows){
-  const key=String(row.key||''),cur=target.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true};
+  const key=String(row.key||''),cur=target.get(key)||{key,label:row.label||key,sales:0,units:0,marginValue:0,marginKnown:true,quantityByUnit:new Map()};
   cur.sales+=num(row.sales);cur.units+=num(row.units);
+  const breakdown=row.quantityByUnit&&typeof row.quantityByUnit==='object'?Object.entries(row.quantityByUnit):row.quantityUnit?[[row.quantityUnit,row.units]]:[];
+  for(const [unit,value] of breakdown){const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+num(value))}
   if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;
   else cur.marginValue+=num(row.marginValue);
   if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
@@ -299,8 +301,8 @@ function mergeMetricRows(target,rows=[]){
 }
 function finishMetricRows(map,margin){
  return[...map.values()].map(x=>{
-  const sales=round2(x.sales),marginValue=margin.status==='VALIDATED'&&x.marginKnown?round2(x.marginValue):null;
-  return{key:x.key,label:x.label,sales,units:round2(x.units),marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}
+  const sales=round2(x.sales),marginValue=margin.status==='VALIDATED'&&x.marginKnown?round2(x.marginValue):null,q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>num(v)!==0);
+  return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}
  }).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
 export async function readStoreSalesRange(storeId,{startDate,endDate,force=false}={}){
