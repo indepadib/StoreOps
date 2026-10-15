@@ -538,15 +538,17 @@
   function aggregateHierarchyRows(products,level){
     const map=new Map();
     for(const p of products){
-      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),marginValue:0,marginKnown:true,marginEstimated:false};
+      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true,marginEstimated:false};
       cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);quantityMapAdd(cur.quantityByUnit,p.quantityUnit,Number(p.units||0));
+      if(p.marginSalesBase==null)cur.marginBaseKnown=false;else cur.marginSalesBase+=Number(p.marginSalesBase||0);
       if(p.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(p.marginValue||0);
       cur.marginEstimated=cur.marginEstimated||!!p.marginEstimated;map.set(key,cur)
     }
     const total=[...map.values()].reduce((s,x)=>s+x.sales,0),prev=[...map.values()].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prev.map((x,i)=>[x.key,i+1]));
     return[...map.values()].map(x=>{
       const unitEntries=[...x.quantityByUnit.entries()].filter(([,v])=>Number(v)!==0),single=unitEntries.length===1?unitEntries[0]:null;
-      return{...x,units:single?single[1]:null,quantityUnit:single?single[0]:null,mixedQuantityUnits:unitEntries.length>1,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.sales?x.marginValue/x.sales*100:null,previousRank:prevRank.get(x.key)||null}
+      const marginSalesBase=x.marginBaseKnown?x.marginSalesBase:null,marginValue=x.marginKnown?x.marginValue:null;
+      return{...x,units:single?single[1]:null,quantityUnit:single?single[0]:null,mixedQuantityUnits:unitEntries.length>1,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginSalesBase,marginValue,marginRate:marginValue!=null&&marginSalesBase?marginValue/marginSalesBase*100:null,previousRank:prevRank.get(x.key)||null}
     }).sort((a,b)=>b.sales-a.sales)
   }
   function performanceRows(){
