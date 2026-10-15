@@ -590,6 +590,72 @@
     body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${quantityBreakdown(r,api)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
   }
 
+  function supplierRows(){
+    const products=(state.data?.products||[]).map(productWithCatalog),groups=new Map(),ops=state.supplierOps?.items||[];
+    const opsByAccount=new Map(),opsByName=new Map();
+    for(const x of ops){if(x.vendorAccount)opsByAccount.set(String(x.vendorAccount),x);if(x.vendorName)opsByName.set(String(x.vendorName).toUpperCase(),x)}
+    for(const p of products){
+      const ref=catalogItem(p.key),vendor=ref?.primaryVendorAccount||'NON_RATTACHE',mode=ref?.supplyMode||'UNMAPPED';
+      const cur=groups.get(vendor)||{vendorAccount:vendor,vendorName:vendor,supplyModes:new Set(),sales:0,previousSales:0,marginSalesBase:0,marginValue:0,marginKnown:true,skus:new Set(),products:[]};
+      cur.supplyModes.add(mode);cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);cur.skus.add(p.key);cur.products.push(p);
+      if(p.marginValue==null||p.marginSalesBase==null)cur.marginKnown=false;else{cur.marginValue+=Number(p.marginValue||0);cur.marginSalesBase+=Number(p.marginSalesBase||0)}
+      groups.set(vendor,cur)
+    }
+    const total=[...groups.values()].reduce((s,x)=>s+x.sales,0),q=state.supplierSearch.trim().toLowerCase();
+    return[...groups.values()].map(x=>{
+      const op=opsByAccount.get(x.vendorAccount)||opsByName.get(String(x.vendorName).toUpperCase())||null;
+      const top=[...x.products].sort((a,b)=>Number(b.sales||0)-Number(a.sales||0))[0],name=op?.vendorName||x.vendorName;
+      const modes=[...x.supplyModes].filter(Boolean),supplyMode=modes.length===1?modes[0]:'MIXED';
+      return{...x,vendorName:name,supplyMode,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,skuCount:x.skus.size,topProduct:top?productLabel(top.key,top.label):null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.marginSalesBase?x.marginValue/x.marginSalesBase*100:null,openPoCount:op?.openPoCount??null,remainingByUnit:op?.remainingByUnit||{},serviceRate90d:(op?.serviceCoverageLines||0)>=5?op?.serviceRate90d:null,serviceCoverageLines:op?.serviceCoverageLines||0}
+    }).filter(x=>{
+      if(state.supplierMode&&x.supplyMode!==state.supplierMode)return false;
+      if(!q)return true;
+      return [x.vendorName,x.vendorAccount,x.topProduct,...x.products.slice(0,15).map(p=>productLabel(p.key,p.label))].some(v=>String(v||'').toLowerCase().includes(q))
+    }).sort((a,b)=>b.sales-a.sales)
+  }
+  function qtyObjectLabel(obj,api){
+    const rows=Object.entries(obj||{}).filter(([,v])=>Number(v)!==0);
+    return rows.length?rows.map(([u,v])=>api.number(v,u==='PC'?0:2)+' '+u).join(' · '):'—'
+  }
+  async function loadSupplierOps(force=false){
+    const api=core(),s=sectionState();if(!api||!s||s.section!=='suppliers'||state.supplierOpsLoading)return;
+    const ids=selectedStoreIds(s),key=[...ids].sort().join(',')+'|'+s.periodEnd;
+    if(!force&&state.supplierOpsKey===key&&state.supplierOps){renderSupplier();return}
+    state.supplierOpsLoading=true;renderSupplier();
+    try{
+      const q=new URLSearchParams({date:s.periodEnd||new Date().toISOString().slice(0,10),storeIds:ids.join(',')});if(force)q.set('force','1');
+      state.supplierOps=await api.api('/api/analytics/suppliers?'+q,{noRetry:true});state.supplierOpsKey=key
+    }catch(error){state.supplierOps={status:'ERROR',items:[],error:{message:error?.message||String(error)}}}
+    finally{state.supplierOpsLoading=false;renderSupplier()}
+  }
+  function renderSupplier(){
+    const api=core(),body=$('#supplierBody'),kpis=$('#supplierKpis');if(!api||!body||!kpis)return;
+    const rows=supplierRows(),totalSales=rows.reduce((s,x)=>s+Number(x.sales||0),0),direct=rows.filter(x=>x.supplyMode==='DIRECT_SUPPLIER'),directSales=direct.reduce((s,x)=>s+Number(x.sales||0),0),mapped=rows.filter(x=>x.vendorAccount!=='NON_RATTACHE'),serviceRows=rows.filter(x=>x.serviceRate90d!=null);
+    const cards=[
+      ['Fournisseurs vendus',api.number(mapped.length),'ayant du CA sur la période'],
+      ['Poids Direct',totalSales?api.percent(directSales/totalSales*100):'N/A','CA articles Direct fournisseur'],
+      ['Fournisseurs Direct',api.number(direct.length),'à piloter en priorité'],
+      ['Service mesuré',api.number(serviceRows.length),serviceRows.length?api.percent(serviceRows.reduce((s,x)=>s+Number(x.serviceRate90d||0),0)/serviceRows.length)+' moy.':'couverture réception insuffisante'],
+      ['CA non rattaché',api.money(rows.filter(x=>x.vendorAccount==='NON_RATTACHE').reduce((s,x)=>s+Number(x.sales||0),0),true),'master data fournisseur à compléter']
+    ];
+    kpis.innerHTML=cards.map(x=>'<div class="crm-kpi"><small>'+x[0]+'</small><strong>'+x[1]+'</strong><span>'+x[2]+'</span></div>').join('');
+    const bars=$('#supplierConcentration'),actions=$('#supplierActions');
+    if(bars)bars.innerHTML=rows.slice(0,8).map((x,i)=>'<div class="supplier-bar-row"><div><span>#'+(i+1)+' '+api.escapeHtml(x.vendorName)+'</span><strong>'+api.percent(x.sharePct)+'</strong></div><div class="supplier-bar-track"><i style="width:'+Math.min(100,Number(x.sharePct||0))+'%"></i></div></div>').join('')||'<div class="table-loading">Catalogue fournisseur en cours d’enrichissement.</div>';
+    if(actions){
+      const alerts=[],declining=rows.filter(x=>x.changePct!=null&&x.changePct<-10).sort((a,b)=>a.changePct-b.changePct)[0];
+      if(declining)alerts.push({tone:'risk',title:'CA en baisse · '+declining.vendorName,text:api.percent(declining.changePct)+' vs comparaison · '+api.money(declining.sales,true)+' de CA.'});
+      const directNoService=direct.filter(x=>x.serviceRate90d==null).sort((a,b)=>b.sales-a.sales)[0];
+      if(directNoService)alerts.push({tone:'warning',title:'Direct sans mesure service · '+directNoService.vendorName,text:'Couverture réception contrôlée insuffisante : fiabiliser les réceptions pour mesurer le service.'});
+      const backlog=rows.filter(x=>x.openPoCount>0).sort((a,b)=>Number(b.openPoCount)-Number(a.openPoCount))[0];
+      if(backlog)alerts.push({tone:'info',title:'PO ouverts · '+backlog.vendorName,text:api.number(backlog.openPoCount)+' PO ouvert(s) · reste '+qtyObjectLabel(backlog.remainingByUnit,api)+'.'});
+      const concentration=rows[0];if(concentration&&concentration.sharePct>25)alerts.push({tone:'warning',title:'Dépendance fournisseur',text:concentration.vendorName+' pèse '+api.percent(concentration.sharePct)+' du CA fournisseur analysé.'});
+      actions.innerHTML=alerts.slice(0,4).map(x=>'<div class="decision-action '+x.tone+'"><strong>'+api.escapeHtml(x.title)+'</strong><span>'+api.escapeHtml(x.text)+'</span></div>').join('')||'<div class="table-loading">Aucune alerte fournisseur significative.</div>'
+    }
+    const def=$('#supplierServiceDefinition');if(def)def.textContent=state.supplierOpsLoading?'Chargement des PO et réceptions fournisseur en arrière-plan…':(state.supplierOps?.serviceDefinition||'Taux service N/A sans réceptions contrôlées suffisantes.');
+    if(!rows.length){body.innerHTML='<tr><td colspan="11"><div class="table-loading">Enrichissement fournisseur en cours…</div></td></tr>';return}
+    body.innerHTML=rows.slice(0,300).map(x=>'<tr><td><div class="element-cell"><strong>'+api.escapeHtml(x.vendorName)+'</strong><span>'+api.escapeHtml(x.vendorAccount==='NON_RATTACHE'?'Non rattaché':x.vendorAccount)+'</span></div></td><td>'+(x.supplyMode==='DIRECT_SUPPLIER'?'Direct':x.supplyMode==='WAREHOUSE'?'DC / Entrepôt':x.supplyMode==='MIXED'?'Mixte':'N/A')+'</td><td>'+api.money(x.sales,true)+'</td><td>'+signed(api,x.changePct)+'</td><td>'+api.percent(x.sharePct)+'</td><td>'+api.number(x.skuCount)+'</td><td>'+api.escapeHtml(x.topProduct||'N/A')+'</td><td>'+(x.marginRate==null?'N/A':api.percent(x.marginRate))+'</td><td>'+(x.openPoCount==null?'—':api.number(x.openPoCount))+'</td><td>'+qtyObjectLabel(x.remainingByUnit,api)+'</td><td>'+(x.serviceRate90d==null?'N/A':api.percent(x.serviceRate90d))+(x.serviceCoverageLines?'<br><small>'+api.number(x.serviceCoverageLines)+' lignes</small>':'')+'</td></tr>').join('')
+  }
+
   function isCheckoutBagSku(sku){
     const ref=catalogItem(sku),label=String(ref?.productName||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
     if(!label||!label.includes('sac'))return false;
