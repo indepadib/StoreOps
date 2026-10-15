@@ -167,7 +167,7 @@ function taxonomyLabels(productNumber){
 }
 
 function amountFieldLooksTaxInclusive(field=''){
- return /incltax|includingtax|gross|totalamount/i.test(clean(field))
+ return /incltax|includingtax|gross|totalamount|ttc/i.test(clean(field))
 }
 
 /**
