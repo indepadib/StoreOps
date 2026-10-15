@@ -387,6 +387,38 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  if(!selected)throw lastError||Object.assign(new Error('Lecture période ventes D365 impossible.'),{code:'D365_SALES_RANGE_FAILED'});
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
+ const includedRows=selected.rows.filter(row=>includedRetailSaleRow(row,c));
+ const costKind=inferTransactionCostKind(c.fields.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
+ let marginRefs=new Map();
+ if(costKind==='UNIT_COST_INVENTORY'&&c.fields.product){
+   const marginSkus=[...new Set(includedRows.map(row=>clean(row[c.fields.product])).filter(Boolean))];
+   marginRefs=await releasedProductSourcingMany(marginSkus);
+ }
+ const marginEval=evaluateTransactionMarginRows({rows:includedRows,fields:c.fields,salesSign:c.sign,productRefs:marginRefs,costKind});
+ const margin={
+   status:marginEval.status,
+   available:marginEval.available===true,
+   source:c.fields.cost?('D365/'+c.entity+'.'+c.fields.cost):null,
+   costField:c.fields.cost||null,
+   costKind,
+   method:marginEval.method||null,
+   coveragePct:marginEval.coveragePct??null,
+   reason:marginEval.reason||marginConfig.reason||null,
+   diagnosticMarginValue:marginEval.diagnosticMarginValue??null,
+   diagnosticMarginRate:marginEval.diagnosticMarginRate??null,
+   weightedConversions:marginEval.weightedConversions||0,
+   eligibleLines:marginEval.eligibleLines||0,
+   valuedLines:marginEval.valuedLines||0,
+   missingCostLines:marginEval.missingCostLines||0,
+   unknownUnitLines:marginEval.unknownUnitLines||0,
+   implausibleLines:marginEval.implausibleLines||0,
+   validationMethod:marginEval.available?'AUTOMATIC_COVERAGE_AND_PLAUSIBILITY_GATE':null
+ };
+ const marginProductMap=marginEval.byProduct||{},marginDateMap=marginEval.byDate||{};
+ const productRowsWithMargin=totalRaw.products.map(row=>{
+   const m=marginProductMap[row.key],ref=marginRefs.get(row.key),label=ref?.productName||row.label;
+   return{...row,label,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginRate:null,marginCoveragePct:m?.coveragePct??null}
+ });
  const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map(),staffMap=new Map();
  const weekdayNames=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
  const favourite=map=>{let key=null,value=-1;for(const [k,v] of map||[]){if(v>value){key=k;value=v}}return key};
@@ -426,7 +458,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   }
  }
  const daily=[...dailyMap.entries()].sort(([a],[b])=>a.localeCompare(b)).map(([date,rows])=>{
-  const x=aggregateSalesRows(rows,c);return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'?x.marginValue:null,marginRate:margin.status==='VALIDATED'?x.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
+  const x=aggregateSalesRows(rows,c),m=marginDateMap[date];return{date,sales:x.sales,tickets:x.tickets,units:x.units,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95?m.marginRate:null,identifiedSales:x.loyalty?.identifiedSales??null,identifiedTickets:x.loyalty?.identifiedTickets??null}
  });
  const customers=[...customerMap.values()].map(x=>({
   customerAccount:x.customerAccount,sales:round2(x.sales),units:round2(x.units),tickets:x.transactions.size,averageBasket:x.transactions.size?round2(x.sales/x.transactions.size):null,
@@ -455,12 +487,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
-  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginValue:margin.status==='VALIDATED'?totalRaw.marginValue:null,marginRate:margin.status==='VALIDATED'?totalRaw.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
+  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginValue:margin.status==='VALIDATED'?marginEval.marginValue:null,marginRate:margin.status==='VALIDATED'?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
   margin,
   daily,
-  products:totalRaw.products.map(x=>publicMarginRow(x,margin)),
-  departments:totalRaw.departments.map(x=>publicMarginRow(x,margin)),
-  categories:totalRaw.categories.map(x=>publicMarginRow(x,margin)),
+  products:productRowsWithMargin,
+  departments:totalRaw.departments.map(x=>({...x,marginValue:null,marginRate:null})),
+  categories:totalRaw.categories.map(x=>({...x,marginValue:null,marginRate:null})),
   customers,
   staff,
   basketAnalysis,
@@ -481,6 +513,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v10',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v13',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
