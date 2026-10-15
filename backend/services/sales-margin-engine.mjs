@@ -83,6 +83,19 @@ function bucketPublic(map){
   }))
 }
 
+export function selectTransactionCostSemantics({lineAmountEval=null,unitCostEval=null,min=0,max=30,tolerancePctPoints=3}={}){
+  const rateOk=e=>e?.available===true&&Number.isFinite(Number(e.marginRate))&&Number(e.marginRate)>=min&&Number(e.marginRate)<=max;
+  const lineOk=rateOk(lineAmountEval),unitOk=rateOk(unitCostEval);
+  if(lineOk&&!unitOk)return{status:'VALIDATED',selected:'LINE_AMOUNT',evaluation:lineAmountEval,reason:'ONLY_LINE_AMOUNT_MODEL_PASSES_BUSINESS_SANITY'};
+  if(unitOk&&!lineOk)return{status:'VALIDATED',selected:'UNIT_COST_INVENTORY',evaluation:unitCostEval,reason:'ONLY_UNIT_COST_MODEL_PASSES_BUSINESS_SANITY'};
+  if(lineOk&&unitOk){
+    const gap=Math.abs(Number(lineAmountEval.marginRate)-Number(unitCostEval.marginRate));
+    if(gap<=tolerancePctPoints)return{status:'VALIDATED',selected:'LINE_AMOUNT',evaluation:lineAmountEval,reason:'COST_MODELS_AGREE',rateGapPctPoints:round2(gap)};
+    return{status:'UNVALIDATED',selected:null,evaluation:null,reason:'COST_SEMANTICS_AMBIGUOUS',rateGapPctPoints:round2(gap)};
+  }
+  return{status:'UNVALIDATED',selected:null,evaluation:null,reason:'NO_COST_MODEL_PASSES_BUSINESS_SANITY'};
+}
+
 export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,productRefs=new Map(),costKind='UNKNOWN'}={}){
   const list=Array.isArray(rows)?rows:[];
   const byProduct=new Map(),byDate=new Map();
