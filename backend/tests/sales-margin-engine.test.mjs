@@ -40,3 +40,14 @@ test('unknown unit blocks publication instead of inventing margin',()=>{
   assert.equal(result.marginRate,null);
   assert.ok(result.unknownUnitLines>0);
 });
+
+test('generic transaction cost field can be explicitly treated as inventory-unit cost',()=>{
+  const genericFields={...fields,cost:'costAmount'};
+  const rows=[{transactionId:'T4',itemId:'HS-GENERIC',businessDate:'2026-10-15',netAmountInclTax:-120,netAmount:-100,taxAmount:-20,qty:-1,salesUnit:'KG',inventoryUnit:'G',costAmount:0.084}];
+  const result=evaluateTransactionMarginRows({rows,fields:genericFields,salesSign:-1,costKind:'UNIT_COST_INVENTORY'});
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.totalCost,84);
+  assert.equal(result.marginValue,16);
+  assert.equal(result.marginRate,16);
+  assert.equal(result.weightedConversions,1);
+});
