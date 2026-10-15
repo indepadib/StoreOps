@@ -478,13 +478,15 @@
     const api=core(),rows=state.data?.stores||[],body=$('#benchmarkBody'),summary=$('#benchmarkSummary');if(!body||!summary)return;
     const valid=rows.filter(x=>x.sales!=null),avg=valid.length?valid.reduce((s,x)=>s+Number(x.sales||0),0)/valid.length:0;
     const ranked=[...valid].sort((a,b)=>Number(b.sales||0)-Number(a.sales||0));
-    const best=ranked[0],weak=[...valid].filter(x=>x.changePct!=null).sort((a,b)=>a.changePct-b.changePct)[0];
-    const marginBest=[...valid].filter(x=>x.marginValue!=null).sort((a,b)=>b.marginValue-a.marginValue)[0];
+    const best=ranked[0],weak=[...valid].filter(x=>x.changePct!=null).sort((a,b)=>a.changePct-b.changePct)[0],
+      bestBasket=[...valid].filter(x=>x.averageBasket!=null).sort((a,b)=>Number(b.averageBasket)-Number(a.averageBasket))[0],
+      bestLoyalty=[...valid].filter(x=>x.identifiedSalesShare!=null).sort((a,b)=>Number(b.identifiedSalesShare)-Number(a.identifiedSalesShare))[0];
     summary.innerHTML=[
       ['#1 CA',best?.storeName||'N/A',best?api.money(best.sales,true):'—'],
       ['Plus forte dynamique',[...valid].filter(x=>x.changePct!=null).sort((a,b)=>b.changePct-a.changePct)[0]?.storeName||'N/A','vs comparaison'],
       ['À surveiller',weak?.storeName||'N/A',weak?.changePct==null?'—':api.percent(weak.changePct)],
-      ['#1 Marge',marginBest?.storeName||'N/A',marginBest?api.money(marginBest.marginValue,true):'N/A']
+      ['#1 Panier',bestBasket?.storeName||'N/A',bestBasket?api.money(bestBasket.averageBasket):'N/A'],
+      ['#1 CA identifié',bestLoyalty?.storeName||'N/A',bestLoyalty?api.percent(bestLoyalty.identifiedSalesShare):'N/A']
     ].map(([l,v,s])=>`<div class="benchmark-card"><small>${l}</small><strong>${api.escapeHtml(v)}</strong><span>${s}</span></div>`).join('');
     const visual=$('#benchmarkVisual'),actions=$('#storeDecisionList');
     if(visual&&valid.length){
