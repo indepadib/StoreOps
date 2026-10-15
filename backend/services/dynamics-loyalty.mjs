@@ -58,12 +58,11 @@ export async function readStoreLoyaltyEnrollments(storeId,{startDate,endDate}={}
   if(!/^[A-Za-z0-9_]+$/.test(entity))continue;
   let customerField=c.customerField;
   try{const probe=await probeDataEntity(entity,{top:5,filter:c.operatingUnitField+" eq '"+esc(unit)+"'",extra:config.dynamics.dataAreaId?'cross-company=true':''}),sample=probe?.rows?.[0]||null;customerField=inferredCustomerField(sample,customerField)}catch{}
-  if(!customerField)continue;
   for(const q of dateRangeVariants(c,unit,start,end)){
    try{
     const select=[c.cardField,q.dateField,c.operatingUnitField,customerField].filter(Boolean).join(','),r=await odataGetAll(entity,{filter:q.filter,select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:500,maxRows:20000}),seen=new Set(),items=[];
-    for(const row of r.value||[]){const card=clean(row[c.cardField]),customerAccount=clean(row[customerField]),enrollmentDate=clean(row[q.dateField]);if(!customerAccount)continue;const key=customerAccount;if(seen.has(key))continue;seen.add(key);items.push({cardNumber:card||null,customerAccount,enrollmentDate})}
-    resolvedEntity=entity;return{status:'READY',storeId,startDate:start,endDate:end,source:'D365/'+entity,entity,dateMode:q.mode,operatingUnit:unit,customerField,rowCount:r.rowCount||0,pages:r.pages||0,truncated:!!r.truncated,total:items.length,items}
+    for(const row of r.value||[]){const card=clean(row[c.cardField]),customerAccount=customerField?clean(row[customerField]):'',enrollmentDate=clean(row[q.dateField]),key=customerAccount||card;if(!key||seen.has(key))continue;seen.add(key);items.push({cardNumber:card||null,customerAccount:customerAccount||null,enrollmentDate})}
+    resolvedEntity=entity;return{status:'READY',storeId,startDate:start,endDate:end,source:'D365/'+entity,entity,dateMode:q.mode,operatingUnit:unit,customerField:customerField||null,identityBasis:customerField?'CUSTOMER_ACCOUNT':'LOYALTY_CARD',rowCount:r.rowCount||0,pages:r.pages||0,truncated:!!r.truncated,total:items.length,items}
    }catch(error){lastError=error}
   }
  }
