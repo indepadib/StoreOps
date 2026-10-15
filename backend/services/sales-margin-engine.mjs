@@ -71,7 +71,8 @@ function bucketPublic(map){
     const marginValue=x.valuedMarginSales?x.valuedMarginSales-x.cost:null;
     return[key,{
       sales:round2(x.sales),
-      marginSalesBase:round2(x.marginSalesBase),
+      marginSalesBase:round2(x.valuedMarginSales),
+      eligibleMarginSales:round2(x.marginSalesBase),
       cost:round2(x.cost),
       basisCoveragePct:round2(basisCoverage),
       coveragePct:round2(costCoverage),
@@ -180,12 +181,12 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
 
   const plausible=marginRate!==null&&marginRate>=-10&&marginRate<=60;
   const basisComplete=basisCoveragePct>=99;
-  const costComplete=coveragePct>=95;
+  const costComplete=coveragePct>=99;
   const crossCheckOk=crossCheckPct===null||lineCostCrossCheckLines<10||crossCheckPct>=80;
   const available=basisComplete&&costComplete&&plausible&&crossCheckOk&&valuedLines>0;
   const reason=available?null:
     !basisComplete?'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99':
-    !costComplete?'COST_COVERAGE_BELOW_95':
+    !costComplete?'COST_COVERAGE_BELOW_99':
     !crossCheckOk?'COST_AMOUNT_VS_UNIT_COST_MISMATCH':
     !plausible?'AGGREGATE_MARGIN_IMPLAUSIBLE':'NO_VALUED_LINES';
 
