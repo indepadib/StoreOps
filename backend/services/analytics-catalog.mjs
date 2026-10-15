@@ -17,7 +17,7 @@ function salesUnitCost(ref={}){
 }
 
 export async function readAnalyticsCatalog(productNumbers=[]){
-  const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))].slice(0,80);
+  const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))].slice(0,240);
   if(!skus.length)return{status:'READY',items:[],diagnostics:{requested:0,resolvedNames:0,resolvedHierarchy:0,costReady:0}};
   const [refs,context]=await Promise.all([productDataMany(skus),readRetailHierarchyContext(skus)]);
   const items=skus.map(productNumber=>{
