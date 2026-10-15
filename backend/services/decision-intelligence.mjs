@@ -25,7 +25,7 @@ function compareRows(current=[],previous=[]){
   const currentTotal=current.reduce((s,x)=>s+num(x.sales),0);
   return all.sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr')).map((x,i)=>{
     const p=prev.get(x.key),previousSales=num(p?.sales),delta=round2(num(x.sales)-previousSales);
-    return{...x,rank:i+1,previousSales:round2(previousSales),deltaSales:delta,changePct:previousSales?pct(num(x.sales),previousSales):null,sharePct:currentTotal?round2(num(x.sales)/currentTotal*100):null,previousMarginValue:p?.marginValue??null,deltaMargin:x.marginValue!==null&&p?.marginValue!==null?round2(x.marginValue-p.marginValue):null}
+    return{...x,rank:i+1,previousSales:round2(previousSales),deltaSales:delta,changePct:previousSales?pct(num(x.sales),previousSales):null,sharePct:currentTotal?round2(num(x.sales)/currentTotal*100):null,previousMarginValue:p?.marginValue??null,deltaMargin:x.marginValue!=null&&p?.marginValue!=null?round2(x.marginValue-p.marginValue):null}
   })
 }
 function mergeDaily(results=[]){
