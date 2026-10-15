@@ -586,23 +586,37 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   topProducts:[...x.products.entries()].sort((a,b)=>b[1].sales-a[1].sales).slice(0,20).map(([productNumber,v])=>({productNumber,sales:round2(v.sales),units:round2(v.units)}))
  })).sort((a,b)=>b.sales-a.sales);
  const staff=[...staffMap.values()].map(x=>({staffId:x.staffId,sales:round2(x.sales),tickets:x.transactions.size,identifiedTickets:x.identifiedTransactions.size,identifiedTicketRate:x.transactions.size?round2(x.identifiedTransactions.size/x.transactions.size*100):null,identifiedSales:round2(x.identifiedSales),identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,nonLoyaltyTickets:Math.max(0,x.transactions.size-x.identifiedTransactions.size),recruitments:null,recruitmentRateNonLoyalty:null})).sort((a,b)=>b.sales-a.sales||b.tickets-a.tickets);
- const identifiedBaskets=[...identifiedBasketMap.values()],pairMap=new Map(),basketProductSales=new Map();
- let totalBasketUnits=0,totalDistinctProducts=0,singleItemBaskets=0;
+ const identifiedBaskets=[...identifiedBasketMap.values()],pairMap=new Map(),basketProductSales=new Map(),basketProductOccurrences=new Map();
+ let totalBasketUnits=0,totalDistinctProducts=0,singleItemBaskets=0,basketValueSum=0;
+ const basketValues=[];
  for(const basket of identifiedBaskets){
-  totalBasketUnits+=basket.units;const products=[...basket.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20);totalDistinctProducts+=products.length;if(products.length===1)singleItemBaskets++;
-  for(const [sku,sales] of products)basketProductSales.set(sku,(basketProductSales.get(sku)||0)+sales);
+  totalBasketUnits+=basket.units;
+  const products=[...basket.products.entries()].sort((a,b)=>b[1]-a[1]).slice(0,30);
+  totalDistinctProducts+=products.length;if(products.length===1)singleItemBaskets++;
+  const basketValue=round2(basket.sales);basketValueSum+=basketValue;basketValues.push(basketValue);
+  for(const [sku,sales] of products){
+    basketProductSales.set(sku,(basketProductSales.get(sku)||0)+sales);
+    basketProductOccurrences.set(sku,(basketProductOccurrences.get(sku)||0)+1)
+  }
   for(let i=0;i<products.length;i++)for(let j=i+1;j<products.length;j++){
     const a=products[i][0],b=products[j][0],key=a<b?`${a}|${b}`:`${b}|${a}`,cur=pairMap.get(key)||{productA:a<b?a:b,productB:a<b?b:a,tickets:0};
     cur.tickets++;pairMap.set(key,cur)
   }
  }
+ const sortedBasketValues=[...basketValues].sort((a,b)=>a-b),percentile=p=>sortedBasketValues.length?sortedBasketValues[Math.min(sortedBasketValues.length-1,Math.max(0,Math.floor((sortedBasketValues.length-1)*p)))]:null;
+ const topProductsByPenetration=[...basketProductOccurrences.entries()].map(([productNumber,tickets])=>({productNumber,tickets,sharePct:identifiedBaskets.length?round2(tickets/identifiedBaskets.length*100):null,sales:round2(basketProductSales.get(productNumber)||0)})).sort((a,b)=>b.tickets-a.tickets||b.sales-a.sales).slice(0,30);
  const basketAnalysis={
   identifiedBaskets:identifiedBaskets.length,
+  averageBasketValue:identifiedBaskets.length?round2(basketValueSum/identifiedBaskets.length):null,
+  medianBasketValue:round2(percentile(.5)),
+  p90BasketValue:round2(percentile(.9)),
   averageUnits:identifiedBaskets.length?round2(totalBasketUnits/identifiedBaskets.length):null,
   averageDistinctProducts:identifiedBaskets.length?round2(totalDistinctProducts/identifiedBaskets.length):null,
   singleItemBasketRate:identifiedBaskets.length?round2(singleItemBaskets/identifiedBaskets.length*100):null,
+  multiProductBasketRate:identifiedBaskets.length?round2((identifiedBaskets.length-singleItemBaskets)/identifiedBaskets.length*100):null,
   topProducts:[...basketProductSales.entries()].sort((a,b)=>b[1]-a[1]).slice(0,20).map(([productNumber,sales])=>({productNumber,sales:round2(sales)})),
-  topProductPairs:[...pairMap.values()].sort((a,b)=>b.tickets-a.tickets).slice(0,30).map(x=>({...x,sharePct:identifiedBaskets.length?round2(x.tickets/identifiedBaskets.length*100):null}))
+  topProductsByPenetration,
+  topProductPairs:[...pairMap.values()].sort((a,b)=>b.tickets-a.tickets).slice(0,50).map(x=>({...x,sharePct:identifiedBaskets.length?round2(x.tickets/identifiedBaskets.length*100):null}))
  };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
