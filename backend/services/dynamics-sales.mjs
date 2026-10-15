@@ -200,14 +200,24 @@ function includedRetailSaleRow(row,cfg={}){
 export function aggregateSalesRows(rows=[],cfg={}){
  const f=cfg.fields||{},sign=Number(cfg.sign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
  const directCostKind=inferTransactionCostKind(f.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
- let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost&&directCostKind==='LINE_AMOUNT',excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0;
+ let netSales=0,identifiedNetSales=0,units=0,costValue=0,costMapped=!!f.cost&&directCostKind==='LINE_AMOUNT',excludedRows=0,excludedSalesValue=0,includedRows=0,lastSaleMinute=null,untimedRows=0,rawPositiveSales=0;
+ const exclusionReasons={amount:{rows:0,sales:0},status:{rows:0,sales:0},returnNoSale:{rows:0,sales:0},taxItemGroup:{rows:0,sales:0}};
  const hourTickets=new Map();
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
   const tx=clean(r[f.transaction]),sales=retailDisplaySalesAmount(r,cfg);
+  if(sales>0&&sales<100000)rawPositiveSales+=sales;
   if(!includedRetailSaleRow(r,cfg)){
-   excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);continue;
+   excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);
+   if(!(sales>0&&sales<100000)){exclusionReasons.amount.rows++;exclusionReasons.amount.sales+=Math.abs(sales)}
+   else{
+    const status=clean(f.status?r?.[f.status]:'').toUpperCase(),noSale=clean(f.returnNoSale?r?.[f.returnNoSale]:'').toUpperCase(),tax=clean(f.taxItemGroup?r?.[f.taxItemGroup]:'').replace(/\s+/g,'').toUpperCase();
+    if(['VOIDED','CANCELLED','CANCELED'].includes(status)){exclusionReasons.status.rows++;exclusionReasons.status.sales+=Math.abs(sales)}
+    else if(['YES','Y','TRUE','1'].includes(noSale)){exclusionReasons.returnNoSale.rows++;exclusionReasons.returnNoSale.sales+=Math.abs(sales)}
+    else if(tax==='EXOCOLL'){exclusionReasons.taxItemGroup.rows++;exclusionReasons.taxItemGroup.sales+=Math.abs(sales)}
+   }
+   continue;
   }
   includedRows+=1;
   const rawQty=num(f.quantity?r[f.quantity]:0),qty=f.quantity?(rawQty===0?0:(sales===0?Math.abs(rawQty):Math.sign(sales)*Math.abs(rawQty))):0,cost=costMapped?round2(Math.abs(num(r[f.cost]))):0;
@@ -222,7 +232,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const finish=map=>[...map.values()].map(x=>{const q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>Number(v)!==0);return{key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null}}).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
  const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
- return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),reason:'OFFICIAL_RETAIL_SALE_FILTERS'}};
+ return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),rawPositiveSales:round2(rawPositiveSales),filteredSales:round2(netSales),filterGap:round2(rawPositiveSales-netSales),exclusionReasons:Object.fromEntries(Object.entries(exclusionReasons).map(([k,v])=>[k,{rows:v.rows,sales:round2(v.sales)}])),reason:'OFFICIAL_RETAIL_SALE_FILTERS'}};
 }
 
 function literalFilters(field,value){
