@@ -1315,10 +1315,16 @@
     applySectionView();
   }
 
-  function downloadCsv(filename,rows){
+  async function downloadCsv(filename,rows){
     const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\n');
     const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)
+    const file=new File([blob],filename,{type:'text/csv;charset=utf-8'});
+    // iOS/Safari is much more reliable when the native share sheet handles the file.
+    if(navigator.share&&navigator.canShare?.({files:[file]})){
+      try{await navigator.share({files:[file],title:'Retail Intelligence',text:'Export Retail Intelligence'});return{shared:true}}
+      catch(error){if(error?.name==='AbortError')return{shared:false,cancelled:true}}
+    }
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);return{shared:false}
   }
 
   function visibleTableRows(){
@@ -1347,13 +1353,13 @@
     ]
   }
 
-  function exportCsv() {
+  async function exportCsv() {
     let rows=visibleTableRows();
     if(!rows.length)rows=decisionFallbackRows();
     if(!rows.length)return toast('Aucune donnée visible à exporter');
     const scope=state.selectedStoreIds.length?state.selectedStoreIds.join('-'):'reseau';
-    downloadCsv(`retail-intelligence-${state.section}-${scope}-${state.periodStart}-${state.periodEnd}.csv`,rows);
-    toast('Export de la vue généré');
+    const result=await downloadCsv(`retail-intelligence-${state.section}-${scope}-${state.periodStart}-${state.periodEnd}.csv`,rows);
+    if(!result?.cancelled)toast(result?.shared?'Export prêt à partager':'Export de la vue généré');
   }
 
   function escapeHtml(value) {
