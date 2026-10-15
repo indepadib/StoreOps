@@ -79,11 +79,17 @@ function customerCohorts(customers=[]){
 
 
 function mergeStaff(results=[]){
- const rows=[];
+ const map=new Map();
  for(const r of results){
-  for(const s of r?.staff||[])rows.push({...s,storeId:r.storeId||null});
+  for(const s of r?.staff||[]){
+   const storeId=r.storeId||null,staffId=String(s.staffId||'').trim();if(!staffId)continue;
+   const key=`${storeId||''}|${staffId}`,cur=map.get(key)||{storeId,staffId,sales:0,tickets:0,identifiedTickets:0,identifiedSales:0,nonLoyaltyTickets:0,recruitments:0,recruitmentsKnown:false};
+   cur.sales+=num(s.sales);cur.tickets+=num(s.tickets);cur.identifiedTickets+=num(s.identifiedTickets);cur.identifiedSales+=num(s.identifiedSales);cur.nonLoyaltyTickets+=num(s.nonLoyaltyTickets);
+   if(s.recruitments!=null){cur.recruitments+=num(s.recruitments);cur.recruitmentsKnown=true}
+   map.set(key,cur)
+  }
  }
- return rows.sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
+ return[...map.values()].map(x=>({...x,identifiedTicketRate:x.tickets?round2(x.identifiedTickets/x.tickets*100):null,identifiedSalesShare:x.sales?round2(x.identifiedSales/x.sales*100):null,recruitments:x.recruitmentsKnown?x.recruitments:null,recruitmentRateNonLoyalty:x.recruitmentsKnown&&x.nonLoyaltyTickets?round2(x.recruitments/x.nonLoyaltyTickets*100):null})).sort((a,b)=>num(b.sales)-num(a.sales)||num(b.tickets)-num(a.tickets))
 }
 
 function buildPriceTierMap(products=[]){
@@ -205,7 +211,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   hierarchy,
   contributors:{negativeProducts,positiveProducts,negativeStores:[...storesComparison].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...storesComparison].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},
   cashiers:{status:cashiers.length?'READY':'UNAVAILABLE',items:cashiers,source:'SALES_RANGE_REUSE'},
-  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,averageVisitsPerCustomer:customers.length?round2(customers.reduce((s,x)=>s+num(x.tickets),0)/customers.length):null,cohorts,basketAnalysis,segments:Object.entries(customers.reduce((a,x)=>(a[x.segment]=(a[x.segment]||0)+1,a),{})).map(([segment,count])=>({segment,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),pricePreferences:Object.entries(customers.reduce((a,x)=>(a[x.pricePreference]=(a[x.pricePreference]||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customers:customers.slice(0,500)},
+  crm:{scope:'SELECTED_PERIOD_ONLY',identifiedCustomers:customers.length,identifiedSales:round2(identifiedSales),repeatCustomers,frequentCustomers,repeatRate:customers.length?round2(repeatCustomers/customers.length*100):null,averageVisitsPerCustomer:customers.length?round2(customers.reduce((s,x)=>s+num(x.tickets),0)/customers.length):null,cohorts,basketAnalysis,segments:Object.entries(customers.reduce((a,x)=>(a[x.segment]=(a[x.segment]||0)+1,a),{})).map(([segment,count])=>({segment,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),personas:Object.entries(customers.reduce((a,x)=>(a[x.persona]=(a[x.persona]||0)+1,a),{})).map(([persona,count])=>({persona,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),pricePreferences:Object.entries(customers.reduce((a,x)=>(a[x.pricePreference]=(a[x.pricePreference]||0)+1,a),{})).map(([preference,count])=>({preference,count,sharePct:customers.length?round2(count/customers.length*100):null})).sort((a,b)=>b.count-a.count),customerMergeRows:customers.slice(0,10000).map(x=>({customerAccount:x.customerAccount,sales:x.sales,units:x.units,tickets:x.tickets,activeDays:x.activeDays,firstDate:x.firstDate,lastDate:x.lastDate,storeCount:x.storeCount,distinctProducts:x.distinctProducts,favouriteWeekday:x.favouriteWeekday,favouriteHour:x.favouriteHour,pricePreference:x.pricePreference,priceMix:x.priceMix,topProducts:(x.topProducts||[]).slice(0,20)})),customers:customers.slice(0,750)},
   generatedAt:new Date().toISOString()
  }
 }
