@@ -134,7 +134,12 @@ export async function handleAnalyticsApi({ req, url, user }){
     const force=url.searchParams.get('force')==='1';
     if(!storeId)return{status:400,data:{error:'storeId requis.'}};
     if(!canAccessStore(user,storeId))return{status:403,data:{error:'Accès interdit à ce magasin.'}};
-    return{status:200,data:await readPromotionAnalytics(storeId,{businessDate,force})};
+    const cacheKey=analyticsCacheKey('promotions-v2',[storeId,businessDate]);
+    if(!force){const cached=await readAnalyticsCache(cacheKey);if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}}}
+    const data=await readPromotionAnalytics(storeId,{businessDate,force});
+    const today=new Date().toISOString().slice(0,10),ttl=businessDate>=today?900:24*3600;
+    await writeAnalyticsCache(cacheKey,'promotions-v2',data,ttl);
+    return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/wallet-range'){
