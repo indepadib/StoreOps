@@ -1,7 +1,7 @@
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''}};
+  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
@@ -508,6 +508,9 @@
     if(f.subsubfamily&&h.subsubfamily?.id!==f.subsubfamily)return false;
     if(f.ub&&h.ub?.id!==f.ub)return false;
     if(f.product&&row.key!==f.product)return false;
+    const ref=catalogItem(row.key);
+    if(f.vendor&&ref?.primaryVendorAccount!==f.vendor)return false;
+    if(f.supplyMode&&ref?.supplyMode!==f.supplyMode)return false;
     return true
   }
   function filteredProducts(){
@@ -569,7 +572,11 @@
     setOptions('#filterUb','Toutes les UB',optionRows('ub'),state.filters.ub);
     const products=(state.data?.products||[]).map(productWithCatalog).map(p=>[p.key,p.label||p.key]).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr'));
     setOptions('#filterProduct','Tous les articles',products,state.filters.product);
-    $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
+    const vendorMap=new Map();
+    for(const p of(state.data?.products||[])){const ref=catalogItem(p.key);if(ref?.primaryVendorAccount)vendorMap.set(ref.primaryVendorAccount,ref.primaryVendorAccount)}
+    setOptions('#filterVendor','Tous les fournisseurs',[...vendorMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])),state.filters.vendor);
+    if($('#filterSupplyMode'))$('#filterSupplyMode').value=state.filters.supplyMode||'';
+    $('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
     const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
     if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
@@ -727,9 +734,9 @@
     const setLevel=level=>{state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
     $('#performanceLevel')?.addEventListener('change',e=>setLevel(e.target.value));
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.addEventListener('click',()=>setLevel(btn.dataset.level)));
-    const filterMap={filterDepartment:'department',filterRayon:'rayon',filterFamily:'family',filterSubfamily:'subfamily',filterSubsubfamily:'subsubfamily',filterUb:'ub',filterProduct:'product'};
+    const filterMap={filterDepartment:'department',filterRayon:'rayon',filterFamily:'family',filterSubfamily:'subfamily',filterSubsubfamily:'subsubfamily',filterUb:'ub',filterProduct:'product',filterVendor:'vendor',filterSupplyMode:'supplyMode'};
     for(const [id,key] of Object.entries(filterMap))$('#'+id)?.addEventListener('change',e=>{state.filters[key]=e.target.value||'';renderPerformance()});
-    $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
+    $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force)});
