@@ -161,21 +161,20 @@
   }
   async function loadDecisionChunked(api,s,force=false){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
-    // The backend now chunks D365 internally and persists the complete range.
-    // Always try one full-period request first so repeated views hit one exact cache key.
-    setProgress(0,1);
-    try{
+    // Never burn the Netlify timeout budget on a known-heavy full-period request.
+    // For >15 days, go directly to 15-day analytical slices; each slice has its own
+    // persistent backend cache and can recursively split only if D365 is still slow.
+    if(maxDays<=15){
+      setProgress(0,1);
       const full=await fetchDecisionSlice(api,s,cur,cmp,force);
-      setProgress(1,1);return full
-    }catch(error){
-      const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON'||error?.code==='API_UNREACHABLE';
-      if(!retryable||maxDays<=7)throw error;
-      const blocks=Math.max(2,Math.ceil(maxDays/15)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
-      setProgress(0,blocks);
-      const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-      await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
-      return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
+      setProgress(1,1);
+      return full
     }
+    const blocks=Math.max(2,Math.ceil(maxDays/15)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
+    setProgress(0,blocks);
+    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
+    await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
+    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
   function productLabel(sku,fallback=''){
