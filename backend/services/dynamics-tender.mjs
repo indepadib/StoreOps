@@ -113,6 +113,11 @@ async function discoverPaymentSchema(){
   })();
   try{return await paymentSchemaPromise}catch(error){paymentSchemaPromise=null;throw error}
 }
+const DEFAULT_TENDER_NAMES=new Map([
+ ['1','ESPECES'],['2','CHEQUE'],['3','CB'],['4','CLIENT EN COMPTE'],['5','AUTRE'],['6','DEVISE ETRANG'],['7','BON ACHAT'],['8','CARTE CADEAU'],['9','Tender Remove/Float'],
+ ['10','CARTE FID'],['11','GLOVO'],['12','SODEXO'],['13','JUMIA'],['14','PLUXEE'],['15','TOOKEEZ'],['16','AVOIR'],['17','EQDOM'],['18','VIREMENT'],['19','CHEQUE A ECHEANCE'],
+ ['20','ACOMPTE'],['21','MOBILE PAYMENT'],['22','CB Manual'],['23','Wallet']
+]);
 async function tenderNameMap(){
   if(tenderMapPromise)return tenderMapPromise;
   tenderMapPromise=(async()=>{
@@ -144,7 +149,8 @@ async function tenderNameMap(){
   try{return await tenderMapPromise}catch(error){tenderMapPromise=null;throw error}
 }
 function configuredWalletIds(){
-  return unique(clean(process.env.D365_WALLET_TENDER_IDS||process.env.D365_WALLET_TENDER_ID).split(','));
+  const configured=unique(clean(process.env.D365_WALLET_TENDER_IDS||process.env.D365_WALLET_TENDER_ID).split(','));
+  return configured.length?configured:['23'];
 }
 function isWalletValue(value,nameMap,walletIds){
   const raw=clean(value);
@@ -174,6 +180,7 @@ function paymentKind(raw,label,nameMap,walletIds){
   if(isWalletValue(raw,nameMap,walletIds))return'WALLET';
   const text=(clean(label)+' '+clean(raw)).toLowerCase();
   if(/cash|esp[eè]ce|espece/.test(text))return'CASH';
+  if(raw==='10'||/carte\s*fid/i.test(text))return'LOYALTY_CARD';
   if(/card|carte|visa|master|cb|bank/.test(text))return'CARD';
   return'OTHER'
 }
