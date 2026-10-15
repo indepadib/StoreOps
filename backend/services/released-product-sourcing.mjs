@@ -73,8 +73,10 @@ export async function releasedProductSourcingMany(productNumbers=[]){
  }
  if(!workingItemField){for(const sku of pending)out.set(sku,{status:lastError?'ERROR':'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:lastError?null:'RELEASED_PRODUCT_NOT_FOUND',error:lastError?.message||null,code:lastError?.code||null});return out}
  const probeNameField=productNameField(probeRow),probeSupplyField=inferField(probeRow),probeVendorField=[vendorField,'PrimaryVendorAccount','VendorAccountNumber'].find(field=>field&&Object.prototype.hasOwnProperty.call(probeRow||{},field))||null,probeDimensionField=valueField(probeRow,['DefaultLedgerDimensionDisplayValue','DEFAULTLEDGERDIMENSIONDISPLAYVALUE']),probeInventoryUnit=valueField(probeRow,['InventoryUnitSymbol']),probeSalesUnit=valueField(probeRow,['SalesUnitSymbol']),probePurchaseUnit=valueField(probeRow,['PurchaseUnitSymbol']),probeSalesPrice=valueField(probeRow,['SalesPrice']),probeUnitCost=valueField(probeRow,['UnitCost']),select=[workingItemField,...Object.keys(probeRow||{}).filter(k=>[...productNameCandidates,clean(process.env.D365_RELEASED_PRODUCT_NAME_FIELD||config.dynamics.productNameField)].some(n=>n.toLowerCase()===k.toLowerCase())),probeSupplyField,probeVendorField,probeDimensionField,probeInventoryUnit,probeSalesUnit,probePurchaseUnit,probeSalesPrice,probeUnitCost,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
- for(let i=0;i<pending.length;i+=30){
-  const chunk=pending.slice(i,i+30),filters=[`(${chunk.map(sku=>`${workingItemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+ const chunks=[];for(let i=0;i<pending.length;i+=30)chunks.push(pending.slice(i,i+30));
+ let cursor=0;const workers=Math.min(Math.max(1,Number(process.env.RETAIL_ANALYTICS_PRODUCT_CONCURRENCY)||4),Math.max(1,chunks.length));
+ await Promise.all(Array.from({length:workers},async()=>{while(cursor<chunks.length){
+  const chunk=chunks[cursor++],filters=[`(${chunk.map(sku=>`${workingItemField} eq '${esc(sku)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   try{
    const payload=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:100,maxRows:1000});
    for(const row of payload.value||[]){
@@ -82,7 +84,7 @@ export async function releasedProductSourcingMany(productNumbers=[]){
     out.set(sku,cachePut(sku,{status:supplyMode?'READY':'UNMAPPED',source:`D365/${entity}`,productNumber:sku,productName:profile.productName,nameField:profile.nameField,nameQuality:profile.nameQuality,supplyMode,rawValue:profile.supplyRawValue,field:profile.supplyField,itemField:workingItemField,primaryVendorAccount:profile.primaryVendorAccount,retailScope:profile.retailScope,rayonCode:profile.rayonCode,rayonLabel:profile.rayonLabel,financialDimension:profile.financialDimension,inventoryUnit:profile.inventoryUnit,salesUnit:profile.salesUnit,purchaseUnit:profile.purchaseUnit,salesPrice:profile.salesPrice,unitCost:profile.unitCost,warehouseId:supplyMode==='WAREHOUSE'?'LVE Lakhya':null,reason:supplyMode?null:profile.supplyField?'UNRECOGNIZED_SUPPLY_MODE':'SUPPLY_MODE_FIELD_NOT_FOUND'}))
    }
   }catch(error){for(const sku of chunk)if(!out.has(sku))out.set(sku,{status:'ERROR',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,error:error.message,code:error.code||'D365_RELEASED_PRODUCT_SOURCING_FAILED'})}
- }
+ }}));
  for(const sku of pending)if(!out.has(sku))out.set(sku,cachePut(sku,{status:'UNAVAILABLE',source:`D365/${entity}`,productNumber:sku,supplyMode:null,field:null,primaryVendorAccount:null,reason:'RELEASED_PRODUCT_NOT_FOUND'}));
  return out
 }
