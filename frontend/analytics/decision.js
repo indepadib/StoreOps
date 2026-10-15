@@ -222,7 +222,7 @@
     const sales=Number(row?.sales),directValue=row?.marginValue==null?null:Number(row.marginValue),directRate=row?.marginRate==null?null:Number(row.marginRate);
     if(!Number.isFinite(directValue))return{value:null,rate:null,estimated:false,quality:'TRANSACTION_MARGIN_UNAVAILABLE'};
     const rate=Number.isFinite(directRate)?directRate:(sales?directValue/sales*100:null);
-    if(rate==null||rate>25||rate<0)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
+    if(rate==null||rate>60||rate<-10)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
     return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'}
   }
 
@@ -233,8 +233,8 @@
       for(const p of d.contributors?.negativeProducts||[])add(p.key);
       for(const p of d.contributors?.positiveProducts||[])add(p.key);
       for(const p of (d.products||[]).slice(0,750))add(p.key);
-    }else if(section==='categories'){
-      for(const p of (d.products||[]).slice(0,650))add(p.key);
+    }else if(section==='categories'||section==='suppliers'){
+      for(const p of (d.products||[]).slice(0,750))add(p.key);
     }else if(section==='crm'){
       for(const p of (d.products||[]).slice(0,650))add(p.key);
       for(const x of d.crm?.customers||[])for(const p of x.topProducts||[])add(p.productNumber);
