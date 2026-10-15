@@ -149,19 +149,19 @@
     }
   }
   async function loadDecisionChunked(api,s,force=false){
-    const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end);
-    setProgress(0,1);
-    try{
-      const full=await fetchDecisionSlice(api,s,cur,cmp,force);
-      setProgress(1,1);return full
-    }catch(error){
-      const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON';
-      if(!retryable)throw error;
-      const blocks=Math.max(2,Math.min(4,Math.ceil(Math.max(curDays,cmpDays)/15))),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
-      const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
-      await Promise.all(Array.from({length:Math.min(2,blocks)},worker));
-      return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
+    const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
+    if(maxDays<=7){
+      setProgress(0,1);
+      const single=await fetchDecisionSlice(api,s,cur,cmp,force);
+      setProgress(1,1);return single
     }
+    // D365 live reads routinely hit the 30s gateway ceiling on 15-30 day requests.
+    // Split proactively instead of wasting one guaranteed timeout before falling back.
+    const blocks=Math.max(2,Math.ceil(maxDays/7)),currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);let next=0,done=0;
+    setProgress(0,blocks);
+    const worker=async()=>{while(true){const i=next++;if(i>=blocks)return;results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);done++;setProgress(done,blocks)}};
+    await Promise.all(Array.from({length:Math.min(3,blocks)},worker));
+    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
   function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
   function productLabel(sku,fallback=''){const ref=catalogItem(sku);return ref?.productName||fallback||sku}
@@ -239,7 +239,7 @@
     }
     state.loading=true;
     if(!cached)setLoading();
-    setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/15)));
+    setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
     try{
       const fresh=await loadDecisionChunked(api,s,force);
       state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);
