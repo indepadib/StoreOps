@@ -6,6 +6,7 @@ import { readWalletBurn, readWalletBurnRange } from './dynamics-tender.mjs';
 import { readPromotionAnalytics } from './analytics-promotions.mjs';
 import { buildDecisionIntelligence } from './decision-intelligence.mjs';
 import { readAnalyticsCatalog } from './analytics-catalog.mjs';
+import { readSupplierOperations } from './analytics-suppliers.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
 
@@ -126,6 +127,15 @@ export async function handleAnalyticsApi({ req, url, user }){
     const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
     return{status:200,data:await readLoyaltyRange(stores,{startDate,endDate,includeStaff,force})};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/suppliers'){
+    const businessDate=clean(url.searchParams.get('date'))||new Date().toISOString().slice(0,10),force=url.searchParams.get('force')==='1';
+    const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
+    const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
+    const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
+    if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
+    return{status:200,data:await readSupplierOperations(stores,{businessDate,force})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/promotions'){
