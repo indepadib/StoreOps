@@ -193,7 +193,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   tasks.push({store,kind:'current',startDate,endDate});
   tasks.push({store,kind:'previous',startDate:compareStartDate,endDate:compareEndDate});
  }
- const concurrency=Math.max(2,Math.min(4,Number(process.env.RETAIL_ANALYTICS_D365_CONCURRENCY)||4));
+ const concurrency=Math.max(1,Math.min(3,Number(process.env.RETAIL_ANALYTICS_D365_CONCURRENCY)||2));
  const resolved=await mapLimit(tasks,concurrency,task=>readStoreSalesRange(task.store.id,{startDate:task.startDate,endDate:task.endDate,force}));
  const byStore=new Map(stores.map(store=>[store.id,{store,current:null,previous:null}]));
  tasks.forEach((task,i)=>{const pair=byStore.get(task.store.id);pair[task.kind]=resolved[i]});
