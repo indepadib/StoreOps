@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v22:';
+  const decisionCachePrefix='retail-intelligence:decision:v23:';
   const catalogCacheKey='retail-intelligence:catalog:v5';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -218,7 +218,7 @@
     const sales=Number(row?.sales),directValue=row?.marginValue==null?null:Number(row.marginValue),directRate=row?.marginRate==null?null:Number(row.marginRate);
     if(!Number.isFinite(directValue))return{value:null,rate:null,estimated:false,quality:'TRANSACTION_MARGIN_UNAVAILABLE'};
     const rate=Number.isFinite(directRate)?directRate:(sales?directValue/sales*100:null);
-    if(rate==null||rate>80||rate<-20)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
+    if(rate==null||rate>25||rate<0)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
     return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'}
   }
 
