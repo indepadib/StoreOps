@@ -1,6 +1,7 @@
 import{api,apiBlob}from'../api.js';
 import{app,canManageDlc,isDirector,isQualityAudit}from'../state.js';
 import{$,status,fmtDate,esc,toast}from'../ui.js';
+import{renderDlcMarkdownWorkspace}from'../dlc-markdown.js?v=2405';
 
 let cfg=null,allItems=[],productPreview=null;
 const sev=x=>x==='CRITICAL'?'danger':x==='HIGH'||x==='MEDIUM'?'warn':'ok';
@@ -24,6 +25,7 @@ export async function renderDlc(){
       ${kpi('Actions en attente',s.pendingActions||0,'lots nécessitant une action','neutral')}
       ${kpi('Recontrôles en retard',s.overdueControls||0,'contrôles à reprendre','danger')}
     </div>
+    <div id="dlcMarkdownContent"></div>
 
     ${canManageDlc()?entryPanel():`<div class="role-lock" style="margin-top:14px">Lecture seule. La saisie et le traitement DLC sont réservés au Responsable magasin, à la Qualité réseau ou à la Direction.</div>`}
 
@@ -38,6 +40,7 @@ export async function renderDlc(){
     ${isDirector()?thresholdPanel():''}
   `;
   bindDlc();
+  await renderDlcMarkdownWorkspace();
 }
 
 function kpi(label,value,sub,type){return`<div class="card ${type==='danger'?'dlc-kpi-danger':type==='warn'?'dlc-kpi-warn':''}"><div class="label">${esc(label)}</div><div class="kpi">${value}</div><div class="small muted">${esc(sub)}</div></div>`}
