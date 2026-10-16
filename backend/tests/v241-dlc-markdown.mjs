@@ -5,8 +5,8 @@ process.env.STOREOPS_DB=`/tmp/storeops-dlc-markdown-${process.pid}.db`;
 const mod=await import('../services/dlc-markdown.mjs');
 const {db}=await import('../db.mjs');
 
-const admin=db.prepare("SELECT * FROM users WHERE id='u-admin'").get();
-assert.ok(admin,'u-admin must exist in the pilot seed.');
+const admin=db.prepare("SELECT * FROM users WHERE id='u-ops'").get();
+assert.ok(admin,'u-ops Direction must exist in the pilot seed.');
 
 assert.equal(mod.markdownBarcodeContent('MD20','HS-002345'),'250HS-002345');
 assert.equal(mod.markdownBarcodeContent('MD50','HS-002456'),'221HS-002456');
