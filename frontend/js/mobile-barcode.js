@@ -309,9 +309,17 @@ async function startScanner(input,afterScan){
   activeTargetInput=input;activeAfterScan=afterScan;
   const token=scanToken;
   const host=scannerShell();host.hidden=false;setScannerMode('linear');host.querySelector('.barcode-photo-action')?.classList.remove('recommended');setScanStatus('Initialisation de la caméra…');
-  if(isAppleMobile())return startIosFallback(input,afterScan,{reason:'ios',token});
   const detector=await supportedDetector();if(token!==scanToken)return;
   if(detector)return startNativeScanner(detector,input,afterScan,token);
+  if(isAppleMobile()){
+    setScanStatus('Chargement du lecteur EAN optimisé iPhone…','switching');
+    const quaggaReady=await loadQuagga2();if(token!==scanToken)return;
+    if(quaggaReady){
+      activeCameraCandidates=[{id:null,label:'Caméra arrière automatique',virtual:true}];activeCameraIndex=0;
+      return startQuaggaFallback(input,afterScan,token);
+    }
+    return startIosFallback(input,afterScan,{reason:'ios',token});
+  }
   return startIosFallback(input,afterScan,{reason:'fallback',token});
 }
 
@@ -330,7 +338,7 @@ function addScanButton(input,afterScan){
 }
 
 function enhanceStatic(){
-  for(const cfg of STATIC_TARGETS){const input=document.querySelector(cfg.selector);if(!input)continue;addScanButton(input,()=>cfg.action&&document.querySelector(cfg.action)?.click())}
+  for(const cfg of STATIC_TARGETS){const input=document.querySelector(cfg.selector);if(!input)continue;if(['#managerScanEan','#dlcEan'].includes(cfg.selector))input.setAttribute('inputmode','text');addScanButton(input,()=>cfg.action&&document.querySelector(cfg.action)?.click())}
   document.querySelectorAll('[data-inv-ean]').forEach(input=>{addScanButton(input,()=>{const id=input.dataset.invEan;[...document.querySelectorAll('[data-add-inv-line]')].find(b=>b.dataset.addInvLine===id)?.click()})});
 }
 
@@ -344,7 +352,7 @@ function findReceiptArticle(code){
 }
 function enhanceReceipts(){
   const root=document.querySelector('#receiptsContent');if(!root||root.querySelector('#receiptMobileFinder')||!root.querySelector('.receipt-line'))return;
-  const panel=document.createElement('section');panel.id='receiptMobileFinder';panel.className='card receipt-mobile-finder';panel.innerHTML=`<div><strong>Trouver un article à réceptionner</strong><div class="small muted">Scanne le produit reçu ou saisis son EAN/code article pour aller directement à sa ligne de contrôle.</div></div><div class="receipt-finder-row"><input id="receiptFinderEan" inputmode="numeric" autocomplete="off" placeholder="EAN / code article"><button class="btn brand" id="receiptFinderGo" type="button">Trouver</button></div>`;
+  const panel=document.createElement('section');panel.id='receiptMobileFinder';panel.className='card receipt-mobile-finder';panel.innerHTML=`<div><strong>Trouver un article à réceptionner</strong><div class="small muted">Scanne le produit reçu ou saisis son EAN/code article pour aller directement à sa ligne de contrôle.</div></div><div class="receipt-finder-row"><input id="receiptFinderEan" inputmode="text" autocomplete="off" placeholder="EAN / code article"><button class="btn brand" id="receiptFinderGo" type="button">Trouver</button></div>`;
   root.prepend(panel);
   const input=panel.querySelector('#receiptFinderEan'),go=panel.querySelector('#receiptFinderGo');go.addEventListener('click',()=>findReceiptArticle(input.value));input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();findReceiptArticle(input.value)}});addScanButton(input,raw=>findReceiptArticle(raw));
 }
