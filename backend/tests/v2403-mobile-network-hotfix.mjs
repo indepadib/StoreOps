@@ -22,8 +22,8 @@ assert.match(network,/Mode de secours Réseau actif/);
 assert.match(network,/read\('\/api\/network'/);
 assert.doesNotMatch(network,/\/dashboard/,'network must avoid per-store dashboard fan-out');
 assert.match(network,/network:networkLive/);
-assert.match(app,/RELEASE_BUILD='\\d+'/,'frontend release build must remain explicit');
-assert.match(auth,/BUILD='\\d+'/,'auth bootstrap build must remain explicit');
+assert.match(app,/RELEASE_BUILD='\d+'/,'frontend release build must remain explicit');
+assert.match(auth,/BUILD='\d+'/,'auth bootstrap build must remain explicit');
 
 assert.match(network,/const c=r\.control,k=r\.control\?\.kpis\|\|\{\}/,'Réseau ne doit plus relire c avant son initialisation.');
 assert.doesNotMatch(network,/const c=r\.control,k=c\.kpis/,'La régression TDZ de la page Réseau ne doit pas revenir.');
