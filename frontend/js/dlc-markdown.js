@@ -107,6 +107,32 @@ async function printOne(id,previewData){
  const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:[created.operation.id],printerId:printer.id,idempotencyKey:'print:'+key}});
  toast(`${job.total_labels} étiquette(s) placée(s) en file d’impression.`);await reload()
 }
+function selectedRows(){
+ return [...document.querySelectorAll('[data-md-select]:checked')].map(box=>{
+  const id=box.dataset.mdSelect,card=document.querySelector(`[data-md-card="${CSS.escape(id)}"]`);
+  return{id,quantity:Number(card?.querySelector('[data-md-qty]')?.value||0),markdownCode:card?.querySelector('[data-md-code]')?.value||'',card}
+ })
+}
+function syncBulkState(){
+ const rows=selectedRows(),count=document.getElementById('mdSelectedCount'),button=document.getElementById('mdBulkPrint'),all=document.getElementById('mdSelectAll'),eligible=[...document.querySelectorAll('[data-md-select]')];
+ if(count)count.textContent=rows.length?`${rows.length} article(s) sélectionné(s)`:'0 sélection';
+ if(button)button.disabled=!rows.length;
+ if(all){all.checked=eligible.length>0&&rows.length===eligible.length;all.indeterminate=rows.length>0&&rows.length<eligible.length}
+}
+async function bulkPrint(){
+ const rows=selectedRows(),printer=activePrinter();if(!rows.length)throw new Error('Sélectionne au moins un article.');if(!printer)throw new Error('Aucune imprimante magasin configurée.');
+ const prepared=[];
+ for(const row of rows){
+  if(!Number.isInteger(row.quantity)||row.quantity<=0)throw new Error('Chaque quantité à imprimer doit être un nombre entier positif.');
+  const p=await api(`/api/dlc-markdown/${encodeURIComponent(row.id)}/preview?markdown=${encodeURIComponent(row.markdownCode)}`);
+  if(!p.printReady)throw new Error(`${workspace.recommendations.find(x=>x.id===row.id)?.productName||row.id} : prix ou profil POS non validé.`);
+  prepared.push({...row,preview:p})
+ }
+ const batchKey=crypto.randomUUID(),created=await api(`/api/stores/${app.storeId}/dlc-markdown/bulk-operations`,{method:'POST',body:{items:prepared.map((x,i)=>({dlcId:x.id,quantity:x.quantity,markdownCode:x.markdownCode,idempotencyKey:`bulk:${batchKey}:${i}`}))}});
+ const blocked=(created.operations||[]).filter(x=>x.status!=='APPROVED');if(blocked.length){toast(`${blocked.length} opération(s) attendent une approbation ; aucune impression groupée lancée.`);await reload();return}
+ const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:(created.operations||[]).map(x=>x.id),printerId:printer.id,idempotencyKey:'bulk-print:'+batchKey}});
+ toast(`Lot envoyé · ${job.total_labels} étiquette(s) pour ${prepared.length} article(s).`);await reload()
+}
 async function saveRule(){
  const scope=document.getElementById('mdRuleScope').value,value=document.getElementById('mdRuleValue').value.trim();
  await api('/api/dlc-markdown/rules',{method:'POST',body:{scopeType:scope,scopeValue:scope==='ALL'?null:value,storeId:document.getElementById('mdRuleStore').value||null,daysBeforeExpiry:Number(document.getElementById('mdRuleDays').value),markdownCode:document.getElementById('mdRuleCode').value,priority:Number(document.getElementById('mdRulePriority').value),actionMode:document.getElementById('mdRuleMode').value,alertPriority:'HIGH',active:true}});
@@ -126,6 +152,9 @@ async function savePrinter(){
 }
 function bind(){
  document.getElementById('mdRefresh')?.addEventListener('click',()=>reload().catch(e=>toast(e.message)));
+ document.querySelectorAll('[data-md-select]').forEach(x=>x.addEventListener('change',syncBulkState));
+ document.getElementById('mdSelectAll')?.addEventListener('change',e=>{document.querySelectorAll('[data-md-select]').forEach(x=>x.checked=e.target.checked);syncBulkState()});
+ document.getElementById('mdBulkPrint')?.addEventListener('click',()=>bulkPrint().catch(e=>toast(e.message)));
  document.querySelectorAll('[data-md-preview]').forEach(b=>b.addEventListener('click',()=>preview(b.dataset.mdPreview)));
  document.querySelectorAll('[data-md-code]').forEach(s=>s.addEventListener('change',()=>{const host=document.querySelector(`[data-md-preview-host="${CSS.escape(s.dataset.mdCode)}"]`);if(host)host.innerHTML=''}));
  document.querySelectorAll('[data-md-applied]').forEach(b=>b.addEventListener('click',async()=>{try{await api(`/api/dlc-markdown/operations/${encodeURIComponent(b.dataset.mdApplied)}/applied`,{method:'POST'});toast('Pose des étiquettes confirmée.');await reload()}catch(e){toast(e.message)}}));
