@@ -24,4 +24,14 @@ assert.doesNotMatch(network,/\/dashboard/,'network must avoid per-store dashboar
 assert.match(network,/network:networkLive/);
 assert.match(app,/RELEASE_BUILD='2404'/);
 assert.match(auth,/BUILD='2404'/);
+
+assert.match(network,/const c=r\.control,k=r\.control\?\.kpis\|\|\{\}/,'Réseau ne doit plus relire c avant son initialisation.');
+assert.doesNotMatch(network,/const c=r\.control,k=c\.kpis/,'La régression TDZ de la page Réseau ne doit pas revenir.');
+assert.match(barcode,/if\(detector\)return startNativeScanner/);
+assert.match(barcode,/if\(isAppleMobile\(\)\)[\s\S]{0,500}loadQuagga2/,'iPhone doit essayer le décodeur EAN linéaire immédiatement après le détecteur natif.');
+const replenishment=read('frontend/js/manager-replenishment-v2.js');
+assert.match(replenishment,/hierarchy\?\.levels\?\.rayon/,'Les ruptures doivent exploiter le libellé de rayon de la hiérarchie D365.');
+assert.match(replenishment,/Rayon à identifier/);
+assert.doesNotMatch(replenishment,/label=r\.rayonLabel\|\|'Rayon à identifier'/,'Un code rayon hérité ne doit plus être affiché comme libellé métier.');
+
 console.log('StoreOps frontend build 2404 scanner + Network self-healing hotfix: OK');
