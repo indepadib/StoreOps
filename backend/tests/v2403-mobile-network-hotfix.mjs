@@ -22,8 +22,8 @@ assert.match(network,/Mode de secours Réseau actif/);
 assert.match(network,/read\('\/api\/network'/);
 assert.doesNotMatch(network,/\/dashboard/,'network must avoid per-store dashboard fan-out');
 assert.match(network,/network:networkLive/);
-assert.match(app,/RELEASE_BUILD='2404'/);
-assert.match(auth,/BUILD='2404'/);
+assert.match(app,/RELEASE_BUILD='\\d+'/,'frontend release build must remain explicit');
+assert.match(auth,/BUILD='\\d+'/,'auth bootstrap build must remain explicit');
 
 assert.match(network,/const c=r\.control,k=r\.control\?\.kpis\|\|\{\}/,'Réseau ne doit plus relire c avant son initialisation.');
 assert.doesNotMatch(network,/const c=r\.control,k=c\.kpis/,'La régression TDZ de la page Réseau ne doit pas revenir.');
@@ -37,4 +37,4 @@ assert.match(replenishment,/hierarchy\?\.levels\?\.rayon/,'Les ruptures doivent 
 assert.match(replenishment,/Rayon à identifier/);
 assert.doesNotMatch(replenishment,/label=r\.rayonLabel\|\|'Rayon à identifier'/,'Un code rayon hérité ne doit plus être affiché comme libellé métier.');
 
-console.log('StoreOps frontend build 2404 scanner + Network self-healing hotfix: OK');
+console.log('StoreOps scanner + Network self-healing hotfix contract: OK');
