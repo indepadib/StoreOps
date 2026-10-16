@@ -3,7 +3,7 @@ import { canAccessStore, isPlatformAdmin } from './permissions.mjs';
 import { getStoreCommerceProduct } from './loss-api.mjs';
 import {
  listMarkdownRecommendations,markdownDashboard,listMarkdownRules,upsertMarkdownRule,markdownPosProfiles,validatePosProfile,
- listPrinters,upsertPrinter,operationPreview,createMarkdownOperation,approveMarkdownOperation,createPrintJob,listPrintJobs,retryPrintJob,
+ listPrinters,upsertPrinter,operationPreview,createMarkdownOperation,approveMarkdownOperation,createPrintJob,listPrintJobs,listMarkdownOperations,retryPrintJob,
  confirmLabelsApplied,listMarkdownAlerts,claimPrintJob,completePrintJob,runMarkdownMonitor
 } from './dlc-markdown.mjs';
 
@@ -23,7 +23,7 @@ export async function handleDlcMarkdownApi({req,url,user}){
  const path=url.pathname;let p;
  p=route(path,'/api/stores/:storeId/dlc-markdown');if(p&&req.method==='GET'){
   requireStore(user,p.storeId);
-  return{status:200,data:{dashboard:markdownDashboard(p.storeId),recommendations:listMarkdownRecommendations(p.storeId),alerts:listMarkdownAlerts(p.storeId),jobs:listPrintJobs(p.storeId,{limit:50}),printers:listPrinters(p.storeId),posProfiles:markdownPosProfiles()}}
+  return{status:200,data:{dashboard:markdownDashboard(p.storeId),recommendations:listMarkdownRecommendations(p.storeId),alerts:listMarkdownAlerts(p.storeId),jobs:listPrintJobs(p.storeId,{limit:50}),operations:listMarkdownOperations(p.storeId,{limit:100}),printers:listPrinters(p.storeId),posProfiles:markdownPosProfiles()}}
  }
  p=route(path,'/api/stores/:storeId/dlc-markdown/recommendations');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:listMarkdownRecommendations(p.storeId,{includeProcessed:url.searchParams.get('all')==='1'}),dashboard:markdownDashboard(p.storeId)}}}
  p=route(path,'/api/stores/:storeId/dlc-markdown/jobs');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:listPrintJobs(p.storeId,{limit:url.searchParams.get('limit')||100})}}}
