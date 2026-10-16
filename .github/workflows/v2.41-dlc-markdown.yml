@@ -1,0 +1,37 @@
+name: V2.41 DLC Markdown Operations
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  dlc-markdown:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check backend/services/dlc-markdown.mjs
+          node --check backend/services/dlc-markdown-api.mjs
+          node --check backend/server.mjs
+          node --check frontend/js/dlc-markdown.js
+          node --check frontend/js/pages/dlc.js
+          node --check frontend/js/pages/receipts.js
+          node --check frontend/js/mobile-barcode.js
+          node --check frontend/js/pages/network.js
+          node --check frontend/js/manager-replenishment-v2.js
+          node --check store-print/bridge.mjs
+          node --check backend/tests/v241-dlc-markdown.mjs
+      - name: DLC markdown workflow contract
+        run: node backend/tests/v241-dlc-markdown.mjs
+      - name: Scanner + network regression
+        run: node backend/tests/v2403-mobile-network-hotfix.mjs
+      - name: Store truth + rayon hierarchy regression
+        run: node backend/tests/v240-store-truth-glovo.mjs
