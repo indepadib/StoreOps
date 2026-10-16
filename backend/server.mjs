@@ -37,6 +37,8 @@ import { warehouseControlSnapshot } from './services/warehouse-control.mjs';
 import { handleStoreGrowthApi } from './services/store-growth-api.mjs';
 import { handleCoolSaveIntegrationApi } from './services/cool-save-integration-api.mjs';
 import { handleGlovoPartnerApi } from './services/glovo-availability.mjs';
+import { handleDlcMarkdownApi, handleDlcMarkdownInternalApi } from './services/dlc-markdown-api.mjs';
+import { registerReceiptExpiryGroups } from './services/dlc-markdown.mjs';
 
 const PORT=config.port;
 const FRONTEND=fileURLToPath(new URL('../frontend',import.meta.url));
@@ -88,6 +90,7 @@ async function api(req,res,url){
   if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:config.appVersion,authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
   const coolSaveIngress=await handleCoolSaveIntegrationApi({req,url});if(coolSaveIngress)return json(req,res,coolSaveIngress.status,coolSaveIngress.data);
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
+  const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id,permissions_profile:user.permissions_profile||null},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users WHERE active=1 ORDER BY role,name`).all():[]});
   if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
@@ -102,6 +105,7 @@ async function api(req,res,url){
   const lossExportResponse=await handleLossExportApi({req,url,user});if(lossExportResponse)return json(req,res,lossExportResponse.status,lossExportResponse.data);
   const storeSettingsResponse=await handleStoreSettingsApi({req,url,user});if(storeSettingsResponse)return json(req,res,storeSettingsResponse.status,storeSettingsResponse.data);
   const growthResponse=await handleStoreGrowthApi({req,url,user});if(growthResponse)return json(req,res,growthResponse.status,growthResponse.data);
+  const markdownResponse=await handleDlcMarkdownApi({req,url,user});if(markdownResponse)return json(req,res,markdownResponse.status,markdownResponse.data);
 
   let p;
   if(path==='/api/stores'){const rows=db.prepare(`SELECT * FROM stores WHERE active=1 ORDER BY name`).all().filter(s=>canAccessStore(user,s.id));return json(req,res,200,rows)}
