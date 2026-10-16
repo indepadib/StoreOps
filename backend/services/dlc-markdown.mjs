@@ -140,6 +140,7 @@ ensureColumn('dlc_records','source_lot_key','TEXT NULL');
 ensureColumn('dlc_records','last_physical_quantity','REAL NULL');
 ensureColumn('dlc_records','last_physical_confirmed_at','TEXT NULL');
 ensureColumn('dlc_records','last_physical_confirmed_by','TEXT NULL');
+ensureColumn('dlc_records','updated_at','TEXT NULL');
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS ux_dlc_records_source_key ON dlc_records(source_key) WHERE source_key IS NOT NULL");
 
 const seed=db.prepare("INSERT OR IGNORE INTO markdown_pos_profiles(markdown_code,discount_percent,prefix) VALUES(?,?,?)");
