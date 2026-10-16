@@ -11,8 +11,8 @@ const HTML5_QRCODE_URLS=['https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-
 const QUAGGA2_URLS=['https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js','https://unpkg.com/@ericblade/quagga2@1.12.1/dist/quagga.min.js'];
 const LINEAR_FORMAT_KEYS=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','ITF'];
 const QUAGGA_READERS=['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader'];
-const SCANNER_DOM_VERSION='2404';
-const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2404';
+const SCANNER_DOM_VERSION='2410';
+const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2410';
 
 let activeStream=null,activeFrame=null,activeHtml5=null,activeQuagga=false,quaggaDetectedHandler=null,scanBusy=false,lastDetect=0,html5Loader=null,quaggaLoader=null,activeFallbackTimer=null;
 let activeTargetInput=null,activeAfterScan=null,activeCameraCandidates=[],activeCameraIndex=0,scanToken=0;
@@ -155,6 +155,15 @@ function cameraCandidates(cameras){
   const pool=nonFront.length?nonFront:rows;
   return pool.sort((a,b)=>b._score-a._score).filter((x,i,a)=>x.id&&a.findIndex(y=>y.id===x.id)===i);
 }
+async function discoverPhysicalCameras(){
+  let probe=null;
+  try{
+    probe=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    return cameraCandidates(devices.filter(x=>x.kind==='videoinput').map(x=>({id:x.deviceId,label:x.label||'Caméra'})));
+  }catch{return[]}
+  finally{try{probe?.getTracks?.().forEach(track=>track.stop())}catch{}}
+}
 async function tuneHtml5Camera(reader){
   try{
     const video=reader?.querySelector('video'),track=video?.srcObject?.getVideoTracks?.()[0],caps=track?.getCapabilities?.()||{},advanced=[];
@@ -183,7 +192,7 @@ async function startNativeScanner(detector,input,afterScan,token){
   };
   activeFrame=requestAnimationFrame(tick);
 }
-async function startQuaggaFallback(input,afterScan,token){
+async function startQuaggaFallback(input,afterScan,token,{returnToHtml5=false}={}){
   if(token!==scanToken)return;
   if(activeFallbackTimer)clearTimeout(activeFallbackTimer);activeFallbackTimer=null;
   await shutdownHtml5();await shutdownQuagga();stopTracks();
@@ -199,7 +208,7 @@ async function startQuaggaFallback(input,afterScan,token){
   try{
     await new Promise((resolve,reject)=>window.Quagga.init({
       inputStream:{name:'StoreOpsEAN',type:'LiveStream',target:reader,constraints},
-      locator:{patchSize:'medium',halfSample:true},
+      locator:{patchSize:isAppleMobile()?'small':'medium',halfSample:!isAppleMobile()},
       decoder:{readers:QUAGGA_READERS,multiple:false},
       locate:true,
       frequency:isAppleMobile()?14:12,
@@ -214,12 +223,20 @@ async function startQuaggaFallback(input,afterScan,token){
       if(raw&&avgError<=0.35)fillScanned(input,raw,afterScan);
     };
     window.Quagga.onDetected(quaggaDetectedHandler);window.Quagga.start();activeQuagga=true;
-    setScanStatus('EAN prêt · lecture renforcée active. Le code peut être horizontal, vertical ou incliné.','ready');
-    activeFallbackTimer=setTimeout(()=>{
+    await tuneHtml5Camera(reader);
+    const nextButton=host.querySelector('[data-barcode-next-camera]');if(nextButton)nextButton.disabled=activeCameraCandidates.length<2;
+    const cameraHint=candidate?.virtual?'caméra arrière automatique':activeCameraCandidates.length>1?`objectif ${activeCameraIndex+1}/${activeCameraCandidates.length}`:'objectif arrière';
+    setScanStatus(`EAN prêt · ${cameraHint} · lecture haute précision multi-angle.`,'ready');
+    activeFallbackTimer=setTimeout(async()=>{
       if(token!==scanToken)return;
+      if(returnToHtml5){
+        setScanStatus('EAN difficile · second moteur avec changement automatique d’objectif…','switching');
+        await shutdownQuagga();
+        return startIosFallback(input,afterScan,{reason:'quagga-timeout',token});
+      }
       setScanStatus('Toujours rien ? Approche à 15–20 cm, évite le reflet, puis utilise « Photo du code » si besoin.','photo');
       host.querySelector('.barcode-photo-action')?.classList.add('recommended');
-    },9000);
+    },6000);
   }catch{
     activeQuagga=false;
     setScanStatus('La lecture live renforcée n’a pas démarré. Utilise « Photo du code » ou saisis l’EAN.','photo');
@@ -230,6 +247,7 @@ async function startHtml5Candidate(input,afterScan,token,scanMode='linear'){
   if(token!==scanToken)return;
   if(activeFallbackTimer)clearTimeout(activeFallbackTimer);
   activeFallbackTimer=null;
+  await shutdownQuagga();
   await shutdownHtml5();
   if(token!==scanToken)return;
   const host=scannerShell(),video=host.querySelector('#storeopsBarcodeVideo'),reader=host.querySelector('#storeopsHtml5Reader');video.hidden=true;reader.hidden=false;host.hidden=false;setScannerMode(scanMode);
@@ -272,7 +290,7 @@ async function startHtml5Candidate(input,afterScan,token,scanMode='linear'){
 
 async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={}){
   if(token!==scanToken)return;
-  setScanStatus(reason==='native-timeout'?'Passage au décodeur EAN renforcé…':'Chargement du décodeur EAN optimisé iPhone…','switching');
+  setScanStatus(reason==='native-timeout'?'Passage au décodeur EAN renforcé…':reason==='quagga-timeout'?'Second moteur EAN · sélection de l’objectif arrière…':'Chargement du décodeur EAN optimisé iPhone…','switching');
   const loaded=await loadHtml5Qrcode();if(token!==scanToken)return;
   if(!loaded){setScanStatus('Le moteur live n’a pas pu se charger. Utilise « Photo du code » ou saisis l’EAN.','photo');scannerShell().querySelector('.barcode-photo-action')?.classList.add('recommended');return}
   let physicalCameras=[];
@@ -312,12 +330,10 @@ async function startScanner(input,afterScan){
   const detector=await supportedDetector();if(token!==scanToken)return;
   if(detector)return startNativeScanner(detector,input,afterScan,token);
   if(isAppleMobile()){
-    setScanStatus('Chargement du lecteur EAN optimisé iPhone…','switching');
-    const quaggaReady=await loadQuagga2();if(token!==scanToken)return;
-    if(quaggaReady){
-      activeCameraCandidates=[{id:null,label:'Caméra arrière automatique',virtual:true}];activeCameraIndex=0;
-      return startQuaggaFallback(input,afterScan,token);
-    }
+    setScanStatus('Préparation de l’objectif arrière et du lecteur EAN iPhone…','switching');
+    const [quaggaReady,physicalCameras]=await Promise.all([loadQuagga2(),discoverPhysicalCameras()]);if(token!==scanToken)return;
+    activeCameraCandidates=physicalCameras.length?physicalCameras:[{id:null,label:'Caméra arrière automatique',virtual:true}];activeCameraIndex=0;
+    if(quaggaReady)return startQuaggaFallback(input,afterScan,token,{returnToHtml5:true});
     return startIosFallback(input,afterScan,{reason:'ios',token});
   }
   return startIosFallback(input,afterScan,{reason:'fallback',token});
