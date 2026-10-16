@@ -7,6 +7,7 @@ const round=(v,d=2)=>{const p=10**d;return Math.round((Number(v)+Number.EPSILON)
 const isDirector=user=>!!user&&(user.role==='ops_director'||user.permissions_profile==='platform_admin'||user.id==='u-admin');
 const isQuality=user=>!!user&&user.role==='employee'&&user.permissions_profile==='quality_audit';
 const nowIso=()=>new Date().toISOString();
+const adminAudit=({storeId=null,userId=null,action,entityType,entityId,details={}})=>db.prepare('INSERT INTO dlc_markdown_admin_audit(store_id,user_id,action,entity_type,entity_id,details_json) VALUES(?,?,?,?,?,?)').run(storeId||null,userId||null,action,entityType,entityId,JSON.stringify(details));
 
 db.exec([
 "CREATE TABLE IF NOT EXISTS dlc_markdown_rules(",
@@ -126,7 +127,17 @@ db.exec([
 " last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,",
 " resolved_at TEXT NULL",
 ");",
-"CREATE INDEX IF NOT EXISTS ix_dlc_markdown_alerts_store ON dlc_markdown_alerts(store_id,status,priority);"
+"CREATE INDEX IF NOT EXISTS ix_dlc_markdown_alerts_store ON dlc_markdown_alerts(store_id,status,priority);",
+"CREATE TABLE IF NOT EXISTS dlc_markdown_admin_audit(",
+" id INTEGER PRIMARY KEY AUTOINCREMENT,",
+" store_id TEXT NULL REFERENCES stores(id),",
+" user_id TEXT NULL REFERENCES users(id),",
+" action TEXT NOT NULL,",
+" entity_type TEXT NOT NULL,",
+" entity_id TEXT NOT NULL,",
+" details_json TEXT NULL,",
+" created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP",
+");"
 ].join('\n'));
 
 const ensureColumn=(table,column,definition)=>{
@@ -206,7 +217,7 @@ export function upsertMarkdownRule({id=null,user,scopeType='ALL',scopeValue=null
   db.prepare("INSERT INTO dlc_markdown_rules(id,scope_type,scope_value,store_id,days_before_expiry,markdown_code,priority,action_mode,alert_priority,active,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)")
     .run(rid,scope,scope==='ALL'?null:clean(scopeValue),clean(storeId)||null,days,code,Number(priority)||0,mode,clean(alertPriority).toUpperCase()||'HIGH',active?1:0,user?.id||null,user?.id||null);
  }
- audit({storeId:clean(storeId)||null,userId:user?.id,action:'DLC_MARKDOWN_RULE_SAVED',entityType:'DLC_MARKDOWN_RULE',entityId:rid,details:{scope,scopeValue,days,code,mode,priority}});
+ const auditPayload={storeId:clean(storeId)||null,userId:user?.id,action:'DLC_MARKDOWN_RULE_SAVED',entityType:'DLC_MARKDOWN_RULE',entityId:rid,details:{scope,scopeValue,days,code,mode,priority}};if(auditPayload.storeId)audit(auditPayload);else adminAudit(auditPayload);
  return db.prepare('SELECT * FROM dlc_markdown_rules WHERE id=?').get(rid);
 }
 
@@ -221,7 +232,7 @@ export function validatePosProfile({markdownCode,user,symbology,roundingDecimals
  if(!clean(evidenceNote))throw Object.assign(new Error('Une note de preuve du test caisse est obligatoire.'),{status:400});
  db.prepare("UPDATE markdown_pos_profiles SET symbology=?,rounding_decimals=?,validation_state='VALIDATED',validated_by=?,validated_at=CURRENT_TIMESTAMP,evidence_note=?,updated_at=CURRENT_TIMESTAMP WHERE markdown_code=?")
   .run(sym,Math.max(0,Math.min(3,Number(roundingDecimals)||0)),user.id,clean(evidenceNote),code);
- audit({storeId:null,userId:user.id,action:'MARKDOWN_POS_PROFILE_VALIDATED',entityType:'MARKDOWN_POS_PROFILE',entityId:code,details:{symbology:sym,evidenceNote:clean(evidenceNote)}});
+ adminAudit({userId:user.id,action:'MARKDOWN_POS_PROFILE_VALIDATED',entityType:'MARKDOWN_POS_PROFILE',entityId:code,details:{symbology:sym,evidenceNote:clean(evidenceNote)}});
  return db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(code);
 }
 
