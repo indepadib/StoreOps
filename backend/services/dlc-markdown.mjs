@@ -367,6 +367,9 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
 export function listPrintJobs(storeId,{limit=100}={}){
  return db.prepare("SELECT j.*,p.name printer_name FROM label_print_jobs j JOIN store_label_printers p ON p.id=j.printer_id WHERE j.store_id=? ORDER BY j.created_at DESC LIMIT ?").all(storeId,Math.max(1,Math.min(500,Number(limit)||100)));
 }
+export function listMarkdownOperations(storeId,{limit=200}={}){
+ return db.prepare("SELECT o.*,d.product_name,d.product_number,d.ean,d.expiry_date,d.lot_ref,u.name created_by_name FROM dlc_markdown_operations o JOIN dlc_records d ON d.id=o.dlc_id LEFT JOIN users u ON u.id=o.created_by WHERE o.store_id=? ORDER BY o.created_at DESC LIMIT ?").all(storeId,Math.max(1,Math.min(1000,Number(limit)||200)));
+}
 export function retryPrintJob({jobId,user}={}){
  const job=db.prepare('SELECT * FROM label_print_jobs WHERE id=?').get(jobId);if(!job)throw Object.assign(new Error('Job introuvable.'),{status:404});
  if(!['FAILED','PENDING'].includes(job.status))throw Object.assign(new Error('Ce job ne peut pas être relancé dans son état actuel.'),{status:409});
