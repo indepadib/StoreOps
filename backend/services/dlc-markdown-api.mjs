@@ -42,6 +42,23 @@ export async function handleDlcMarkdownApi({req,url,user}){
   requireStore(user,record.store_id);const live=await currentPrice(record.store_id,record),preview=operationPreview({dlcId:p.dlcId,markdownCode:url.searchParams.get('markdown')||null,originalPrice:live.price});
   return{status:200,data:{...preview,priceSource:live.price==null?'UNAVAILABLE':'D365_COMMERCE',priceError:live.error,product:live.product?{productNumber:live.product.productNumber,ean:live.product.ean,name:live.product.name,retailUnit:live.product.retailUnit}:null}}
  }
+ p=route(path,'/api/stores/:storeId/dlc-markdown/bulk-operations');if(p&&req.method==='POST'){
+  requireExecute(user,p.storeId);const b=await body(req),items=Array.isArray(b.items)?b.items:[];
+  if(!items.length)return{status:400,data:{error:'Aucune opération sélectionnée.'}};
+  if(items.length>100)return{status:400,data:{error:'100 lignes maximum par lot.'}};
+  const prepared=[];
+  for(const item of items){
+   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(clean(item.dlcId));if(!record)return{status:404,data:{error:'Lot DLC introuvable : '+clean(item.dlcId)}};
+   if(record.store_id!==p.storeId)return{status:409,data:{error:'Le lot contient un article d’un autre magasin.'}};
+   const live=await currentPrice(p.storeId,record);prepared.push({item,live});
+  }
+  const operations=[];db.exec('BEGIN');
+  try{
+   for(const x of prepared)operations.push(createMarkdownOperation({dlcId:x.item.dlcId,user,quantity:x.item.quantity,markdownCode:x.item.markdownCode,originalPrice:x.live.price,idempotencyKey:x.item.idempotencyKey}));
+   db.exec('COMMIT');
+  }catch(error){db.exec('ROLLBACK');throw error}
+  return{status:201,data:{operations,priceSources:prepared.map(x=>({dlcId:x.item.dlcId,priceSource:x.live.price==null?'UNAVAILABLE':'D365_COMMERCE',priceError:x.live.error}))}}
+ }
  p=route(path,'/api/dlc-markdown/:dlcId/operations');if(p&&req.method==='POST'){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(p.dlcId);if(!record)return{status:404,data:{error:'Lot DLC introuvable'}};
   requireExecute(user,record.store_id);const b=await body(req),live=await currentPrice(record.store_id,record),op=createMarkdownOperation({dlcId:p.dlcId,user,quantity:b.quantity,markdownCode:b.markdownCode,originalPrice:live.price,idempotencyKey:b.idempotencyKey});
