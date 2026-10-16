@@ -27,6 +27,9 @@ assert.match(auth,/BUILD='\\d+'/,'auth bootstrap build must remain explicit');
 
 assert.match(network,/const c=r\.control,k=r\.control\?\.kpis\|\|\{\}/,'Réseau ne doit plus relire c avant son initialisation.');
 assert.doesNotMatch(network,/const c=r\.control,k=c\.kpis/,'La régression TDZ de la page Réseau ne doit pas revenir.');
+assert.match(network,/function safeAssessNetworkStore\(row\)/,'Une ligne magasin invalide ne doit plus faire tomber toute la page Réseau.');
+assert.match(network,/CA à risque estimé \/ 24 h/,'Réseau doit rendre le risque de CA actionnable.');
+assert.match(network,/Stocks fantômes/,'Réseau doit remonter les stocks système suspects.');
 assert.match(barcode,/if\(detector\)return startNativeScanner/);
 assert.match(barcode,/if\(isAppleMobile\(\)\)[\s\S]{0,700}Promise\.all\(\[loadQuagga2\(\),discoverPhysicalCameras\(\)\]\)/,'iPhone doit préparer le décodeur EAN et sélectionner un objectif arrière physique.');
 assert.match(barcode,/patchSize:isAppleMobile\(\)\?'small':'medium'/,'iPhone doit conserver les détails des petits EAN.');
