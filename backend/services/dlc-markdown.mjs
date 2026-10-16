@@ -351,6 +351,8 @@ function labelZpl(op,record,profile,printer){
 }
 export function createPrintJob({storeId,user,operationIds=[],printerId=null,idempotencyKey=null}={}){
  const ids=[...new Set((operationIds||[]).map(clean).filter(Boolean))];if(!ids.length)throw Object.assign(new Error('Aucune opération à imprimer.'),{status:400});
+ const key=clean(idempotencyKey)||['print',storeId,...[...ids].sort()].join('|'),existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);
+ if(existing){if(existing.store_id!==storeId)throw Object.assign(new Error('Clé d’idempotence déjà utilisée pour un autre magasin.'),{status:409,code:'PRINT_IDEMPOTENCY_STORE_MISMATCH'});return existing}
  const ops=ids.map(id=>db.prepare('SELECT * FROM dlc_markdown_operations WHERE id=?').get(id));
  if(ops.some(x=>!x))throw Object.assign(new Error('Une opération markdown est introuvable.'),{status:404});
  if(ops.some(x=>x.store_id!==storeId))throw Object.assign(new Error('Un lot d’impression ne peut pas mélanger plusieurs magasins.'),{status:409});
@@ -358,7 +360,6 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
  if(ops.some(x=>x.price_validation_state!=='VALIDATED_PROFILE_FROM_D365_BASE'||x.barcode_validation_state!=='VALIDATED'||x.final_price===null))throw Object.assign(new Error('Impression bloquée : prix ou code-barres non validé contre le profil POS.'),{status:409,code:'MARKDOWN_PRINT_VALIDATION_REQUIRED'});
  const printer=printerId?db.prepare('SELECT * FROM store_label_printers WHERE id=? AND store_id=? AND active=1').get(printerId,storeId):db.prepare('SELECT * FROM store_label_printers WHERE store_id=? AND active=1 ORDER BY is_default DESC,created_at LIMIT 1').get(storeId);
  if(!printer)throw Object.assign(new Error('Aucune imprimante d’étiquettes active n’est configurée pour ce magasin.'),{status:409,code:'LABEL_PRINTER_NOT_CONFIGURED'});
- const key=clean(idempotencyKey)||['print',storeId,...ids.sort()].join('|'),existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);if(existing)return existing;
  const chunks=[],items=[];for(const op of ops){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(op.dlc_id),profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(op.markdown_code),quantity=Math.floor(Number(op.quantity));
   if(quantity<=0||Math.abs(quantity-Number(op.quantity))>1e-6)throw Object.assign(new Error('Le pilote étiquette actuel imprime des unités entières uniquement. Vérifier l’unité du lot.'),{status:409,code:'LABEL_INTEGER_QUANTITY_REQUIRED'});
