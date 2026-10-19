@@ -789,7 +789,12 @@
     <div class="basket-dna-caption">Lecture sur les tickets identifiés de la période. Les quantités physiques restent séparées par unité (KG, PC, L) et ne sont jamais additionnées entre elles.</div>
     <div class="basket-top-products">${penetrated.map((p,i)=>`<div><span>#${i+1} ${api.escapeHtml(productLabel(p.productNumber,p.productNumber))}</span><strong>${api.percent(p.sharePct)} des paniers · ${api.money(p.sales,true)}</strong></div>`).join('')||'<div class="table-loading">Pénétration panier en cours de consolidation.</div>'}</div>`;
 
-    const pairs=(ba.topProductPairs||[]).filter(p=>!isCheckoutBagSku(p.productA)&&!isCheckoutBagSku(p.productB)).slice(0,8);
+    const affinityAll=(ba.topProductPairs||[]).filter(p=>!isCheckoutBagSku(p.productA)&&!isCheckoutBagSku(p.productB)),affinityDeps=new Map(),affinityRayons=new Map();
+    for(const pair of affinityAll)for(const sku of [pair.productA,pair.productB]){const h=catalogItem(sku)?.hierarchy||{},dep=h.department,ray=h.rayon;if(dep?.id)affinityDeps.set(dep.id,dep.label||dep.id);if(ray?.id&&(!state.affinity.department||dep?.id===state.affinity.department))affinityRayons.set(ray.id,ray.label||ray.id)}
+    setOptions('#affinityDepartmentFilter','Tous les départements',[...affinityDeps.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr')),state.affinity.department);
+    setOptions('#affinityRayonFilter','Tous les rayons',[...affinityRayons.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr')),state.affinity.rayon);
+    const affinityMatch=sku=>{const h=catalogItem(sku)?.hierarchy||{};return(!state.affinity.department||h.department?.id===state.affinity.department)&&(!state.affinity.rayon||h.rayon?.id===state.affinity.rayon)};
+    const pairs=affinityAll.filter(p=>affinityMatch(p.productA)||affinityMatch(p.productB)).slice(0,12);
     $('#crmAffinities').innerHTML=pairs.length?pairs.map(p=>`<div class="affinity-row"><div><strong>${api.escapeHtml(productLabel(p.productA,p.productA))}</strong><span>+</span><strong>${api.escapeHtml(productLabel(p.productB,p.productB))}</strong></div><small>${api.number(p.tickets)} panier(s) · ${api.percent(p.sharePct)}</small></div>`).join(''):`<div class="table-loading">${state.catalogLoading?'Calcul des affinités après enrichissement des libellés…':'Pas assez de paniers multi-produits hors sacs caisse pour calculer les affinités.'}</div>`;
 
     const catPanel=$('#crmCategoryPreferences'),visitPanel=$('#crmVisitPatterns');
