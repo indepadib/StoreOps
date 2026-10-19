@@ -206,17 +206,25 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
   const costComplete=coveragePct>=99;
   const crossCheckOk=crossCheckPct===null||lineCostCrossCheckLines<10||crossCheckPct>=80;
   const fallbackOk=productMasterFallbackPct<=Math.max(0,Number(maxProductMasterFallbackPct)||0);
-  const available=basisComplete&&costComplete&&plausible&&crossCheckOk&&fallbackOk&&valuedLines>0;
-  const reason=available?null:
+  const coreReady=basisComplete&&costComplete&&plausible&&crossCheckOk&&valuedLines>0;
+  // A product-master UnitCost fallback is not historical transaction cost. When it
+  // exceeds the certified threshold we may still expose the mathematically complete
+  // result as ESTIMATED, but never label it as a validated historical margin.
+  // The caller applies the tighter business sanity range before publication.
+  const estimated=coreReady&&!fallbackOk&&productMasterFallbackLines>0;
+  const validated=coreReady&&fallbackOk;
+  const available=validated||estimated;
+  const reason=validated?null:
+    estimated?'PRODUCT_MASTER_COST_FALLBACK_ESTIMATE':
     !basisComplete?'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99':
     !costComplete?'COST_COVERAGE_BELOW_99':
     !crossCheckOk?'COST_AMOUNT_VS_UNIT_COST_MISMATCH':
-    !fallbackOk?'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT':
     !plausible?'AGGREGATE_MARGIN_IMPLAUSIBLE':'NO_VALUED_LINES';
 
   return{
-    status:available?'VALIDATED':'UNVALIDATED',
+    status:validated?'VALIDATED':estimated?'ESTIMATED':'UNVALIDATED',
     available,
+    estimated,
     reason,
     method:costKind==='UNIT_COST_INVENTORY'?'TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY':fallbackUnitCostLines?'TRANSACTION_COST_AMOUNT_WITH_UNIT_COST_FALLBACK':'TRANSACTION_LINE_COST_AMOUNT',
     costKind,
