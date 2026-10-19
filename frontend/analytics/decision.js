@@ -842,6 +842,11 @@
     $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
+    $('#hourlyDepartmentFilter')?.addEventListener('change',e=>{state.hourly.department=e.target.value||'';state.hourly.rayon='';state.hourly.product='';renderHourlyIntelligence()});
+    $('#hourlyRayonFilter')?.addEventListener('change',e=>{state.hourly.rayon=e.target.value||'';state.hourly.product='';renderHourlyIntelligence()});
+    $('#hourlyProductFilter')?.addEventListener('change',e=>{state.hourly.product=e.target.value||'';renderHourlyIntelligence()});
+    $('#affinityDepartmentFilter')?.addEventListener('change',e=>{state.affinity.department=e.target.value||'';state.affinity.rayon='';renderCrm()});
+    $('#affinityRayonFilter')?.addEventListener('change',e=>{state.affinity.rayon=e.target.value||'';renderCrm()});
     $('#supplierModeFilter')?.addEventListener('change',e=>{state.supplierMode=e.target.value||'';renderSupplier()});
     $('#supplierSearch')?.addEventListener('input',e=>{state.supplierSearch=e.target.value||'';renderSupplier()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force);if(sectionState()?.section==='suppliers')loadSupplierOps(!!e.detail?.force)});
