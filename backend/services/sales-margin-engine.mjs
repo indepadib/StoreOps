@@ -98,11 +98,11 @@ export function selectTransactionCostSemantics({lineAmountEval=null,unitCostEval
   return{status:'UNVALIDATED',selected:null,evaluation:null,reason:'NO_COST_MODEL_PASSES_BUSINESS_SANITY'};
 }
 
-export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,productRefs=new Map(),costKind='UNKNOWN'}={}){
+export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,productRefs=new Map(),costKind='UNKNOWN',maxProductMasterFallbackPct=5}={}){
   const list=Array.isArray(rows)?rows:[];
   const byProduct=new Map(),byDate=new Map();
   let totalDisplaySales=0,basisCoveredDisplaySales=0,totalMarginSales=0,valuedMarginSales=0,totalCost=0;
-  let eligibleLines=0,basisLines=0,valuedLines=0,unknownUnitLines=0,missingCostLines=0,missingProductLines=0,implausibleLines=0,weightedConversions=0,fallbackUnitCostLines=0,basisMissingLines=0;
+  let eligibleLines=0,basisLines=0,valuedLines=0,unknownUnitLines=0,missingCostLines=0,missingProductLines=0,implausibleLines=0,weightedConversions=0,fallbackUnitCostLines=0,productMasterFallbackLines=0,productMasterFallbackMarginSales=0,basisMissingLines=0;
   let lineCostCrossCheckLines=0,lineCostCrossCheckAgree=0;
   const examples=[],basisSources=new Set();
 
@@ -122,7 +122,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     if(basisReady){basisLines++;basisCoveredDisplaySales+=basis.displaySales;totalMarginSales+=basis.marginSales;basisSources.add(basis.source)}
     else basisMissingLines++;
 
-    let lineCost=null,converted=false,reason=basisReady?null:basis.status,saleUnit=null,costUnit=null,conversionFactor=null,usedFallback=false;
+    let lineCost=null,converted=false,reason=basisReady?null:basis.status,saleUnit=null,costUnit=null,conversionFactor=null,usedFallback=false,usedProductMasterFallback=false;
     const computeUnitAwareCost=(unitPrice)=>{
       const ref=product?productRefs.get(product):null;
       if(!product){missingProductLines++;return{status:'PRODUCT_MISSING',total:null}}
@@ -153,8 +153,14 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
           if(alt.status==='READY')lineCost=alt.total;else reason=alt.status
         }else{missingCostLines++;reason='COST_MISSING'}
       }else{
-        if(rawCost===null||rawCost===0){missingCostLines++;reason='COST_MISSING'}
-        else{
+        if(rawCost===null||rawCost===0){
+          const ref=product?productRefs.get(product):null,masterCost=finite(ref?.unitCost);
+          if(masterCost!==null&&masterCost>0){
+            const alt=computeUnitAwareCost(masterCost);
+            if(alt.status==='READY'){lineCost=alt.total;usedProductMasterFallback=true;productMasterFallbackLines++}
+            else{missingCostLines++;reason=alt.status}
+          }else{missingCostLines++;reason='COST_MISSING'}
+        }else{
           const alt=computeUnitAwareCost(rawCost);
           if(alt.status==='READY')lineCost=alt.total;else reason=alt.status
         }
@@ -173,13 +179,13 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
       valuedMarginSales+=basis.marginSales;
       totalCost+=lineCost;
       valuedLines++;
-      if(converted)weightedConversions++
+      if(converted)weightedConversions++;if(usedProductMasterFallback)productMasterFallbackMarginSales+=basis.marginSales
     }
 
-    if(examples.length<30&&(!valued||converted||usedFallback)){
+    if(examples.length<30&&(!valued||converted||usedFallback||usedProductMasterFallback)){
       examples.push({
         product,displaySales:round2(basis.displaySales),marginSales:round2(basis.marginSales),salesBasis:basis.source||null,taxAmount:round2(basis.taxAmount),
-        quantity:qty,saleUnit:saleUnit||null,costFieldValue:rawCost,fallbackCostFieldValue:rawFallbackCost,usedFallback,costUnit:costUnit||null,
+        quantity:qty,saleUnit:saleUnit||null,costFieldValue:rawCost,fallbackCostFieldValue:rawFallbackCost,usedFallback,usedProductMasterFallback,costUnit:costUnit||null,
         conversionFactor,computedCost:round2(lineCost),valued,reason
       })
     }
@@ -193,16 +199,19 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
   const marginValue=valuedMarginSales?valuedMarginSales-totalCost:null;
   const marginRate=valuedMarginSales?marginValue/valuedMarginSales*100:null;
   const crossCheckPct=lineCostCrossCheckLines?lineCostCrossCheckAgree/lineCostCrossCheckLines*100:null;
+  const productMasterFallbackPct=valuedMarginSales?productMasterFallbackMarginSales/valuedMarginSales*100:0;
 
   const plausible=marginRate!==null&&marginRate>=-10&&marginRate<=60;
   const basisComplete=basisCoveragePct>=99;
   const costComplete=coveragePct>=99;
   const crossCheckOk=crossCheckPct===null||lineCostCrossCheckLines<10||crossCheckPct>=80;
-  const available=basisComplete&&costComplete&&plausible&&crossCheckOk&&valuedLines>0;
+  const fallbackOk=productMasterFallbackPct<=Math.max(0,Number(maxProductMasterFallbackPct)||0);
+  const available=basisComplete&&costComplete&&plausible&&crossCheckOk&&fallbackOk&&valuedLines>0;
   const reason=available?null:
     !basisComplete?'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99':
     !costComplete?'COST_COVERAGE_BELOW_99':
     !crossCheckOk?'COST_AMOUNT_VS_UNIT_COST_MISMATCH':
+    !fallbackOk?'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT':
     !plausible?'AGGREGATE_MARGIN_IMPLAUSIBLE':'NO_VALUED_LINES';
 
   return{
@@ -224,7 +233,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     marginRate:available?round2(marginRate):null,
     diagnosticMarginValue:round2(marginValue),
     diagnosticMarginRate:round2(marginRate),
-    eligibleLines,basisLines,basisMissingLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,fallbackUnitCostLines,
+    eligibleLines,basisLines,basisMissingLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,fallbackUnitCostLines,productMasterFallbackLines,productMasterFallbackPct:round2(productMasterFallbackPct),
     lineCostCrossCheckLines,lineCostCrossCheckAgree,costCrossCheckPct:round2(crossCheckPct),
     byProduct:bucketPublic(byProduct),
     byDate:bucketPublic(byDate),
