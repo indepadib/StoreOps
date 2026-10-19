@@ -754,10 +754,10 @@
       ['Top 10 clients',api.percent(top10),'part du CA identifié portée par les 10 premiers clients affichés']
     ].map(([l,v,s])=>`<div class="crm-kpi"><small>${l}</small><strong>${v}</strong><span>${s}</span></div>`).join('');
 
-    const prefLabels={VALUE:'Plutôt entrée de gamme',CORE:'Plutôt cœur de gamme',PREMIUM:'Plutôt premium',MIXED:'Mix prix',UNKNOWN:'Non classé'},derivedPrefs=clientPricePreferences(analysisCustomers),prefs=(derivedPrefs.rows||[]).some(x=>x.preference!=='UNKNOWN'&&x.count>0)?derivedPrefs.rows:(crm.pricePreferences||[]);
+    const prefLabels={VALUE:'Plutôt entrée de gamme',CORE:'Plutôt cœur de gamme',PREMIUM:'Plutôt premium',MIXED:'Mix prix',INSUFFICIENT_BASIS:'Base de comparaison insuffisante'},derivedPrefs=clientPricePreferences(analysisCustomers),prefs=derivedPrefs.rows||[];
     const prefPanel=$('#crmPricePreference');
     if(prefPanel){
-      const visible=prefs.filter(x=>x.preference!=='UNKNOWN');
+      const visible=prefs.filter(x=>x.count>0);
       prefPanel.innerHTML=visible.length?visible.map(x=>`<div class="price-pref-row"><div><strong>${prefLabels[x.preference]||x.preference}</strong><span>${api.number(x.count)} client(s)</span></div><div class="price-pref-track"><span style="width:${Math.min(100,Number(x.sharePct||0))}%"></span></div><b>${api.percent(x.sharePct)}</b></div>`).join(''):`<div class="table-loading">Position prix N/A : couverture insuffisante pour une classification fiable.${state.catalogLoading?' Les libellés / familles continuent de s’enrichir en arrière-plan.':''}</div>`
     }
     const insightPanel=$('#crmInsights');
@@ -822,7 +822,7 @@
     body.innerHTML=customers.slice(0,500).map(x=>{const recency=x.lastDate&&periodEnd?Math.max(0,Math.round((Date.parse(periodEnd+'T12:00:00Z')-Date.parse(x.lastDate+'T12:00:00Z'))/86400000)):null,habit=[x.favouriteWeekday,x.favouriteHour!=null?`${String(x.favouriteHour).padStart(2,'0')}h`:null].filter(Boolean).join(' · '),top=(x.topProducts||[]).slice(0,3).map(p=>productLabel(p.productNumber,p.productNumber)).join(', ');return`<tr>
       <td><div class="element-cell"><strong>${api.escapeHtml(x.customerAccount)}</strong><span>${api.percent(x.shareIdentifiedSalesPct)} du CA identifié</span></div></td>
       <td><span class="persona-pill ${x.persona||''}">${api.escapeHtml(personaLabels[x.persona]||x.persona||'N/A')}</span></td>
-      <td><span class="price-pill ${derivedPrefs.byCustomer.get(x.customerAccount)||x.pricePreference||'UNKNOWN'}">${api.escapeHtml(prefLabels[derivedPrefs.byCustomer.get(x.customerAccount)||x.pricePreference]||'Non classé')}</span></td>
+      <td><span class="price-pill ${derivedPrefs.byCustomer.get(x.customerAccount)||x.pricePreference||'INSUFFICIENT_BASIS'}">${api.escapeHtml(prefLabels[derivedPrefs.byCustomer.get(x.customerAccount)||x.pricePreference]||'Base insuffisante')}</span></td>
       <td><span class="segment-pill ${x.segment}">${api.escapeHtml(segmentLabels[x.segment]||x.segment)}</span></td>
       <td>${api.money(x.sales,true)}</td><td>${api.number(x.tickets)}</td><td>${api.money(x.averageBasket)}</td><td>${api.number(x.distinctProducts)}</td><td>${api.number(x.activeDays)}</td>
       <td>${api.escapeHtml(x.lastDate||'N/A')}${recency!=null?` · ${recency}j`:''}</td><td>${api.escapeHtml(habit||'N/A')}</td><td>${api.escapeHtml(top||'N/A')}</td></tr>`}).join('')
