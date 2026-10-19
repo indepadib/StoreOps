@@ -85,11 +85,11 @@ export async function handleAnalyticsApi({ req, url, user }){
     const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
     if(!products.length)return{status:400,data:{error:'products requis.'}};
     if(products.length>240)return{status:400,data:{error:'240 articles maximum par requête.'}};
-    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v7',sorted);
+    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v8',sorted);
     const cached=await readAnalyticsCache(cacheKey);
     if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     const data=await readAnalyticsCatalog(sorted);
-    await writeAnalyticsCache(cacheKey,'catalog-v7',data,7*24*3600);
+    await writeAnalyticsCache(cacheKey,'catalog-v8',data,7*24*3600);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
@@ -108,14 +108,14 @@ export async function handleAnalyticsApi({ req, url, user }){
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins demandés sont interdits ou inconnus.'}};
     if(!requestedIds.length&&requestedStore!=='ALL'&&requestedStore!=='MULTI'&&!stores.length)return{status:403,data:{error:'Accès interdit à ce magasin.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},comparison:{startDate:compareStartDate,endDate:compareEndDate},coverage:{storesRequested:0,currentStoresReady:0,comparisonStoresReady:0},message:'Aucun magasin accessible.'}};
-    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v28',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
+    const storeKey=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('decision-v29',[storeKey,startDate,endDate,compareStartDate,compareEndDate]);
     if(!force){
       const cached=await readAnalyticsCache(cacheKey);
       if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     }
     const data=await buildDecisionIntelligence(stores,{startDate,endDate,compareStartDate,compareEndDate,force});
     const today=new Date().toISOString().slice(0,10),ttl=endDate>=today?1800:24*3600;
-    await writeAnalyticsCache(cacheKey,'decision-v28',data,ttl);
+    await writeAnalyticsCache(cacheKey,'decision-v29',data,ttl);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 
