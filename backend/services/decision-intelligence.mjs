@@ -168,7 +168,7 @@ function sumSummary(results=[]){
   const marginBase=marginBaseKnown?round2(marginSalesBase):null,margin=marginKnown?round2(marginValue):null;
   return{sales:round2(sales),tickets,units:round2(units),averageBasket:tickets?round2(sales/tickets):null,marginSalesBase:marginBase,marginValue:margin,marginRate:margin!==null&&marginBase?round2(margin/marginBase*100):null,identifiedSales:identifiedKnown?round2(identifiedSales):null,identifiedSalesShare:identifiedKnown&&sales?round2(identifiedSales/sales*100):null,identifiedTickets:identifiedTicketsKnown?identifiedTickets:null,identifiedTicketRate:identifiedTicketsKnown&&tickets?round2(identifiedTickets/tickets*100):null}
 }
-function aggregateValidatedMargin(results=[]){
+export function aggregateValidatedMargin(results=[]){
   const rows=results.filter(x=>num(x?.summary?.sales)>0);
   if(!rows.length)return{available:false,status:'UNAVAILABLE',reason:'NO_MARGIN_ROWS'};
   const kinds=[...new Set(rows.map(x=>x?.margin?.costKind).filter(Boolean))];
