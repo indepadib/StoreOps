@@ -298,7 +298,7 @@
 
     const targetStores = selectedStores();
 
-    const decisionSections = new Set(['overview','sales','network','categories','crm','loyalty','cashiers']);
+    const decisionSections = new Set(['overview','sales','network','categories','suppliers','crm','loyalty','cashiers']);
     const snapshotSections = new Set(['inventory','promotions']);
     if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
