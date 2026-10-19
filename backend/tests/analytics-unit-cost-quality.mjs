@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {convertQuantity,valueByBasis} from '../services/unit-conversion.mjs';
 import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../services/sales-margin-engine.mjs';
+import {aggregateValidatedMargin} from '../services/decision-intelligence.mjs';
 
 {
   const kgToG=convertQuantity(1,'KG','G');
@@ -104,6 +105,20 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   });
   assert.equal(result.available,false);
   assert.equal(result.reason,'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT');
+}
+
+
+{
+  // A selected multi-store scope is validated on its consolidated economics.
+  // One store can be outside the local sanity band without forcing a false N/A
+  // if the selected scope itself is complete, unit-consistent and business-plausible.
+  const aggregate=aggregateValidatedMargin([
+    {summary:{sales:100},margin:{status:'UNVALIDATED',reason:'BUSINESS_MARGIN_SANITY_FAILED',costKind:'UNIT_COST_INVENTORY',marginSalesBase:100,totalCost:50,basisCoveragePct:100,coveragePct:100,productMasterFallbackMarginSales:0,productMasterFallbackLines:0,weightedConversions:0}},
+    {summary:{sales:900},margin:{status:'VALIDATED',reason:null,costKind:'UNIT_COST_INVENTORY',marginSalesBase:900,totalCost:790,basisCoveragePct:100,coveragePct:100,productMasterFallbackMarginSales:0,productMasterFallbackLines:0,weightedConversions:0}}
+  ]);
+  assert.equal(aggregate.available,true);
+  assert.equal(aggregate.marginValue,160);
+  assert.equal(aggregate.marginRate,16);
 }
 
 {
