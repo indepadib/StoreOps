@@ -10,15 +10,15 @@ function mergeRows(groups=[],keyField='key'){
   for(const rows of groups){
     for(const row of rows||[]){
       const key=String(row?.[keyField]??row?.key??'').trim();if(!key)continue;
-      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginSalesBase:0,marginValue:0,marginKnown:true,marginBaseKnown:true,quantityUnits:new Set()};
-      cur.sales+=num(row.sales);cur.units+=num(row.units);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));
+      const cur=map.get(key)||{key,label:row.label||key,sales:0,units:0,marginSalesBase:0,marginValue:0,marginKnown:true,marginBaseKnown:true,quantityUnits:new Set(),hourlySales:new Map()};
+      cur.sales+=num(row.sales);cur.units+=num(row.units);if(row.quantityUnit)cur.quantityUnits.add(String(row.quantityUnit));for(const [h,v] of Object.entries(row.hourlySales||{}))cur.hourlySales.set(h,(cur.hourlySales.get(h)||0)+num(v));
       if(row.marginSalesBase===null||row.marginSalesBase===undefined)cur.marginBaseKnown=false;else cur.marginSalesBase+=num(row.marginSalesBase);
       if(row.marginValue===null||row.marginValue===undefined)cur.marginKnown=false;else cur.marginValue+=num(row.marginValue);
       if((!cur.label||cur.label===key)&&row.label)cur.label=row.label;
       map.set(key,cur);
     }
   }
-  return[...map.values()].map(x=>{const sales=round2(x.sales),marginSalesBase=x.marginBaseKnown?round2(x.marginSalesBase):null,marginValue=x.marginKnown?round2(x.marginValue):null,quantityUnit=x.quantityUnits.size===1?[...x.quantityUnits][0]:null;return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit,marginSalesBase,marginValue,marginRate:marginValue!==null&&marginSalesBase?round2(marginValue/marginSalesBase*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
+  return[...map.values()].map(x=>{const sales=round2(x.sales),marginSalesBase=x.marginBaseKnown?round2(x.marginSalesBase):null,marginValue=x.marginKnown?round2(x.marginValue):null,quantityUnit=x.quantityUnits.size===1?[...x.quantityUnits][0]:null,hourlySales=Object.fromEntries([...x.hourlySales.entries()].map(([h,v])=>[h,round2(v)]));return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit,hourlySales,marginSalesBase,marginValue,marginRate:marginValue!==null&&marginSalesBase?round2(marginValue/marginSalesBase*100):null}}).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
 function compareRows(current=[],previous=[]){
   const prev=new Map(previous.map(x=>[x.key,x])),all=[...current],seen=new Set(current.map(x=>x.key));
@@ -28,6 +28,13 @@ function compareRows(current=[],previous=[]){
     const p=prev.get(x.key),previousSales=num(p?.sales),delta=round2(num(x.sales)-previousSales);
     return{...x,rank:i+1,previousSales:round2(previousSales),deltaSales:delta,changePct:previousSales?pct(num(x.sales),previousSales):null,sharePct:currentTotal?round2(num(x.sales)/currentTotal*100):null,previousMarginSalesBase:p?.marginSalesBase??null,previousMarginValue:p?.marginValue??null,deltaMargin:x.marginValue!=null&&p?.marginValue!=null?round2(x.marginValue-p.marginValue):null}
   })
+}
+function mergeHourly(results=[]){
+ const map=new Map();
+ for(const result of results)for(const h of result?.hourly||[]){
+  const key=String(h.key??''),cur=map.get(key)||{key,label:h.label||key,sales:0,tickets:0,units:0};cur.sales+=num(h.sales);cur.tickets+=num(h.tickets);cur.units+=num(h.units);map.set(key,cur)
+ }
+ return[...map.values()].sort((a,b)=>num(a.key)-num(b.key)).map(x=>({...x,sales:round2(x.sales),units:round2(x.units),averageBasket:x.tickets?round2(x.sales/x.tickets):null}))
 }
 function mergeDaily(results=[]){
   const map=new Map();
@@ -349,6 +356,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   },
   margin:{status:marginStatus,available:publishMargin,estimated:marginStatus==='ESTIMATED',basisCoveragePct:marginBasisCoveragePct,coveragePct:marginCoveragePct,salesBasis:marginSalesBases.length===1?marginSalesBases[0]:'MIXED',salesBasisField:marginSalesBasisFields.length===1?marginSalesBasisFields[0]:marginSalesBasisFields.join(',')||null,taxField:marginTaxFields.length===1?marginTaxFields[0]:marginTaxFields.join(',')||null,costKind:marginKinds.length===1?marginKinds[0]:'MIXED',method:marginMethods.length===1?marginMethods[0]:'MIXED',costField:marginFields.length===1?marginFields[0]:marginFields.join(',')||null,reason:publishMargin?null:marginReasons.join(',')||'TRANSACTION_MARGIN_NOT_VALIDATED',sanity:{min:sanityMin,max:sanityMax,ok:marginSanityOk},weightedConversions:marginResults.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0),fallbackUnitCostLines:marginResults.reduce((s,x)=>s+num(x?.margin?.fallbackUnitCostLines),0),productMasterFallbackLines:networkCurrentMargin.productMasterFallbackLines||0,productMasterFallbackMarginSales:networkCurrentMargin.productMasterFallbackMarginSales??null,productMasterFallbackPct:networkCurrentMargin.productMasterFallbackPct??null,implausibleLines:marginResults.reduce((s,x)=>s+num(x?.margin?.implausibleLines),0),costCrossCheckPct:round2(marginResults.reduce((s,x)=>s+num(x?.margin?.costCrossCheckPct),0)/Math.max(1,marginResults.filter(x=>x?.margin?.costCrossCheckPct!=null).length)),message:publishMargin?(marginStatus==='ESTIMATED'?'Marge brute HT estimée : coût transactionnel complété par UnitCost produit courant sur une part du CA, avec conversion des unités.':'Marge brute HT validée au niveau du périmètre sélectionné, avec conversion des quantités vers l’unité inventaire avant valorisation du coût.'):`Marge masquée : ${networkCurrentMargin.reason||'base HT, coût ou contrôle métier non validé'}.`},
   daily:{current:publishedDailyCurrent,previous:publishedDailyPrevious},
+  hourly:{current:mergeHourly(currentResults),previous:mergeHourly(previousResults)},
   stores:publishedStores,
   products:publishedProducts,
   hierarchy:publishedHierarchy,
