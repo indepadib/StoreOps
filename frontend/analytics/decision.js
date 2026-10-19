@@ -236,7 +236,8 @@
     if(!Number.isFinite(directValue))return{value:null,rate:null,estimated:false,quality:'TRANSACTION_MARGIN_UNAVAILABLE'};
     const rate=Number.isFinite(directRate)?directRate:(sales?directValue/sales*100:null);
     if(rate==null||rate>60||rate<-10)return{value:null,rate:null,estimated:false,quality:'IMPLAUSIBLE_TRANSACTION_MARGIN'};
-    return{value:directValue,rate,estimated:false,quality:'TRANSACTION_COST'}
+    const estimated=state.data?.margin?.status==='ESTIMATED'||state.data?.margin?.estimated===true;
+    return{value:directValue,rate,estimated,quality:estimated?'HYBRID_CURRENT_COST_ESTIMATE':'TRANSACTION_COST'}
   }
 
   function catalogSkuList(){
@@ -638,7 +639,7 @@
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
     const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
-    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier}. La marge affichée vient uniquement du moteur transactionnel validé ; les coûts courants ne servent qu’en fallback borné sur les lignes sans coût.`
+    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier}. Marge validée = coût transactionnel. Si le coût courant produit complète des lignes manquantes, la marge est explicitement marquée estimée (~).`
   }
   function renderPerformance(refreshFilters=true){
     const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;if(refreshFilters)renderHierarchyFilters();
