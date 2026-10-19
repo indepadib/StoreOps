@@ -543,6 +543,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    weightedConversions:marginEval.weightedConversions||0,
    fallbackUnitCostLines:marginEval.fallbackUnitCostLines||0,
    productMasterFallbackLines:marginEval.productMasterFallbackLines||0,
+   productMasterFallbackMarginSales:marginEval.productMasterFallbackMarginSales??null,
    productMasterFallbackPct:marginEval.productMasterFallbackPct??null,
    eligibleLines:marginEval.eligibleLines||0,
    valuedLines:marginEval.valuedLines||0,
