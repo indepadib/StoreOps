@@ -627,7 +627,7 @@
     const products=(state.data?.products||[]).map(productWithCatalog).map(p=>[p.key,p.label||p.key]).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr'));
     setOptions('#filterProduct','Tous les articles',products,state.filters.product);
     const vendorMap=new Map();
-    for(const p of(state.data?.products||[])){const ref=catalogItem(p.key);if(ref?.primaryVendorAccount)vendorMap.set(ref.primaryVendorAccount,ref.primaryVendorAccount)}
+    for(const p of(state.data?.products||[])){const ref=catalogItem(p.key);if(ref?.primaryVendorAccount)vendorMap.set(ref.primaryVendorAccount,ref.vendorName||ref.primaryVendorAccount)}
     setOptions('#filterVendor','Tous les fournisseurs',[...vendorMap.entries()].sort((a,b)=>a[0].localeCompare(b[0])),state.filters.vendor);
     if($('#filterSupplyMode'))$('#filterSupplyMode').value=state.filters.supplyMode||'';
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
@@ -649,9 +649,9 @@
     const opsByAccount=new Map(),opsByName=new Map();
     for(const x of ops){if(x.vendorAccount)opsByAccount.set(String(x.vendorAccount),x);if(x.vendorName)opsByName.set(String(x.vendorName).toUpperCase(),x)}
     for(const p of products){
-      const ref=catalogItem(p.key),vendor=ref?.primaryVendorAccount||'NON_RATTACHE',mode=ref?.supplyMode||'UNMAPPED';
-      const cur=groups.get(vendor)||{vendorAccount:vendor,vendorName:vendor,supplyModes:new Set(),sales:0,previousSales:0,marginSalesBase:0,marginValue:0,marginKnown:true,skus:new Set(),products:[]};
-      cur.supplyModes.add(mode);cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);cur.skus.add(p.key);cur.products.push(p);
+      const ref=catalogItem(p.key),vendor=ref?.primaryVendorAccount||'NON_RATTACHE',confidence=ref?.supplyModeConfidence||'NONE',mode=['HIGH','MEDIUM'].includes(confidence)?(ref?.supplyMode||'UNMAPPED'):'VERIFY';
+      const cur=groups.get(vendor)||{vendorAccount:vendor,vendorName:ref?.vendorName||vendor,supplyModes:new Set(),supplyConfidences:new Set(),sales:0,previousSales:0,marginSalesBase:0,marginValue:0,marginKnown:true,skus:new Set(),products:[]};
+      if(ref?.vendorName)cur.vendorName=ref.vendorName;cur.supplyModes.add(mode);cur.supplyConfidences.add(confidence);cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);cur.skus.add(p.key);cur.products.push(p);
       if(p.marginValue==null||p.marginSalesBase==null)cur.marginKnown=false;else{cur.marginValue+=Number(p.marginValue||0);cur.marginSalesBase+=Number(p.marginSalesBase||0)}
       groups.set(vendor,cur)
     }
@@ -660,7 +660,7 @@
       const op=opsByAccount.get(x.vendorAccount)||opsByName.get(String(x.vendorName).toUpperCase())||null;
       const top=[...x.products].sort((a,b)=>Number(b.sales||0)-Number(a.sales||0))[0],name=op?.vendorName||x.vendorName;
       const modes=[...x.supplyModes].filter(Boolean),supplyMode=modes.length===1?modes[0]:'MIXED';
-      return{...x,vendorName:name,supplyMode,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,skuCount:x.skus.size,topProduct:top?productLabel(top.key,top.label):null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.marginSalesBase?x.marginValue/x.marginSalesBase*100:null,openPoCount:op?.openPoCount??null,remainingByUnit:op?.remainingByUnit||{},serviceRate90d:(op?.serviceCoverageLines||0)>=5?op?.serviceRate90d:null,serviceCoverageLines:op?.serviceCoverageLines||0}
+      return{...x,vendorName:name,supplyMode,supplyConfidence:[...x.supplyConfidences].join(','),changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,skuCount:x.skus.size,topProduct:top?productLabel(top.key,top.label):null,marginValue:x.marginKnown?x.marginValue:null,marginRate:x.marginKnown&&x.marginSalesBase?x.marginValue/x.marginSalesBase*100:null,openPoCount:op?.openPoCount??null,remainingByUnit:op?.remainingByUnit||{},serviceRate90d:(op?.serviceCoverageLines||0)>=5?op?.serviceRate90d:null,serviceCoverageLines:op?.serviceCoverageLines||0}
     }).filter(x=>{
       if(state.supplierMode&&x.supplyMode!==state.supplierMode)return false;
       if(!q)return true;
@@ -707,7 +707,7 @@
     }
     const def=$('#supplierServiceDefinition');if(def)def.textContent=state.supplierOpsLoading?'Chargement des PO et réceptions fournisseur en arrière-plan…':(state.supplierOps?.serviceDefinition||'Taux service N/A sans réceptions contrôlées suffisantes.');
     if(!rows.length){body.innerHTML='<tr><td colspan="11"><div class="table-loading">Enrichissement fournisseur en cours…</div></td></tr>';return}
-    body.innerHTML=rows.slice(0,300).map(x=>'<tr><td><div class="element-cell"><strong>'+api.escapeHtml(x.vendorName)+'</strong><span>'+api.escapeHtml(x.vendorAccount==='NON_RATTACHE'?'Non rattaché':x.vendorAccount)+'</span></div></td><td>'+(x.supplyMode==='DIRECT_SUPPLIER'?'Direct':x.supplyMode==='WAREHOUSE'?'DC / Entrepôt':x.supplyMode==='MIXED'?'Mixte':'N/A')+'</td><td>'+api.money(x.sales,true)+'</td><td>'+signed(api,x.changePct)+'</td><td>'+api.percent(x.sharePct)+'</td><td>'+api.number(x.skuCount)+'</td><td>'+api.escapeHtml(x.topProduct||'N/A')+'</td><td>'+(x.marginRate==null?'N/A':api.percent(x.marginRate))+'</td><td>'+(x.openPoCount==null?'—':api.number(x.openPoCount))+'</td><td>'+qtyObjectLabel(x.remainingByUnit,api)+'</td><td>'+(x.serviceRate90d==null?'N/A':api.percent(x.serviceRate90d))+(x.serviceCoverageLines?'<br><small>'+api.number(x.serviceCoverageLines)+' lignes</small>':'')+'</td></tr>').join('')
+    body.innerHTML=rows.slice(0,300).map(x=>'<tr><td><div class="element-cell"><strong>'+api.escapeHtml(x.vendorName)+'</strong><span>'+api.escapeHtml(x.vendorAccount==='NON_RATTACHE'?'Non rattaché':x.vendorAccount)+'</span></div></td><td>'+(x.supplyMode==='DIRECT_SUPPLIER'?'Direct':x.supplyMode==='WAREHOUSE'?'DC / Entrepôt':x.supplyMode==='MIXED'?'Mixte':x.supplyMode==='VERIFY'?'À vérifier':'N/A')+'</td><td>'+api.money(x.sales,true)+'</td><td>'+signed(api,x.changePct)+'</td><td>'+api.percent(x.sharePct)+'</td><td>'+api.number(x.skuCount)+'</td><td>'+api.escapeHtml(x.topProduct||'N/A')+'</td><td>'+(x.marginRate==null?'N/A':api.percent(x.marginRate))+'</td><td>'+(x.openPoCount==null?'—':api.number(x.openPoCount))+'</td><td>'+qtyObjectLabel(x.remainingByUnit,api)+'</td><td>'+(x.serviceRate90d==null?'N/A':api.percent(x.serviceRate90d))+(x.serviceCoverageLines?'<br><small>'+api.number(x.serviceCoverageLines)+' lignes</small>':'')+'</td></tr>').join('')
   }
 
   function isCheckoutBagSku(sku){
