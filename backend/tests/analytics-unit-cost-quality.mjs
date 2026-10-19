@@ -103,8 +103,11 @@ import {aggregateValidatedMargin} from '../services/decision-intelligence.mjs';
     costKind:'UNIT_COST_INVENTORY',
     maxProductMasterFallbackPct:5
   });
-  assert.equal(result.available,false);
-  assert.equal(result.reason,'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT');
+  assert.equal(result.available,true);
+  assert.equal(result.status,'ESTIMATED');
+  assert.equal(result.estimated,true);
+  assert.equal(result.reason,'PRODUCT_MASTER_COST_FALLBACK_ESTIMATE');
+  assert.equal(result.totalCost,80,'2 kg => 2000 g × 0.04 DH/g = 80 DH');
 }
 
 
@@ -141,13 +144,13 @@ import {aggregateValidatedMargin} from '../services/decision-intelligence.mjs';
   const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
   assert.match(salesSource,/evaluateTransactionMarginRows/);
   assert.match(salesSource,/releasedProductSourcingMany/);
-  assert.match(salesSource,/sales-range-v29/);
+  assert.match(salesSource,/sales-range-v30/);
 }
 {
   const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
   assert.match(decisionSource,/TRANSACTION_MARGIN_UNAVAILABLE/);
-  assert.doesNotMatch(decisionSource,/CURRENT_COST_ESTIMATE/,'UI must not invent margin from current product-master cost');
-  assert.doesNotMatch(decisionSource,/IMPLAUSIBLE_CURRENT_COST/,'unsafe current-cost margin fallback must stay removed');
+  assert.match(decisionSource,/HYBRID_CURRENT_COST_ESTIMATE/,'hybrid current-cost fallback must be visibly marked as estimated');
+  assert.match(decisionSource,/Marge brute HT estimée/,'estimated margin must never be labelled as validated historical margin');
 }
 
 console.log('Retail Intelligence unit/cost quality contract passed.');
