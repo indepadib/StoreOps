@@ -762,7 +762,7 @@
     }
     const insightPanel=$('#crmInsights');
     if(insightPanel){
-      const dominantPersona=[...(crm.personas||[])].sort((a,b)=>Number(b.count)-Number(a.count))[0],dominantPref=[...prefs].filter(x=>x.preference!=='UNKNOWN').sort((a,b)=>Number(b.count)-Number(a.count))[0],insights=[];
+      const dominantPersona=[...(crm.personas||[])].sort((a,b)=>Number(b.count)-Number(a.count))[0],dominantPref=[...prefs].filter(x=>!['INSUFFICIENT_BASIS','UNKNOWN'].includes(x.preference)).sort((a,b)=>Number(b.count)-Number(a.count))[0],insights=[];
       if(dominantPersona)insights.push({title:'Profil dominant',text:`${api.number(dominantPersona.count)} clients sont « ${dominantPersona.persona.replaceAll('_',' ').toLowerCase()} » (${api.percent(dominantPersona.sharePct)}).`});
       if(crm.repeatRate!=null)insights.push({title:crm.repeatRate<30?'Fréquence à construire':'Base qui revient',text:`${api.percent(crm.repeatRate)} des clients identifiés reviennent au moins une fois sur la période.`});
       if(dominantPref)insights.push({title:'Sensibilité prix',text:`Le positionnement dominant observé est ${prefLabels[dominantPref.preference]?.toLowerCase()||dominantPref.preference} (${api.percent(dominantPref.sharePct)} des clients analysés${derivedPrefs.coveragePct==null?'':', couverture '+api.percent(derivedPrefs.coveragePct)}).`});
