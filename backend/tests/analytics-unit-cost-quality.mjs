@@ -71,6 +71,42 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   assert.equal(result.weightedConversions,1);
 }
 {
+  // Missing transaction unit cost may use current product-master UnitCost only for a
+  // tightly bounded share of valued sales. Weighted conversion still applies.
+  const result=evaluateTransactionMarginRows({
+    rows:[
+      {netAmount:-100,qty:2,sku:'W',date:'2026-10-15',costPrice:null,unit:'KG'},
+      {netAmount:-900,qty:9,sku:'P',date:'2026-10-15',costPrice:84,unit:'PC'}
+    ],
+    fields:{net:'netAmount',quantity:'qty',product:'sku',date:'date',cost:'costPrice',salesUnit:'unit'},
+    salesSign:-1,
+    productRefs:new Map([
+      ['W',{inventoryUnit:'G',salesUnit:'KG',unitCost:0.04}],
+      ['P',{inventoryUnit:'PC',salesUnit:'PC',unitCost:84}]
+    ]),
+    costKind:'UNIT_COST_INVENTORY',
+    maxProductMasterFallbackPct:15
+  });
+  assert.equal(result.status,'VALIDATED');
+  assert.equal(result.productMasterFallbackLines,1);
+  assert.equal(result.productMasterFallbackPct,10);
+  assert.equal(result.totalCost,836,'2 kg => 2000 g × 0.04 = 80; 9 pieces × 84 = 756');
+  assert.equal(result.marginRate,16.4);
+}
+{
+  const result=evaluateTransactionMarginRows({
+    rows:[{netAmount:-100,qty:2,sku:'W',date:'2026-10-15',costPrice:null,unit:'KG'}],
+    fields:{net:'netAmount',quantity:'qty',product:'sku',date:'date',cost:'costPrice',salesUnit:'unit'},
+    salesSign:-1,
+    productRefs:new Map([['W',{inventoryUnit:'G',salesUnit:'KG',unitCost:0.04}]]),
+    costKind:'UNIT_COST_INVENTORY',
+    maxProductMasterFallbackPct:5
+  });
+  assert.equal(result.available,false);
+  assert.equal(result.reason,'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT');
+}
+
+{
   const impossible=convertQuantity(1,'PC','KG');
   assert.equal(impossible.status,'INCOMPATIBLE_UNIT');
 }
@@ -90,7 +126,7 @@ import {evaluateTransactionMarginRows,inferTransactionCostKind} from '../service
   const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
   assert.match(salesSource,/evaluateTransactionMarginRows/);
   assert.match(salesSource,/releasedProductSourcingMany/);
-  assert.match(salesSource,/sales-range-v27/);
+  assert.match(salesSource,/sales-range-v28/);
 }
 {
   const decisionSource=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
