@@ -186,7 +186,7 @@ export function retailDisplaySalesAmount(row,cfg={}){
 }
 
 function excludedTaxItemGroups(){
- return new Set(clean(process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS||'').split(',').map(x=>x.replace(/\s+/g,'').toUpperCase()).filter(Boolean))
+ return new Set(clean(process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS||'ExoColl').split(',').map(x=>x.replace(/\s+/g,'').toUpperCase()).filter(Boolean))
 }
 function includedRetailSaleRow(row,cfg={}){
  const f=cfg.fields||{},sales=retailDisplaySalesAmount(row,cfg);
