@@ -438,7 +438,7 @@
       ['CA fidélisé',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'<span class="metric-na">N/A</span>':api.money(cur.identifiedSales,true),'poids du CA identifié']
     ];
     $('#decisionSalesKpis').innerHTML=cards.map(([l,v,delta,sub])=>`<div class="decision-kpi"><small>${l}</small><strong>${v}</strong><span>${delta} · ${sub}</span></div>`).join('');
-    renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive');
+    renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive'); renderHourlyIntelligence();
   }
 
   function renderWaterfall(){
