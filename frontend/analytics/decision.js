@@ -717,42 +717,20 @@
   }
 
   function clientPricePreferences(customers=[]){
-    const priceBasis=unit=>{
-      const u=normalizeQtyUnit(unit);
-      if(u==='KG')return{basis:'KG',factor:1};
-      if(u==='G')return{basis:'KG',factor:1000};
-      if(u==='L')return{basis:'L',factor:1};
-      if(['ML','MILLILITRE','MILLILITER'].includes(u))return{basis:'L',factor:1000};
-      if(u==='PC')return{basis:'PC',factor:1};
-      return u&&u!=='INCONNUE'?{basis:u,factor:1}:null
-    };
-    const groups=new Map(),tierBySku=new Map();
-    for(const raw of state.data?.products||[]){
-      const p=productWithCatalog(raw),units=Math.abs(Number(p.units||0)),sales=Number(p.sales||0),basis=priceBasis(p.quantityUnit);
-      const family=p.hierarchy?.family?.id||p.hierarchy?.rayon?.id||null;
-      if(!family||!basis||!units||!Number.isFinite(sales)||sales<=0)continue;
-      const price=sales/units*basis.factor,key=family+'|'+basis.basis;
-      if(!groups.has(key))groups.set(key,[]);groups.get(key).push({sku:p.key,price})
-    }
-    for(const rows of groups.values()){
-      if(rows.length<5)continue;
-      const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
-      const qLow=sorted[Math.floor((n-1)*.30)]?.price,qHigh=sorted[Math.floor((n-1)*.70)]?.price;
-      for(const r of sorted)tierBySku.set(r.sku,r.price<=qLow?'VALUE':r.price>=qHigh?'PREMIUM':'CORE')
-    }
-    const byCustomer=new Map(),counts={VALUE:0,CORE:0,PREMIUM:0,MIXED:0,UNKNOWN:0};
-    let classifiedCustomers=0;
+    const byCustomer=new Map(),counts={VALUE:0,CORE:0,PREMIUM:0,MIXED:0,INSUFFICIENT_BASIS:0};
+    let classified=0;
     for(const customer of customers){
-      const mix={VALUE:0,CORE:0,PREMIUM:0};let classified=0;
-      for(const p of customer.topProducts||[]){const tier=tierBySku.get(p.productNumber);if(!tier)continue;const w=Math.max(0,Number(p.sales||0));mix[tier]+=w;classified+=w}
-      const sales=Math.max(0,Number(customer.sales||0)),coverage=sales?classified/sales*100:null,ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]),dominant=ranked[0],dominantPct=classified&&dominant?dominant[1]/classified*100:null;
-      let pref='UNKNOWN';
-      if(coverage!=null&&coverage>=60&&dominantPct!=null){pref=dominantPct>=55?dominant[0]:'MIXED';classifiedCustomers++}
-      byCustomer.set(customer.customerAccount,pref);counts[pref]=(counts[pref]||0)+1
+      let pref=String(customer.pricePreference||'INSUFFICIENT_BASIS').toUpperCase();
+      if(!['VALUE','CORE','PREMIUM','MIXED','INSUFFICIENT_BASIS'].includes(pref))pref='INSUFFICIENT_BASIS';
+      byCustomer.set(customer.customerAccount,pref);
+      counts[pref]=(counts[pref]||0)+1;
+      if(pref!=='INSUFFICIENT_BASIS')classified++
     }
-    const total=customers.length||1,rows=Object.entries(counts).map(([preference,count])=>({preference,count,sharePct:count/total*100}));
-    return{byCustomer,rows,coveragePct:customers.length?classifiedCustomers/customers.length*100:null}
+    const total=customers.length||1;
+    const rows=Object.entries(counts).map(([preference,count])=>({preference,count,sharePct:count/total*100})).sort((a,b)=>b.count-a.count);
+    return{byCustomer,rows,coveragePct:customers.length?classified/customers.length*100:null}
   }
+
   function renderCrm(){
     const api=core(),crm=state.data?.crm||{},customers=crm.customers||[],analysisCustomers=crm.customerMergeRows?.length?crm.customerMergeRows:customers,k=$('#crmKpis');if(!k)return;
     const quality=state.data?.quality||{},issues=quality.issues||[],crmBlockCodes=new Set(['CUSTOMER_CARDINALITY','IDENTIFIED_SALES_GT_TOTAL','IDENTIFIED_SALES_RECONCILIATION','CUSTOMER_FIELD_COVERAGE']),crmBlocked=issues.some(x=>x.level==='ERROR'&&crmBlockCodes.has(x.code)),crmWarn=!crmBlocked&&issues.some(x=>['IDENTIFIED_TICKET_RECONCILIATION','OFFICIAL_CA_FILTER_COVERAGE'].includes(x.code));
