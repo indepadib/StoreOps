@@ -204,6 +204,24 @@
               <div id="positiveContributors" class="contributor-list"></div>
             </article>
           </div>
+          <div class="decision-card hourly-intelligence-card">
+            <div class="decision-card-head">
+              <div><span class="mini-kicker">VENTES PAR HEURE</span><h3>Quand je vends quoi ?</h3></div>
+              <div class="hourly-filter-bar">
+                <select id="hourlyDepartmentFilter"><option value="">Tous les départements</option></select>
+                <select id="hourlyRayonFilter"><option value="">Tous les rayons</option></select>
+                <select id="hourlyProductFilter"><option value="">Tous les articles</option></select>
+              </div>
+            </div>
+            <div class="hourly-kpis" id="hourlyKpis"></div>
+            <div id="hourlySalesBars" class="hourly-sales-bars"></div>
+            <div class="decision-table-wrap hourly-top-table">
+              <table class="decision-table">
+                <thead><tr><th>Heure</th><th>CA</th><th>Poids</th><th>Top article</th><th>CA top article</th></tr></thead>
+                <tbody id="hourlyTopBody"><tr><td colspan="5"><div class="table-loading">Chargement des ventes horaires…</div></td></tr></tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
         <section class="decision-dashboard store-benchmark" id="storeBenchmark" data-widget="storeBenchmark" hidden>
@@ -349,7 +367,7 @@
             <article class="decision-card">
               <div class="decision-card-head"><div><span class="mini-kicker">POSITION PRIX</span><h3>Entrée de gamme, cœur ou premium ?</h3></div></div>
               <div id="crmPricePreference" class="price-preference"></div>
-              <p class="metric-footnote">Positionnement relatif des produits achetés : comparaison uniquement entre articles d'une même famille et d'une même unité normalisée. Il faut ≥ 5 articles comparables, ≥ 60 % du CA client classé et ≥ 55 % du CA classé dans un niveau dominant. Ce n'est pas lié au panier moyen et ce n'est pas une classification marketing officielle.</p>
+              <p class="metric-footnote">Positionnement relatif des produits achetés, à unité comparable. Le moteur cherche d'abord une base de comparaison dans la famille, puis le rayon, le département et enfin l'univers d'unité. Tous les clients sont comptabilisés ; ceux sans base de comparaison suffisante sont signalés « base insuffisante » au lieu d'être classés artificiellement.</p>
             </article>
           </div>
           <div class="decision-grid">
@@ -368,7 +386,13 @@
               <div id="crmBasketDna"></div>
             </article>
             <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">AFFINITÉS</span><h3>Produits achetés ensemble</h3></div></div>
+              <div class="decision-card-head affinity-head">
+                <div><span class="mini-kicker">AFFINITÉS</span><h3>Produits achetés ensemble</h3></div>
+                <div class="affinity-filters">
+                  <select id="affinityDepartmentFilter"><option value="">Tous les départements</option></select>
+                  <select id="affinityRayonFilter"><option value="">Tous les rayons</option></select>
+                </div>
+              </div>
               <div id="crmAffinities" class="affinity-list"></div>
             </article>
           </div>
