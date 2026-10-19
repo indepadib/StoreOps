@@ -555,7 +555,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  const marginProductMap=marginEval.byProduct||{},marginDateMap=marginEval.byDate||{};
  const productRowsWithMargin=totalRaw.products.map(row=>{
    const m=marginProductMap[row.key],ref=marginRefs.get(row.key),label=ref?.productName||row.label;
-   return{...row,label,marginSalesBase:m?.marginSalesBase??null,marginValue:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginValue:null,marginRate:margin.status==='VALIDATED'&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginRate:null,marginCoveragePct:m?.coveragePct??null,marginBasisCoveragePct:m?.basisCoveragePct??null}
+   return{...row,label,marginSalesBase:m?.marginSalesBase??null,marginValue:['VALIDATED','ESTIMATED'].includes(margin.status)&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginValue:null,marginRate:['VALIDATED','ESTIMATED'].includes(margin.status)&&m?.coveragePct>=95&&m?.basisCoveragePct>=99?m.marginRate:null,marginCoveragePct:m?.coveragePct??null,marginBasisCoveragePct:m?.basisCoveragePct??null}
  });
  const dailyMap=new Map(),customerMap=new Map(),identifiedBasketMap=new Map(),staffMap=new Map();
  const weekdayNames=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
