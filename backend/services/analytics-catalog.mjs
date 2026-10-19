@@ -2,6 +2,7 @@ import {productDataMany} from './product-data.mjs';
 import {readRetailHierarchyContext} from './retail-hierarchy-data.mjs';
 import {resolveRetailHierarchy} from './retail-hierarchy.mjs';
 import {valueByBasis} from './unit-conversion.mjs';
+import {vendorNamesMany} from './vendor-directory.mjs';
 
 const clean=v=>String(v??'').trim();
 const round4=v=>v==null?null:Math.round((Number(v)+Number.EPSILON)*10000)/10000;
@@ -20,6 +21,8 @@ export async function readAnalyticsCatalog(productNumbers=[]){
   const skus=[...new Set((productNumbers||[]).map(clean).filter(Boolean))].slice(0,240);
   if(!skus.length)return{status:'READY',items:[],diagnostics:{requested:0,resolvedNames:0,resolvedHierarchy:0,costReady:0}};
   const [refs,context]=await Promise.all([productDataMany(skus),readRetailHierarchyContext(skus)]);
+  const vendorAccounts=[...new Set([...refs.values()].map(x=>clean(x?.primaryVendorAccount)).filter(Boolean))];
+  const vendorNames=await vendorNamesMany(vendorAccounts);
   const items=skus.map(productNumber=>{
     const ref=refs.get(productNumber)||{productNumber},hierarchy=resolveRetailHierarchy(productNumber,context,{rayonLabel:ref.rayonLabel}),cost=salesUnitCost(ref);
     return{
@@ -37,7 +40,13 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       inventoryUnit:ref.inventoryUnit||null,
       purchaseUnit:ref.purchaseUnit||null,
       primaryVendorAccount:ref.primaryVendorAccount||null,
+      vendorName:ref.primaryVendorAccount?(vendorNames.get(ref.primaryVendorAccount)?.name||null):null,
+      vendorNameSource:ref.primaryVendorAccount?(vendorNames.get(ref.primaryVendorAccount)?.source||null):null,
       supplyMode:ref.supplyMode||null,
+      supplyModeConfidence:ref.supplyModeConfidence||null,
+      supplyModeReason:ref.supplyModeReason||null,
+      supplyModeField:ref.field||ref.supplyField||null,
+      supplyModeRawValue:ref.rawValue??ref.supplyRawValue??null,
       salesPrice:Number.isFinite(Number(ref.salesPrice))?Number(ref.salesPrice):null,
       rawUnitCost:Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
       rawCostBasisUnit:ref.inventoryUnit||null,
@@ -58,7 +67,9 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       resolvedHierarchy:items.filter(x=>x.hierarchyStatus==='RESOLVED').length,
       costReady:items.filter(x=>x.currentCostStatus==='READY').length,
       vendorResolved:items.filter(x=>x.primaryVendorAccount).length,
+      vendorNameResolved:items.filter(x=>x.vendorName).length,
       supplyModeResolved:items.filter(x=>x.supplyMode).length,
+      supplyModeHighConfidence:items.filter(x=>x.supplyModeConfidence==='HIGH').length,
       hierarchySource:context?.diagnostics?.source||null,
       hierarchyStatus:context?.diagnostics?.status||null
     }
