@@ -189,14 +189,17 @@ export function aggregateValidatedMargin(results=[]){
   const sanityMax=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):60;
   const maxFallback=Number.isFinite(Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT))?Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT):5;
   const semanticsOk=kinds.length===1&&!['UNKNOWN','MIXED'].includes(kinds[0])&&!blocked.length;
-  const available=semanticsOk&&basisCoveragePct>=99&&coveragePct>=99&&fallbackPct<=maxFallback&&Number.isFinite(marginRate)&&marginRate>=sanityMin&&marginRate<=sanityMax;
-  const reason=available?null:
+  const coreReady=semanticsOk&&basisCoveragePct>=99&&coveragePct>=99&&Number.isFinite(marginRate)&&marginRate>=sanityMin&&marginRate<=sanityMax;
+  const validated=coreReady&&fallbackPct<=maxFallback;
+  const estimated=coreReady&&fallbackPct>maxFallback&&fallbackSales>0;
+  const available=validated||estimated;
+  const reason=validated?null:
+    estimated?'PRODUCT_MASTER_COST_FALLBACK_ESTIMATE':
     !semanticsOk?(blocked[0]||'MARGIN_COST_SEMANTICS_MIXED'):
     basisCoveragePct<99?'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99':
     coveragePct<99?'COST_COVERAGE_BELOW_99':
-    fallbackPct>maxFallback?'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT':
     'BUSINESS_MARGIN_SANITY_FAILED';
-  return{available,status:available?'VALIDATED':'UNVALIDATED',reason,costKind:kinds.length===1?kinds[0]:'MIXED',marginSalesBase:round2(valuedMarginSales),totalCost:round2(totalCost),marginValue:available?round2(marginValue):null,marginRate:available?round2(marginRate):null,diagnosticMarginValue:round2(marginValue),diagnosticMarginRate:round2(marginRate),basisCoveragePct:round2(basisCoveragePct),coveragePct:round2(coveragePct),productMasterFallbackMarginSales:round2(fallbackSales),productMasterFallbackPct:round2(fallbackPct),productMasterFallbackLines:rows.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackLines),0),weightedConversions:rows.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0)}
+  return{available,status:validated?'VALIDATED':estimated?'ESTIMATED':'UNVALIDATED',estimated,reason,costKind:kinds.length===1?kinds[0]:'MIXED',marginSalesBase:round2(valuedMarginSales),totalCost:round2(totalCost),marginValue:available?round2(marginValue):null,marginRate:available?round2(marginRate):null,diagnosticMarginValue:round2(marginValue),diagnosticMarginRate:round2(marginRate),basisCoveragePct:round2(basisCoveragePct),coveragePct:round2(coveragePct),productMasterFallbackMarginSales:round2(fallbackSales),productMasterFallbackPct:round2(fallbackPct),productMasterFallbackLines:rows.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackLines),0),weightedConversions:rows.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0)}
 }
 function driverDecomposition(current,previous){
  const prevBasket=previous.averageBasket,currentBasket=current.averageBasket;
