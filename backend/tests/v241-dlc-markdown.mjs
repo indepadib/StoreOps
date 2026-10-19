@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import {rmSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 
-process.env.STOREOPS_DB=`/tmp/storeops-dlc-markdown-${process.pid}.db`;
+process.env.STOREOPS_DB=join(tmpdir(),`storeops-dlc-markdown-${process.pid}.db`);
 const mod=await import('../services/dlc-markdown.mjs');
 const {db}=await import('../db.mjs');
 
@@ -43,7 +45,7 @@ assert.equal(rec0.quantityConfidence,'ESTIMATE_REQUIRES_PHYSICAL_CONFIRMATION');
 assert.throws(()=>mod.createPrintJob({storeId:'val-fleuri',user:admin,operationIds:[],idempotencyKey:'no-op'}),/Aucune opération/);
 
 mod.validatePosProfile({markdownCode:'MD20',user:admin,symbology:'CODE128',roundingDecimals:2,evidenceNote:'TEST AUTOMATISÉ - scénario de validation du gate POS',confirmed:true});
-const printer=mod.upsertPrinter({user:admin,storeId:'val-fleuri',name:'Zebra Test',bridgeKey:'vf-test',protocol:'ZPL_BRIDGE',mediaWidthMm:60,mediaHeightMm:40,dpi:203,colorMode:'MONO_PRECOLORED',active:true,isDefault:true});
+const printer=mod.upsertPrinter({user:admin,storeId:'val-fleuri',name:'Honeywell LNX3 Test',bridgeKey:'vf-test',protocol:'ZPL_BRIDGE',mediaWidthMm:50,mediaHeightMm:25,dpi:203,colorMode:'MONO_WHITE',active:true,isDefault:true});
 assert.equal(printer.is_default,1);
 
 const op=mod.createMarkdownOperation({dlcId:created[0].id,user:admin,quantity:7,markdownCode:'MD20',originalPrice:10,idempotencyKey:'partial-seven'});
