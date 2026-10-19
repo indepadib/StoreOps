@@ -121,38 +121,59 @@ function normalizedPriceBasis(unitValue){
 }
 
 function buildPriceTierMap(products=[]){
- const attached=attachRetailHierarchy(products),groups=new Map(),map=new Map();
+ const attached=attachRetailHierarchy(products),groups=new Map(),candidates=[];
+ const add=(key,row)=>{if(!key)return;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row)};
  for(const p of attached){
   const units=Math.abs(num(p.units)),sales=num(p.sales),basis=normalizedPriceBasis(p.quantityUnit);
   if(!units||!sales||!basis)continue;
-  const family=p.hierarchy?.levels?.family?.id||p.hierarchy?.levels?.rayon?.id||null;
-  if(!family)continue;
-  const key=`${family}|${basis.basis}`,price=sales/units*basis.priceFactor;
-  if(!Number.isFinite(price)||price<=0)continue;
-  if(!groups.has(key))groups.set(key,[]);groups.get(key).push({key:p.key,price})
+  const price=sales/units*basis.priceFactor;if(!Number.isFinite(price)||price<=0)continue;
+  const levels=p.hierarchy?.levels||{},row={key:p.key,price,basis:basis.basis};
+  const keys=[
+   levels.family?.id?{level:'FAMILY',key:`FAMILY|${levels.family.id}|${basis.basis}`}:null,
+   levels.rayon?.id?{level:'RAYON',key:`RAYON|${levels.rayon.id}|${basis.basis}`}:null,
+   levels.department?.id?{level:'DEPARTMENT',key:`DEPARTMENT|${levels.department.id}|${basis.basis}`}:null,
+   {level:'GLOBAL_UNIT',key:`GLOBAL|${basis.basis}`}
+  ].filter(Boolean);
+  for(const k of keys)add(k.key,row);
+  candidates.push({product:p,row,keys})
  }
- for(const rows of groups.values()){
-  // A relative price position is meaningless when there are too few comparable SKUs.
-  if(rows.length<5)continue;
+ const stats=new Map();
+ for(const [key,rows] of groups){
   const sorted=[...rows].sort((a,b)=>a.price-b.price),n=sorted.length;
-  const qLow=sorted[Math.floor((n-1)*.30)].price,qHigh=sorted[Math.floor((n-1)*.70)].price;
-  for(const r of sorted)map.set(r.key,{tier:r.price<=qLow?'VALUE':r.price>=qHigh?'PREMIUM':'CORE',score:r.price,comparableSkuCount:n})
+  stats.set(key,{sorted,n,qLow:n>=3?sorted[Math.floor((n-1)*.30)].price:null,qHigh:n>=3?sorted[Math.floor((n-1)*.70)].price:null})
+ }
+ const map=new Map();
+ for(const candidate of candidates){
+  let chosen=null;
+  for(const k of candidate.keys){const s=stats.get(k.key);if(s?.n>=5){chosen={...k,...s,confidence:'HIGH'};break}}
+  if(!chosen){
+   for(const k of candidate.keys){const s=stats.get(k.key);if(s?.n>=3){chosen={...k,...s,confidence:'MEDIUM'};break}}
+  }
+  if(!chosen){
+   const fallback=candidate.keys.map(k=>({k,s:stats.get(k.key)})).find(x=>x.s?.n>=1);
+   if(fallback)chosen={...fallback.k,...fallback.s,confidence:'LOW'}
+  }
+  if(!chosen){map.set(candidate.row.key,{tier:'CORE',score:candidate.row.price,comparableSkuCount:1,comparisonLevel:'NO_COMPARABLE',confidence:'LOW'});continue}
+  let tier='CORE';
+  if(chosen.n>=3){tier=candidate.row.price<=chosen.qLow?'VALUE':candidate.row.price>=chosen.qHigh?'PREMIUM':'CORE'}
+  map.set(candidate.row.key,{tier,score:candidate.row.price,comparableSkuCount:chosen.n,comparisonLevel:chosen.level,confidence:chosen.confidence})
  }
  return map
 }
 
 function enrichCustomerPricePreferences(customers=[],tierMap=new Map()){
  return customers.map(c=>{
-  const mix={VALUE:0,CORE:0,PREMIUM:0};let classifiedSales=0;
+  const mix={VALUE:0,CORE:0,PREMIUM:0};let classifiedSales=0,highConfidenceSales=0;
   for(const p of c.topProducts||[]){
-   const tier=tierMap.get(p.productNumber)?.tier;if(!tier)continue;
-   const weight=Math.max(0,num(p.sales));mix[tier]+=weight;classifiedSales+=weight
+   const tierInfo=tierMap.get(p.productNumber);if(!tierInfo?.tier)continue;
+   const weight=Math.max(0,num(p.sales));mix[tierInfo.tier]+=weight;classifiedSales+=weight;if(tierInfo.confidence==='HIGH')highConfidenceSales+=weight
   }
-  const customerSales=Math.max(0,num(c.sales)),coveragePct=customerSales?classifiedSales/customerSales*100:null;
+  const customerSales=Math.max(0,num(c.sales)),coveragePct=customerSales?Math.min(100,classifiedSales/customerSales*100):null;
   const ranked=Object.entries(mix).sort((a,b)=>b[1]-a[1]),dominant=ranked[0],dominantPct=classifiedSales&&dominant?dominant[1]/classifiedSales*100:null;
-  let pricePreference='UNKNOWN';
-  if(coveragePct!=null&&coveragePct>=60&&dominantPct!=null)pricePreference=dominantPct>=55?dominant[0]:'MIXED';
-  return{...c,pricePreference,priceMix:classifiedSales?{valuePct:round2(mix.VALUE/classifiedSales*100),corePct:round2(mix.CORE/classifiedSales*100),premiumPct:round2(mix.PREMIUM/classifiedSales*100),coverageSales:round2(classifiedSales),coveragePct:round2(coveragePct),dominantPct:round2(dominantPct)}:null}
+  let pricePreference='INSUFFICIENT_BASIS';
+  if(classifiedSales>0&&dominantPct!=null)pricePreference=dominantPct>=50?dominant[0]:'MIXED';
+  const confidence=classifiedSales<=0?'NONE':coveragePct>=90&&highConfidenceSales/classifiedSales>=.7?'HIGH':coveragePct>=60?'MEDIUM':'LOW';
+  return{...c,pricePreference,priceConfidence:confidence,priceMix:classifiedSales?{valuePct:round2(mix.VALUE/classifiedSales*100),corePct:round2(mix.CORE/classifiedSales*100),premiumPct:round2(mix.PREMIUM/classifiedSales*100),coverageSales:round2(classifiedSales),coveragePct:round2(coveragePct),dominantPct:round2(dominantPct),highConfidencePct:round2(highConfidenceSales/classifiedSales*100)}:{valuePct:0,corePct:0,premiumPct:0,coverageSales:0,coveragePct:0,dominantPct:null,highConfidencePct:0}}
  })
 }
 
