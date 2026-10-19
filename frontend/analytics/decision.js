@@ -180,11 +180,16 @@
   async function fetchDecisionSlice(api,s,cur,cmp,force=false){
     const ids=selectedStoreIds(s);
     if(ids.length<=1)return fetchSingleStoreSlice(api,ids[0]||s.selectedStore||'ALL',cur,cmp,force);
-
-    const results=new Array(ids.length);let next=0;
-    const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force)}};
-    await Promise.all(Array.from({length:Math.min(2,ids.length)},worker));
-    return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:rangeDays(cur.start,cur.end)},{startDate:cmp.start,endDate:cmp.end,days:rangeDays(cmp.start,cmp.end)})
+    const q=new URLSearchParams({storeId:'MULTI',storeIds:ids.join(','),start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
+    if(force)q.set('force','1');
+    try{return await api.api('/api/analytics/decision?'+q,{noRetry:true})}
+    catch(error){
+      console.warn('Retail Intelligence multi-store slice fallback',error?.status||error?.code||error);
+      const results=new Array(ids.length);let next=0;
+      const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force)}};
+      await Promise.all(Array.from({length:Math.min(2,ids.length)},worker));
+      return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:rangeDays(cur.start,cur.end)},{startDate:cmp.start,endDate:cmp.end,days:rangeDays(cmp.start,cmp.end)})
+    }
   }
   async function loadDecisionChunked(api,s,force=false){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
