@@ -207,7 +207,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const exclusionReasons={amount:{rows:0,sales:0},status:{rows:0,sales:0},returnNoSale:{rows:0,sales:0},taxItemGroup:{rows:0,sales:0}};
  const hourTickets=new Map();
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
- const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
+ const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map(),hourlySales:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
   const tx=clean(r[f.transaction]),sales=retailDisplaySalesAmount(r,cfg);
   if(sales>0&&sales<100000)rawPositiveSales+=sales;
@@ -230,9 +230,9 @@ export function aggregateSalesRows(rows=[],cfg={}){
   add(products,productNumber,name,sales,qty,cost,salesUnit);
   const dep=clean(f.department?r[f.department]:'')||tax.department,cat=clean(f.category?r[f.category]:'')||tax.category;
   if(dep)add(departments,dep,dep,sales,qty,cost);if(cat)add(categories,cat,cat,sales,qty,cost);
-  const minute=transactionMinute(f.time?r[f.time]:null,f.time),hour=hourOf(f.time?r[f.time]:null,f.time);if(hour!==null){lastSaleMinute=Math.max(lastSaleMinute??0,minute);add(hours,String(hour),`${String(hour).padStart(2,'0')}:00`,sales,qty,cost);if(!hourTickets.has(String(hour)))hourTickets.set(String(hour),new Set());if(tx)hourTickets.get(String(hour)).add(tx)}else untimedRows++;
+  const minute=transactionMinute(f.time?r[f.time]:null,f.time),hour=hourOf(f.time?r[f.time]:null,f.time);if(hour!==null){lastSaleMinute=Math.max(lastSaleMinute??0,minute);add(hours,String(hour),`${String(hour).padStart(2,'0')}:00`,sales,qty,cost);const pb=products.get(productNumber);if(pb)pb.hourlySales.set(String(hour),(pb.hourlySales.get(String(hour))||0)+sales);if(!hourTickets.has(String(hour)))hourTickets.set(String(hour),new Set());if(tx)hourTickets.get(String(hour)).add(tx)}else untimedRows++;
  }
- const finish=map=>[...map.values()].map(x=>{const q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>Number(v)!==0);return{key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null}}).sort((a,b)=>b.sales-a.sales);
+ const finish=map=>[...map.values()].map(x=>{const q=[...(x.quantityByUnit||new Map()).entries()].filter(([,v])=>Number(v)!==0),hourlySales=Object.fromEntries([...(x.hourlySales||new Map()).entries()].map(([h,v])=>[h,round2(v)]));return{key:x.key,label:x.label,sales:round2(x.sales),units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),hourlySales,marginValue:costMapped?round2(x.sales-x.costValue):null,marginRate:costMapped&&x.sales?round2(((x.sales-x.costValue)/x.sales)*100):null}}).sort((a,b)=>b.sales-a.sales);
  netSales=round2(netSales);costValue=round2(costValue);
  const identifiedSales=round2(identifiedNetSales),identifiedTicketCount=identifiedTickets.size,nonLoyaltyTickets=Math.max(0,tickets.size-identifiedTicketCount);
  return{lastSaleMinute,untimedRows,sales:netSales,netSales,tickets:tickets.size,units:round2(units),marginValue:costMapped?round2(netSales-costValue):null,marginRate:costMapped&&netSales?round2(((netSales-costValue)/netSales)*100):null,loyalty:{identifiedSales,identifiedSalesShare:netSales?round2((identifiedSales/netSales)*100):null,identifiedTickets:identifiedTicketCount,nonLoyaltyTickets,identifiedTicketRate:tickets.size?round2((identifiedTicketCount/tickets.size)*100):null,recruitments:null,recruitmentRateNonLoyalty:null,recruitmentSource:'UNMAPPED'},departments:finish(departments),categories:finish(categories),products:finish(products),hourly:finish(hours).map(h=>({...h,tickets:hourTickets.get(h.key)?.size||0})),rowCount:Array.isArray(rows)?rows.length:0,includedRowCount:includedRows,dataQuality:{excludedRows,excludedTransactions:excludedTransactions.size,excludedSalesValue:round2(excludedSalesValue),rawPositiveSales:round2(rawPositiveSales),filteredSales:round2(netSales),filterGap:round2(rawPositiveSales-netSales),exclusionReasons:Object.fromEntries(Object.entries(exclusionReasons).map(([k,v])=>[k,{rows:v.rows,sales:round2(v.sales)}])),excludedTaxItemGroups:[...excludedTaxItemGroups()],reason:'STORE_SALES_PARITY_FILTERS'}};
@@ -643,6 +643,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
   margin,
   daily,
   products:productRowsWithMargin,
+  hourly:totalRaw.hourly,
   departments:totalRaw.departments.map(x=>({...x,marginValue:null,marginRate:null})),
   categories:totalRaw.categories.map(x=>({...x,marginValue:null,marginRate:null})),
   customers,
