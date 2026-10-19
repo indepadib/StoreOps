@@ -112,6 +112,19 @@ import {aggregateValidatedMargin} from '../services/decision-intelligence.mjs';
 
 
 {
+  // When transaction cost is missing on too much CA, current product-master UnitCost
+  // may complete the arithmetic, but the result must remain explicitly ESTIMATED.
+  const aggregate=aggregateValidatedMargin([
+    {summary:{sales:100},margin:{status:'ESTIMATED',reason:'PRODUCT_MASTER_COST_FALLBACK_ESTIMATE',costKind:'UNIT_COST_INVENTORY',marginSalesBase:100,totalCost:84,basisCoveragePct:100,coveragePct:100,productMasterFallbackMarginSales:100,productMasterFallbackLines:1,weightedConversions:1}}
+  ]);
+  assert.equal(aggregate.available,true);
+  assert.equal(aggregate.status,'ESTIMATED');
+  assert.equal(aggregate.estimated,true);
+  assert.equal(aggregate.marginRate,16);
+  assert.equal(aggregate.productMasterFallbackPct,100);
+}
+
+{
   // A selected multi-store scope is validated on its consolidated economics.
   // One store can be outside the local sanity band without forcing a false N/A
   // if the selected scope itself is complete, unit-consistent and business-plausible.
