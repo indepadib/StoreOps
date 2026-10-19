@@ -168,6 +168,36 @@ function sumSummary(results=[]){
   const marginBase=marginBaseKnown?round2(marginSalesBase):null,margin=marginKnown?round2(marginValue):null;
   return{sales:round2(sales),tickets,units:round2(units),averageBasket:tickets?round2(sales/tickets):null,marginSalesBase:marginBase,marginValue:margin,marginRate:margin!==null&&marginBase?round2(margin/marginBase*100):null,identifiedSales:identifiedKnown?round2(identifiedSales):null,identifiedSalesShare:identifiedKnown&&sales?round2(identifiedSales/sales*100):null,identifiedTickets:identifiedTicketsKnown?identifiedTickets:null,identifiedTicketRate:identifiedTicketsKnown&&tickets?round2(identifiedTickets/tickets*100):null}
 }
+function aggregateValidatedMargin(results=[]){
+  const rows=results.filter(x=>num(x?.summary?.sales)>0);
+  if(!rows.length)return{available:false,status:'UNAVAILABLE',reason:'NO_MARGIN_ROWS'};
+  const kinds=[...new Set(rows.map(x=>x?.margin?.costKind).filter(Boolean))];
+  const blockingReasons=new Set(['TRANSACTION_COST_SEMANTICS_UNKNOWN','COST_SEMANTICS_AMBIGUOUS','COST_AMOUNT_VS_UNIT_COST_MISMATCH','NO_COST_MODEL_PASSES_BUSINESS_SANITY']);
+  const blocked=rows.map(x=>x?.margin?.reason).filter(r=>blockingReasons.has(r));
+  const displaySales=rows.reduce((s,x)=>s+num(x?.summary?.sales),0);
+  const valuedMarginSales=rows.reduce((s,x)=>s+num(x?.margin?.marginSalesBase),0);
+  const totalCost=rows.reduce((s,x)=>s+num(x?.margin?.totalCost),0);
+  const basisCoveredDisplaySales=rows.reduce((s,x)=>s+num(x?.summary?.sales)*Math.min(100,Math.max(0,num(x?.margin?.basisCoveragePct)))/100,0);
+  const costCoveredDisplaySales=rows.reduce((s,x)=>s+num(x?.summary?.sales)*Math.min(100,Math.max(0,num(x?.margin?.coveragePct)))/100,0);
+  const fallbackSales=rows.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackMarginSales),0);
+  const basisCoveragePct=displaySales?basisCoveredDisplaySales/displaySales*100:0;
+  const coveragePct=displaySales?costCoveredDisplaySales/displaySales*100:0;
+  const fallbackPct=valuedMarginSales?fallbackSales/valuedMarginSales*100:0;
+  const marginValue=valuedMarginSales?valuedMarginSales-totalCost:null;
+  const marginRate=valuedMarginSales?marginValue/valuedMarginSales*100:null;
+  const sanityMin=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0;
+  const sanityMax=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):60;
+  const maxFallback=Number.isFinite(Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT))?Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT):5;
+  const semanticsOk=kinds.length===1&&!['UNKNOWN','MIXED'].includes(kinds[0])&&!blocked.length;
+  const available=semanticsOk&&basisCoveragePct>=99&&coveragePct>=99&&fallbackPct<=maxFallback&&Number.isFinite(marginRate)&&marginRate>=sanityMin&&marginRate<=sanityMax;
+  const reason=available?null:
+    !semanticsOk?(blocked[0]||'MARGIN_COST_SEMANTICS_MIXED'):
+    basisCoveragePct<99?'MARGIN_NET_EXCL_TAX_COVERAGE_BELOW_99':
+    coveragePct<99?'COST_COVERAGE_BELOW_99':
+    fallbackPct>maxFallback?'PRODUCT_MASTER_COST_FALLBACK_EXCEEDS_LIMIT':
+    'BUSINESS_MARGIN_SANITY_FAILED';
+  return{available,status:available?'VALIDATED':'UNVALIDATED',reason,costKind:kinds.length===1?kinds[0]:'MIXED',marginSalesBase:round2(valuedMarginSales),totalCost:round2(totalCost),marginValue:available?round2(marginValue):null,marginRate:available?round2(marginRate):null,diagnosticMarginValue:round2(marginValue),diagnosticMarginRate:round2(marginRate),basisCoveragePct:round2(basisCoveragePct),coveragePct:round2(coveragePct),productMasterFallbackMarginSales:round2(fallbackSales),productMasterFallbackPct:round2(fallbackPct),productMasterFallbackLines:rows.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackLines),0),weightedConversions:rows.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0)}
+}
 function driverDecomposition(current,previous){
  const prevBasket=previous.averageBasket,currentBasket=current.averageBasket;
  if(previous.tickets==null||current.tickets==null||prevBasket==null||currentBasket==null)return{trafficEffect:null,basketEffect:null,totalDelta:round2(current.sales-previous.sales)};
@@ -222,18 +252,20 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  const currentResults=pairs.map(x=>({...x.current,storeId:x.store.id})).filter(x=>x.status==='READY'||x.status==='TRUNCATED');
  const previousResults=pairs.map(x=>({...x.previous,storeId:x.store.id})).filter(x=>x.status==='READY'||x.status==='TRUNCATED');
  const currentSummary=sumSummary(currentResults),previousSummary=sumSummary(previousResults);
+ const networkCurrentMargin=aggregateValidatedMargin(currentResults),networkPreviousMargin=aggregateValidatedMargin(previousResults);
+ if(networkCurrentMargin.available){currentSummary.marginSalesBase=networkCurrentMargin.marginSalesBase;currentSummary.marginValue=networkCurrentMargin.marginValue;currentSummary.marginRate=networkCurrentMargin.marginRate}
+ if(networkPreviousMargin.available){previousSummary.marginSalesBase=networkPreviousMargin.marginSalesBase;previousSummary.marginValue=networkPreviousMargin.marginValue;previousSummary.marginRate=networkPreviousMargin.marginRate}
  const currentProducts=mergeRows(currentResults.map(x=>x.products)),previousProducts=mergeRows(previousResults.map(x=>x.products));
  const products=compareRows(currentProducts,previousProducts),hierarchy=hierarchyFromProducts(currentProducts,previousProducts);
  const priceTierMap=buildPriceTierMap(currentProducts),customers=enrichCustomerPricePreferences(mergeCustomers(currentResults,endDate),priceTierMap),basketAnalysis=mergeBasketAnalysis(currentResults),cohorts=customerCohorts(customers),cashiers=mergeStaff(currentResults);
  const marginResults=currentResults.filter(x=>num(x?.summary?.sales)>0);
- const marginStatuses=[...new Set(marginResults.map(x=>x.margin?.status).filter(Boolean))];let marginStatus=!marginResults.length?'UNAVAILABLE':marginStatuses.length===1?marginStatuses[0]:marginStatuses.includes('UNVALIDATED')?'UNVALIDATED':marginStatuses.includes('UNAVAILABLE')?'UNAVAILABLE':'MIXED';
- const marginSales=marginResults.reduce((s,x)=>s+num(x?.summary?.sales),0),marginCoveredSales=marginResults.reduce((s,x)=>s+num(x?.summary?.sales)*Math.min(100,Math.max(0,num(x?.margin?.coveragePct)))/100,0),marginCoveragePct=marginSales?round2(marginCoveredSales/marginSales*100):null;
- const marginBasisCoveredSales=marginResults.reduce((s,x)=>s+num(x?.summary?.sales)*Math.min(100,Math.max(0,num(x?.margin?.basisCoveragePct)))/100,0),marginBasisCoveragePct=marginSales?round2(marginBasisCoveredSales/marginSales*100):null;
+ let marginStatus=networkCurrentMargin.status;
+ const marginCoveragePct=networkCurrentMargin.coveragePct??null,marginBasisCoveragePct=networkCurrentMargin.basisCoveragePct??null;
  const marginKinds=[...new Set(marginResults.map(x=>x?.margin?.costKind).filter(Boolean))],marginMethods=[...new Set(marginResults.map(x=>x?.margin?.method).filter(Boolean))],marginFields=[...new Set(marginResults.map(x=>x?.margin?.costField).filter(Boolean))],marginSalesBases=[...new Set(marginResults.map(x=>x?.margin?.salesBasis).filter(Boolean))],marginSalesBasisFields=[...new Set(marginResults.map(x=>x?.margin?.salesBasisField).filter(Boolean))],marginTaxFields=[...new Set(marginResults.map(x=>x?.margin?.taxField).filter(Boolean))];
- const marginReasons=[...new Set(marginResults.map(x=>x?.margin?.reason).filter(Boolean))];
+ const marginReasons=[...new Set([networkCurrentMargin.reason,...marginResults.map(x=>x?.margin?.reason)].filter(Boolean))];
  const sanityMin=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MIN))?Number(process.env.RETAIL_MARGIN_SANITY_MIN):0;
  const sanityMax=Number.isFinite(Number(process.env.RETAIL_MARGIN_SANITY_MAX))?Number(process.env.RETAIL_MARGIN_SANITY_MAX):60;
- const marginSanityOk=currentSummary.marginRate==null||currentSummary.marginRate>=sanityMin&&currentSummary.marginRate<=sanityMax;
+ const marginSanityOk=networkCurrentMargin.diagnosticMarginRate==null||networkCurrentMargin.diagnosticMarginRate>=sanityMin&&networkCurrentMargin.diagnosticMarginRate<=sanityMax;
  if(marginStatus==='VALIDATED'&&!marginSanityOk){marginStatus='UNVALIDATED';marginReasons.push('BUSINESS_MARGIN_SANITY_FAILED')}
  const storesComparison=pairs.map(x=>storeComparison(x.store,x.current,x.previous)).sort((a,b)=>num(b.sales)-num(a.sales));
  const negativeProducts=[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts=[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20);
@@ -267,7 +299,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
  };
  if(!fieldCoverage.customer)qualityIssues.push({code:'CUSTOMER_FIELD_COVERAGE',level:'ERROR',message:'Champ client non disponible sur toute la période : KPIs CRM bloqués'});
  if(!fieldCoverage.product)qualityIssues.push({code:'PRODUCT_FIELD_COVERAGE',level:'ERROR',message:'Champ article non disponible : analyses produits bloquées'});
- const publishMargin=marginStatus==='VALIDATED'&&marginSanityOk&&marginBasisCoveragePct!=null&&marginBasisCoveragePct>=99;
+ const publishMargin=networkCurrentMargin.available===true&&marginStatus==='VALIDATED'&&marginSanityOk&&marginBasisCoveragePct!=null&&marginBasisCoveragePct>=99;
  if(!publishMargin){
   currentSummary.marginSalesBase=null;currentSummary.marginValue=null;currentSummary.marginRate=null;
   previousSummary.marginSalesBase=null;previousSummary.marginValue=null;previousSummary.marginRate=null
@@ -291,7 +323,7 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
     marginRateDelta:currentSummary.marginRate!=null&&previousSummary.marginRate!=null?round2(currentSummary.marginRate-previousSummary.marginRate):null,
     drivers:driverDecomposition(currentSummary,previousSummary)
   },
-  margin:{status:marginStatus,available:publishMargin,basisCoveragePct:marginBasisCoveragePct,coveragePct:marginCoveragePct,salesBasis:marginSalesBases.length===1?marginSalesBases[0]:'MIXED',salesBasisField:marginSalesBasisFields.length===1?marginSalesBasisFields[0]:marginSalesBasisFields.join(',')||null,taxField:marginTaxFields.length===1?marginTaxFields[0]:marginTaxFields.join(',')||null,costKind:marginKinds.length===1?marginKinds[0]:'MIXED',method:marginMethods.length===1?marginMethods[0]:'MIXED',costField:marginFields.length===1?marginFields[0]:marginFields.join(',')||null,reason:publishMargin?null:marginReasons.join(',')||'TRANSACTION_MARGIN_NOT_VALIDATED',sanity:{min:sanityMin,max:sanityMax,ok:marginSanityOk},weightedConversions:marginResults.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0),fallbackUnitCostLines:marginResults.reduce((s,x)=>s+num(x?.margin?.fallbackUnitCostLines),0),productMasterFallbackLines:marginResults.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackLines),0),productMasterFallbackPct:round2(marginResults.reduce((s,x)=>s+num(x?.margin?.productMasterFallbackPct),0)/Math.max(1,marginResults.filter(x=>x?.margin?.productMasterFallbackPct!=null).length)),implausibleLines:marginResults.reduce((s,x)=>s+num(x?.margin?.implausibleLines),0),costCrossCheckPct:round2(marginResults.reduce((s,x)=>s+num(x?.margin?.costCrossCheckPct),0)/Math.max(1,marginResults.filter(x=>x?.margin?.costCrossCheckPct!=null).length)),message:publishMargin?'Marge brute calculée sur CA HT avec coût transactionnel validé.':'Marge masquée : base HT, coût ou contrôle métier non validé.'},
+  margin:{status:marginStatus,available:publishMargin,basisCoveragePct:marginBasisCoveragePct,coveragePct:marginCoveragePct,salesBasis:marginSalesBases.length===1?marginSalesBases[0]:'MIXED',salesBasisField:marginSalesBasisFields.length===1?marginSalesBasisFields[0]:marginSalesBasisFields.join(',')||null,taxField:marginTaxFields.length===1?marginTaxFields[0]:marginTaxFields.join(',')||null,costKind:marginKinds.length===1?marginKinds[0]:'MIXED',method:marginMethods.length===1?marginMethods[0]:'MIXED',costField:marginFields.length===1?marginFields[0]:marginFields.join(',')||null,reason:publishMargin?null:marginReasons.join(',')||'TRANSACTION_MARGIN_NOT_VALIDATED',sanity:{min:sanityMin,max:sanityMax,ok:marginSanityOk},weightedConversions:marginResults.reduce((s,x)=>s+num(x?.margin?.weightedConversions),0),fallbackUnitCostLines:marginResults.reduce((s,x)=>s+num(x?.margin?.fallbackUnitCostLines),0),productMasterFallbackLines:networkCurrentMargin.productMasterFallbackLines||0,productMasterFallbackMarginSales:networkCurrentMargin.productMasterFallbackMarginSales??null,productMasterFallbackPct:networkCurrentMargin.productMasterFallbackPct??null,implausibleLines:marginResults.reduce((s,x)=>s+num(x?.margin?.implausibleLines),0),costCrossCheckPct:round2(marginResults.reduce((s,x)=>s+num(x?.margin?.costCrossCheckPct),0)/Math.max(1,marginResults.filter(x=>x?.margin?.costCrossCheckPct!=null).length)),message:publishMargin?'Marge brute HT validée au niveau du périmètre sélectionné, avec conversion des quantités vers l’unité inventaire avant valorisation du coût.':`Marge masquée : ${networkCurrentMargin.reason||'base HT, coût ou contrôle métier non validé'}.`},
   daily:{current:publishedDailyCurrent,previous:publishedDailyPrevious},
   stores:publishedStores,
   products:publishedProducts,
