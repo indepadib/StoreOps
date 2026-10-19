@@ -247,11 +247,11 @@
     if(section==='sales'){
       for(const p of d.contributors?.negativeProducts||[])add(p.key);
       for(const p of d.contributors?.positiveProducts||[])add(p.key);
-      for(const p of (d.products||[]).slice(0,750))add(p.key);
+      for(const p of (d.products||[]).slice(0,100))add(p.key);
     }else if(section==='categories'||section==='suppliers'){
-      for(const p of (d.products||[]).slice(0,750))add(p.key);
+      for(const p of (d.products||[]).slice(0,240))add(p.key);
     }else if(section==='crm'){
-      for(const p of (d.products||[]).slice(0,650))add(p.key);
+      for(const p of (d.products||[]).slice(0,180))add(p.key);
       for(const x of d.crm?.customers||[])for(const p of x.topProducts||[])add(p.productNumber);
       for(const p of d.crm?.basketAnalysis?.topProducts||[])add(p.productNumber);
       for(const p of d.crm?.basketAnalysis?.topProductPairs||[]){add(p.productA);add(p.productB)}
@@ -292,7 +292,7 @@
       await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
       if(sectionNeedsCatalog())safeRenderPart('catalog-prewarm',render)
     };
-    if('requestIdleCallback' in window)window.requestIdleCallback(()=>run(),{timeout:2200});else setTimeout(run,1200)
+    setTimeout(()=>{if('requestIdleCallback' in window)window.requestIdleCallback(()=>run(),{timeout:4000});else run()},7000)
   }
 
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
