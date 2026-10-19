@@ -399,7 +399,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v27|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v27',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v28|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v28',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -476,11 +476,14 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    const marginSkus=[...new Set(includedRows.filter(row=>{
      const saleUnit=clean(c.fields.salesUnit?row[c.fields.salesUnit]:'');
      const inventoryUnit=clean(c.fields.inventoryUnit?row[c.fields.inventoryUnit]:'');
-     return !saleUnit||!inventoryUnit
+     const rawCost=Number(evaluationFields.cost?row[evaluationFields.cost]:NaN);
+     const needsCostFallback=detectedCostKind==='UNIT_COST_INVENTORY'&&(!Number.isFinite(rawCost)||rawCost===0);
+     return !saleUnit||!inventoryUnit||needsCostFallback
    }).map(row=>clean(row[c.fields.product])).filter(Boolean))];
    if(marginSkus.length)marginRefs=await releasedProductSourcingMany(marginSkus);
  }
- const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:evaluationFields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind});
+ const maxProductMasterFallbackPct=Number.isFinite(Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT))?Number(process.env.RETAIL_MARGIN_MASTER_FALLBACK_MAX_PCT):5;
+ const primaryEval=evaluateTransactionMarginRows({rows:includedRows,fields:evaluationFields,salesSign:c.sign,productRefs:marginRefs,costKind:detectedCostKind,maxProductMasterFallbackPct});
  let marginEval=primaryEval,costKind=detectedCostKind,semanticValidation=null,unitEvalDiagnostic=null;
  if((detectedCostKind==='LINE_AMOUNT'&&configuredCostKind!=='UNIT_COST_INVENTORY')||detectedCostKind==='UNKNOWN'){
    // If the field name does not establish semantics, evaluate BOTH interpretations
@@ -490,9 +493,9 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    const lineFields=c.fields;
    const lineEval=detectedCostKind==='LINE_AMOUNT'
      ? primaryEval
-     : evaluateTransactionMarginRows({rows:includedRows,fields:lineFields,salesSign:c.sign,productRefs:marginRefs,costKind:'LINE_AMOUNT'});
+     : evaluateTransactionMarginRows({rows:includedRows,fields:lineFields,salesSign:c.sign,productRefs:marginRefs,costKind:'LINE_AMOUNT',maxProductMasterFallbackPct});
    const unitFields=c.fields.costUnitPrice?{...c.fields,cost:c.fields.costUnitPrice,costUnitPrice:null}:c.fields;
-   const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:unitFields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY'});unitEvalDiagnostic=unitEval;
+   const unitEval=evaluateTransactionMarginRows({rows:includedRows,fields:unitFields,salesSign:c.sign,productRefs:marginRefs,costKind:'UNIT_COST_INVENTORY',maxProductMasterFallbackPct});unitEvalDiagnostic=unitEval;
    semanticValidation=selectTransactionCostSemantics({
      lineAmountEval:lineEval,
      unitCostEval:unitEval,
@@ -539,6 +542,8 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    diagnosticMarginRate:marginEval.diagnosticMarginRate??null,
    weightedConversions:marginEval.weightedConversions||0,
    fallbackUnitCostLines:marginEval.fallbackUnitCostLines||0,
+   productMasterFallbackLines:marginEval.productMasterFallbackLines||0,
+   productMasterFallbackPct:marginEval.productMasterFallbackPct??null,
    eligibleLines:marginEval.eligibleLines||0,
    valuedLines:marginEval.valuedLines||0,
    missingCostLines:marginEval.missingCostLines||0,
@@ -660,6 +665,6 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v27',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v28',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }
