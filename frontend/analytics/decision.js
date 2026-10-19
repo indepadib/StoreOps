@@ -471,6 +471,48 @@
     host.innerHTML=rows.slice(0,8).map((r,i)=>{const label=productLabel(r.key,r.label);return`<div class="contributor-row"><span class="contributor-rank">${i+1}</span><div class="contributor-name"><strong>${api.escapeHtml(label)}</strong><span>${api.escapeHtml(r.key)} · CA ${api.money(r.sales,true)}</span></div><span class="contributor-value ${tone}">${r.deltaSales>0?'+':''}${api.money(r.deltaSales,true)}</span></div>`}).join('');
   }
 
+
+  function renderHourlyIntelligence(){
+    const api=core(),bars=$('#hourlySalesBars'),body=$('#hourlyTopBody'),kpis=$('#hourlyKpis');
+    if(!api||!bars||!body||!kpis)return;
+    const all=(state.data?.products||[]).map(productWithCatalog);
+    const depMap=new Map(),rayonMap=new Map();
+    for(const p of all){
+      const dep=p.hierarchy?.department,ray=p.hierarchy?.rayon;
+      if(dep?.id)depMap.set(dep.id,dep.label||dep.id);
+      if(ray?.id&&(!state.hourly.department||dep?.id===state.hourly.department))rayonMap.set(ray.id,ray.label||ray.id)
+    }
+    setOptions('#hourlyDepartmentFilter','Tous les départements',[...depMap.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr')),state.hourly.department);
+    setOptions('#hourlyRayonFilter','Tous les rayons',[...rayonMap.entries()].sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr')),state.hourly.rayon);
+    const scoped=all.filter(p=>(!state.hourly.department||p.hierarchy?.department?.id===state.hourly.department)&&(!state.hourly.rayon||p.hierarchy?.rayon?.id===state.hourly.rayon));
+    setOptions('#hourlyProductFilter','Tous les articles',scoped.map(p=>[p.key,p.label||p.key]).sort((a,b)=>String(a[1]).localeCompare(String(b[1]),'fr')),state.hourly.product);
+    const products=scoped.filter(p=>!state.hourly.product||p.key===state.hourly.product);
+    const hours=Array.from({length:24},(_,h)=>({hour:h,sales:0,top:null,topSales:0}));
+    let total=0;
+    for(const p of products){
+      for(const [rawHour,rawSales] of Object.entries(p.hourlySales||{})){
+        const h=Number(rawHour),sales=Number(rawSales||0);if(!Number.isInteger(h)||h<0||h>23||!Number.isFinite(sales))continue;
+        hours[h].sales+=sales;total+=sales;
+        if(sales>hours[h].topSales){hours[h].topSales=sales;hours[h].top=p}
+      }
+    }
+    const visible=hours.filter(x=>x.sales>0),peak=[...visible].sort((a,b)=>b.sales-a.sales)[0],topProduct=[...products].sort((a,b)=>Number(b.sales||0)-Number(a.sales||0))[0];
+    const morning=hours.filter(x=>x.hour<12).reduce((s,x)=>s+x.sales,0),afternoon=hours.filter(x=>x.hour>=12&&x.hour<18).reduce((s,x)=>s+x.sales,0),evening=hours.filter(x=>x.hour>=18).reduce((s,x)=>s+x.sales,0);
+    kpis.innerHTML=[
+      ['Heure de pointe',peak?String(peak.hour).padStart(2,'0')+'h':'N/A',peak?api.money(peak.sales,true):'aucune vente horaire'],
+      ['CA filtré',api.money(total,true),state.hourly.product?'article sélectionné':state.hourly.rayon?'rayon sélectionné':state.hourly.department?'département sélectionné':'tous articles'],
+      ['Top article',topProduct?productLabel(topProduct.key,topProduct.label):'N/A',topProduct?api.money(topProduct.sales,true):'—'],
+      ['Moment dominant',morning>=afternoon&&morning>=evening?'Matin':afternoon>=evening?'Après-midi':'Soir',api.money(Math.max(morning,afternoon,evening),true)]
+    ].map(([l,v,s])=>`<div class="hourly-kpi"><small>${api.escapeHtml(l)}</small><strong>${api.escapeHtml(v)}</strong><span>${api.escapeHtml(s)}</span></div>`).join('');
+    if(!visible.length){
+      bars.innerHTML='<div class="table-loading">Champ heure indisponible ou aucune vente pour ce filtre.</div>';
+      body.innerHTML='<tr><td colspan="5"><div class="table-loading">Aucune vente horaire disponible.</div></td></tr>';return
+    }
+    const max=Math.max(...visible.map(x=>x.sales),1);
+    bars.innerHTML=visible.map(x=>`<div class="hourly-bar-row"><span>${String(x.hour).padStart(2,'0')}h</span><div><i style="width:${Math.max(2,x.sales/max*100)}%"></i></div><strong>${api.money(x.sales,true)}</strong></div>`).join('');
+    body.innerHTML=visible.map(x=>`<tr><td><strong>${String(x.hour).padStart(2,'0')}h–${String((x.hour+1)%24).padStart(2,'0')}h</strong></td><td>${api.money(x.sales,true)}</td><td>${total?api.percent(x.sales/total*100):'N/A'}</td><td>${x.top?api.escapeHtml(productLabel(x.top.key,x.top.label)):'N/A'}${x.top?'<br><small>'+api.escapeHtml(x.top.key)+'</small>':''}</td><td>${x.top?api.money(x.topSales,true):'—'}</td></tr>`).join('')
+  }
+
   function renderBenchmark(){
     const api=core(),rows=state.data?.stores||[],body=$('#benchmarkBody'),summary=$('#benchmarkSummary');if(!body||!summary)return;
     const valid=rows.filter(x=>x.sales!=null),avg=valid.length?valid.reduce((s,x)=>s+Number(x.sales||0),0)/valid.length:0;
