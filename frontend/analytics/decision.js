@@ -1,7 +1,7 @@
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
+  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',hourly:{department:'',rayon:'',product:''},affinity:{department:'',rayon:''},filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
