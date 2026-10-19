@@ -233,7 +233,7 @@ export function evaluateTransactionMarginRows({rows=[],fields={},salesSign=-1,pr
     marginRate:available?round2(marginRate):null,
     diagnosticMarginValue:round2(marginValue),
     diagnosticMarginRate:round2(marginRate),
-    eligibleLines,basisLines,basisMissingLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,fallbackUnitCostLines,productMasterFallbackLines,productMasterFallbackPct:round2(productMasterFallbackPct),
+    eligibleLines,basisLines,basisMissingLines,valuedLines,missingCostLines,missingProductLines,unknownUnitLines,implausibleLines,weightedConversions,fallbackUnitCostLines,productMasterFallbackLines,productMasterFallbackMarginSales:round2(productMasterFallbackMarginSales),productMasterFallbackPct:round2(productMasterFallbackPct),
     lineCostCrossCheckLines,lineCostCrossCheckAgree,costCrossCheckPct:round2(crossCheckPct),
     byProduct:bucketPublic(byProduct),
     byDate:bucketPublic(byDate),
