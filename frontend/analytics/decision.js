@@ -567,7 +567,7 @@
     if(f.product&&row.key!==f.product)return false;
     const ref=catalogItem(row.key);
     if(f.vendor&&ref?.primaryVendorAccount!==f.vendor)return false;
-    if(f.supplyMode&&ref?.supplyMode!==f.supplyMode)return false;
+    if(f.supplyMode&&ref?.supplyMode!==f.supplyMode)return false;if(f.supplyMode&&!['HIGH','MEDIUM'].includes(ref?.supplyModeConfidence||'NONE'))return false;
     return true
   }
   function filteredProducts(){
