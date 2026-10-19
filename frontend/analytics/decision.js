@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v26:';
+  const decisionCachePrefix='retail-intelligence:decision:v27:';
   const catalogCacheKey='retail-intelligence:catalog:v7';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -331,7 +331,7 @@
   function marginDisplay(d=state.data){
     const cur=d?.summary?.current||{},value=cur.marginValue==null?null:Number(cur.marginValue),rate=cur.marginRate==null?null:Number(cur.marginRate),coverage=d?.margin?.coveragePct??null;
     const valid=d?.margin?.available===true&&Number.isFinite(value)&&Number.isFinite(rate)&&rate>=0&&rate<=30;
-    return{value:valid?value:null,rate:valid?rate:null,estimated:false,coverage,quality:valid?'TRANSACTION_VALIDATED':d?.margin?.reason||d?.margin?.status||'UNAVAILABLE',invalidCount:d?.margin?.implausibleLines??null,method:d?.margin?.method||null,costKind:d?.margin?.costKind||null}
+    return{value:valid?value:null,rate:valid?rate:null,estimated:false,coverage,quality:valid?'TRANSACTION_VALIDATED':d?.margin?.reason||d?.margin?.status||'UNAVAILABLE',invalidCount:d?.margin?.implausibleLines??null,method:d?.margin?.method||null,costKind:d?.margin?.costKind||null,weightedConversions:d?.margin?.weightedConversions??0,productMasterFallbackLines:d?.margin?.productMasterFallbackLines??0,productMasterFallbackPct:d?.margin?.productMasterFallbackPct??0,basisCoverage:d?.margin?.basisCoveragePct??null}
   }
 
   function renderExecutive(){
@@ -375,14 +375,17 @@
     const command=$('#executiveCommandGrid');
     if(command){
       const marginValue=margin.value==null?'N/A':(margin.estimated?'~ ':'')+api.percent(margin.rate);
+      const caPerClient=crm.identifiedCustomers&&crm.identifiedSales!=null?Number(crm.identifiedSales)/Number(crm.identifiedCustomers):null;
+      const refsPerBasket=crm.basketAnalysis?.averageDistinctProducts??null;
       const cards=[
         ['Évolution CA',signed(api,s.salesChangePct),'écart '+(gap==null?'N/A':(gap>0?'+':'')+api.money(gap,true))],
         ['Fréquentation',signed(api,s.ticketsChangePct),api.number(cur.tickets)+' tickets'],
         ['Panier moyen',api.money(cur.averageBasket),signed(api,s.basketChangePct).replace(/<[^>]+>/g,'')+' vs comparaison'],
-        ['Marge',marginValue,margin.value==null?(margin.coverage==null?'coût en cours':'couverture coût '+api.percent(margin.coverage,0)):(margin.estimated?'estimation coût courant':'transactionnelle')],
+        ['Marge brute HT',marginValue,margin.value==null?(margin.coverage==null?'coût en validation':'couverture coût '+api.percent(margin.coverage,0)):(margin.productMasterFallbackLines?api.percent(margin.productMasterFallbackPct)+' CA avec fallback coût courant':'100% transactionnelle')],
         ['CA identifié',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'N/A':api.money(cur.identifiedSales,true)],
         ['Clients identifiés',api.number(crm.identifiedCustomers),crm.averageVisitsPerCustomer==null?'visites/client N/A':api.number(crm.averageVisitsPerCustomer,2)+' visites/client'],
-        ['Repeat',api.percent(crm.repeatRate),'clients avec ≥2 tickets sur la période'],
+        ['Clients revenus',api.percent(crm.repeatRate),'part des clients avec ≥2 tickets sur la période'],
+        ['CA / client identifié',caPerClient==null?'N/A':api.money(caPerClient),refsPerBasket==null?'réf./panier N/A':api.number(refsPerBasket,1)+' réf./panier'],
         ['Magasins',`${growing} ↑ / ${declining} ↓`,`${stores.length} magasin(s) analysé(s)`]
       ];
       command.innerHTML=cards.map(([l,v,sub])=>`<div class="executive-command-kpi"><small>${l}</small><strong>${v}</strong><span>${sub}</span></div>`).join('')
@@ -412,7 +415,7 @@
     const margin=marginDisplay(d),displayMargin=margin.value,displayRate=margin.rate,estimated=margin.estimated,marginCoverage=margin.coverage,marginQuality=margin.quality;
     const badge=$('#marginStatusBadge');
     if(badge){
-      if(d.margin?.available){badge.textContent=`Marge brute HT validée · ${d.margin?.salesBasis==='DERIVED_TTC_MINUS_TAX'?'TTC − taxe':'CA HT D365'} · ${d.margin?.costKind==='UNIT_COST_INVENTORY'?'CostPrice × quantité inventaire':'coût transactionnel'} · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' coût couvert'}`;badge.className='margin-status valid'}
+      if(d.margin?.available){const fallback=d.margin?.productMasterFallbackLines?` · fallback coût courant ${api.percent(d.margin.productMasterFallbackPct||0)}`:'';badge.textContent=`Marge brute HT validée · ${d.margin?.salesBasis==='DERIVED_TTC_MINUS_TAX'?'TTC − taxe':'CA HT D365'} · ${d.margin?.costKind==='UNIT_COST_INVENTORY'?'coût/unité inventaire × quantité convertie (kg→g si nécessaire)':'coût transactionnel'} · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' coût couvert'}${fallback}`;badge.className='margin-status valid'}
       else{badge.textContent=`Marge N/A · ${marginCoverage==null?'couverture inconnue':api.percent(marginCoverage,0)+' CA couvert'} · ${d.margin?.reason||'coût transactionnel non validé'}`;badge.className='margin-status warning'}
     }
     const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
@@ -580,7 +583,7 @@
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.classList.toggle('active',btn.dataset.level===state.level));
     if($('#performanceLevel'))$('#performanceLevel').value=state.level;
     const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
-    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier} · coûts courants ${cost}. Les marges précédées de ~ sont estimatives à coût courant, pas une marge comptable historique.`
+    if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${Math.min(total,650)} · hiérarchie ${hier}. La marge affichée vient uniquement du moteur transactionnel validé ; les coûts courants ne servent qu’en fallback borné sur les lignes sans coût.`
   }
   function renderPerformance(refreshFilters=true){
     const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;if(refreshFilters)renderHierarchyFilters();
