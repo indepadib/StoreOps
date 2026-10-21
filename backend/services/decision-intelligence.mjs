@@ -321,9 +321,9 @@ export async function buildDecisionIntelligence(stores,{startDate,endDate,compar
   amountBounds:filterCoverage.every(x=>x.amountBounds===true),
   transactionStatus:filterCoverage.every(x=>x.transactionStatus===true),
   returnNoSale:filterCoverage.every(x=>x.returnNoSale===true),
-  taxItemGroup:filterCoverage.every(x=>x.taxItemGroupMapped===true&&x.taxItemGroupExclusionConfigured===true)
+  taxItemGroup:filterCoverage.every(x=>(x.taxItemGroupExclusionConfigured!==true||x.taxItemGroupMapped===true))
  };
- if(!officialFilterCoverage.returnNoSale||!officialFilterCoverage.taxItemGroup)qualityIssues.push({code:'OFFICIAL_CA_FILTER_COVERAGE',level:'WARN',message:'Filtres CA officiels returnNoSale / ExoColl non garantis sur toutes les sources ventes'});
+ if(!officialFilterCoverage.returnNoSale||!officialFilterCoverage.taxItemGroup)qualityIssues.push({code:'OFFICIAL_CA_FILTER_COVERAGE',level:'WARN',message:'Filtres de ventes sans achat ou exclusions fiscales configurées non garantis sur toutes les sources ventes'});
  const fieldCoverage={
   product:mappedFields.every(x=>x.product===true),productName:mappedFields.every(x=>x.productName===true),quantity:mappedFields.every(x=>x.quantity===true),
   salesUnit:mappedFields.every(x=>x.salesUnit===true),customer:mappedFields.every(x=>x.customer===true),staff:mappedFields.every(x=>x.staff===true),time:mappedFields.every(x=>x.time===true),marginNet:mappedFields.every(x=>x.marginNet===true),taxAmount:mappedFields.every(x=>x.taxAmount===true)

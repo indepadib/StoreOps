@@ -37,6 +37,8 @@ jobs:
           node backend/tests/v233-unit-aware-margin.mjs
       - name: Analytics performance and cache contract
         run: node backend/tests/analytics-performance-contract.mjs
+      - name: Sales parent tickets and fiscal inclusion
+        run: node backend/tests/sales-parent-parity.mjs
       - name: Version contract test
         run: node backend/tests/version-contract.mjs
       - name: Article identity, UB rankings and temperature register
