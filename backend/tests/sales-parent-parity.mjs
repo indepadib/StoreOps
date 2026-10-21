@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'sales-parent-')),'test.db');
 const {aggregateSalesRows}=await import('../services/dynamics-sales.mjs');
-const {attachParentSalesEligibility}=await import('../services/sales-parent-transactions.mjs');
+const {attachParentSalesEligibility,retailParentIdentityFields}=await import('../services/sales-parent-transactions.mjs');
 const fields={company:'dataAreaId',store:'store',terminal:'terminalId',transaction:'transactionId',net:'netAmountInclTax',product:'itemId',quantity:'qty',status:'transactionStatus',returnNoSale:'returnNoSale',taxItemGroup:'TaxItemGroup'};
 const line=(terminalId,amount,extra={})=>({dataAreaId:'5001',store:'S1',terminalId,transactionId:'1',netAmountInclTax:-amount,itemId:'FLEG',qty:1,transactionStatus:'Posted',returnNoSale:'No',TaxItemGroup:'ExoColl',...extra});
 const head=(terminal,type,entryStatus='Posted',extra={})=>({dataAreaId:'5001',store:'S1',terminal,transactionId:'1',type,entryStatus,...extra});
@@ -20,6 +20,9 @@ try{
  assert.equal(result.dataQuality.exclusionReasons.status.sales,15);
  assert.equal(result.dataQuality.exclusionReasons.returnNoSale.sales,10);
  assert.deepEqual(result.dataQuality.excludedTaxItemGroups,[]);
+ const receiptMapped=line('A',120,{receiptId:'receipt-not-transaction-id',Channel:10001});
+ const canonical=attachParentSalesEligibility([receiptMapped],headers,retailParentIdentityFields);
+ assert.equal(aggregateSalesRows(canonical,{sign:-1,fields:{...fields,transaction:'receiptId',store:'Channel'}}).sales,120,'display mappings must not change the canonical parent identity');
  process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS=' exocoll ';
  assert.equal(aggregateSalesRows(attachParentSalesEligibility(rows,headers,fields),{sign:-1,fields}).sales,0,'explicit fiscal exclusions remain opt-in');
  assert.throws(()=>attachParentSalesEligibility(rows,headers.slice(1),fields),{code:'D365_SALES_PARENT_MISSING'});

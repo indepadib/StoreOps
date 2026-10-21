@@ -1,4 +1,5 @@
 export const parentSaleEligible=Symbol('parentSaleEligible');
+export const retailParentIdentityFields=Object.freeze({company:'dataAreaId',store:'store',terminal:'terminalId',transaction:'transactionId'});
 const clean=v=>String(v??'').trim();
 const key=(row,fields)=>JSON.stringify([clean(row[fields.company]),clean(row[fields.store]),clean(row[fields.terminal]),clean(row[fields.transaction])]);
 

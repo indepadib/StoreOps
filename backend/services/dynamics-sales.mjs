@@ -1,4 +1,4 @@
-import {attachParentSalesEligibility,parentSaleEligible} from './sales-parent-transactions.mjs';
+import {attachParentSalesEligibility,parentSaleEligible,retailParentIdentityFields} from './sales-parent-transactions.mjs';
 import { config } from '../config.mjs';
 import { odataGetAll, probeDataEntity } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
@@ -252,11 +252,11 @@ async function validateParentSales(rows,c,filters){
  if(c.entity!=='RetailTransactionSalesTransBIEntities'||!rows.length)return rows;
  const result=await odataGetAll('RetailTransactionTableBIEntities',{filter:filters.join(' and '),select:'dataAreaId,store,Channel,terminal,transactionId,type,entryStatus',extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
  if(result.truncated)throw Object.assign(new Error('Lecture des tickets parents Dynamics incomplète.'),{code:'D365_SALES_PARENT_TRUNCATED'});
- return attachParentSalesEligibility(rows,result.value||[],{company:config.dynamics.dataAreaField,store:c.fields.store,terminal:c.fields.terminal,transaction:c.fields.transaction});
+ return attachParentSalesEligibility(rows,result.value||[],retailParentIdentityFields);
 }
 export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
- const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?Object.values(retailParentIdentityFields):[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
  let firstEmpty=null,lastError=null;
  for(const identifier of identifiers){
@@ -420,7 +420,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
 
  c=await resolveMarginFields(c);
  const marginConfig=validatedMarginConfig(c);
- const select=[...Object.values(c.fields),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?Object.values(retailParentIdentityFields):[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])];
  let selected=null,lastError=null,firstEmpty=null;
 
