@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v30:';
+  const decisionCachePrefix='retail-intelligence:decision:v31:';
   const catalogCacheKey='retail-intelligence:catalog:v8';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -185,6 +185,7 @@
     if(force)q.set('force','1');
     try{return await api.api('/api/analytics/decision?'+q,{noRetry:true})}
     catch(error){
+      if(![503,504].includes(Number(error?.status))&&error?.code!=='API_NOT_JSON')throw error;
       console.warn('Retail Intelligence multi-store slice fallback',error?.status||error?.code||error);
       const results=new Array(ids.length);let next=0;
       const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force)}};
@@ -337,6 +338,8 @@
   function renderError(error){
     const api=core(); const msg=api?.escapeHtml?.(error?.message||'Analyse indisponible')||'Analyse indisponible';
     for(const id of ['benchmarkBody','performanceBody','crmBody']){const h=$('#'+id);if(h)h.innerHTML=`<tr><td colspan="12"><div class="table-loading">${msg}</div></td></tr>`}
+    const sales=$('#executiveSalesValue');if(sales)sales.textContent='Analyse indisponible';
+    const comparison=$('#executiveComparisonValue');if(comparison)comparison.textContent=error?.message||'Réessayez le chargement';
     const k=$('#decisionSalesKpis');if(k)k.innerHTML=`<div class="decision-kpi"><small>Source</small><strong>N/A</strong><span>${msg}</span></div>`;
   }
 
