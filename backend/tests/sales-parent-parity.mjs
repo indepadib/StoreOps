@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'sales-parent-')),'test.db');
+const {aggregateSalesRows}=await import('../services/dynamics-sales.mjs');
+const {attachParentSalesEligibility}=await import('../services/sales-parent-transactions.mjs');
+const fields={company:'dataAreaId',store:'store',terminal:'terminalId',transaction:'transactionId',net:'netAmountInclTax',product:'itemId',quantity:'qty',status:'transactionStatus',returnNoSale:'returnNoSale',taxItemGroup:'TaxItemGroup'};
+const line=(terminalId,amount,extra={})=>({dataAreaId:'5001',store:'S1',terminalId,transactionId:'1',netAmountInclTax:-amount,itemId:'FLEG',qty:1,transactionStatus:'Posted',returnNoSale:'No',TaxItemGroup:'ExoColl',...extra});
+const head=(terminal,type,entryStatus='Posted',extra={})=>({dataAreaId:'5001',store:'S1',terminal,transactionId:'1',type,entryStatus,...extra});
+const rows=[line('A',120),line('B',30),line('C',40),line('A',15,{transactionStatus:'Voided'}),line('A',10,{returnNoSale:'Yes'})];
+const headers=[head('A','Sales'),head('B','Sales','Voided'),head('C','SuspendedTransaction')];
+const saved=process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS;
+try{
+ delete process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS;
+ const result=aggregateSalesRows(attachParentSalesEligibility(rows,headers,fields),{sign:-1,fields});
+ assert.equal(result.sales,120,'real ExoColl sales must contribute to TTC CA');
+ assert.equal(result.products[0].key,'FLEG');
+ assert.equal(result.dataQuality.exclusionReasons.parentTransaction.sales,70);
+ assert.equal(result.dataQuality.exclusionReasons.status.sales,15);
+ assert.equal(result.dataQuality.exclusionReasons.returnNoSale.sales,10);
+ assert.deepEqual(result.dataQuality.excludedTaxItemGroups,[]);
+ process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS=' exocoll ';
+ assert.equal(aggregateSalesRows(attachParentSalesEligibility(rows,headers,fields),{sign:-1,fields}).sales,0,'explicit fiscal exclusions remain opt-in');
+ assert.throws(()=>attachParentSalesEligibility(rows,headers.slice(1),fields),{code:'D365_SALES_PARENT_MISSING'});
+ assert.throws(()=>attachParentSalesEligibility(rows,[...headers,headers[0]],fields),{code:'D365_SALES_PARENT_AMBIGUOUS'});
+ assert.throws(()=>attachParentSalesEligibility([line('A',120,{store:'S2'})],headers,fields),{code:'D365_SALES_PARENT_MISSING'});
+ assert.throws(()=>attachParentSalesEligibility([line('A',120,{dataAreaId:'other'})],headers,fields),{code:'D365_SALES_PARENT_MISSING'});
+}finally{if(saved===undefined)delete process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS;else process.env.D365_SALES_EXCLUDED_TAX_ITEM_GROUPS=saved}
+console.log('PASS parent ticket status/type, till/store/company joins, FLEG fiscal inclusion, opt-in exclusion and incomplete-parent rejection');
