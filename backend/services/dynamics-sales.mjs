@@ -270,7 +270,7 @@ export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}
      const cutoff=applyCutoff(validatedRows,c.fields.time,cutoffMinute),result={status:'READY',source:`D365/${c.entity}`,storeId,businessDate,config:{entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode,timeField:c.fields.time||null},data:{...aggregateSalesRows(cutoff.rows,c),pages:fetched.pages,truncated:!!fetched.truncated,cutoff:cutoff.meta,rawRowCount:(fetched.value||[]).length}};
      if((fetched.value||[]).length)return result;
      firstEmpty=firstEmpty||result;
-    }catch(error){lastError=error}
+    }catch(error){if(String(error?.code||'').startsWith('D365_SALES_PARENT_'))throw error;lastError=error}
    }
   }
  }
@@ -317,7 +317,7 @@ export async function readStoreSalesActivityWindow(storeId,{businessDate=new Dat
      const result={status:truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,businessDate:end,windowDays,startDay:start,endDay:end,products,rowCount,pages,truncated,chunkDays,chunks:chunks.length,config:{storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode}};
      if(rows.length||products.length){salesActivityCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});await writeAnalyticsCache(persistentKey,'sales-activity-v4',result,21600);return result}
      firstEmpty=firstEmpty||result;
-    }catch(error){lastError=error}
+    }catch(error){if(String(error?.code||'').startsWith('D365_SALES_PARENT_'))throw error;lastError=error}
    }
   }
  }
@@ -350,7 +350,7 @@ export async function readStoreProductSalesVelocity(storeId,productNumber,{busin
      const value={status:'READY',source:`D365/${c.entity}`,storeId,productNumber:sku,businessDate:end,windowDays,dailySales7:round3(Math.max(0,units7)/7),dailySales28:round3(Math.max(0,unitsWindow)/windowDays),dailySalesValue7:round2(Math.max(0,sales7)/7),dailySalesValue28:round2(Math.max(0,salesWindow)/windowDays),lastSaleDate,lastSaleDaysAgo,rowCount:fetched.rowCount,pages:fetched.pages,saleRows,quantitySign:c.quantitySign,storeIdentifierKind:identifier.kind,storeIdentifier:identifier.value,dateFilterMode:mode};
      if(saleRows>0){velocityCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});return value}
      firstEmpty=firstEmpty||value;
-    }catch(error){lastError=error}
+    }catch(error){if(String(error?.code||'').startsWith('D365_SALES_PARENT_'))throw error;lastError=error}
    }
   }
  }
@@ -451,7 +451,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
      const candidate={rows,pages,rowCount,truncated,identifier,mode,chunks:chunks.length};
      if(rows.length){selected=candidate;break outer}
      firstEmpty=firstEmpty||candidate;
-    }catch(error){lastError=error}
+    }catch(error){if(String(error?.code||'').startsWith('D365_SALES_PARENT_'))throw error;lastError=error}
    }
   }
  }
