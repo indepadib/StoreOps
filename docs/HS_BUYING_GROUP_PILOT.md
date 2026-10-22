@@ -1,6 +1,6 @@
 # H&S Buying Group · Pilot inside StoreOps
 
-Status: feature branch / preview only. The module is a decoupled integration experiment, **not** a new production ERP workflow.
+Status: standalone `/centrale-achat` extension sharing StoreOps authentication and server API; not embedded in the StoreOps operational navigation. The module remains a limited procurement pilot, not a production ERP workflow.
 
 ## Why StoreOps first
 - Reuse StoreOps session, role-based navigation and existing server-side D365 integration.
@@ -8,7 +8,7 @@ Status: feature branch / preview only. The module is a decoupled integration exp
 - Avoid building another authentication or D365 client before the requirements are validated.
 
 ## Pilot scope
-- A dedicated horizontal navigation entry, gated in the StoreOps UI to director / platform admin using the existing isDirector() predicate.
+- Two separate header shortcuts (Analytics and Centrale d'achat), shown only for director/platform-admin users. The buying group runs under `/centrale-achat` as an independent HTML shell and uses a server-verified StoreOps session and `isDirector()` guard before rendering. Other users never see the shortcuts.
 - Executive dashboard structure without invented financial KPIs.
 - Group negotiation simulator using explicit **fictional** quantities and prices (not stored).
 - Contracts workflow explainer, with a link to the **separate public demonstration**, without passing credentials.
@@ -21,7 +21,8 @@ Status: feature branch / preview only. The module is a decoupled integration exp
 ## Isolation and eventual migration
 - Self-contained UI component: frontend/js/pages/buying-group.js.
 - Self-contained styles: frontend/buying-group.css.
-- Minimal touches: frontend/index.html and frontend/js/app.js.
+- Minimal StoreOps shell touches: `frontend/index.html` and `frontend/js/app.js`. The standalone application is under `frontend/centrale-achat/`, with shared functionality in `frontend/js/pages/buying-group.js`.
+- After login on the root StoreOps app, the auth callback can resume `/centrale-achat`. Links intentionally navigate in the same tab so sessionStorage credentials remain available.
 - A future provider abstraction (AuthAdapter, ErpAdapter, BuyingRepository, DocumentStorage) will allow deployment under a separate H&S domain.
 - **Do not use StoreOps store IDs as Group legal-entity IDs**; define explicit mapping and approved entity scope.
 - Do not persist sensitive supplier contracts in localStorage or a public repository.
@@ -35,7 +36,7 @@ Status: feature branch / preview only. The module is a decoupled integration exp
 - Do not publish or share real contracts from the current public mockup URL.
 
 ## Acceptance and validation
-1. Normal staff does not see the menu and is redirected away if they try to route manually.
+1. Normal staff does not see either workspace shortcut and receives an access-denied page if they navigate directly to `/centrale-achat`.
 2. Director can open Centrale d’achat without disrupting Réseau or existing pages.
 3. Session and store switching still work; PO cache doesn't follow an unrelated store.
 4. A failed D365 diagnostic or PO read yields a useful error, not fabricated figures.
@@ -44,7 +45,7 @@ Status: feature branch / preview only. The module is a decoupled integration exp
 7. No D365 mutating request is introduced.
 8. No group-wide financial totals are inferred from Franprix-only data.
 9. Run: node --test tests/buying-group.test.mjs.
-10. Smoke-test mobile layout, director and employee access, then approve merging after a Netlify deploy preview.
+10. Smoke-test `/centrale-achat` direct navigation, same-tab session reuse, local/Entra login resume, director and employee access, responsive layout, then approve merging after a Netlify deploy preview.
 
 ## Next milestones
 - P1: Group supplier identity matching, legal-entity and product crosswalk, read-only D365 purchase orders and invoices by authorized entity, with a paginated adapter on the server.
