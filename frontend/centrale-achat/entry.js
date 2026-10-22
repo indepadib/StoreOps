@@ -1,7 +1,7 @@
-import {api,health} from '/js/api.js?v=2404';
-import {ensureAccessToken,ensureLocalSession,startAuthKeepAlive} from '/js/auth.js?v=2404';
-import {app,isDirector} from '/js/state.js?v=2404';
-import {renderBuyingGroup} from '/js/pages/buying-group.js?v=2';
+import {api,health} from '/js/api.js';
+import {ensureAccessToken,ensureLocalSession,startAuthKeepAlive} from '/js/auth.js';
+import {app,isDirector} from '/js/state.js';
+import {renderBuyingGroup} from '/js/pages/buying-group.js';
 
 const $=selector=>document.querySelector(selector);
 const returnPath='/centrale-achat';
