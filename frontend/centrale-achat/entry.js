@@ -1,5 +1,5 @@
 import {api,health} from '/js/api.js';
-import {ensureAccessToken,ensureLocalSession,startAuthKeepAlive} from '/js/auth.js';
+import {ensureAccessToken,ensureLocalSession,startAuthKeepAlive,startLocalLogin,startLogin} from '/js/auth.js';
 import {app,isDirector} from '/js/state.js';
 import {renderBuyingGroup} from '/js/pages/buying-group.js';
 
@@ -7,10 +7,37 @@ const $=selector=>document.querySelector(selector);
 const returnPath='/centrale-achat';
 const escapeHtml=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 function gate(title,description,{canLogin=false}={}){
-  $('#buyingGate').hidden=false;
+  const root=$('#buyingGate'),local=app.authMode==='local',entra=app.authMode==='entra';
+  root.hidden=false;
   $('#buyingGroupContent').hidden=true;
-  $('#buyingGate').innerHTML='<section class="buying-shell-gate"><span aria-hidden="true" style="font-size:32px">◈</span><h1>'+escapeHtml(title)+'</h1><p>'+escapeHtml(description)+'</p><a href="/"> '+(canLogin?'Se connecter à StoreOps':'Revenir à StoreOps')+' ↗</a></section>';
-  if(canLogin)sessionStorage.setItem('storeops_return_path',returnPath);
+  const action=canLogin&&local
+    ?'<form id="buyingLocalLogin" class="buying-local-form"><label>Email professionnel<input id="buyingEmail" type="email" autocomplete="username" required></label><label>Mot de passe<input id="buyingPassword" type="password" autocomplete="current-password" required></label><button id="buyingLoginSubmit" type="submit">Se connecter à la Centrale</button></form>'
+    :canLogin&&entra
+      ?'<button type="button" id="buyingMicrosoftLogin" class="buying-login-btn">Se connecter avec Microsoft</button>'
+      :'<a href="/">Retour à StoreOps ↗</a>';
+  root.innerHTML='<section class="buying-shell-gate"><span aria-hidden="true" style="font-size:32px">◈</span><h1>'+escapeHtml(title)+'</h1><p>'+escapeHtml(description)+'</p>'+action+'</section>';
+  $('#buyingSession').textContent='Accès sécurisé';
+  if(!canLogin)return;
+  sessionStorage.setItem('storeops_return_path',returnPath);
+  root.querySelector('#buyingLocalLogin')?.addEventListener('submit',async event=>{
+    event.preventDefault();
+    const button=root.querySelector('#buyingLoginSubmit');
+    const email=root.querySelector('#buyingEmail')?.value||'',password=root.querySelector('#buyingPassword')?.value||'';
+    button.disabled=true;button.textContent='Connexion…';
+    try{
+      await startLocalLogin(email,password);
+      sessionStorage.removeItem('storeops_return_path');
+      await start();
+    }catch(error){
+      gate('Connexion refusée',error?.message||'Identifiants invalides. Vérifiez votre compte professionnel.',{canLogin:true});
+    }
+  });
+  root.querySelector('#buyingMicrosoftLogin')?.addEventListener('click',async()=>{
+    const button=root.querySelector('#buyingMicrosoftLogin');
+    button.disabled=true;button.textContent='Redirection vers Microsoft…';
+    try{await startLogin()}
+    catch(error){gate('Connexion Microsoft impossible',error?.message||'Impossible de démarrer la connexion.',{canLogin:true})}
+  });
 }
 async function start(){
   let h;
@@ -21,20 +48,38 @@ async function start(){
     gate('Connexion professionnelle requise','La centrale d’achat n’est pas accessible en mode démonstration. Utilisez une session StoreOps authentifiée.');
     return;
   }
+  let session=null;
   if(app.authMode==='local'){
-    const local=await ensureLocalSession();
-    if(!local){gate('Connexion requise','Connectez-vous sur StoreOps avec un compte Direction ou Administrateur. Vous reviendrez automatiquement sur la centrale d’achat.',{canLogin:true});return}
+    session=await ensureLocalSession();
+    if(!session){
+      gate('Connexion requise','Connectez-vous directement ici avec votre compte StoreOps Direction ou Administrateur.',{canLogin:true});
+      return;
+    }
   }else if(app.authMode==='entra'){
-    const token=await ensureAccessToken();
-    if(!token){gate('Connexion Microsoft requise','Connectez-vous avec votre compte professionnel depuis StoreOps. La même session sera réutilisée ici.',{canLogin:true});return}
+    let token=await ensureAccessToken();
+    if(!token){
+      gate('Connexion Microsoft requise','Connectez-vous avec votre compte professionnel pour accéder à la centrale d’achat.',{canLogin:true});
+      return;
+    }
+    try{session=await api('/api/session',{noRetry:true})}
+    catch(error){
+      if(error?.status===401){
+        // A local expiry timestamp does not guarantee that D365/StoreOps accepts the token.
+        // Refresh it once, then revalidate the user with the backend.
+        sessionStorage.removeItem('storeops_access_token');
+        token=await ensureAccessToken();
+        if(token)session=await api('/api/session',{noRetry:true}).catch(()=>null);
+      }
+    }
+    if(!session){
+      gate('Reconnexion nécessaire','Votre session Microsoft n’est plus validée par StoreOps. Reconnectez-vous pour continuer.',{canLogin:true});
+      return;
+    }
     startAuthKeepAlive();
   }else{
-    gate('Mode d’authentification inconnu','Le mode de connexion de StoreOps ne permet pas encore l’accès à cette application.');
+    gate('Mode d’authentification inconnu','Le mode de connexion StoreOps ne permet pas encore l’accès à cette application.');
     return;
   }
-  let session;
-  try{session=await api('/api/session',{noRetry:true})}
-  catch(error){gate('Session expirée','Nous ne parvenons pas à vérifier votre profil. Reconnectez-vous à StoreOps.',{canLogin:true});return}
   app.user=session?.user||null;
   if(!isDirector()){
     $('#buyingSession').textContent='Accès restreint';
