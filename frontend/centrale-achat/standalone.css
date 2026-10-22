@@ -28,3 +28,12 @@
 .buying-store select{color:#254936;font-size:12px;font-weight:700;border:1px solid #dce7d9;background:#fff;min-height:34px;border-radius:9px;padding:4px 12px;max-width:175px}
 @media(max-width:800px){.buying-shell-head{flex-wrap:wrap}.buying-session{order:3;width:100%;max-width:none;text-align:left}.buying-shell-nav{margin-left:auto}.buying-store{width:100%;order:4}.buying-store select{max-width:65vw}}
 @media(max-width:420px){.buying-brand-symbol{min-width:38px;height:38px}.buying-brand small{font-size:8px}.buying-shell-nav a{padding:0 8px;font-size:11px}}
+
+/* Explicit authentication for a direct visit or a separate browser tab. */
+.buying-local-form{display:flex;flex-direction:column;text-align:left;gap:15px;margin:5px auto 0;max-width:355px}
+.buying-local-form label{display:flex;flex-direction:column;gap:7px;font-weight:750;font-size:12px;color:#45614d}
+.buying-local-form input{width:100%;min-height:45px;border:1px solid #d5e3d5;border-radius:11px;background:#f9fcf7;color:#143728;padding:10px 12px;font-size:15px}
+.buying-local-form input:focus-visible{outline:2px solid #a4dd75;outline-offset:2px}
+.buying-local-form button,.buying-shell-gate .buying-login-btn{border:0;cursor:pointer;width:100%;min-height:45px;border-radius:11px;background:#d7f5a9;color:#274731;font-size:13px;font-weight:800;padding:12px 16px}
+.buying-local-form button:hover,.buying-shell-gate .buying-login-btn:hover{background:#c4eb92}
+.buying-local-form button:disabled,.buying-shell-gate .buying-login-btn:disabled{opacity:.6;cursor:wait}
