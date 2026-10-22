@@ -1,0 +1,30 @@
+:root{font-family:Inter,"Segoe UI",Arial,sans-serif;color:#193a2d;background:#f7f9f5;font-synthesis:none}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f7f9f5}
+.buying-shell-head{display:flex;align-items:center;gap:20px;justify-content:space-between;min-height:80px;padding:12px clamp(16px,3.5vw,56px);background:#fff;border-bottom:1px solid #e3eae1;position:relative;z-index:2}
+.buying-brand{display:flex;align-items:center;gap:11px;text-decoration:none;color:#1a3e2c}
+.buying-brand-symbol{display:grid;place-items:center;min-width:45px;height:43px;padding:4px;background:#153b2e;color:white;border-radius:13px;font-size:19px;font-weight:900;letter-spacing:-.07em}
+.buying-brand-symbol span{color:#d0f682}
+.buying-brand>span:last-child{display:flex;flex-direction:column;gap:4px}
+.buying-brand strong{font-size:15px;letter-spacing:-.04em}
+.buying-brand small{font-size:10px;letter-spacing:.12em;color:#879b8b;text-transform:uppercase;font-weight:800}
+.buying-shell-nav{display:flex;align-items:center;gap:9px}
+.buying-shell-nav a{display:inline-flex;align-items:center;justify-content:center;min-height:38px;white-space:nowrap;padding:0 13px;border-radius:10px;border:1px solid #e0e8dc;background:#f6f9f2;color:#335543;text-decoration:none;font-size:12px;font-weight:750}
+.buying-shell-nav a:hover{background:#e9f6da}
+.buying-session{font-size:11px;color:#718578;max-width:220px;text-align:right}
+.buying-shell-main{min-height:65vh;display:grid;place-items:center;padding:25px}
+.buying-shell-loading,.buying-shell-gate{width:min(100%,530px);background:#fff;border:1px solid #dfeade;border-radius:25px;padding:48px 30px;text-align:center;box-shadow:0 18px 50px #243d2310}
+.buying-ring{height:36px;width:36px;border:4px solid #e0efda;border-top-color:#2c6947;border-radius:50%;margin:auto;animation:buying-spin 1s linear infinite}
+@keyframes buying-spin{to{transform:rotate(360deg)}}
+.buying-shell-gate h1,.buying-shell-loading h1{font-size:26px;line-height:1.2;letter-spacing:-.035em;margin:20px 0 12px}
+.buying-shell-gate p,.buying-shell-loading p{font-size:14px;color:#728678;line-height:1.7;margin:0 0 24px}
+.buying-shell-gate a{background:#d7f5a9;color:#274731;text-decoration:none;display:inline-flex;padding:12px 23px;font-weight:800;font-size:13px;border-radius:12px;min-height:44px;align-items:center}
+.buying-shell-gate a:hover{background:#c3ec8c}
+.buying-footer{font-size:11px;text-align:center;color:#809386;padding:25px 12px;border-top:1px solid #e4ece3}
+#buyingGroupContent[hidden],#buyingGate[hidden]{display:none!important}
+#buyingGroupContent>.bg-app{border-radius:0;min-height:75vh}
+#buyingGroupContent .bg-hero{padding-top:42px}
+.buying-store{display:flex;align-items:center;gap:6px}
+.buying-store label{font-size:11px;color:#6d8377}
+.buying-store select{color:#254936;font-size:12px;font-weight:700;border:1px solid #dce7d9;background:#fff;min-height:34px;border-radius:9px;padding:4px 12px;max-width:175px}
+@media(max-width:800px){.buying-shell-head{flex-wrap:wrap}.buying-session{order:3;width:100%;max-width:none;text-align:left}.buying-shell-nav{margin-left:auto}.buying-store{width:100%;order:4}.buying-store select{max-width:65vw}}
+@media(max-width:420px){.buying-brand-symbol{min-width:38px;height:38px}.buying-brand small{font-size:8px}.buying-shell-nav a{padding:0 8px;font-size:11px}}
