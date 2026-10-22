@@ -6,6 +6,10 @@ on:
       - "frontend/js/pages/buying-group.js"
       - "frontend/buying-group.css"
       - "frontend/index.html"
+      - "frontend/director-workspaces.css"
+      - "frontend/centrale-achat/**"
+      - "frontend/_redirects"
+      - "frontend/js/auth.js"
       - "frontend/js/app.js"
       - "tests/buying-group.test.mjs"
       - ".github/workflows/hs-buying-group-pilot.yml"
@@ -15,6 +19,10 @@ on:
       - "frontend/js/pages/buying-group.js"
       - "frontend/buying-group.css"
       - "frontend/index.html"
+      - "frontend/director-workspaces.css"
+      - "frontend/centrale-achat/**"
+      - "frontend/_redirects"
+      - "frontend/js/auth.js"
       - "frontend/js/app.js"
       - "tests/buying-group.test.mjs"
       - ".github/workflows/hs-buying-group-pilot.yml"
@@ -36,6 +44,7 @@ jobs:
         run: |
           node --check frontend/js/app.js
           node --check frontend/js/pages/buying-group.js
+          node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
         run: node --test tests/buying-group.test.mjs
