@@ -12,6 +12,8 @@ const auth=file('frontend/js/auth.js');
 const redirect=file('frontend/_redirects');
 const standalone=file('frontend/centrale-achat/index.html');
 const standaloneEntry=file('frontend/centrale-achat/entry.js');
+const standaloneShell=file('frontend/centrale-achat/index.html');
+const netlifyConfig=file('netlify.toml');
 const shortcuts=file('frontend/director-workspaces.css');
 const moduleSource=file('frontend/js/pages/buying-group.js');
 const css=file('frontend/buying-group.css');
@@ -80,4 +82,27 @@ test('Illustrative Lesieur savings remain correct and non-persistent',()=>{
   assert.equal(result.saving,28500);
   assert.equal(result.qty,15500);
   assert.doesNotMatch(moduleSource,/method:\s*['"](?:POST|PUT|PATCH|DELETE)/i);
+});
+
+test('Canonical ES modules share one StoreOps auth state instance (regression for 401)',()=>{
+  const imports=standaloneEntry.match(/^import .+$/gm)||[];
+  assert.equal(imports.length,4);
+  for(const statement of imports)assert.doesNotMatch(statement,/\?v=\d+/);
+  assert.match(standaloneEntry,/from '\/js\/api\.js'/);
+  assert.match(standaloneEntry,/from '\/js\/state\.js'/);
+  assert.match(standaloneEntry,/from '\/js\/auth\.js'/);
+  assert.match(standaloneEntry,/from '\/js\/pages\/buying-group\.js'/);
+  assert.match(standaloneShell,/\/centrale-achat\/entry\.js\?v=3/);
+  assert.match(netlifyConfig,/for = "\/centrale-achat\/\*"/);
+});
+
+test('Direct login and expired session are handled without bypassing authorization',()=>{
+  assert.match(standaloneEntry,/startLocalLogin\(email,password\)/);
+  assert.match(standaloneEntry,/buyingLocalLogin/);
+  assert.match(standaloneEntry,/startLogin\(\)/);
+  assert.match(standaloneEntry,/error\?\.status===401/);
+  assert.match(standaloneEntry,/sessionStorage\.removeItem\('storeops_access_token'\)/);
+  assert.match(standaloneEntry,/if\(!isDirector\(\)\)/);
+  assert.doesNotMatch(standaloneEntry,/localStorage\.setItem\('storeops_local_authorization'/);
+  assert.doesNotMatch(standaloneEntry,/method:\s*['"](?:POST|PUT|DELETE|PATCH)/i);
 });
