@@ -44,7 +44,7 @@ test('The pilot does not call any API on initial rendering',()=>{
   const node={innerHTML:'',querySelectorAll:()=>[],querySelector:()=>null};
   const instance=runtime(()=>{calls++;throw Error('Unexpected call')},
     {user:{role:'ops_director',name:'Direction'},storeId:'val-fleuri',authMode:'local'},
-    ()=>({name:'Val-Fleuri'}),()=>true,{querySelector:()=>node});
+    ()=>({name:'Val-Fleuri'}),()=>true,{querySelector:(selector)=>selector==='#buyingGroupContent'?node:null});
   instance.renderBuyingGroup();
   assert.equal(calls,0);
   assert.match(node.innerHTML,/Une force d’achat/);
