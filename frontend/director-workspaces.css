@@ -1,0 +1,9 @@
+/* Director-only links to autonomous H&S applications. */
+#directorWorkspaceLinks[hidden]{display:none!important}
+#directorWorkspaceLinks{display:flex;align-items:center;gap:7px;margin-left:3px}
+#directorWorkspaceLinks a{display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 12px;background:#fff;border:1px solid #e5dce3;color:#3b4b43;text-decoration:none;font-size:12px;font-weight:750;white-space:nowrap;border-radius:10px;transition:background .16s,transform .16s}
+#directorWorkspaceLinks a:hover{background:#f1f6eb;transform:translateY(-1px)}
+#directorWorkspaceLinks .director-workspace-main{color:#123f30;background:#dff3ca;border-color:#b9dca7}
+#directorWorkspaceLinks .director-workspace-main:hover{background:#d1edb8}
+@media(max-width:950px){#directorWorkspaceLinks{flex-wrap:wrap}#directorWorkspaceLinks a{min-height:33px;padding:0 8px;font-size:11px}}
+@media(max-width:600px){#directorWorkspaceLinks{order:10;width:100%;margin:5px 0;justify-content:flex-start}#directorWorkspaceLinks a{flex:1}}
