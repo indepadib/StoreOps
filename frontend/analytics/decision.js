@@ -1,7 +1,7 @@
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,freshKey:null,loading:false,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',hourly:{department:'',rayon:'',product:''},affinity:{department:'',rayon:''},filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
+  const state={data:null,key:null,freshKey:null,loading:false,loadingKey:null,reloadPending:false,pendingForce:false,controller:null,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',hourly:{department:'',rayon:'',product:''},affinity:{department:'',rayon:''},filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
@@ -15,7 +15,7 @@
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v31:';
+  const decisionCachePrefix='retail-intelligence:decision:v32:';
   const catalogCacheKey='retail-intelligence:catalog:v8';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -151,7 +151,8 @@
     const fallbackMarginSales=parts.reduce((s,p)=>s+Number(p.margin?.productMasterFallbackMarginSales||0),0),fallbackLines=parts.reduce((s,p)=>s+Number(p.margin?.productMasterFallbackLines||0),0),weightedConversions=parts.reduce((s,p)=>s+Number(p.margin?.weightedConversions||0),0),fallbackPct=current.marginSalesBase?fallbackMarginSales/current.marginSalesBase*100:0;
     return{status:'READY',period,comparison,coverage:{storesRequested:parts[0]?.coverage?.storesRequested||0,currentStoresReady:Math.min(...parts.map(p=>p.coverage?.currentStoresReady??0)),comparisonStoresReady:Math.min(...parts.map(p=>p.coverage?.comparisonStoresReady??0))},quality:{status:qualityStatus,issues:qualityIssues,checks:qualityChecks},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{status:marginStatus,available:['VALIDATED','ESTIMATED'].includes(marginStatus)&&current.marginValue!=null&&current.marginSalesBase!=null,estimated:marginStatus==='ESTIMATED',basisCoveragePct:Math.min(...parts.map(p=>Number(p.margin?.basisCoveragePct??0))),coveragePct:Math.min(...parts.map(p=>Number(p.margin?.coveragePct??0))),salesBasis:[...new Set(parts.map(p=>p.margin?.salesBasis).filter(Boolean))].join(',')||null,salesBasisField:[...new Set(parts.map(p=>p.margin?.salesBasisField).filter(Boolean))].join(',')||null,taxField:[...new Set(parts.map(p=>p.margin?.taxField).filter(Boolean))].join(',')||null,costField:[...new Set(parts.map(p=>p.margin?.costField).filter(Boolean))].join(',')||null,costKind:[...new Set(parts.map(p=>p.margin?.costKind).filter(Boolean))].join(',')||null,method:[...new Set(parts.map(p=>p.margin?.method).filter(Boolean))].join(',')||null,productMasterFallbackLines:fallbackLines,productMasterFallbackMarginSales:fallbackMarginSales,productMasterFallbackPct:fallbackPct,weightedConversions,reason:[...new Set(parts.map(p=>p.margin?.reason).filter(Boolean))].join(',')||null,message:marginStatus==='VALIDATED'?'Marge brute calculée sur CA HT avec coût transactionnel validé.':marginStatus==='ESTIMATED'?'Marge brute HT estimée avec coût courant en fallback sur une partie du CA.':'Marge masquée : base HT, coût ou contrôle métier non validé.'},daily:{current:parts.flatMap(p=>p.daily?.current||[]).sort((a,b)=>a.date.localeCompare(b.date)),previous:parts.flatMap(p=>p.daily?.previous||[]).sort((a,b)=>a.date.localeCompare(b.date))},hourly:{current:mergeHourlyParts(parts,'current'),previous:mergeHourlyParts(parts,'previous')},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},cashiers:{status:cashierItems.length?'READY':'UNAVAILABLE',items:cashierItems,source:'CHUNK_MERGE'},crm,generatedAt:new Date().toISOString()}
   }
-  function setProgress(done,total){
+  function setProgress(done,total,expectedKey=null){
+    if(expectedKey&&expectedKey!==queryKey(sectionState()))return;
     const el=$('#executiveSalesValue');if(el)el.textContent=done>=total?'Finalisation…':`Analyse ${done}/${total}`;
     const foot=$('#executiveComparisonValue');if(foot)foot.textContent='Lecture Dynamics par blocs';
   }
@@ -160,40 +161,42 @@
     if(ids.length)return [...new Set(ids)];
     return (s?.stores||[]).map(x=>x.id).filter(Boolean)
   }
-  async function fetchSingleStoreSlice(api,storeId,cur,cmp,force=false){
+  async function fetchSingleStoreSlice(api,storeId,cur,cmp,force=false,signal=null){
     const q=new URLSearchParams({storeId,start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
     if(force)q.set('force','1');
-    try{return await api.api(`/api/analytics/decision?${q}`,{noRetry:true})}
+    try{return await api.api(`/api/analytics/decision?${q}`,{noRetry:true,signal})}
     catch(error){
+      if(signal?.aborted)throw error;
       const retryable=Number(error?.status)===504||Number(error?.status)===503||error?.code==='API_NOT_JSON';
       const cd=rangeDays(cur.start,cur.end),pd=rangeDays(cmp.start,cmp.end);
       if(retryable&&cd>1&&pd>1){
         const cparts=splitRange(cur.start,cur.end,2),pparts=splitRange(cmp.start,cmp.end,2);
         // Keep recursive retries sequential: D365 is the bottleneck and parallel
         // retries were multiplying throttling / Netlify 504s.
-        const left=await fetchSingleStoreSlice(api,storeId,cparts[0],pparts[0],force);
-        const right=await fetchSingleStoreSlice(api,storeId,cparts[1],pparts[1],force);
+        const left=await fetchSingleStoreSlice(api,storeId,cparts[0],pparts[0],force,signal);
+        const right=await fetchSingleStoreSlice(api,storeId,cparts[1],pparts[1],force,signal);
         return mergeDecisionParts([left,right],{startDate:cur.start,endDate:cur.end,days:cd},{startDate:cmp.start,endDate:cmp.end,days:pd})
       }
       throw error
     }
   }
-  async function fetchDecisionSlice(api,s,cur,cmp,force=false){
+  async function fetchDecisionSlice(api,s,cur,cmp,force=false,signal=null){
     const ids=selectedStoreIds(s);
-    if(ids.length<=1)return fetchSingleStoreSlice(api,ids[0]||s.selectedStore||'ALL',cur,cmp,force);
+    if(ids.length<=1)return fetchSingleStoreSlice(api,ids[0]||s.selectedStore||'ALL',cur,cmp,force,signal);
     const q=new URLSearchParams({storeId:'MULTI',storeIds:ids.join(','),start:cur.start,end:cur.end,compareStart:cmp.start,compareEnd:cmp.end});
     if(force)q.set('force','1');
-    try{return await api.api('/api/analytics/decision?'+q,{noRetry:true})}
+    try{return await api.api('/api/analytics/decision?'+q,{noRetry:true,signal})}
     catch(error){
+      if(signal?.aborted)throw error;
       if(![503,504].includes(Number(error?.status))&&error?.code!=='API_NOT_JSON')throw error;
       console.warn('Retail Intelligence multi-store slice fallback',error?.status||error?.code||error);
       const results=new Array(ids.length);let next=0;
-      const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force)}};
+      const worker=async()=>{while(true){const i=next++;if(i>=ids.length)return;results[i]=await fetchSingleStoreSlice(api,ids[i],cur,cmp,force,signal)}};
       await Promise.all(Array.from({length:Math.min(2,ids.length)},worker));
       return mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:rangeDays(cur.start,cur.end)},{startDate:cmp.start,endDate:cmp.end,days:rangeDays(cmp.start,cmp.end)})
     }
   }
-  async function loadDecisionChunked(api,s,force=false){
+  async function loadDecisionChunked(api,s,force=false,signal=null){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
     const selectedCount=selectedStoreIds(s).length||1;
     // Cold D365 reads must never spend the full ~30 s gateway budget before splitting.
@@ -203,11 +206,13 @@
     const blocks=Math.max(1,Math.ceil(maxDays/sliceDays));
     const currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);
     let next=0,done=0;
-    setProgress(0,blocks);
+    setProgress(0,blocks,queryKey(s));
     const worker=async()=>{while(true){
       const i=next++;if(i>=blocks)return;
-      results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force);
-      done++;setProgress(done,blocks)
+      signal?.throwIfAborted();
+      results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force,signal);
+      signal?.throwIfAborted();
+      done++;setProgress(done,blocks,queryKey(s))
     }};
     // One analytical block at a time for multi-store: each block already reads selected
     // stores concurrently. Single-store can safely process two short blocks at once.
@@ -298,8 +303,12 @@
 
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
   async function load(force=false){
-    const api=core(),s=sectionState(); if(!api||!s||!s.stores?.length||state.loading||!sectionNeedsDecision(s))return;
-    const key=queryKey(s);
+    const api=core(),liveScope=sectionState(); if(!api||!liveScope||!liveScope.stores?.length||!sectionNeedsDecision(liveScope))return;
+    const s={...liveScope,stores:[...liveScope.stores],selectedStoreIds:[...(liveScope.selectedStoreIds||[])]},key=queryKey(s);
+    if(state.loading){
+      if(key!==state.loadingKey||force){state.reloadPending=true;state.pendingForce=state.pendingForce||force;state.controller?.abort();setLoading();setProgress(0,1)}
+      return;
+    }
     if(!force&&state.freshKey===key&&state.data){render();return}
     const cached=!force?cachedDecision(key):null;
     if(cached&&state.key!==key){
@@ -311,11 +320,12 @@
       warmCatalogSoon();
       prewarmFullCatalog();
     }
-    state.loading=true;
+    state.loading=true;state.loadingKey=key;const controller=new AbortController();state.controller=controller;
     if(!cached)setLoading();
     setProgress(0,Math.max(1,Math.ceil(Math.max(rangeDays(s.periodStart,s.periodEnd),rangeDays(s.compareStart,s.compareEnd))/7)));
     try{
-      const fresh=await loadDecisionChunked(api,s,force);
+      const fresh=await loadDecisionChunked(api,s,force,controller.signal);
+      if(controller.signal.aborted||queryKey(sectionState())!==key)return;
       state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);if(!state.catalog.size)hydrateCatalogCache();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
@@ -323,8 +333,13 @@
       warmCatalogSoon();
       prewarmFullCatalog();
       render();
-    }catch(error){if(!cached)renderError(error)}
-    finally{state.loading=false}
+    }catch(error){if(!controller.signal.aborted&&queryKey(sectionState())===key&&!cached)renderError(error)}
+    finally{
+      state.loading=false;state.loadingKey=null;state.controller=null;
+      const next=sectionState(),reload=state.reloadPending||(next&&queryKey(next)!==key),forceNext=state.pendingForce;
+      state.reloadPending=false;state.pendingForce=false;
+      if(reload)load(forceNext);
+    }
   }
 
   function setLoading(){
@@ -345,7 +360,7 @@
 
   function safeRenderPart(name,fn){try{fn()}catch(error){console.error('Retail Intelligence render failure',name,error)}}
   function render(){
-    if(!state.data)return;
+    if(!state.data||state.key!==queryKey(sectionState()))return;
     const section=sectionState()?.section||'overview';
     if(section==='overview')safeRenderPart('executive',renderExecutive);
     else if(section==='sales')safeRenderPart('sales',renderSales);

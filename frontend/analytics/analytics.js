@@ -57,6 +57,7 @@
     const today = isoDate(new Date());
     state.periodPreset = preset;
     if (preset === 'today') state.periodStart = state.periodEnd = today;
+    else if (preset === 'yesterday') state.periodStart = state.periodEnd = shiftDate(today, -1);
     else if (preset === '7d') { state.periodEnd = today; state.periodStart = shiftDate(today, -6); }
     else if (preset === '30d') { state.periodEnd = today; state.periodStart = shiftDate(today, -29); }
     else if (preset === 'month') { const m = monthBounds(today, 0); state.periodStart = m.start; state.periodEnd = today; }
