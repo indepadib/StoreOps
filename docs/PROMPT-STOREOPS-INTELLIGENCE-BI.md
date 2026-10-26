@@ -21,3 +21,11 @@ Réparer les changements de dates en cours de chargement : snapshot du périmèt
 ## Vérifications et livraison
 
 Tests avec hausse de prix ×2, baisse de volume, panier mécanique vs achats associés, cohorte revenue dans un autre magasin, unités incompatibles, identifiants de tickets réutilisés entre caisses, assortiment inconnu, entrepôt illisible, références FLEG sans ventes et hiérarchies ambiguës. Contrôler les droits par magasin, les dates invalides, les pages de stock et les réponses obsolètes. Publier un résultat vérifiable et annoncer clairement toute partie non validée en production.
+
+## Organisation et source commune
+
+Intégrer ces fonctions dans les volets existants d’Analytics. Référentiel articles et détention ont leur entrée dans la même navigation ; les analyses globales prix/volumes/paniers sont dans Ventes et Catégories & Produits. Article 360 s’explore depuis les analyses. Les filtres Analytics sont communs ; le référentiel reste indépendant de la période de ventes.
+
+Le référentiel doit réunir tous les articles libérés de la société, y compris sans vente ni stock, avec codes-barres, unités, fournisseur, hiérarchie commerciale et statut de classement. Distinguer dernier achat facturé HT (montant net de ligne / quantité, unité, devise, date et référence de facture), prix de vente de fiche hors conditions promotionnelles magasin, coût de référence et prix réalisé en caisse. Ne jamais fabriquer une date de modification ou remplacer un dernier achat absent par un coût actuel.
+
+Les exports utilisent l’ensemble lu, au-delà des limites d’affichage, avec les mêmes filtres que la vue. Les sources et dates de lecture sont exportées. Une liste tronquée ne peut pas être annoncée complète ; les prix inconnus sont explicités. Préparer les paniers par journée et les stocks par pages courtes avant de consolider. Les magasins sans connexion ne doivent pas casser les magasins raccordés.

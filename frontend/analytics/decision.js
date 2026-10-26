@@ -200,9 +200,9 @@
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
     const selectedCount=selectedStoreIds(s).length||1;
     // Cold D365 reads must never spend the full ~30 s gateway budget before splitting.
-    // Multi-store scopes use 5-day slices; single-store scopes use 7-day slices.
+    // Both scopes use 2-day slices to keep cold requests below the gateway budget.
     // Exact slices are persisted server-side, so subsequent periods re-use them.
-    const sliceDays=selectedCount>1?5:7;
+    const sliceDays=selectedCount>1?2:2;
     const blocks=Math.max(1,Math.ceil(maxDays/sliceDays));
     const currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);
     let next=0,done=0;

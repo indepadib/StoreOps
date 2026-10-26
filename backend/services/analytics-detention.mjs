@@ -1,11 +1,11 @@
-import {readStoreStockSnapshot,readWarehouseStockSnapshot,supplyWarehouseForStore} from './dynamics-stock.mjs';
+import {readStoreStockSnapshot,readWarehouseStockSnapshot,supplyWarehouseForStore,readPreparedAnalyticsStock} from './dynamics-stock.mjs';
 import {assortmentIndex} from './assortment-resolver.mjs';
 import {readAnalyticsCatalog} from './analytics-catalog.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {config} from '../config.mjs';
 import {odataGetAll,probeDataEntity} from './dynamics.mjs';
 
-async function referenceIndex(){
+export async function referenceIndex(){
  const key=analyticsCacheKey('detention-reference-v1',[config.dynamics.dataAreaId]),hit=await readAnalyticsCache(key);if(hit)return hit;
  try{
   const entity=process.env.D365_RELEASED_PRODUCT_ENTITY||'ReleasedProductsV2',probe=await probeDataEntity(entity,{top:1,extra:'cross-company=true'}),sample=probe.rows?.[0]||{};
@@ -28,16 +28,16 @@ export function detentionRows({storeId,local,supply,assortment,referenceProducts
  });
 }
 export async function readDetentionPage(store,{offset=0,limit=120,expectedSnapshot=null,force=false}={}){
- const key=analyticsCacheKey('detention-universe-v1',[store.id]);let universe=!force?await readAnalyticsCache(key):null;
- const previousKey=analyticsCacheKey('detention-previous-v1',[store.id]);
+ const key=analyticsCacheKey('detention-universe-v2',[store.id]);let universe=!force?await readAnalyticsCache(key):null;
+ const previousKey=analyticsCacheKey('detention-previous-v2',[store.id]);
  if(expectedSnapshot&&universe?.checkedAt!==expectedSnapshot){const previous=await readAnalyticsCache(previousKey);if(previous?.checkedAt===expectedSnapshot)universe=previous;else throw Object.assign(new Error('Image stock expirée. Relancer la lecture complète.'),{status:409,code:'STOCK_SNAPSHOT_CHANGED'})}
  if(!universe){
-  const [reads,reference]=await Promise.all([Promise.allSettled([readStoreStockSnapshot(store.id,{force}),readWarehouseStockSnapshot(supplyWarehouseForStore(store.id))]),referenceIndex()]);
+  const [reads,reference]=await Promise.all([Promise.allSettled([readPreparedAnalyticsStock(store.id),readPreparedAnalyticsStock(store.id,'supply')]),referenceIndex()]);
   const [local,supply]=reads.map(r=>r.status==='fulfilled'?r.value:{status:'UNAVAILABLE',complete:false,items:[],error:r.reason?.message});
   const assortment=assortmentIndex(store.id,{maxAgeHours:72}),rows=detentionRows({storeId:store.id,local,supply,assortment,referenceProducts:reference.products});
-  universe={rows,checkedAt:new Date().toISOString(),storeWarehouseId:local.warehouseId,supplyWarehouseId:supply.warehouseId,stockComplete:local.complete===true,supplyComplete:supply.complete===true,referenceComplete:reference.complete,assortmentStatus:assortment.status,status:local.complete&&supply.complete&&reference.complete&&assortment.status==='READY'?'READY':'PARTIAL'};
-  const old=await readAnalyticsCache(key);if(old)await writeAnalyticsCache(previousKey,'detention-previous-v1',old,1800);
-  await writeAnalyticsCache(key,'detention-universe-v1',universe,900);
+  universe={rows,stockReadAt:local.checkedAt||null,warehouseReadAt:supply.checkedAt||null,stockReadStartedAt:local.startedAt||null,warehouseReadStartedAt:supply.startedAt||null,checkedAt:new Date().toISOString(),storeWarehouseId:local.warehouseId,supplyWarehouseId:supply.warehouseId,stockComplete:local.complete===true,supplyComplete:supply.complete===true,referenceComplete:reference.complete,assortmentStatus:assortment.status,status:local.complete&&supply.complete&&reference.complete&&assortment.status==='READY'?'READY':'PARTIAL'};
+  const old=await readAnalyticsCache(key);if(old)await writeAnalyticsCache(previousKey,'detention-previous-v2',old,1800);
+  await writeAnalyticsCache(key,'detention-universe-v2',universe,900);
  }
  if(expectedSnapshot&&expectedSnapshot!==universe.checkedAt)throw Object.assign(new Error('Image stock renouvelée pendant la lecture. Relancer pour éviter de mélanger deux images.'),{status:409,code:'STOCK_SNAPSHOT_CHANGED'});
  const page=universe.rows.slice(offset,offset+limit),catalogKey=analyticsCacheKey('catalog-v9',page.map(x=>x.productNumber).sort());

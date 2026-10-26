@@ -8,7 +8,7 @@ let calls=0;
 const context={AbortController,console,URLSearchParams,Map,Set,Date,Intl,setTimeout,clearTimeout,localStorage:{getItem:()=>null},document:{readyState:'complete',querySelector:get,querySelectorAll:()=>[],addEventListener(){}},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,api:async()=>{calls++;throw Object.assign(new Error('Ticket parent indisponible'),{status:500})}}}};
 vm.runInNewContext(readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8'),context);
 await new Promise(resolve=>setTimeout(resolve,20));
-assert.equal(calls,1,'a deterministic 500 for one store must not retry indefinitely');
+assert.equal(calls,2,'two short concurrent slices must fail without endless retries');
 assert.equal(get('#executiveSalesValue').textContent,'Analyse indisponible');
 assert.equal(get('#executiveComparisonValue').textContent,'Ticket parent indisponible');
 assert.doesNotMatch(get('#executiveSalesValue').textContent,/Analyse \d|Finalisation/);

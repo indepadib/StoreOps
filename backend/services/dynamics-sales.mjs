@@ -259,12 +259,16 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
  const c=salesIntegrationConfig(storeId),days=daySpan(startDate,endDate);
  if(!days||days>31)throw Object.assign(new Error('Fenêtre paniers : 1 à 31 jours.'),{status:400,code:'INVALID_RANGE'});
  if(!c.ready||c.entity!=='RetailTransactionSalesTransBIEntities')throw Object.assign(new Error('Source tickets Dynamics indisponible.'),{status:503,code:'BASKET_SOURCE_UNAVAILABLE'});
- const key=analyticsCacheKey('basket-evidence-v1',[storeId,startDate,endDate]);
+ const key=analyticsCacheKey('basket-evidence-v2',[storeId,startDate,endDate]);
  if(!force){const cached=await readAnalyticsCache(key);if(cached)return cached}
+ if(days>1){
+  const parts=[];for(let n=0;n<days;n++){const date=nextDate(startDate,n),daily=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v2',[storeId,date,date]));if(!daily)throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});parts.push(daily)}
+  return{storeId,baskets:parts.flatMap(x=>x.baskets||[]),rejectedIdentity:parts.reduce((n,x)=>n+(x.rejectedIdentity||0),0),checkedAt:parts.map(x=>x.checkedAt).filter(Boolean).sort()[0]||null};
+ }
  const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{value:c.retailId}];let empty=null,lastError;
- for(const identifier of identifiers){
-  const filters=[literalFilters(c.fields.store,identifier.value)[0],dateRangeFilter(c.fields.date,startDate,endDate,c.dateFilterMode)];
+ for(const identifier of identifiers){for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
+  const filters=[storeFilter,dateRangeFilter(c.fields.date,startDate,endDate,c.dateFilterMode)];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   try{
    const raw=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:'cross-company=true',pageSize:c.pageSize,maxRows:c.maxRows});
@@ -272,10 +276,10 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
    if(!raw.value.length){empty={storeId,baskets:[],rejectedIdentity:0};continue}
    const rows=await validateParentSales(raw.value,c,filters),value=basketEvidence(rows.filter(r=>includedRetailSaleRow(r,c)),fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
    value.source=`D365/${c.entity}`;value.startDate=startDate;value.endDate=endDate;value.checkedAt=new Date().toISOString();
-   await writeAnalyticsCache(key,'basket-evidence-v1',value,endDate<new Date().toISOString().slice(0,10)?86400:180);return value;
+   await writeAnalyticsCache(key,'basket-evidence-v2',value,endDate<new Date().toISOString().slice(0,10)?3600:900);return value;
   }catch(error){if(String(error.code||'').startsWith('D365_SALES_PARENT_')||error.code==='BASKET_ROWS_TRUNCATED')throw error;lastError=error}
- }
- if(empty)return empty;throw lastError||new Error('Lecture des paniers impossible.');
+ }}
+ if(empty){empty.checkedAt=new Date().toISOString();await writeAnalyticsCache(key,'basket-evidence-v2',empty,900);return empty}throw lastError||new Error('Lecture des paniers impossible.');
 }
 export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};

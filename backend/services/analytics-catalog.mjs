@@ -8,7 +8,7 @@ const clean=v=>String(v??'').trim();
 const round4=v=>v==null?null:Math.round((Number(v)+Number.EPSILON)*10000)/10000;
 
 function salesUnitCost(ref={}){
-  const cost=Number(ref.unitCost);
+  const cost=ref.unitCost==null||ref.unitCost===''?NaN:Number(ref.unitCost);
   if(!Number.isFinite(cost)||cost<0)return{status:'UNAVAILABLE',unitCost:null,reason:'UNIT_COST_UNAVAILABLE'};
   const salesUnit=clean(ref.salesUnit),inventoryUnit=clean(ref.inventoryUnit);
   if(!salesUnit||!inventoryUnit)return{status:'UNAVAILABLE',unitCost:null,reason:'UNIT_MAPPING_UNAVAILABLE'};
@@ -47,8 +47,8 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       supplyModeReason:ref.supplyModeReason||null,
       supplyModeField:ref.field||ref.supplyField||null,
       supplyModeRawValue:ref.rawValue??ref.supplyRawValue??null,
-      salesPrice:Number.isFinite(Number(ref.salesPrice))?Number(ref.salesPrice):null,
-      rawUnitCost:Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
+      salesPrice:ref.salesPrice!=null&&ref.salesPrice!==''&&Number.isFinite(Number(ref.salesPrice))?Number(ref.salesPrice):null,
+      rawUnitCost:ref.unitCost!=null&&ref.unitCost!==''&&Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
       rawCostBasisUnit:ref.inventoryUnit||null,
       currentUnitCost:cost.unitCost,
       currentCostBasisUnit:cost.status==='READY'?cost.salesUnit||null:null,

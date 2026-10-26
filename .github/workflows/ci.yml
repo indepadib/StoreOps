@@ -44,6 +44,8 @@ jobs:
           node backend/tests/analytics-period-race.mjs
           node backend/tests/customer-product-intelligence.mjs
           node backend/tests/customer-bi-ui.mjs
+          node backend/tests/article-reference.mjs
+          node backend/tests/article-reference-ui.mjs
       - name: Version contract test
         run: node backend/tests/version-contract.mjs
       - name: Article identity, UB rankings and temperature register
