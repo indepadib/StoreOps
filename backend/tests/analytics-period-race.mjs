@@ -23,7 +23,7 @@ await new Promise(resolve=>setTimeout(resolve,10));
 assert.equal(context.window.RETAIL_DECISION_INTELLIGENCE.getData().summary.current.sales,12345.67);
 assert.equal(nodes.get('#executiveSalesValue').textContent,'12345.67');
 assert.equal(saved.length,1,'only the latest period may enter the browser cache');
-assert.equal(published.length,1);
+assert.equal(published.filter(e=>e.type==='retail-intelligence:decision').length,1,'only the latest decision may be published; catalog enrichment has its own event');
 
 const analytics=readFileSync(new URL('../../frontend/analytics/analytics.js',import.meta.url),'utf8');
 const preset=analytics.slice(analytics.indexOf('  function applyPresetToState('),analytics.indexOf('  function applyComparisonToState('));
