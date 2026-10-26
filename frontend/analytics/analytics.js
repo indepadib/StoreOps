@@ -12,7 +12,7 @@
     pulses: [],
     selectedStore: 'ALL',
     selectedStoreIds: [],
-    section: 'overview',
+    section: ['reference','detention','sales','categories'].includes(new URLSearchParams(location.search).get('section')) ? new URLSearchParams(location.search).get('section') : 'overview',
     periodPreset: '7d',
     periodStart: shiftDate(isoDate(new Date()), -6),
     periodEnd: isoDate(new Date()),
@@ -300,12 +300,12 @@
     const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','suppliers','crm','loyalty','cashiers']);
-    const snapshotSections = new Set(['inventory','promotions']);
+    const snapshotSections = new Set(['inventory','promotions','reference','detention']);
     if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
       const scope = storeScopeLabel();
-      if ($('#scopeLabel')) $('#scopeLabel').textContent = scope;
-      const snapshotLabel=state.section==='inventory'?`Stock au ${formatDate(state.periodEnd)}`:state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
+      if ($('#scopeLabel')) $('#scopeLabel').textContent = state.section==='reference'?'Référentiel société':scope;
+      const snapshotLabel=state.section==='reference'?'Référentiel articles · Dynamics':state.section==='detention'?'Stock actuel':state.section==='inventory'?`Stock au ${formatDate(state.periodEnd)}`:state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
       setFreshness('live', snapshotSections.has(state.section)?snapshotLabel:'Analyse période');
       document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force, snapshotDate: state.periodEnd } }));
       state.loading = false;
@@ -434,6 +434,8 @@
         title: 'Comprendre ce qui se vend vraiment',
         subtitle: 'Du département au SKU : poids, rang, évolution et concentration du chiffre d’affaires.'
       },
+      reference: {eyebrow:'RÉFÉRENTIEL ARTICLES',title:'Une source commune pour les équipes',subtitle:'Informations article et prix traçables, exportables dans un format commun.'},
+      detention: {eyebrow:'DÉTENTION',title:'Présence des articles en magasin et entrepôt',subtitle:'Stock actuel par article et catégorie ; les quantités inconnues restent identifiées.'},
       crm: {
         eyebrow: 'CLIENTS & CRM',
         title: 'Qui sont mes clients ?',
@@ -462,8 +464,8 @@
     };
     const copy = sectionCopy[state.section] || sectionCopy.overview;
 
-    $('#scopeLabel').textContent = store ? store.name : `${agg.ready}/${agg.totalStores} magasins disponibles`;
-    $('#dateLabel').textContent = state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
+    $('#scopeLabel').textContent = state.section==='reference'?'Référentiel société':store ? store.name : `${agg.ready}/${agg.totalStores} magasins disponibles`;
+    $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':state.section==='detention'?'Image de stock actuelle':state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
     $('#eyebrow').textContent = `${copy.eyebrow} · ${String(tenant.label || '').toUpperCase()}`;
     $('#pageTitle').textContent = copy.title;
     $('#pageSubtitle').textContent = copy.subtitle;
@@ -1261,9 +1263,11 @@
 
   const SECTION_WIDGETS = {
     overview: ['executiveDeck','storeBenchmark'],
-    sales: ['decisionSales'],
+    sales: ['decisionSales','customerBi'],
     network: ['storeBenchmark'],
-    categories: ['productPerformance'],
+    categories: ['productPerformance','customerBi'],
+    reference: ['articleReference'],
+    detention: ['customerBi'],
     suppliers: ['supplierIntelligence'],
     crm: ['crmIntelligence'],
     inventory: ['inventory'],
@@ -1356,6 +1360,7 @@
   }
 
   async function exportCsv() {
+    if(state.section==='reference'||state.section==='detention'){document.dispatchEvent(new CustomEvent('retail-intelligence:export-'+state.section));return;}
     let rows=visibleTableRows();
     if(!rows.length)rows=decisionFallbackRows();
     if(!rows.length)return toast('Aucune donnée visible à exporter');

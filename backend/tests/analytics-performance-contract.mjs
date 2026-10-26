@@ -5,7 +5,7 @@ const decision=readFileSync(new URL('../../frontend/analytics/decision.js',impor
 const sales=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
 const api=readFileSync(new URL('../services/analytics-api.mjs',import.meta.url),'utf8');
 
-assert.match(decision,/selectedCount>1\?5:7/,'multi-store scopes must proactively use 5-day slices and single-store scopes 7-day slices');
+assert.match(decision,/selectedCount>1\?2:2/,'all scopes must proactively use short 2-day slices');
 assert.match(decision,/Math\.ceil\(maxDays\/sliceDays\)/,'cold analytical reads must split before the gateway timeout');
 assert.doesNotMatch(decision,/maxDays<=15/,'a cold 15-day request must not be attempted as one monolithic call');
 assert.match(decision,/decision:v32/,'browser analytical cache version must match the new full-range strategy');

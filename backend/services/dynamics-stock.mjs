@@ -1,5 +1,7 @@
+import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
+import {randomUUID} from 'node:crypto';
 import { config } from '../config.mjs';
-import { getProductByEan,odataGetAll } from './dynamics.mjs';
+import { getProductByEan,odataGetAll,odataGet } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
 import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
 
@@ -133,4 +135,28 @@ export async function getStoreProductByEan(storeId,ean){
   if(!stockLive())return {...product,identityFallback,identityError,warehouseId:stock?.warehouseId||mappedWarehouseForStore(storeId),stockSource:stock?.source||'SIMULATED_D365',batches:[],stockComplete:false};
   if(stock?.mappingRequired)return {...product,identityFallback,identityError,warehouseId:null,stock:null,availableStock:null,stockSource:stock.source,stockMappingRequired:true,batches:[],stockComplete:false};
   return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
+}
+
+export async function prepareAnalyticsStock(storeId,{kind='store',offset=0,snapshot=null}={}){
+ const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId);
+ if(!warehouseId||!stockLive())throw Object.assign(new Error('Connexion stock ou dépôt non configuré.'),{status:422});
+ const readyKey=analyticsCacheKey('prepared-stock-v1',[warehouseId]),ready=await readAnalyticsCache(readyKey);
+ if(!snapshot&&offset===0&&ready)return{status:'READY',nextOffset:null,snapshot:ready.checkedAt,warehouseId,rows:ready.items.length};
+ if(snapshot&&!/^[a-f0-9-]{36}$/.test(snapshot))throw Object.assign(new Error('Image stock invalide.'),{status:400});
+ const token=snapshot||randomUUID(),key=analyticsCacheKey('stock-preparation-v1',[warehouseId,token]);
+ let acc=offset===0?{items:[],nextOffset:0,startedAt:new Date().toISOString()}:await readAnalyticsCache(key);
+ if(!acc||acc.nextOffset!==offset)throw Object.assign(new Error('Préparation stock expirée ou page hors séquence. Relancer.'),{status:409});
+ const f=stockFields(),filter=[`${f.warehouse} eq '${escapeOData(warehouseId)}'`,config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:''].filter(Boolean).join(' and ');
+ const payload=await odataGet(stockEntity(),{filter,select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),top:1000,extra:`cross-company=true&$skip=${offset}`}),rows=payload.value||[];
+ if(offset+rows.length>100000)throw Object.assign(new Error('Stock trop volumineux : lecture complète non garantie.'),{status:422});
+ acc.items.push(...rows.map(r=>({productNumber:clean(r[f.item]),onHandQuantity:r[f.onHand],availableOnHandQuantity:r[f.availableOnHand]})));acc.nextOffset=rows.length<1000?null:offset+rows.length;
+ if(acc.nextOffset===null){
+  const map=new Map();for(const r of acc.items){if(!r.productNumber)continue;const x=map.get(r.productNumber)||{productNumber:r.productNumber,onHandQuantity:0,availableOnHandQuantity:0};for(const name of ['onHandQuantity','availableOnHandQuantity']){const v=r[name];if(v==null||v===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}map.set(r.productNumber,x)}
+  await writeAnalyticsCache(readyKey,'prepared-stock-v1',{status:'READY',complete:true,warehouseId,items:[...map.values()],checkedAt:new Date().toISOString(),startedAt:acc.startedAt,source:`D365/${stockEntity()}`},900);
+ }else await writeAnalyticsCache(key,'stock-preparation-v1',acc,900);
+ return{status:acc.nextOffset==null?'READY':'PREPARING',nextOffset:acc.nextOffset,snapshot:token,warehouseId,rows:acc.items.length};
+}
+export async function readPreparedAnalyticsStock(storeId,kind='store'){
+ const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId),value=warehouseId?await readAnalyticsCache(analyticsCacheKey('prepared-stock-v1',[warehouseId])):null;
+ if(!value)throw Object.assign(new Error('Préparer les pages de stock avant la lecture de détention.'),{status:409,code:'STOCK_PREPARATION_REQUIRED'});return value;
 }
