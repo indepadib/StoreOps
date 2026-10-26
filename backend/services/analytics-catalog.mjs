@@ -24,7 +24,7 @@ export async function readAnalyticsCatalog(productNumbers=[]){
   const vendorAccounts=[...new Set([...refs.values()].map(x=>clean(x?.primaryVendorAccount)).filter(Boolean))];
   const vendorNames=await vendorNamesMany(vendorAccounts);
   const items=skus.map(productNumber=>{
-    const ref=refs.get(productNumber)||{productNumber},hierarchy=resolveRetailHierarchy(productNumber,context,{rayonLabel:ref.rayonLabel}),cost=salesUnitCost(ref);
+    const ref=refs.get(productNumber)||{productNumber},hierarchy=resolveRetailHierarchy(productNumber,context,ref),cost=salesUnitCost(ref);
     return{
       productNumber,
       productName:ref.productName||null,

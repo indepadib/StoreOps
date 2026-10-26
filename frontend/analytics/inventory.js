@@ -35,7 +35,7 @@
     const stores = c.getSelectedStores?.() || appState.stores || [];
     return {
       stores,
-      businessDate: new Date().toISOString().slice(0,10),
+      businessDate: new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),
       selectedStore: appState.selectedStore,
       selectedStoreIds: appState.selectedStoreIds || []
     };
