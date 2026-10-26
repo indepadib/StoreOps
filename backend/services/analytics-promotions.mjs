@@ -1,6 +1,6 @@
 import { config } from '../config.mjs';
 import { getCommercialChanges } from './dynamics.mjs';
-import { getStockSignals } from './stock-signals.mjs';
+import {readPreparedAnalyticsStock} from './dynamics-stock.mjs';
 
 const clean=v=>String(v??'').trim();
 const round2=v=>Math.round((Number(v||0)+Number.EPSILON)*100)/100;
@@ -18,7 +18,7 @@ function promoState(row,day){
 function discountPercent(row){
   const direct=Number(row?.sourceDetails?.discountPercentage);
   if(Number.isFinite(direct)&&direct>0)return round2(direct);
-  const old=Number(row.oldPrice),next=Number(row.expectedPrice);
+  const old=row.oldPrice==null?NaN:Number(row.oldPrice),next=row.expectedPrice==null?NaN:Number(row.expectedPrice);
   if(Number.isFinite(old)&&old>0&&Number.isFinite(next)&&next>=0&&next<old)return round2((old-next)/old*100);
   return null;
 }
@@ -46,10 +46,10 @@ export async function readPromotionAnalytics(storeId,{businessDate=new Date().to
   }
 
   let stock=null;
-  try{stock=await getStockSignals(storeId,{businessDate:day,force})}catch{}
+  try{const snapshot=await readPreparedAnalyticsStock(storeId);stock={source:snapshot.source,readAt:snapshot.checkedAt,items:snapshot.items.map(x=>({productNumber:x.productNumber,availableQty:x.availableOnHandQuantity,type:x.availableOnHandQuantity==null?'UNKNOWN':x.availableOnHandQuantity<0?'NEGATIVE':x.availableOnHandQuantity===0?'OUT':'AVAILABLE'}))}}catch{}
   const stockByProduct=new Map((stock?.items||[]).map(x=>[clean(x.productNumber),x]));
 
-  const rows=(changes||[]).map(row=>{
+  const rows=(changes||[]).filter(row=>row.actionType!=='PRICE_CHANGE').map(row=>{
     const productNumber=clean(row.productNumber)||null,signal=productNumber?stockByProduct.get(productNumber)||null:null;
     return{
       storeId,
@@ -112,7 +112,7 @@ export async function readPromotionAnalytics(storeId,{businessDate=new Date().to
     }),
     diagnostics:{
       stockSource:stock?.source||null,
-      stockReady:!!stock,
+      stockReady:!!stock,stockReadAt:stock?.readAt||null,stockDateBasis:'CURRENT_SNAPSHOT',
       rawChanges:(changes||[]).length,
       note:'CA promo, uplift et ROI restent indisponibles tant que les discount transactions ne sont pas reliées aux ventes.'
     }

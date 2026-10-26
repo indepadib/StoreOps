@@ -25,18 +25,18 @@ async function workerSchema(){
    const probe=await probeDataEntity(entity,{top:1,extra:config.dynamics.dataAreaId?'cross-company=true':''}),row=probe?.rows?.[0]||null;if(!probe?.ok||!row)continue;
    const personnel=keyMatch(row,[process.env.D365_WORKER_PERSONNEL_FIELD,'PersonnelNumber','WorkerPersonnelNumber','EmployeeId','StaffId']);
    if(!personnel)continue;
-   return{entity,personnel,first:keyMatch(row,[process.env.D365_WORKER_FIRST_NAME_FIELD,'FirstName']),last:keyMatch(row,[process.env.D365_WORKER_LAST_NAME_FIELD,'LastName']),name:keyMatch(row,[process.env.D365_WORKER_NAME_FIELD,'Name','WorkerName','EmployeeName','PersonName']),status:keyMatch(row,['WorkerStatus','EmploymentStatus','Status'])}
+   return{entity,personnel,companyField:keyMatch(row,[config.dynamics.dataAreaField,'dataAreaId']),first:keyMatch(row,[process.env.D365_WORKER_FIRST_NAME_FIELD,'FirstName']),last:keyMatch(row,[process.env.D365_WORKER_LAST_NAME_FIELD,'LastName']),name:keyMatch(row,[process.env.D365_WORKER_NAME_FIELD,'Name','WorkerName','EmployeeName','PersonName']),status:keyMatch(row,['WorkerStatus','EmploymentStatus','Status'])}
   }catch{}
  }
  return null
 }
-async function resolveWorkers(staffIds=[]){
+export async function resolveWorkers(staffIds=[]){
  const ids=[...new Set(staffIds.map(clean).filter(Boolean))],out=new Map();if(!ids.length)return{status:'EMPTY',map:out,schema:null};
  const schema=await workerSchema();if(!schema)return{status:'UNMAPPED',map:out,schema:null};
- const fields=[schema.personnel,schema.first,schema.last,schema.name,schema.status,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const fields=[schema.personnel,schema.first,schema.last,schema.name,schema.status,config.dynamics.dataAreaId?schema.companyField:null].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  try{
   for(let i=0;i<ids.length;i+=25){
-   const chunk=ids.slice(i,i+25),filterParts=[`(${chunk.map(id=>`${schema.personnel} eq '${esc(id)}'`).join(' or ')})`];if(config.dynamics.dataAreaId)filterParts.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+   const chunk=ids.slice(i,i+25),filterParts=[`(${chunk.map(id=>`${schema.personnel} eq '${esc(id)}'`).join(' or ')})`];if(config.dynamics.dataAreaId&&schema.companyField)filterParts.push(`${schema.companyField} eq '${esc(config.dynamics.dataAreaId)}'`);
    const r=await odataGetAll(schema.entity,{filter:filterParts.join(' and '),select:fields,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:100,maxRows:1000});
    for(const row of r.value||[]){const id=clean(row[schema.personnel]);if(!id)continue;const first=clean(schema.first?row[schema.first]:''),last=clean(schema.last?row[schema.last]:''),full=clean(schema.name?row[schema.name]:'')||[first,last].filter(Boolean).join(' ')||id;out.set(id,{staffId:id,firstName:first||null,lastName:last||null,name:full,status:schema.status?clean(row[schema.status])||null:null})}
   }

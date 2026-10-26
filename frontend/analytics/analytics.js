@@ -1262,18 +1262,18 @@
   }
 
   const SECTION_WIDGETS = {
-    overview: ['executiveDeck','storeBenchmark'],
-    sales: ['decisionSales','customerBi'],
-    network: ['storeBenchmark'],
-    categories: ['productPerformance','customerBi'],
+    overview: ['executiveOnePager'],
+    sales: ['decisionSales','customerBi','pricingLab','decisionStudio'],
+    network: ['storeBenchmark','decisionStudio'],
+    categories: ['productPerformance','decisionStudio'],
     reference: ['articleReference'],
-    detention: ['customerBi'],
-    suppliers: ['supplierIntelligence'],
-    crm: ['crmIntelligence'],
-    inventory: ['inventory'],
-    loyalty: ['loyalty'],
-    cashiers: ['cashiers'],
-    promotions: ['promotions']
+    detention: ['customerBi','decisionStudio'],
+    suppliers: ['supplierIntelligence','decisionStudio'],
+    crm: ['crmIntelligence','decisionStudio'],
+    inventory: ['inventory','decisionStudio'],
+    loyalty: ['loyalty','decisionStudio'],
+    cashiers: ['cashiers','decisionStudio'],
+    promotions: ['promotions','decisionStudio']
   };
 
   function applySectionView() {
@@ -1384,6 +1384,7 @@
     getStoreScopeKey: () => state.selectedStoreIds.length ? [...state.selectedStoreIds].sort().join(',') : 'ALL',
     getStoreScopeLabel: () => storeScopeLabel(),
     api,
+    navigate:section=>{if(SECTION_WIDGETS[section]){state.section=section;applySectionView();refreshForPeriod(false)}},
     money,
     number,
     percent,

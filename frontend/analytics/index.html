@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="/analytics/decision.css">
   <!-- analytics-production-refresh --> 
 <link rel="stylesheet" href="/analytics/workspace-bi.css">
+<link rel="stylesheet" href="/analytics/decision-studio.css">
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -165,7 +166,14 @@
         </div>
       </section>
 
-      <div id="analyticsContent">        <section class="hero" data-widget="hero">
+      <div id="analyticsContent">
+<section id="executiveOnePager" data-widget="executiveOnePager" hidden aria-label="Synthèse exécutive sur une page">
+ <header class="brief-head"><div><p>STOREOPS · DIRECTION</p><h1>L’activité en une page.</h1><span id="briefPeriod"></span></div><div class="brief-tools"><button id="briefRefreshStock">Actualiser stocks</button><button id="briefPng">Image présentation</button><button id="briefPrint">PDF / imprimer</button></div></header>
+ <div id="briefKpis" class="brief-kpis"></div><div id="briefGrid" class="brief-grid"></div><footer id="briefQuality" class="brief-quality" role="status">Chargement des sources…</footer>
+</section>
+<section id="decisionStudio" data-widget="decisionStudio" class="decision-studio" hidden><div class="studio-heading"><div><span class="studio-kicker">COMPRENDRE · DÉCIDER · AGIR</span><h2 id="studioTitle">Lecture de l’activité</h2><p id="studioSubtitle"></p></div><button id="studioStockRefresh">Compléter avec les stocks</button></div><div id="studioCards" class="studio-cards"></div><div id="studioDetails"></div></section>
+<section id="pricingLab" data-widget="pricingLab" class="decision-studio" hidden><div class="studio-heading"><div><span class="studio-kicker">PRICING · CONTEXTE CONFIGURÉ</span><h2>Quel prix s’applique, où et quand ?</h2><p>Fiche article, trade agreements, promotions et conditions de panier restent identifiables séparément du prix réalisé.</p></div></div><form id="pricingContextForm" class="studio-filters"><label>Article<input id="pricingContextSku" value="HS-006590" required maxlength="64"></label><label>Magasin<select id="pricingContextStore"></select></label><label>Date de validité<input id="pricingContextDate" type="date" required></label><button type="submit">Vérifier les prix applicables</button></form><p id="pricingContextStatus" role="status"></p><div id="pricingContextCards" class="studio-cards"></div><div id="pricingContextDetails"></div><details class="competitor-intro"><summary>Positionnement concurrence · Casablanca</summary><p>Enseignes suivies : Marjane et Carrefour. Un prix concurrent doit avoir un produit et conditionnement vérifiés, une unité, un point de vente, une date et une source. Les offres d’un catalogue national ou d’une livraison ne sont pas automatiquement des prix rayon Casablanca.</p><a href="https://www.marjane.ma/promotions" target="_blank" rel="noopener">Relevés Marjane</a> · <a href="https://www.bringo.ma/fr_MA/stores/carrefour-supermarket" target="_blank" rel="noopener">Relevés Carrefour / Bringo</a><p id="competitorCoverage">Aucun relevé comparable validé chargé : aucun indice prix n’est calculé.</p><button id="competitorLoad" type="button">Voir les relevés de cet article</button><div id="competitorRows"></div><form id="competitorForm" class="studio-filters"><label>Enseigne<select id="competitorRetailer"><option>Marjane</option><option>Carrefour</option></select></label><label>Point de vente Casablanca<input id="competitorShop" required placeholder="Nom du magasin concurrent"></label><label>Comparabilité<select id="competitorMatch"><option value="IDENTICAL_GTIN">Même code-barres / conditionnement</option><option value="EQUIVALENT">Produit équivalent à qualifier</option></select></label><label>Code-barres<input id="competitorEan" inputmode="numeric"></label><label>Prix TTC MAD<input id="competitorPrice" type="number" min="0" step="0.01" required></label><label>Unité<select id="competitorUnit"><option>PC</option><option>KG</option><option>G</option><option>L</option><option>ML</option></select></label><label>Pour quantité<input id="competitorQuantity" type="number" value="1" min="0.001" step="0.001" required></label><label>Date du relevé<input id="competitorDate" type="date" required></label><label>Source / preuve HTTPS<input id="competitorSource" type="url" required placeholder="Lien produit, catalogue ou preuve du relevé"></label><label>Promotion<input id="competitorPromotion" type="checkbox"></label><button type="submit">Enregistrer le relevé sourcé</button></form><p class="studio-note">L’article et votre magasin sont ceux du contexte Pricing ci-dessus. Un produit équivalent reste hors indice de comparaison identique ; aucune valeur n’est importée sans relevé.</p></details></section>
+        <section class="hero" data-widget="hero">
           <div>
             <div class="eyebrow hero-eyebrow" id="eyebrow">PERFORMANCE RÉSEAU</div>
             <h1 id="pageTitle">Comment va le réseau aujourd'hui ?</h1>
@@ -1030,5 +1038,6 @@
 
   <script src="/analytics-runtime-config.js"></script>
   <script type="module" src="/analytics/bootstrap.js"></script>
+<button id="analyticsAssistantToggle" class="assistant-toggle" aria-controls="analyticsAssistant" aria-expanded="false">Demander à Analytics</button><aside id="analyticsAssistant" class="analytics-assistant" hidden><header><div><strong>Le robot d’explication</strong><small>Réponses fondées sur votre périmètre et vos sources</small></div><button id="analyticsAssistantClose" aria-label="Fermer">×</button></header><div id="assistantMessages" class="assistant-messages" role="log" aria-live="polite"><p>Posez une question après le chargement des ventes : pourquoi le CA bouge, où agir, comment lire une marge ou une détention…</p></div><form id="analyticsAssistantForm"><label for="analyticsAssistantQuestion">Votre question</label><textarea id="analyticsAssistantQuestion" maxlength="1200" rows="3" required placeholder="Pourquoi le CA baisse et quelles actions prioriser ?"></textarea><button type="submit" id="analyticsAssistantSend">Analyser</button></form><p id="assistantStatus" role="status"></p></aside>
 </body>
 </html>

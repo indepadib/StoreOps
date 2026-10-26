@@ -39,6 +39,7 @@ async function start(){
     await import(analyticsAsset('/analytics/decision.js'));
     await import(analyticsAsset('/analytics/workspace-bi.js'));
     await import(analyticsAsset('/analytics/article-reference.js'));
+    await import(analyticsAsset('/analytics/decision-studio.js'));
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);
     if(Number(error?.status)===401||Number(error?.status)===403)return returnToStoreOps();
