@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
+import {compareBasketEvidence} from '../services/customer-product-intelligence.mjs';
+const html=readFileSync(new URL('../../frontend/analytics/intelligence.html',import.meta.url),'utf8'),source=readFileSync(new URL('../../frontend/analytics/intelligence.js',import.meta.url),'utf8');
+const ids=[...html.matchAll(/id="([^"]+)"/g)].map(m=>m[1]),nodes=new Map(ids.map(id=>[id,{value:id==='stores'?'ALL':id==='stockLevel'?'rayon':'',textContent:'',innerHTML:'',events:{},addEventListener(name,fn){this.events[name]=fn}}]));
+for(const match of source.matchAll(/\$\('([^']+)'\)/g))assert.ok(nodes.has(match[1]),'missing UI element '+match[1]);
+const report={...compareBasketEvidence({baskets:[]},{baskets:[]}),checkedAt:'2026-10-26T10:00:00Z'};
+let pages=0;const reads=[];
+const api=async path=>{reads.push(path);if(path==='/api/stores')return[{id:'S',name:'Store'}];if(path.startsWith('/api/analytics/customer-intelligence'))return report;if(path.startsWith('/api/analytics/detention')){const q=new URL(path,'https://test').searchParams,offset=Number(q.get('offset'));if(offset)assert.equal(q.get('snapshot'),'2026-10-26T10:00:00Z');pages++;return{status:'READY',assortmentStatus:'READY',checkedAt:'2026-10-26T10:00:00Z',total:4,offset,nextOffset:offset===0?2:null,rows:[0,1].map(n=>({storeId:'S',storeName:'Store',productNumber:'P'+(offset+n),expected:true,storeHeld:offset+n<3,warehouseHeld:offset+n<2,storeAvailable:offset+n<3?1:0,warehouseAvailable:offset+n<2?1:0,state:'HELD',unit:'PC',hierarchy:{rayon:{id:'003020',label:'FLEG'}}}))}}throw new Error('Unexpected '+path)};
+const context={app:{},api,health:async()=>({authMode:'demo',dynamicsMode:'live'}),ensureAccessToken:async()=>null,ensureLocalSession:async()=>null,document:{getElementById:id=>nodes.get(id),querySelectorAll:()=>[],addEventListener(){}},Intl,Date,Map,Set,URLSearchParams,AbortController,console,Blob,URL,location:{assign(){throw new Error('Unexpected auth redirect')}},sessionStorage:{setItem(){}}};
+vm.runInNewContext(source.replace(/^import .*;\r?\n/gm,''),context);
+await new Promise(resolve=>setTimeout(resolve,10));
+await nodes.get('filters').events.submit({preventDefault(){}});
+assert.match(nodes.get('status').textContent,/Analyse disponible/);assert.ok(nodes.get('kpis').innerHTML.includes('Tickets'));
+await nodes.get('loadStock').events.click();assert.equal(pages,2);assert.match(nodes.get('stockSummary').innerHTML,/75 %/);assert.match(nodes.get('stockSummary').innerHTML,/50 %/);assert.equal(nodes.get('loadStock').disabled,false);
+nodes.get('end').events.change();assert.equal(nodes.get('kpis').innerHTML,'','editing dates must hide old totals before the next analysis');
+assert.match(html,/analytics-runtime-config\.js/);assert.ok(!source.includes('innerHTML=e.message'));
+console.log('PASS BI page selectors, authenticated bootstrap, report rendering, snapshot pagination, detention denominator and stale-date invalidation');

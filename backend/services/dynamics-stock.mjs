@@ -93,7 +93,7 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
   for(const row of fetched.value||[]){
    const productNumber=clean(row[fields.item]);if(!productNumber)continue;
    const cur=map.get(productNumber)||{productNumber,name:clean(nameField?row[nameField]:'')||productNumber,ean:clean(eanField?row[eanField]:'')||null,onHandQuantity:0,availableOnHandQuantity:0,rowCount:0};
-   cur.onHandQuantity+=n(row[fields.onHand]);cur.availableOnHandQuantity+=n(row[fields.availableOnHand]);cur.rowCount+=1;
+   for(const [name,field] of [['onHandQuantity',fields.onHand],['availableOnHandQuantity',fields.availableOnHand]]){const v=row[field];if(v==null||v===''||!Number.isFinite(Number(v)))cur[name]=null;else if(cur[name]!==null)cur[name]+=Number(v)}cur.rowCount+=1;
    if(cur.name===productNumber&&nameField&&clean(row[nameField]))cur.name=clean(row[nameField]);
    if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
    map.set(productNumber,cur)
@@ -104,6 +104,14 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
  if(!force)stockSnapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&stockSnapshotInflight.get(cacheKey)===task)stockSnapshotInflight.delete(cacheKey)}
 }
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
+export async function readWarehouseStockSnapshot(warehouseId){
+ if(!warehouseId||!stockLive())return{status:'UNAVAILABLE',complete:false,warehouseId,items:[]};
+ const f=stockFields(),filters=[`${f.warehouse} eq '${escapeOData(warehouseId)}'`];
+ if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
+ const result=await odataGetAll(stockEntity(),{filter:filters.join(' and '),select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),extra:'cross-company=true',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
+ const items=new Map();for(const row of result.value){const sku=clean(row[f.item]);if(!sku)continue;const x=items.get(sku)||{productNumber:sku,onHandQuantity:0,availableOnHandQuantity:0};for(const [name,field] of [['onHandQuantity',f.onHand],['availableOnHandQuantity',f.availableOnHand]]){const v=row[field];if(v==null||v===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}items.set(sku,x)}
+ return{status:result.truncated?'TRUNCATED':'READY',complete:!result.truncated,warehouseId,items:[...items.values()],checkedAt:new Date().toISOString(),source:`D365/${stockEntity()}`};
+}
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
 
 function safeError(error){return{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}

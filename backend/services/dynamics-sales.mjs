@@ -1,4 +1,5 @@
 import {attachParentSalesEligibility,parentSaleEligible,retailParentIdentityFields} from './sales-parent-transactions.mjs';
+import {basketEvidence} from './customer-product-intelligence.mjs';
 import { config } from '../config.mjs';
 import { odataGetAll, probeDataEntity } from './dynamics.mjs';
 import { productTaxonomy } from './assortment.mjs';
@@ -253,6 +254,28 @@ async function validateParentSales(rows,c,filters){
  const result=await odataGetAll('RetailTransactionTableBIEntities',{filter:filters.join(' and '),select:'dataAreaId,store,Channel,terminal,transactionId,type,entryStatus',extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize,maxRows:c.maxRows});
  if(result.truncated)throw Object.assign(new Error('Lecture des tickets parents Dynamics incomplète.'),{code:'D365_SALES_PARENT_TRUNCATED'});
  return attachParentSalesEligibility(rows,result.value||[],retailParentIdentityFields);
+}
+export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=false}={}){
+ const c=salesIntegrationConfig(storeId),days=daySpan(startDate,endDate);
+ if(!days||days>31)throw Object.assign(new Error('Fenêtre paniers : 1 à 31 jours.'),{status:400,code:'INVALID_RANGE'});
+ if(!c.ready||c.entity!=='RetailTransactionSalesTransBIEntities')throw Object.assign(new Error('Source tickets Dynamics indisponible.'),{status:503,code:'BASKET_SOURCE_UNAVAILABLE'});
+ const key=analyticsCacheKey('basket-evidence-v1',[storeId,startDate,endDate]);
+ if(!force){const cached=await readAnalyticsCache(key);if(cached)return cached}
+ const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
+ const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{value:c.retailId}];let empty=null,lastError;
+ for(const identifier of identifiers){
+  const filters=[literalFilters(c.fields.store,identifier.value)[0],dateRangeFilter(c.fields.date,startDate,endDate,c.dateFilterMode)];
+  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
+  try{
+   const raw=await odataGetAll(c.entity,{filter:filters.join(' and '),select,extra:'cross-company=true',pageSize:c.pageSize,maxRows:c.maxRows});
+   if(raw.truncated)throw Object.assign(new Error('Tickets incomplets : réduire la fenêtre d’analyse.'),{status:422,code:'BASKET_ROWS_TRUNCATED'});
+   if(!raw.value.length){empty={storeId,baskets:[],rejectedIdentity:0};continue}
+   const rows=await validateParentSales(raw.value,c,filters),value=basketEvidence(rows.filter(r=>includedRetailSaleRow(r,c)),fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
+   value.source=`D365/${c.entity}`;value.startDate=startDate;value.endDate=endDate;value.checkedAt=new Date().toISOString();
+   await writeAnalyticsCache(key,'basket-evidence-v1',value,endDate<new Date().toISOString().slice(0,10)?86400:180);return value;
+  }catch(error){if(String(error.code||'').startsWith('D365_SALES_PARENT_')||error.code==='BASKET_ROWS_TRUNCATED')throw error;lastError=error}
+ }
+ if(empty)return empty;throw lastError||new Error('Lecture des paniers impossible.');
 }
 export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};

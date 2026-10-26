@@ -31,7 +31,33 @@ export function resolveRetailHierarchy(productNumber,context={},product={}){
   if(direct?.length===18)candidates.push({code:direct,source:a.source,hierarchy:a.hierarchy_key});
  }
  const unique=[...new Set(candidates.map(x=>x.code))];
- if(unique.length!==1)return{status:unique.length?'AMBIGUOUS':'MISSING',reason:assigned.length?'UB_CATEGORY_JOIN_UNRESOLVED':'PRODUCT_ASSIGNMENT_MISSING',levels:{},source:'PRODUCT_CATEGORY_ASSIGNMENTS'};
+ if(unique.length!==1){
+  // Financial dimensions can locate a rayon even when a product has no UB.
+  // Only accept a unique, explicitly coded rayon; never invent family/UB levels.
+  const rayon=String(product.rayonCode||'').trim();
+  if(!unique.length&&product.financialDimension&&/^\d{1,3}$/.test(rayon)){
+   const candidates=[...(context.byCode||new Map()).entries()].filter(([code])=>code.length===6&&code.endsWith(rayon.padStart(3,'0')));
+   const codes=[...new Set(candidates.map(([code])=>code))];
+   if(codes.length===1){
+    const code=codes[0],rows=candidates.flatMap(([,r])=>r),labels=[...new Set(rows.map(r=>categoryLabel(r.category_name,code)).filter(Boolean))];
+    const parents=(context.byCode.get(code.slice(0,3))||[]).filter(p=>rows.some(r=>r.source===p.source&&r.hierarchy_key===p.hierarchy_key)),departments=[...new Set(parents.map(p=>categoryLabel(p.category_name,code.slice(0,3))).filter(Boolean))];
+    if(labels.length===1&&departments.length===1)return{status:'PARTIAL',source:'FINANCIAL_DIMENSION',reason:'UB_CATEGORY_JOIN_UNRESOLVED',levels:{department:{id:code.slice(0,3),label:departments[0],labelStatus:'RESOLVED'},rayon:{id:code,label:labels[0],labelStatus:'RESOLVED'}}};
+   }
+   if(!codes.length){
+    const paths=[];
+    for(const node of context.categories||[]){
+     const raw=String(node.category_code||'');if(!/^\d{1,3}$/.test(raw)||Number(raw)!==Number(rayon))continue;
+     const parents=matchCategories(context,node.source,node.hierarchy_key,node.parent_category_id);
+     if(parents.length!==1)continue;const parent=parents[0],dept=String(parent.category_code||'');
+     if(!/^\d{1,3}$/.test(dept))continue;
+     paths.push({department:{id:dept.padStart(3,'0'),label:categoryLabel(parent.category_name,dept),labelStatus:'RESOLVED'},rayon:{id:dept.padStart(3,'0')+raw.padStart(3,'0'),label:categoryLabel(node.category_name,raw),labelStatus:'RESOLVED'}});
+    }
+    const choices=[...new Map(paths.filter(p=>p.department.label&&p.rayon.label).map(p=>[JSON.stringify(p),p])).values()];
+    if(choices.length===1)return{status:'PARTIAL',source:'FINANCIAL_DIMENSION',reason:'UB_CATEGORY_JOIN_UNRESOLVED',levels:choices[0]};
+   }
+  }
+  return{status:unique.length?'AMBIGUOUS':'MISSING',reason:assigned.length?'UB_CATEGORY_JOIN_UNRESOLVED':'PRODUCT_ASSIGNMENT_MISSING',levels:{},source:'PRODUCT_CATEGORY_ASSIGNMENTS'};
+ }
  const ub=unique[0],scopes=candidates.filter(x=>x.code===ub),ancestors=new Set(),levels={};
  for(const candidate of scopes){
   let node=candidate.leaf;const visited=new Set();
