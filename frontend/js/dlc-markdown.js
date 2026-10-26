@@ -11,7 +11,7 @@ const stateLabel=s=>({ACTION_REQUIRED:'À traiter',EXPIRED_WITHDRAW:'Retrait obl
 const jobLabel=s=>({PENDING:'En attente imprimante',PRINTING:'Impression en cours',PRINTED:'Imprimé',FAILED:'Échec'}[s]||s||'—');
 const opLabel=s=>({PENDING_APPROVAL:'Approbation requise',APPROVED:'Prêt à imprimer',QUEUED:"File d'impression",PRINTING:'Impression',PRINTED:'Imprimé',APPLIED:'Étiquettes posées'}[s]||s||'—');
 
-function ensureCss(){if(document.getElementById('dlc-markdown-css'))return;const link=document.createElement('link');link.id='dlc-markdown-css';link.rel='stylesheet';link.href='/dlc-markdown.css?v=2405';document.head.appendChild(link)}
+function ensureCss(){if(document.getElementById('dlc-markdown-css'))return;const link=document.createElement('link');link.id='dlc-markdown-css';link.rel='stylesheet';link.href='/dlc-markdown.css?v=white5025';document.head.appendChild(link)}
 function root(){return document.getElementById('dlcMarkdownContent')}
 function profile(code){return workspace?.posProfiles?.find(x=>x.markdown_code===code)||null}
 function activePrinter(){return (workspace?.printers||[]).find(x=>x.active&&x.is_default)||(workspace?.printers||[]).find(x=>x.active)||null}
@@ -42,7 +42,7 @@ function recommendationCard(r){
 function labelPreview(data,r){
  const ready=data.printReady,code=data.markdownCode,printer=activePrinter(),theme=code==='MD50'?'md50':'md20';
  return `<div class="md-preview-shell">
-  <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice)}</span></div><small>DLC ${date(r.expiryDate)}</small><div class="md-barcode-placeholder">${data.symbology?esc(data.symbology):'SYMBOLOGIE NON VALIDÉE'}<strong>${esc(data.barcodeContent||'')}</strong></div></div>
+  <div class="md-label-preview ${theme}"><strong class="md-label-name">${esc(String(r.productName||'').slice(0,30))}</strong><div class="md-label-offer"><span class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</span><span class="new">${money(data.finalPrice)}</span></div><span class="old">Avant ${money(data.originalPrice)}</span><small>DLC ${date(r.expiryDate)}</small><div class="md-barcode-placeholder"><span>CODE-BARRES · aperçu indicatif</span><strong>${esc(data.barcodeContent||'')}</strong></div></div>
   <div class="md-preview-meta">
    <strong>${ready?'Étiquette prête techniquement':'Impression bloquée'}</strong>
    <p>${data.priceSource==='D365_COMMERCE'?'Prix relu depuis Dynamics Commerce.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'Le profil POS doit être validé sur une vraie caisse.'}</p>
@@ -75,7 +75,7 @@ function rulesAdmin(){
    </div><button class="btn brand" id="mdSaveRule">Enregistrer la règle</button>
    <div class="md-rule-list">${rules.map(r=>`<div><strong>${esc(r.markdown_code)} · J-${r.days_before_expiry}</strong><span>${esc(r.scope_type)} ${esc(r.scope_value||'tous')} · ${esc(r.store_id||'réseau')} · priorité ${r.priority}</span></div>`).join('')||'<small>Aucune règle active : aucune démarque n’est inventée par défaut.</small>'}</div></section>
    <section><h4>Validation caisse</h4>${(workspace.posProfiles||[]).map(p=>`<div class="md-pos-admin"><strong>${esc(p.markdown_code)} · préfixe ${esc(p.prefix)}</strong><span>${p.validation_state==='VALIDATED'?'Validé · '+esc(p.symbology||''):'Test réel Store Commerce requis'}</span>${p.validation_state!=='VALIDATED'? `<input data-pos-note="${esc(p.markdown_code)}" placeholder="Preuve : caisse, date, résultat du scan"><button class="btn soft" data-pos-validate="${esc(p.markdown_code)}">Valider après test CODE128 réussi</button>`:''}</div>`).join('')}</section>
-   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="60 × 40 mm" disabled></div><div class="field"><label>Technologie</label><input value="ZPL via bridge local" disabled></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">Le cloud ne contacte jamais directement l’IP privée. Le service local du magasin récupère les jobs sécurisés.</p></section>
+   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="50 × 25 mm · rouleau blanc" disabled></div><div class="field"><label>Technologie</label><input value="ZPL via bridge local" disabled></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">Rouleaux blancs 50 × 25 mm. Enregistrer applique ce format à l’imprimante sélectionnée. Le cloud ne contacte jamais directement l’IP privée. Le service local du magasin récupère les jobs sécurisés.</p></section>
   </div>
  </details>`
 }
@@ -147,7 +147,7 @@ async function validatePos(code){
 async function savePrinter(){
  const name=document.getElementById('mdPrinterName').value.trim(),bridgeKey=document.getElementById('mdPrinterBridge').value.trim();if(!bridgeKey)throw new Error('Clé bridge obligatoire.');
  const existing=activePrinter();
- await api(`/api/stores/${app.storeId}/label-printers`,{method:'POST',body:{id:existing?.id||null,name,bridgeKey,protocol:'ZPL_BRIDGE',mediaWidthMm:60,mediaHeightMm:40,dpi:203,colorMode:'MONO_PRECOLORED',active:true,isDefault:true}});
+ await api(`/api/stores/${app.storeId}/label-printers`,{method:'POST',body:{id:existing?.id||null,name,bridgeKey,protocol:'ZPL_BRIDGE',mediaWidthMm:50,mediaHeightMm:25,dpi:203,colorMode:'MONO_WHITE',active:true,isDefault:true}});
  toast('Imprimante magasin enregistrée.');await reload()
 }
 function bind(){

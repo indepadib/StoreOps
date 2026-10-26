@@ -1,3 +1,4 @@
+import { markdownLabelZpl } from './markdown-label.mjs';
 import { db, uid, audit, todayISO } from '../db.mjs';
 import { createDlcRecord } from './dlc.mjs';
 
@@ -46,10 +47,10 @@ db.exec([
 " name TEXT NOT NULL,",
 " bridge_key TEXT NOT NULL,",
 " protocol TEXT NOT NULL DEFAULT 'ZPL_BRIDGE',",
-" media_width_mm REAL NOT NULL DEFAULT 60,",
-" media_height_mm REAL NOT NULL DEFAULT 40,",
+" media_width_mm REAL NOT NULL DEFAULT 50,",
+" media_height_mm REAL NOT NULL DEFAULT 25,",
 " dpi INTEGER NOT NULL DEFAULT 203,",
-" color_mode TEXT NOT NULL DEFAULT 'MONO_PRECOLORED',",
+" color_mode TEXT NOT NULL DEFAULT 'MONO_WHITE',",
 " active INTEGER NOT NULL DEFAULT 1,",
 " is_default INTEGER NOT NULL DEFAULT 0,",
 " created_by TEXT NULL REFERENCES users(id),",
@@ -239,17 +240,17 @@ export function validatePosProfile({markdownCode,user,symbology,roundingDecimals
 export function listPrinters(storeId=null){
  return db.prepare('SELECT * FROM store_label_printers '+(storeId?'WHERE store_id=? ':'')+'ORDER BY is_default DESC,active DESC,name').all(...(storeId?[storeId]:[])).map(x=>({...x,active:!!x.active,is_default:!!x.is_default}));
 }
-export function upsertPrinter({id=null,user,storeId,name,bridgeKey,protocol='ZPL_BRIDGE',mediaWidthMm=60,mediaHeightMm=40,dpi=203,colorMode='MONO_PRECOLORED',active=true,isDefault=false}={}){
+export function upsertPrinter({id=null,user,storeId,name,bridgeKey,protocol='ZPL_BRIDGE',mediaWidthMm=50,mediaHeightMm=25,dpi=203,colorMode='MONO_WHITE',active=true,isDefault=false}={}){
  const sid=clean(storeId);if(!sid)throw Object.assign(new Error('Magasin obligatoire.'),{status:400});
  const pid=id||uid('printer');
  if(isDefault)db.prepare('UPDATE store_label_printers SET is_default=0 WHERE store_id=?').run(sid);
  if(id){
   if(!db.prepare('SELECT id FROM store_label_printers WHERE id=?').get(id))throw Object.assign(new Error('Imprimante introuvable.'),{status:404});
   db.prepare("UPDATE store_label_printers SET name=?,bridge_key=?,protocol=?,media_width_mm=?,media_height_mm=?,dpi=?,color_mode=?,active=?,is_default=?,updated_by=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
-    .run(clean(name)||'Imprimante étiquettes',clean(bridgeKey),clean(protocol).toUpperCase(),Number(mediaWidthMm)||60,Number(mediaHeightMm)||40,Number(dpi)||203,clean(colorMode).toUpperCase(),active?1:0,isDefault?1:0,user?.id||null,pid);
+    .run(clean(name)||'Imprimante étiquettes',clean(bridgeKey),clean(protocol).toUpperCase(),Number(mediaWidthMm)||50,Number(mediaHeightMm)||25,Number(dpi)||203,clean(colorMode).toUpperCase(),active?1:0,isDefault?1:0,user?.id||null,pid);
  }else{
   db.prepare("INSERT INTO store_label_printers(id,store_id,name,bridge_key,protocol,media_width_mm,media_height_mm,dpi,color_mode,active,is_default,created_by,updated_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)")
-    .run(pid,sid,clean(name)||'Imprimante étiquettes',clean(bridgeKey),clean(protocol).toUpperCase(),Number(mediaWidthMm)||60,Number(mediaHeightMm)||40,Number(dpi)||203,clean(colorMode).toUpperCase(),active?1:0,isDefault?1:0,user?.id||null,user?.id||null);
+    .run(pid,sid,clean(name)||'Imprimante étiquettes',clean(bridgeKey),clean(protocol).toUpperCase(),Number(mediaWidthMm)||50,Number(mediaHeightMm)||25,Number(dpi)||203,clean(colorMode).toUpperCase(),active?1:0,isDefault?1:0,user?.id||null,user?.id||null);
  }
  audit({storeId:sid,userId:user?.id,action:'LABEL_PRINTER_SAVED',entityType:'LABEL_PRINTER',entityId:pid,details:{name,bridgeKey,protocol,isDefault}});
  return db.prepare('SELECT * FROM store_label_printers WHERE id=?').get(pid);
@@ -341,14 +342,6 @@ export function approveMarkdownOperation({operationId,user}={}){
  return db.prepare('SELECT * FROM dlc_markdown_operations WHERE id=?').get(operationId);
 }
 
-function zplEscape(value){return String(value??'').replace(/[\^~]/g,' ').replace(/[^\x20-\x7EÀ-ÿ]/g,' ')}
-function labelZpl(op,record,profile,printer){
- if(profile.symbology!=='CODE128')throw Object.assign(new Error('Symbologie POS non compatible avec le générateur ZPL.'),{status:409,code:'PRINT_SYMBOLOGY_UNSUPPORTED'});
- const width=Math.max(300,Math.round(Number(printer.media_width_mm||60)/25.4*Number(printer.dpi||203))),height=Math.max(200,Math.round(Number(printer.media_height_mm||40)/25.4*Number(printer.dpi||203)));
- const accent=op.markdown_code==='MD50'?'ROULEAU ROUGE':'ROULEAU JAUNE';
- const name=zplEscape(record.product_name).slice(0,34),expiry=zplEscape(record.expiry_date),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
- return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO18,14^A0N,34,34^FD-'+Math.round(op.discount_percent)+'%  '+accent+'^FS','^FO18,56^A0N,24,24^FD'+name+'^FS','^FO18,90^A0N,20,20^FDAncien '+oldPrice+' DH   NOUVEAU '+newPrice+' DH^FS','^FO18,120^A0N,18,18^FDDLC '+expiry+'^FS','^FO24,148^BY2,2,62^BCN,62,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
-}
 export function createPrintJob({storeId,user,operationIds=[],printerId=null,idempotencyKey=null}={}){
  const ids=[...new Set((operationIds||[]).map(clean).filter(Boolean))];if(!ids.length)throw Object.assign(new Error('Aucune opération à imprimer.'),{status:400});
  const key=clean(idempotencyKey)||['print',storeId,...[...ids].sort()].join('|'),existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);
@@ -363,7 +356,7 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
  const chunks=[],items=[];for(const op of ops){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(op.dlc_id),profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(op.markdown_code),quantity=Math.floor(Number(op.quantity));
   if(quantity<=0||Math.abs(quantity-Number(op.quantity))>1e-6)throw Object.assign(new Error('Le pilote étiquette actuel imprime des unités entières uniquement. Vérifier l’unité du lot.'),{status:409,code:'LABEL_INTEGER_QUANTITY_REQUIRED'});
-  const label=labelZpl(op,record,profile,printer);for(let i=0;i<quantity;i++)chunks.push(label);
+  const label=markdownLabelZpl(op,record,profile,printer);for(let i=0;i<quantity;i++)chunks.push(label);
   items.push({op,record,quantity});
  }
  const id=uid('print'),payload=chunks.join('\n'),total=items.reduce((s,x)=>s+x.quantity,0);

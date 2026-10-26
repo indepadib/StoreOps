@@ -31,6 +31,8 @@ jobs:
           node --check backend/tests/v241-dlc-markdown.mjs
       - name: DLC markdown workflow contract
         run: node backend/tests/v241-dlc-markdown.mjs
+      - name: White 50 x 25 mm label geometry
+        run: node backend/tests/markdown-white-label.mjs
       - name: Scanner + network regression
         run: node backend/tests/v2403-mobile-network-hotfix.mjs
       - name: Store truth + rayon hierarchy regression
