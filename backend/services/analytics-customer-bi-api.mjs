@@ -30,7 +30,7 @@ export async function handleCustomerBiApi({req,url,user}){
   return{status:200,data:{status:'READY',storeId:stores[0].id,date,tickets:evidence.baskets.length}};
  }
  if(!stores.length&&!url.pathname.includes('customer-intelligence'))return{status:403,data:{error:'Aucun magasin accessible.'}};
- if(url.pathname==='/api/analytics/detention/prepare'){if(stores.length!==1)return{status:400,data:{error:'Un magasin requis.'}};const kind=url.searchParams.get('kind')==='supply'?'supply':'store';return{status:200,data:await prepareAnalyticsStock(stores[0].id,{kind,offset:Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)),snapshot:url.searchParams.get('snapshot')})}}
+ if(url.pathname==='/api/analytics/detention/prepare'){if(stores.length!==1)return{status:400,data:{error:'Un magasin requis.'}};const kind=url.searchParams.get('kind')==='supply'?'supply':'store';return{status:200,data:await prepareAnalyticsStock(stores[0].id,{kind,offset:Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)),snapshot:url.searchParams.get('snapshot'),force:url.searchParams.get('force')==='1'})}}
  if(url.pathname.endsWith('/article-reference'))return{status:200,data:await readArticleReference({offset:Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)),limit:Math.max(1,Math.min(40,Math.floor(Number(url.searchParams.get('limit'))||40))),expectedSnapshot:url.searchParams.get('snapshot')})};
  if(url.pathname.endsWith('/detention')){
   if(stores.length!==1)return{status:400,data:{error:'Choisir un magasin par lecture de détention.'}};
@@ -44,10 +44,10 @@ export async function handleCustomerBiApi({req,url,user}){
  const span=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/86400000)+1,currentDays=span(start,end),previousDays=span(beforeStart,beforeEnd);
  if(currentDays>31||previousDays>31)return{status:400,data:{error:'31 jours maximum par fenêtre.'}};
  if(!stores.length)return{status:422,data:{error:'Aucun magasin du périmètre ne dispose de connexion ventes configurée.',excludedStores}};
- const key=analyticsCacheKey('customer-bi-v2',[stores.map(s=>s.id).sort().join(','),start,end,beforeStart,beforeEnd]);const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
+ const key=analyticsCacheKey('customer-bi-v3',[stores.map(s=>s.id).sort().join(','),start,end,beforeStart,beforeEnd]);const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
  const current=[],previous=[];for(const store of stores){const [c,p]=await Promise.all([readStoreBasketEvidence(store.id,{startDate:start,endDate:end}),readStoreBasketEvidence(store.id,{startDate:beforeStart,endDate:beforeEnd})]);current.push(c);previous.push(p)}
- const report=compareBasketEvidence(combineBasketEvidence(current),combineBasketEvidence(previous),{comparable:currentDays===previousDays&&end<today});
+ const report=compareBasketEvidence(combineBasketEvidence(current),combineBasketEvidence(previous),{currentEndDate:end,comparable:currentDays===previousDays&&end<today});
  report.quality.currentDayIncomplete=end===today;
  const data={...report,period:{start,end,days:currentDays},comparison:{start:beforeStart,end:beforeEnd,days:previousDays},stores,excludedStores,evidenceReadAt:current.concat(previous).map(x=>({storeId:x.storeId,checkedAt:x.checkedAt||null})),checkedAt:new Date().toISOString()};
- await writeAnalyticsCache(key,'customer-bi-v2',data,300);return{status:200,data};
+ await writeAnalyticsCache(key,'customer-bi-v3',data,300);return{status:200,data};
 }

@@ -137,11 +137,11 @@ export async function getStoreProductByEan(storeId,ean){
   return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
 }
 
-export async function prepareAnalyticsStock(storeId,{kind='store',offset=0,snapshot=null}={}){
+export async function prepareAnalyticsStock(storeId,{kind='store',offset=0,snapshot=null,force=false}={}){
  const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId);
  if(!warehouseId||!stockLive())throw Object.assign(new Error('Connexion stock ou dépôt non configuré.'),{status:422});
  const readyKey=analyticsCacheKey('prepared-stock-v1',[warehouseId]),ready=await readAnalyticsCache(readyKey);
- if(!snapshot&&offset===0&&ready)return{status:'READY',nextOffset:null,snapshot:ready.checkedAt,warehouseId,rows:ready.items.length};
+ if(!snapshot&&offset===0&&ready&&(!force||Date.now()-Date.parse(ready.checkedAt)<30000))return{status:'READY',nextOffset:null,snapshot:ready.checkedAt,warehouseId,rows:ready.items.length};
  if(snapshot&&!/^[a-f0-9-]{36}$/.test(snapshot))throw Object.assign(new Error('Image stock invalide.'),{status:400});
  const token=snapshot||randomUUID(),key=analyticsCacheKey('stock-preparation-v1',[warehouseId,token]);
  let acc=offset===0?{items:[],nextOffset:0,startedAt:new Date().toISOString()}:await readAnalyticsCache(key);

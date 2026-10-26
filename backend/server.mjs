@@ -87,7 +87,7 @@ async function refreshCash(storeId,businessDate,{required=false}={}){try{const s
 async function api(req,res,url){
   if(req.method==='OPTIONS'){cors(req,res);res.writeHead(204);return res.end()}
   const path=url.pathname;
-  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:config.appVersion,authMode:config.authMode,dynamicsMode:config.dynamics.mode,configurationIssues:productionMisconfig()});
+  if(path==='/api/health')return json(req,res,200,{ok:true,service:'StoreOps API',version:config.appVersion,authMode:config.authMode,dynamicsMode:config.dynamics.mode,analyticsAiAvailable:!!process.env.ANTHROPIC_API_KEY,configurationIssues:productionMisconfig()});
   const coolSaveIngress=await handleCoolSaveIntegrationApi({req,url});if(coolSaveIngress)return json(req,res,coolSaveIngress.status,coolSaveIngress.data);
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);

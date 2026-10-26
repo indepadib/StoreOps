@@ -205,6 +205,8 @@ function includedRetailSaleRow(row,cfg={}){
  return true
 }
 
+export function salesTicketKey(row,fields={}){const tx=clean(row.transactionId||row[fields.transaction]);if(!tx)return null;return JSON.stringify([clean(row.dataAreaId),clean(row.store||row[fields.store]),clean(row.terminalId||row[fields.terminal]),clean(row.businessDate||row[fields.date]).slice(0,10),tx])}
+export function promotionMeasures(rows,cfg){if(cfg.entity!=='RetailTransactionSalesTransBIEntities')return{promotionSales:null,promotionTickets:null,discountAmount:null};const promoted=rows.filter(r=>Number(r.periodicDiscAmount)!==0&&r.periodicDiscAmount!=null),tickets=new Set(promoted.map(r=>salesTicketKey(r,cfg.fields)).filter(Boolean));return{promotionSales:round2(promoted.reduce((n,r)=>n+retailDisplaySalesAmount(r,cfg),0)),promotionTickets:tickets.size,discountAmount:round2(rows.reduce((n,r)=>n+Math.abs(Number(r.discAmount)||0),0))}}
 export function aggregateSalesRows(rows=[],cfg={}){
  const f=cfg.fields||{},sign=Number(cfg.sign||-1),tickets=new Set(),identifiedTickets=new Set(),products=new Map(),departments=new Map(),categories=new Map(),hours=new Map(),excludedTransactions=new Set();
  const directCostKind=inferTransactionCostKind(f.cost,process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'');
@@ -214,7 +216,7 @@ export function aggregateSalesRows(rows=[],cfg={}){
  const identifiedCustomer=v=>{const s=clean(v).toUpperCase();return !!s&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(s)};
  const add=(map,key,label,sales,qty,cost,unit=null)=>{if(!key)return;const cur=map.get(key)||{key:String(key),label:String(label||key),sales:0,units:0,costValue:0,quantityByUnit:new Map(),hourlySales:new Map()};cur.sales+=sales;cur.units+=qty;cur.costValue+=cost;const u=clean(unit);if(u)cur.quantityByUnit.set(u,(cur.quantityByUnit.get(u)||0)+qty);map.set(key,cur)};
  for(const r of Array.isArray(rows)?rows:[]){
-  const tx=clean(r[f.transaction]),sales=retailDisplaySalesAmount(r,cfg);
+  const tx=salesTicketKey(r,f),sales=retailDisplaySalesAmount(r,cfg);
   if(sales>0&&sales<100000)rawPositiveSales+=sales;
   if(!includedRetailSaleRow(r,cfg)){
    excludedRows+=1;excludedSalesValue+=Math.abs(sales);if(tx)excludedTransactions.add(tx);
@@ -259,13 +261,13 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
  const c=salesIntegrationConfig(storeId),days=daySpan(startDate,endDate);
  if(!days||days>31)throw Object.assign(new Error('Fenêtre paniers : 1 à 31 jours.'),{status:400,code:'INVALID_RANGE'});
  if(!c.ready||c.entity!=='RetailTransactionSalesTransBIEntities')throw Object.assign(new Error('Source tickets Dynamics indisponible.'),{status:503,code:'BASKET_SOURCE_UNAVAILABLE'});
- const key=analyticsCacheKey('basket-evidence-v2',[storeId,startDate,endDate]);
+ const key=analyticsCacheKey('basket-evidence-v3',[storeId,startDate,endDate]);
  if(!force){const cached=await readAnalyticsCache(key);if(cached)return cached}
  if(days>1){
-  const parts=[];for(let n=0;n<days;n++){const date=nextDate(startDate,n),daily=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v2',[storeId,date,date]));if(!daily)throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});parts.push(daily)}
+  const parts=[];for(let n=0;n<days;n++){const date=nextDate(startDate,n),daily=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]));if(!daily)throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});parts.push(daily)}
   return{storeId,baskets:parts.flatMap(x=>x.baskets||[]),rejectedIdentity:parts.reduce((n,x)=>n+(x.rejectedIdentity||0),0),checkedAt:parts.map(x=>x.checkedAt).filter(Boolean).sort()[0]||null};
  }
- const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
+ const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{value:c.retailId}];let empty=null,lastError;
  for(const identifier of identifiers){for(const storeFilter of literalFilters(c.fields.store,identifier.value)){
   const filters=[storeFilter,dateRangeFilter(c.fields.date,startDate,endDate,c.dateFilterMode)];
@@ -276,14 +278,14 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
    if(!raw.value.length){empty={storeId,baskets:[],rejectedIdentity:0};continue}
    const rows=await validateParentSales(raw.value,c,filters),value=basketEvidence(rows.filter(r=>includedRetailSaleRow(r,c)),fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
    value.source=`D365/${c.entity}`;value.startDate=startDate;value.endDate=endDate;value.checkedAt=new Date().toISOString();
-   await writeAnalyticsCache(key,'basket-evidence-v2',value,endDate<new Date().toISOString().slice(0,10)?3600:900);return value;
+   await writeAnalyticsCache(key,'basket-evidence-v3',value,endDate<new Date().toISOString().slice(0,10)?3600:900);return value;
   }catch(error){if(String(error.code||'').startsWith('D365_SALES_PARENT_')||error.code==='BASKET_ROWS_TRUNCATED')throw error;lastError=error}
  }}
- if(empty){empty.checkedAt=new Date().toISOString();await writeAnalyticsCache(key,'basket-evidence-v2',empty,900);return empty}throw lastError||new Error('Lecture des paniers impossible.');
+ if(empty){empty.checkedAt=new Date().toISOString();await writeAnalyticsCache(key,'basket-evidence-v3',empty,900);return empty}throw lastError||new Error('Lecture des paniers impossible.');
 }
 export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
- const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?Object.values(retailParentIdentityFields):[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?[...Object.values(retailParentIdentityFields),'unit','discAmount','periodicDiscAmount','discOfferId']:[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'];
  let firstEmpty=null,lastError=null;
  for(const identifier of identifiers){
@@ -438,7 +440,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v31|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v31',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v32|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v32',[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
@@ -447,7 +449,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
 
  c=await resolveMarginFields(c);
  const marginConfig=validatedMarginConfig(c);
- const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?Object.values(retailParentIdentityFields):[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
+ const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?[...Object.values(retailParentIdentityFields),'unit','discAmount','periodicDiscAmount','discOfferId']:[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])];
  let selected=null,lastError=null,firstEmpty=null;
 
@@ -607,7 +609,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
    const customer=clean(row[c.fields.customer]),upper=customer.toUpperCase();
    if(customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(upper)){
     if(!includedRetailSaleRow(row,c))continue;
-    const sales=retailDisplaySalesAmount(row,c),tx=clean(row[c.fields.transaction]),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
+    const sales=retailDisplaySalesAmount(row,c),tx=salesTicketKey(row,c.fields),product=clean(c.fields.product?row[c.fields.product]:''),qty=c.fields.quantity?Math.abs(num(row[c.fields.quantity])):0,hour=hourOf(c.fields.time?row[c.fields.time]:null,c.fields.time);
     const cur=customerMap.get(customer)||{customerAccount:customer,sales:0,units:0,transactions:new Set(),products:new Map(),dates:new Set(),weekdays:new Map(),hours:new Map(),firstDate:null,lastDate:null};
     cur.sales+=sales;cur.units+=qty;if(tx)cur.transactions.add(tx);
     if(product){const cp=cur.products.get(product)||{sales:0,units:0};cp.sales+=sales;cp.units+=qty;cur.products.set(product,cp)}
@@ -627,7 +629,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     const staffId=clean(row[c.fields.staff]);
     if(staffId){
       if(includedRetailSaleRow(row,c)){
-        const sales=retailDisplaySalesAmount(row,c),tx=clean(row[c.fields.transaction]),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
+        const sales=retailDisplaySalesAmount(row,c),tx=salesTicketKey(row,c.fields),customer=clean(c.fields.customer?row[c.fields.customer]:'').toUpperCase();
         const identified=!!customer&&!['ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN','0'].includes(customer);
         const cur=staffMap.get(staffId)||{staffId,sales:0,transactions:new Set(),identifiedTransactions:new Set(),identifiedSales:0};
         cur.sales+=sales;if(tx)cur.transactions.add(tx);if(identified){cur.identifiedSales+=sales;if(tx)cur.identifiedTransactions.add(tx)}
@@ -680,7 +682,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  const value={
   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,storeId,startDate:start,endDate:end,days,
-  summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginSalesBase:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.valuedMarginSales:null,marginValue:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.marginValue:null,marginRate:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
+  summary:{...promotionMeasures(includedRows,c),sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null,marginSalesBase:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.valuedMarginSales:null,marginValue:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.marginValue:null,marginRate:['VALIDATED','ESTIMATED'].includes(margin.status)?marginEval.marginRate:null,identifiedSales:totalRaw.loyalty?.identifiedSales??null,identifiedSalesShare:totalRaw.loyalty?.identifiedSalesShare??null,identifiedTickets:totalRaw.loyalty?.identifiedTickets??null,identifiedTicketRate:totalRaw.loyalty?.identifiedTicketRate??null},
   margin,
   daily,
   products:productRowsWithMargin,
@@ -707,8 +709,12 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     }
   }
  };
+ if(c.entity==='RetailTransactionSalesTransBIEntities'&&!selected.truncated){
+  const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},byDay=new Map();for(const row of includedRows){const date=dateOnly(row[c.fields.date]);if(!byDay.has(date))byDay.set(date,[]);byDay.get(date).push(row)}
+  const now=new Date().toISOString();for(let i=0;i<days;i++){const date=nextDate(start,i),evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,900)}
+ }
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
- await writeAnalyticsCache(persistentKey,'sales-range-v31',value,persistentTtl);
+ await writeAnalyticsCache(persistentKey,'sales-range-v32',value,persistentTtl);
  return{...value,cache:{status:'MISS'}}
 }

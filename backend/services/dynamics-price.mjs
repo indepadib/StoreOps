@@ -86,7 +86,7 @@ export async function getSalesPriceAgreementsByItem(productNumber){
     const filters=[`${itemField} eq '${escapeOData(item)}'`];
     if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
     const select=[...new Set([itemField,fields.price,fields.validFrom,fields.validTo,fields.currency,fields.priceGroup,fields.customer,fields.warehouse,fields.site,fields.quantity,fields.unit,fields.recordId,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean))].join(',');
-    const payload=await odataGet(entity,{filter:filters.join(' and '),select,top:100,extra:config.dynamics.dataAreaId?'cross-company=true':''});
+    const all=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:2000});if(all.truncated)throw Object.assign(new Error('Historique accords tarifaires incomplet.'),{status:422,code:'D365_PRICE_AGREEMENTS_TRUNCATED'});const payload={value:all.value};
     const rawRows=Array.isArray(payload?.value)?payload.value:[];
     const rows=rawRows.map(row=>canonicalHistoryRow(row,fields));
     return{mode:'LIVE',entity,productNumber:item,dataAreaId:config.dynamics.dataAreaId||rows[0]?.dataAreaId||basePrice.dataAreaId||null,rowCount:rows.length,rows,basePrice,mappingSource:'STOREOPS_VALIDATED_MAPPING'}
@@ -94,12 +94,9 @@ export async function getSalesPriceAgreementsByItem(productNumber){
 
   const filters=[`ItemNumber eq '${escapeOData(item)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
-  const payload=await odataGet(entity,{
-    filter:filters.join(' and '),
-    select:AGREEMENT_SELECT_FIELDS.join(','),
-    top:100,
-    extra:config.dynamics.dataAreaId?'cross-company=true':''
-  });
+  const all=await odataGetAll(entity,{filter:filters.join(' and '),select:AGREEMENT_SELECT_FIELDS.join(','),extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:250,maxRows:2000});
+  if(all.truncated)throw Object.assign(new Error('Historique accords tarifaires incomplet.'),{status:422,code:'D365_PRICE_AGREEMENTS_TRUNCATED'});
+  const payload={value:all.value};
   const rows=Array.isArray(payload?.value)?payload.value:[];
   return {
     mode:'LIVE',
@@ -124,9 +121,9 @@ function positiveOr(v,fallback=1){const n=Number(v);return Number.isFinite(n)&&n
 export function resolveApplicableTradeAgreements({rows=[],businessDate=null,priceGroups=[],warehouseId=null,quantity=1,baseUnit=null,basePriceQuantity=1}={}){
  const day=dateOnly(businessDate)||new Date().toISOString().slice(0,10),groups=[...new Set((priceGroups||[]).map(clean).filter(Boolean))],qty=positiveOr(quantity,1),baseQty=positiveOr(basePriceQuantity,1),baseU=normalizeUnit(baseUnit),wh=clean(warehouseId);
  const evaluated=(Array.isArray(rows)?rows:[]).map((row,index)=>{
-  const price=Number(row?.Price),from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate),group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),warehouse=clean(row?.PriceWarehouseId),site=clean(row?.PriceSiteId),fromQty=Number(row?.FromQuantity),toQty=Number(row?.ToQuantity),agreementQty=positiveOr(row?.SalesPriceQuantity,1),unit=clean(row?.QuantityUnitySymbol),unitNorm=normalizeUnit(unit),reasons=[];
+  const price=row?.Price==null||row?.Price===''?NaN:Number(row.Price),from=dateOnly(row?.PriceApplicableFromDate),to=dateOnly(row?.PriceApplicableToDate),group=clean(row?.PriceCustomerGroupCode),customer=clean(row?.CustomerAccountNumber),warehouse=clean(row?.PriceWarehouseId),site=clean(row?.PriceSiteId),fromQty=Number(row?.FromQuantity),toQty=Number(row?.ToQuantity),agreementQty=positiveOr(row?.SalesPriceQuantity,1),unit=clean(row?.QuantityUnitySymbol),unitNorm=normalizeUnit(unit),reasons=[];
   const dateEligible=(openBoundary(from)||day>=from)&&(openBoundary(to)||day<=to);if(!dateEligible)reasons.push('DATE');
-  const groupEligible=!group||!groups.length||groups.includes(group);if(!groupEligible)reasons.push('PRICE_GROUP');
+  const groupEligible=!group||groups.includes(group);if(!groupEligible)reasons.push('PRICE_GROUP');
   const customerEligible=!customer;if(!customerEligible)reasons.push('CUSTOMER_CONTEXT');
   const warehouseEligible=!warehouse||(!!wh&&warehouse===wh);if(!warehouseEligible)reasons.push('WAREHOUSE');
   const siteEligible=!site;if(!siteEligible)reasons.push('SITE_CONTEXT');
@@ -137,7 +134,7 @@ export function resolveApplicableTradeAgreements({rows=[],businessDate=null,pric
   const normalizedPrice=eligible&&unitCompatible?Number((price/agreementQty*baseQty).toFixed(6)):null;
   return{index,row,recordId:row?.RecordId??null,price:Number.isFinite(price)?price:null,normalizedPrice,unit:unit||null,priceQuantity:agreementQty,group:group||null,warehouse:warehouse||null,from,to,scopeEligible,dateEligible,quantityEligible,unitCompatible,eligible,safeForEffectivePrice:eligible&&unitCompatible,reasons};
  });
- const eligible=evaluated.filter(x=>x.eligible),safe=eligible.filter(x=>x.safeForEffectivePrice),signatures=[...new Set(safe.map(x=>[String(x.normalizedPrice),normalizeUnit(x.unit),String(x.priceQuantity)].join('|')))];
+ const eligible=evaluated.filter(x=>x.eligible),safe=eligible.filter(x=>x.safeForEffectivePrice),signatures=[...new Set(safe.map(x=>[String(x.normalizedPrice),normalizeUnit(x.unit),String(x.priceQuantity),clean(x.row?.PriceCurrencyCode)].join('|')))];
  let status='NONE',selected=null,safePrice=null;
  if(eligible.length&&!safe.length)status='UNSAFE';
  else if(safe.length&&signatures.length===1){

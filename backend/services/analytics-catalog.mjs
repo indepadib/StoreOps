@@ -47,6 +47,7 @@ export async function readAnalyticsCatalog(productNumbers=[]){
       supplyModeReason:ref.supplyModeReason||null,
       supplyModeField:ref.field||ref.supplyField||null,
       supplyModeRawValue:ref.rawValue??ref.supplyRawValue??null,
+      salesPriceDate:ref.salesPriceDate||null,
       salesPrice:ref.salesPrice!=null&&ref.salesPrice!==''&&Number.isFinite(Number(ref.salesPrice))?Number(ref.salesPrice):null,
       rawUnitCost:ref.unitCost!=null&&ref.unitCost!==''&&Number.isFinite(Number(ref.unitCost))?Number(ref.unitCost):null,
       rawCostBasisUnit:ref.inventoryUnit||null,

@@ -49,7 +49,7 @@ function bridgeBackendEnvironment(){
     'D365_STOCK_BATCH_FIELD','D365_STOCK_LOCATION_FIELD','D365_STOCK_STATUS_FIELD',
     'D365_TENDER_PAYMENT_ENTITY','D365_TENDER_TYPE_ENTITY','D365_WALLET_TENDER_ID','D365_WALLET_TENDER_IDS','RETAIL_ANALYTICS_TENDER_CACHE_MS',
     'D365_SALES_QTY_SIGN','D365_SALES_COST_RELIABILITY','D365_SALES_COST_KIND','RETAIL_MARGIN_COST_RELIABILITY','RETAIL_MARGIN_COST_KIND','RETAIL_MARGIN_SANITY_MIN','RETAIL_MARGIN_SANITY_MAX','RETAIL_MARGIN_MODEL_TOLERANCE_PCT_POINTS','RETAIL_ANALYTICS_RANGE_CACHE_SECONDS','RETAIL_ANALYTICS_RANGE_CHUNK_DAYS','RETAIL_ANALYTICS_RANGE_CONCURRENCY','RETAIL_ANALYTICS_D365_CONCURRENCY','RETAIL_ANALYTICS_PRODUCT_CONCURRENCY','STOREOPS_SALES_VELOCITY_CACHE_SECONDS','STOREOPS_RELEASED_PRODUCT_CACHE_MS','STOREOPS_STOCK_SNAPSHOT_CACHE_MS','STOREOPS_SELLTHROUGH_CACHE_MS','STOREOPS_GLOVO_AVAILABILITY_CACHE_MS','STOREOPS_STAFF_PERFORMANCE_CACHE_MS','STOREOPS_CASHIER_RATE_MIN_TICKETS','STOREOPS_REPLENISHMENT_LEAD_TIME_DAYS','STOREOPS_REPLENISHMENT_SAFETY_DAYS','STOREOPS_REPLENISHMENT_PACK_SIZE','STOREOPS_REPLENISHMENT_MIN_ORDER_QTY','STOREOPS_REPLENISHMENT_PROMO_FACTOR','STOREOPS_REPLENISHMENT_DAY_FACTOR','STOREOPS_LOW_COVERAGE_DAYS','STOREOPS_GHOST_SILENCE_DAYS','STOREOPS_GHOST_MIN_DAILY_SALES','STOREOPS_GHOST_STOCK_PREVIEW_LIMIT','STOREOPS_DEAD_STOCK_DAYS','STOREOPS_SLOW_COVERAGE_DAYS','STOREOPS_SELLTHROUGH_MIN_STOCK','GLOVO_PUSH_ENABLED','GLOVO_API_BASE_URL','GLOVO_CHAIN_ID','GLOVO_VENDOR_IDS_JSON','GLOVO_AVAILABILITY_BUFFER','GLOVO_REQUEST_TIMEOUT_MS','GLOVO_CLIENT_ID','GLOVO_CLIENT_SECRET','GLOVO_TOKEN_URL','GLOVO_TOKEN_AUTH_STYLE','GLOVO_TOKEN_SCOPE','GLOVO_CATALOG_BEARER_TOKEN','GLOVO_READ_API_KEY','GLOVO_PARTNER_STORE_IDS','D365_COOL_SAVE_SALE_ITEM','COOL_SAVE_WEBHOOK_SECRET','D365_COOL_SAVE_ORDER_WRITE_MODE','STOREOPS_LOSS_EXPORT_TEMPLATE_JSON',
-    'D365_ODATA_PAGE_SIZE','D365_ODATA_MAX_ROWS','D365_REQUEST_TIMEOUT_MS','D365_COMMERCIAL_PAGE_SIZE','D365_COMMERCIAL_MAX_GROUPS','D365_COMMERCIAL_MAX_LINES','CLOSING_VARIANCE_TOLERANCE_DH'
+    'ANTHROPIC_API_KEY','ANTHROPIC_BASE_URL','ANALYTICS_AI_MODEL','D365_ODATA_PAGE_SIZE','D365_ODATA_MAX_ROWS','D365_REQUEST_TIMEOUT_MS','D365_COMMERCIAL_PAGE_SIZE','D365_COMMERCIAL_MAX_GROUPS','D365_COMMERCIAL_MAX_LINES','CLOSING_VARIANCE_TOLERANCE_DH'
   ];
   for(const key of keys){const value=Netlify.env.get(key);if(value!==undefined)process.env[key]=value}
   process.env.PORT=LOCAL_PORT;
@@ -120,7 +120,7 @@ async function callLocalApi(request:Request){
 function statelessHealth(request:Request){
   if(request.method!=='GET'||new URL(request.url).pathname!=='/api/health')return null;
   const startedAt=Date.now();
-  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.40.2',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
+  const response=Response.json({ok:true,service:'StoreOps API',version:envValue('STOREOPS_VERSION')||'2.40.2',authMode:envValue('AUTH_MODE')||'entra',dynamicsMode:envValue('D365_MODE')||'simulated',analyticsAiAvailable:!!envValue('ANTHROPIC_API_KEY'),configurationIssues:[],diagnostics:{source:'NETLIFY_STATELESS_HEALTH'}});
   const headers=new Headers(response.headers);headers.set('Server-Timing',`total;dur=${Math.max(0,Date.now()-startedAt)}`);headers.set('X-StoreOps-Bridge','stateless');
   return new Response(response.body,{status:response.status,headers})
 }
@@ -281,7 +281,8 @@ function errorResponse(error:unknown){
 export default async(request:Request)=>{
   const stateless=statelessHealth(request);if(stateless)return stateless;
   const database=getDatabase();
-  try{return READ_METHODS.has(request.method)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
+  const analyticalRead=request.method==='POST'&&new URL(request.url).pathname==='/api/analytics/assistant';
+  try{return (READ_METHODS.has(request.method)||analyticalRead)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
 
 export const config:Config={path:'/api/*'};

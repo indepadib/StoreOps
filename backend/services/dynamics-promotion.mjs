@@ -193,7 +193,7 @@ export async function getProductPricing(productNumber,{businessDate=null,priceGr
   const priceDiagnostics=priceResult.status==='fulfilled'?priceResult.value:{mode:'ERROR',basePrice:null,rowCount:0,rows:[]};
   const promoDiagnostics=promoResult.status==='fulfilled'?promoResult.value:{mode:'ERROR',productNumber:item,businessDate:dateOnly(businessDate)||new Date().toISOString().slice(0,10),priceGroup:resolvedPriceGroup,promotions:[],rowCount:0,coverage:{directItem:true,category:false},error:promotionError};
 
-  const baseRow=priceDiagnostics.basePrice?.row||null,basePrice=baseRow?Number(baseRow.SalesPrice):null,trade=priceDiagnostics.applicability||{status:'NONE',safePrice:null};
+  const baseRow=priceDiagnostics.basePrice?.row||null,basePrice=baseRow&&baseRow.SalesPrice!=null?Number(baseRow.SalesPrice):null,trade=priceDiagnostics.applicability||{status:'NONE',safePrice:null};
   const agreementPrice=trade.status==='UNIQUE'&&Number.isFinite(Number(trade.safePrice))?Number(trade.safePrice):null,pricingReference=agreementPrice??basePrice;
   const activePromotions=(promoDiagnostics.promotions||[]).filter(x=>x.activeForRequestedContext),simplePromotions=activePromotions.filter(x=>x.mechanic.type==='DISCOUNT'),conditionalPromotions=activePromotions.filter(x=>x.mechanic.type==='MIX_AND_MATCH');
   const simpleEffectivePrices=simplePromotions.map(x=>computeSimpleEffectivePrice(pricingReference,x.mechanic)).filter(Number.isFinite),effectiveUnitPrice=chooseEffectiveUnitPrice(pricingReference,simpleEffectivePrices);
