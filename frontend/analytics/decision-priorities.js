@@ -4,12 +4,18 @@ const valid=v=>typeof v==='number'&&Number.isFinite(v);
 const n=v=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v);
 const dh=v=>n(v)+' DH';
 const days=(a,b)=>(Date.parse(b)-Date.parse(a))/86400000+1;
-export function decisionPriorities({data,stock,stores=[],period={},today,label=p=>p.label||p.key}={}){
+export function decisionProofMismatch(data,proof,stores,period){
+ if(proof?.status!=='READY'||proof.quality?.rejectedIdentity!==0||proof.period?.start!==period.periodStart||proof.period?.end!==period.periodEnd||proof.period?.compareStart!==period.compareStart||proof.period?.compareEnd!==period.compareEnd||JSON.stringify((proof.stores||[]).map(s=>s.storeId).sort())!==JSON.stringify(stores.map(s=>s.id).sort()))return null;
+ for(const phase of ['current','previous']){const a=data?.summary?.[phase],b=proof[phase];if(!valid(a?.sales)||!valid(b?.storeSales))continue;if(Math.abs(a.sales-b.storeSales)>.05||(valid(a.tickets)&&valid(b.storeTickets)&&a.tickets!==b.storeTickets))return `Rapprochement ${phase==='current'?'période':'comparaison'} : synthèse ${dh(a.sales)}, tickets de l’enquête ${dh(b.storeSales)}. Relire les sources avant toute décision financière.`;}
+ return null;
+}
+export function decisionPriorities({data,stock,proof,stores=[],period={},today,label=p=>p.label||p.key}={}){
  const items=[],add=x=>items.push(x),c=data?.summary?.current,p=data?.summary?.previous,cov=data?.coverage;
  const sameDays=days(period.periodStart,period.periodEnd)===days(period.compareStart,period.compareEnd);
  const closed=!!today&&period.periodEnd<today&&period.compareEnd<today;
  const coverage=stores.length>0&&cov?.storesRequested===stores.length&&cov.currentStoresReady===stores.length&&cov.comparisonStoresReady===stores.length;
- const comparable=!!c&&!!p&&valid(c.sales)&&valid(p.sales)&&coverage&&sameDays&&closed&&data?.quality?.status==='OK'&&period.compareEnd<period.periodStart;
+ const evidenceConflict=decisionProofMismatch(data,proof,stores,period);
+ const comparable=!evidenceConflict&&!!c&&!!p&&valid(c.sales)&&valid(p.sales)&&coverage&&sameDays&&closed&&data?.quality?.status==='OK'&&period.compareEnd<period.periodStart;
  const basis=`${period.periodStart||'?'} → ${period.periodEnd||'?'} / ${period.compareStart||'?'} → ${period.compareEnd||'?'}`;
  if(!comparable)add({id:'evidence',tier:0,title:'Fiabiliser la comparaison avant de décider',evidence:!data?'Ventes en cours de chargement.':!coverage?'Lecture des deux fenêtres incomplète.':!closed?'La comparaison comprend une journée non clôturée.':!sameDays?'Les fenêtres ne contiennent pas le même nombre de jours.':data.quality?.status!=='OK'?'Des contrôles de qualité restent à résoudre.':'Les fenêtres se chevauchent ou sont invalides.',action:'Choisir deux périodes clôturées de même durée et vérifier les alertes de qualité.',owner:'Responsable pilotage',measure:'Deux fenêtres complètes ; contrôles OK.',review:'Avant toute décision de prix',section:'sales',kind:'À vérifier'});
  if(comparable){
@@ -28,7 +34,8 @@ export function decisionPriorities({data,stock,stores=[],period={},today,label=p
  }
  if(scoped.length!==stores.length||scoped.some(s=>!s.insights||s.referenceComplete!==true||s.insights.expectedDetentionPct==null))add({id:'stock-coverage',tier:3,title:'Compléter la preuve de disponibilité',evidence:'La détention attendue n’est pas complètement mesurée sur les magasins sélectionnés.',action:'Charger les stocks magasin et entrepôt sur le référentiel commun. Une quantité inconnue ne vaut pas zéro.',owner:'Responsable stock',measure:'Détention calculable sur tous les magasins sélectionnés.',review:'Avant de conclure à une rupture',section:'detention',kind:'À compléter'});
  items.sort((a,b)=>a.tier-b.tier||(b.amount||0)-(a.amount||0)||a.id.localeCompare(b.id));
- return{items,comparable,basis,note:'Ordre : preuve à fiabiliser, contrôles de disponibilité, puis reculs de CA classés par montant observé. Les enjeux se recoupent : ne pas les additionner. Responsables et délais proposés, sans affectation automatique.'};
+ if(evidenceConflict){const a=items.find(x=>x.id==='evidence');a.evidence=evidenceConflict;a.action='Utiliser Actualiser pour relire les sources, puis relancer l’enquête sur les mêmes fenêtres. Maintenir les décisions de prix en attente tant que les chiffres divergent.';}
+ return{items,comparable,evidenceConflict,basis,note:'Ordre : preuve à fiabiliser, contrôles de disponibilité, puis reculs de CA classés par montant observé. Les enjeux se recoupent : ne pas les additionner. Responsables et délais proposés, sans affectation automatique.'};
 }
 
 export function decisionPlanText(model,scopeLabel){return[`PLAN DE DÉCISION · ${scopeLabel}`,model.basis,model.note,...model.items.map((a,i)=>`\n${i+1}. ${a.title}\nPreuve : ${a.evidence}\nSource / fenêtre : ${a.basis||model.basis}\nAction : ${a.action}\nResponsable proposé : ${a.owner}\nRevue : ${a.review}\nMesure : ${a.measure}`)].join('\n');}

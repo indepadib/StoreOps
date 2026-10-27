@@ -14,6 +14,7 @@ export async function requestInvestigation(body,{api,signal,onProgress,isCurrent
 }
 export function renderInvestigation(container,result){
  const r=result.analysis;if(!r)return false;
+ if(typeof CustomEvent==='function')document.dispatchEvent?.(new CustomEvent('retail-intelligence:article-proof',{detail:{analysis:r}}));
  container.classList.add('assistant-investigation');$('analyticsAssistant').classList.add('expanded');$('analyticsAssistantExpand').setAttribute('aria-expanded','true');
  const context=document.querySelector('.assistant-context');if(context)context.open=false;
  const number=v=>v==null?'À compléter':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v),groupNames={REPURCHASED:'Rachètent l’article',RETURNED_WITHOUT:'Reviennent sans lui',OTHER_STORE:'Revus ailleurs',NOT_OBSERVED:'Non revus sur la fenêtre'};
