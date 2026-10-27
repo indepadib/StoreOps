@@ -4,7 +4,7 @@ process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'analytics-tools-')),'qa.
 delete process.env.ANTHROPIC_API_KEY;
 const {db}=await import('../db.mjs');
 const {analyticsCacheKey,writeAnalyticsCache}=await import('../services/analytics-persistent-cache.mjs');
-const {assistantFacts,answerAnalytics,validateAnalyticsAnswer,validateAnalyticsPlan,renderAnalyticsPlan}=await import('../services/analytics-assistant.mjs');
+const {assistantFacts,answerAnalytics,validateAnalyticsAnswer,validateAnalyticsPlan,renderAnalyticsPlan,analyticsPlanRequest,extractAnalyticsPlan,analyticsAiFailure}=await import('../services/analytics-assistant.mjs');
 const {handleDecisionToolsApi}=await import('../services/analytics-decision-tools-api.mjs');
 const {competitorObservations}=await import('../services/analytics-competitors.mjs');
 const {basketEvidence,compareBasketEvidence}=await import('../services/customer-product-intelligence.mjs');
@@ -52,3 +52,20 @@ const plan={topics:['SALES','CUSTOMERS','MARGIN'],productIds:[],actions:[]};cons
 assert.ok(rendered.includes('\n\n'),'answers must contain real paragraph breaks');assert.ok(!rendered.includes('\\n'));
 
 const basketUnits=renderAnalyticsPlan({topics:['SALES'],productIds:[],actions:[]},{...f,sales:{...f.sales,current:200,tickets:10,previous:90,previousTickets:9,delta:110}});assert.match(basketUnits,/variation 10 DH/);assert.ok(!basketUnits.includes('points'));
+
+const request=analyticsPlanRequest('Question',f);assert.equal(request.tool_choice.name,'select_analysis');assert.equal(request.tools[0].strict,true);assert.equal(request.tools[0].input_schema.additionalProperties,false);
+assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'tool_use',name:'select_analysis',input:plan}]}),f),plan);
+assert.throws(()=>extractAnalyticsPlan({content:[{type:'text',text:'999999 DH'}]}),{code:'INVALID_AI_PLAN'});
+assert.deepEqual(validateAnalyticsPlan('```json\n'+JSON.stringify(plan)+'\n```',f),plan);
+assert.match(basketUnits,/effet nombre de tickets 10 DH ; effet panier 100 DH/);assert.match(basketUnits,/Somme : 110 DH/);
+assert.equal(analyticsAiFailure({status:401,message:'secret'}),'PROVIDER_ACCESS');assert.equal(analyticsAiFailure({status:400}),'PROVIDER_CONFIGURATION');assert.equal(analyticsAiFailure({name:'APIConnectionTimeoutError'}),'TIMEOUT');
+const unavailable=await answerAnalytics('Fixture fournisseur indisponible',f,{generate:async()=>{throw {status:400,message:'PRIVATE_SECRET'}}});assert.equal(unavailable.aiStatus,'PROVIDER_CONFIGURATION');assert.ok(!JSON.stringify(unavailable).includes('PRIVATE_SECRET'));
+const {commonReferenceAssortment,detentionRows}=await import('../services/analytics-detention.mjs');
+const common=commonReferenceAssortment({products:['A','B','C'],complete:true});assert.equal(common.status,'READY');
+const positions=detentionRows({storeId:'qa-A',referenceProducts:['A','B','C'],assortment:common,local:{complete:true,items:[{productNumber:'A',availableOnHandQuantity:5},{productNumber:'ORPHAN',availableOnHandQuantity:2}]},supply:{complete:true,items:[{productNumber:'B',availableOnHandQuantity:12}]}});
+assert.equal(positions.filter(r=>r.expected).length,3);assert.equal(positions.find(r=>r.productNumber==='ORPHAN').expected,false);assert.equal(positions.find(r=>r.productNumber==='C').storeAvailable,0);
+const {detentionInsights}=await import('../services/analytics-action-intelligence.mjs');const commonKpi=detentionInsights(positions,{complete:true,assortmentReady:true});assert.equal(commonKpi.expectedDetentionPct,33.33);assert.equal(commonKpi.replenishable,1);
+assert.equal(commonReferenceAssortment({products:['A'],complete:false}).status,'INCOMPLETE');assert.equal(commonReferenceAssortment({products:[],complete:true}).status,'INCOMPLETE');
+console.log('PASS common full-reference assortment, orphan exclusion, exact revenue drivers, structured provider plan and safe failure diagnosis');
+
+const dcKpi=detentionInsights(positions,{complete:true,warehouseComplete:true,assortmentReady:true});assert.equal(dcKpi.warehouseExpectedDetentionPct,33.33);assert.equal(commonKpi.warehouseExpectedDetentionPct,null);
