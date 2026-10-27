@@ -1,4 +1,4 @@
-import {investigationContext,requestInvestigation,renderInvestigation,initInvestigation} from './assistant-investigation.js';
+import {investigationContext,requestInvestigation,renderInvestigation,initInvestigation} from './assistant-investigation.js?v=2';
 import {supplierDetention} from './insight-models.js';
 const core=window.RETAIL_INTELLIGENCE,$=id=>document.getElementById(id),esc=core.escapeHtml,number=v=>v==null||!Number.isFinite(Number(v))?'À compléter':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v),money=v=>v==null?'À compléter':number(v)+' DH',pct=v=>v==null?'À compléter':number(v)+' %';
 let pricingSnapshot=null,competitorGeneration=0;
