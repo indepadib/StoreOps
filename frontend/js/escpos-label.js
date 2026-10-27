@@ -13,6 +13,6 @@ export function escposLabelBytes(item){
  const percent=item.label_kind==='MD50'?50:item.label_kind==='MD20'?20:null;
  if(percent===null)throw new Error('Niveau de demarque inconnu.');
  const name=ascii(item.product_name).slice(0,32);
- const text=`-${percent}%\n${name}\nAncien ${Number(item.original_price).toFixed(2)} DH\nNouveau ${Number(item.final_price).toFixed(2)} DH\nDLC ${ascii(item.expiry_date).slice(0,10)}\n`;
+ const text=`-${percent}%\n${name}\nAncien ${Number(item.original_price).toFixed(2)} DH\nNouveau ${Number(item.final_price).toFixed(2)} DH\n`;
  return Uint8Array.from([...header,...bytes(text),29,72,2,29,104,56,29,119,2,29,107,73,barcode.length,...bytes(barcode),10,10,10]);
 }

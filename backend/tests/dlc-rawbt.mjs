@@ -42,6 +42,10 @@ assert.equal(rec0.quantityConfidence,'ESTIMATE_REQUIRES_PHYSICAL_CONFIRMATION');
 
 assert.throws(()=>mod.createPrintJob({storeId:'val-fleuri',user:admin,operationIds:[],idempotencyKey:'no-op'}),/Aucune opération/);
 
+const draft=mod.operationPreview({dlcId:created[0].id,markdownCode:'MD20',originalPrice:10});
+assert.equal(draft.previewFinalPrice,8);
+assert.equal(draft.finalPrice,null);
+assert.equal(draft.printReady,false,'indicative price must not bypass POS validation');
 mod.validatePosProfile({markdownCode:'MD20',user:admin,symbology:'CODE128',roundingDecimals:2,evidenceNote:'TEST AUTOMATISÉ - scénario de validation du gate POS',confirmed:true});
 const printer=mod.upsertPrinter({user:admin,storeId:'val-fleuri',name:'Zebra Test',bridgeKey:'vf-test',protocol:'ZPL_BRIDGE',mediaWidthMm:60,mediaHeightMm:40,dpi:203,colorMode:'MONO_PRECOLORED',active:true,isDefault:true});
 assert.equal(printer.is_default,1);
@@ -57,6 +61,7 @@ assert.equal(remaining.quantityToReview,5,'partial 7 / 12 must leave 5 for revie
 
 const job=mod.createPrintJob({storeId:'val-fleuri',user:admin,operationIds:[op.id],printerId:printer.id,idempotencyKey:'print-seven'});
 assert.equal(job.total_labels,7);
+assert.ok(!job.payload.includes('DLC '),'expiry stays in tracking, not on ZPL label');
 assert.equal((job.payload.match(/\^XA/g)||[]).length,7,'exactly seven ZPL labels must be generated');
 const sameJob=mod.createPrintJob({storeId:'val-fleuri',user:admin,operationIds:[op.id],printerId:printer.id,idempotencyKey:'print-seven'});
 assert.equal(sameJob.id,job.id,'print idempotency must return the existing job');
@@ -106,6 +111,8 @@ assert.deepEqual(Buffer.from(rawbtLink(Buffer.from(testBytes).toString('base64')
 const escaped=escposLabelBytes({label_kind:'MD20',barcode_content:'250HS-002345',product_name:'Café\x1b@',original_price:10,final_price:8,expiry_date:'2026-11-01'});
 assert.equal([...escaped].filter(x=>x===27).length,3,'product text must not inject ESC commands');
 assert.ok(Buffer.from(escaped).includes(Buffer.from('Cafe @')));
+assert.ok(!Buffer.from(escaped).includes(Buffer.from('DLC ')),'no expiry on ESC/POS label');
+assert.ok(Buffer.from(escaped).includes(Buffer.from('Nouveau 8.00 DH')));
 assert.throws(()=>escposLabelBytes({label_kind:'MD20',barcode_content:'x'.repeat(20)}),/largeur/);
 // Old queued ZPL is converted from immutable line snapshots, never sent as text.
 const legacyOp=mod.createMarkdownOperation({dlcId:created[0].id,user:admin,quantity:1,markdownCode:'MD20',originalPrice:10,idempotencyKey:'legacy-one'});

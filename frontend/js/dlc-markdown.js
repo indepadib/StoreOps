@@ -45,10 +45,10 @@ function recommendationCard(r){
 function labelPreview(data,r){
  const ready=data.printReady,code=data.markdownCode,printer=activePrinter(),theme=code==='MD50'?'md50':'md20';
  return `<div class="md-preview-shell">
-  <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice)}</span></div><small>DLC ${date(r.expiryDate)}</small><div class="md-barcode-placeholder">${data.symbology?esc(data.symbology):'SYMBOLOGIE NON VALIDÉE'}<strong>${esc(data.barcodeContent||'')}</strong></div></div>
+  <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice??data.previewFinalPrice)}</span></div><div class="md-barcode-placeholder">${esc(data.symbology||'CODE128')} · aperçu<strong>${esc(data.barcodeContent||'')}</strong></div></div>
   <div class="md-preview-meta">
    <strong>${ready?'Étiquette prête techniquement':'Impression bloquée'}</strong>
-   <p>${data.priceSource==='D365_COMMERCE'?'Prix relu depuis Dynamics Commerce.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'Le profil POS doit être validé sur une vraie caisse.'}</p>
+   <p>${data.priceSource==='D365_COMMERCE'?'Prix relu depuis Dynamics Commerce.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'CODE128 prévu : scan en caisse à valider. Le nouveau prix affiché reste indicatif avant cette validation.'}</p>
    <p>${printer?'Imprimante : '+esc(printer.name)+' · '+printer.media_width_mm+'×'+printer.media_height_mm+' mm.':'Aucune imprimante magasin configurée.'}</p>
    <button class="btn brand" data-md-print-one="${esc(r.id)}" ${ready&&printer?'':'disabled'}>Créer l’opération et imprimer</button>
   </div>

@@ -304,8 +304,8 @@ export function markdownDashboard(storeId=null){
  };
 }
 
-function computeFinalPrice(originalPrice,profile){
- const original=finite(originalPrice);if(original===null||profile?.validation_state!=='VALIDATED')return null;
+function computeFinalPrice(originalPrice,profile,previewOnly=false){
+ const original=finite(originalPrice);if(original===null||(!previewOnly&&profile?.validation_state!=='VALIDATED'))return null;
  if(profile.pricing_strategy!=='PERCENT_FROM_D365_PRICE')return null;
  return round(original*(1-Number(profile.discount_percent)/100),Number(profile.rounding_decimals)||0);
 }
@@ -316,7 +316,7 @@ export function operationPreview({dlcId,markdownCode=null,originalPrice=null}={}
  const code=clean(markdownCode||rec.markdownCode).toUpperCase(),profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(code);
  if(!profile)throw Object.assign(new Error('Code markdown non configuré.'),{status:400});
  const barcode=markdownBarcodeContent(code,record.product_number),price=computeFinalPrice(originalPrice??record.unit_retail_value,profile);
- return{recommendation:rec,markdownCode:code,discountPercent:profile.discount_percent,barcodeContent:barcode,symbology:profile.symbology,posValidationState:profile.validation_state,originalPrice:finite(originalPrice??record.unit_retail_value),finalPrice:price,priceValidationState:price===null?'UNVALIDATED':'VALIDATED_PROFILE_FROM_D365_BASE',printReady:profile.validation_state==='VALIDATED'&&!!profile.symbology&&price!==null};
+ return{recommendation:rec,markdownCode:code,discountPercent:profile.discount_percent,barcodeContent:barcode,symbology:profile.symbology,posValidationState:profile.validation_state,originalPrice:finite(originalPrice??record.unit_retail_value),finalPrice:price,previewFinalPrice:computeFinalPrice(originalPrice??record.unit_retail_value,profile,true),priceValidationState:price===null?'UNVALIDATED':'VALIDATED_PROFILE_FROM_D365_BASE',printReady:profile.validation_state==='VALIDATED'&&!!profile.symbology&&price!==null};
 }
 export function createMarkdownOperation({dlcId,user,quantity,markdownCode=null,originalPrice=null,idempotencyKey=null}={}){
  const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(dlcId);if(!record)throw Object.assign(new Error('Lot DLC introuvable.'),{status:404});
@@ -352,7 +352,7 @@ function labelZpl(op,record,profile,printer){
  const width=Math.max(300,Math.round(Number(printer.media_width_mm||60)/25.4*Number(printer.dpi||203))),height=Math.max(200,Math.round(Number(printer.media_height_mm||40)/25.4*Number(printer.dpi||203)));
  const accent=op.markdown_code==='MD50'?'ROULEAU ROUGE':'ROULEAU JAUNE';
  const name=zplEscape(record.product_name).slice(0,34),expiry=zplEscape(record.expiry_date),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
- return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO18,14^A0N,34,34^FD-'+Math.round(op.discount_percent)+'%  '+accent+'^FS','^FO18,56^A0N,24,24^FD'+name+'^FS','^FO18,90^A0N,20,20^FDAncien '+oldPrice+' DH   NOUVEAU '+newPrice+' DH^FS','^FO18,120^A0N,18,18^FDDLC '+expiry+'^FS','^FO24,148^BY2,2,62^BCN,62,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
+ return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO18,14^A0N,34,34^FD-'+Math.round(op.discount_percent)+'%  '+accent+'^FS','^FO18,56^A0N,24,24^FD'+name+'^FS','^FO18,90^A0N,20,20^FDAncien '+oldPrice+' DH   NOUVEAU '+newPrice+' DH^FS','^FO24,120^BY2,2,62^BCN,62,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
 }
 export function createPrintJob({storeId,user,operationIds=[],printerId=null,idempotencyKey=null}={}){
  const ids=[...new Set((operationIds||[]).map(clean).filter(Boolean))];if(!ids.length)throw Object.assign(new Error('Aucune opération à imprimer.'),{status:400});
