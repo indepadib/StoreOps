@@ -42,6 +42,12 @@ Tests reproductibles : analytics-action-intelligence.mjs, analytics-decision-too
 
 ## Devise et contrôle des réponses IA
 
-Les faits transmis explicitent MAD/DH, CA TTC et marge HT. Le modèle doit répondre en texte simple et conserver ces unités. Une réponse utilisant une autre devise est rejetée avant affichage et remplacée par la lecture calculée des faits serveur, avec un libellé explicite. Ce contrôle ne constitue pas une certification de toutes les interprétations du modèle. Les tests couvrent une réponse IA valide et le rejet effectif d’une réponse simulée en monnaie incompatible.
+Les faits transmis explicitent MAD/DH, CA TTC et marge HT. Le modèle choisit un plan d’analyse JSON ; StoreOps produit le texte affiché et tous les chiffres avec leurs unités. Une réponse utilisant une autre devise est rejetée avant affichage et remplacée par la lecture calculée des faits serveur, avec un libellé explicite. Ce contrôle ne constitue pas une certification de toutes les interprétations du modèle. Les tests couvrent une réponse IA valide et le rejet effectif d’une réponse simulée en monnaie incompatible.
 
 Les faits distinguent transactions et clients uniques et fournissent la marge HT calculée seulement quand la source serveur la rend disponible. La couverture du coût est définie comme la part des ventes disposant d’un coût exploitable ; le statut de validation StoreOps ne constitue pas une certification comptable. Les marqueurs Markdown de titres et de gras sont normalisés pour la lecture en texte simple.
+
+## Chiffres calculés, priorités choisies par IA
+
+Le modèle ne rédige plus les phrases chiffrées. Il peut uniquement choisir des rubriques autorisées, jusqu’à trois articles présents dans les preuves et jusqu’à trois contrôles issus d’une liste définie. Le serveur valide ce plan, rejette tout champ libre ou code inconnu, puis construit la réponse depuis les faits autorisés. Les montants, ratios, unités, distinctions clients/tickets et qualifications de marge sont calculés et libellés par StoreOps.
+
+Une panne fournisseur ou un plan invalide conserve le repli calculé. L’interface distingue « priorités IA, chiffres calculés par StoreOps » d’une réponse calculée seule. Cela ne transforme pas les pistes proposées en causes prouvées, et ne comble pas une source absente. Les tests refusent les chiffres ajoutés dans un champ libre, les articles inconnus, les actions inventées et la confusion entre clients uniques et tickets identifiés.

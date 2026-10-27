@@ -4,7 +4,7 @@ process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'analytics-tools-')),'qa.
 delete process.env.ANTHROPIC_API_KEY;
 const {db}=await import('../db.mjs');
 const {analyticsCacheKey,writeAnalyticsCache}=await import('../services/analytics-persistent-cache.mjs');
-const {assistantFacts,answerAnalytics,validateAnalyticsAnswer}=await import('../services/analytics-assistant.mjs');
+const {assistantFacts,answerAnalytics,validateAnalyticsAnswer,validateAnalyticsPlan,renderAnalyticsPlan}=await import('../services/analytics-assistant.mjs');
 const {handleDecisionToolsApi}=await import('../services/analytics-decision-tools-api.mjs');
 const {competitorObservations}=await import('../services/analytics-competitors.mjs');
 const {basketEvidence,compareBasketEvidence}=await import('../services/customer-product-intelligence.mjs');
@@ -12,7 +12,7 @@ const {releasedProductProfile}=await import('../services/released-product-sourci
 for(const id of ['qa-A','qa-B'])db.prepare('INSERT OR IGNORE INTO stores(id,name,code,active) VALUES(?,?,?,1)').run(id,id,id);
 const stores=[{id:'qa-A',name:'Magasin test'}],user={id:'qa-user',role:'store_manager',store_id:'qa-A'};
 const input={start:'2026-10-20',end:'2026-10-21',compareStart:'2026-10-18',compareEnd:'2026-10-19'};
-const part={coverage:{currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:200,tickets:10,identifiedSales:100,marginValue:40,marginSalesBase:170},previous:{sales:160,tickets:8,identifiedSales:80}},products:[{key:'SKU',label:'Produit test',sales:200,previousSales:160}],stores:[{storeId:'qa-A',storeName:'Magasin test',sales:200,previousSales:160,tickets:10}],crm:{customerMergeRows:[{customerAccount:'PRIVATE_ACCOUNT',customerName:'PRIVATE_NAME'}]},margin:{status:'ESTIMATED',coveragePct:99},quality:{status:'OK'},generatedAt:'2026-10-22T10:00:00Z'};
+const part={coverage:{currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:200,tickets:10,identifiedSales:100,identifiedTickets:6,marginValue:40,marginSalesBase:170},previous:{sales:160,tickets:8,identifiedSales:80}},products:[{key:'SKU',label:'Produit test',sales:200,previousSales:160}],stores:[{storeId:'qa-A',storeName:'Magasin test',sales:200,previousSales:160,tickets:10}],crm:{customerMergeRows:[{customerAccount:'PRIVATE_ACCOUNT',customerName:'PRIVATE_NAME'}]},margin:{status:'ESTIMATED',coveragePct:99},quality:{status:'OK'},generatedAt:'2026-10-22T10:00:00Z'};
 const cache=analyticsCacheKey('decision-v32',['qa-A',input.start,input.end,input.compareStart,input.compareEnd]);
 await writeAnalyticsCache(cache,'decision-v32',part,300);
 const f=await assistantFacts(stores,{...input,sales:999999});assert.equal(f.sales.current,200);assert.equal(f.sales.delta,40);assert.equal(f.sales.averageBasket,20);assert.equal(f.sales.identifiedCustomers,1);assert.ok(!JSON.stringify(f).includes('PRIVATE_'));
@@ -43,6 +43,12 @@ assert.equal(f.currency,'MAD');assert.equal(f.moneyUnit,'DH');assert.equal(f.sal
 for(const text of ['CA : 200 € [S1]','CA : 200 EUR','200 euros','200 USD','200 dollars','$200','200 £','200 ¥'])assert.throws(()=>validateAnalyticsAnswer(text),{code:'INVALID_AI_CURRENCY'});assert.equal(validateAnalyticsAnswer('CA TTC : 200 DH [S1]'),'CA TTC : 200 DH [S1]');
 
 const rejectedAI=await answerAnalytics('Fixture devise invalide',f,{generate:async()=> 'CA : 200 € [S1]'});assert.equal(rejectedAI.engine,'CALCULATED');assert.equal(rejectedAI.aiValidationFailed,true);assert.ok(!rejectedAI.answer.includes('€'));assert.match(rejectedAI.answer,/200 DH/);
-const validAI=await answerAnalytics('Fixture devise valide',f,{generate:async()=> 'CA TTC : 200 DH [S1]'});assert.equal(validAI.engine,'AI_GROUNDED');assert.equal(validAI.aiValidationFailed,false);
+const validAI=await answerAnalytics('Fixture devise valide',f,{generate:async()=> JSON.stringify({topics:['SALES'],productIds:[],actions:['TRAFFIC']})});assert.equal(validAI.engine,'AI_GROUNDED');assert.equal(validAI.aiValidationFailed,false);
 
 assert.equal(f.margin.valueHT,40);assert.equal(f.margin.salesBaseHT,170);assert.equal(f.margin.accountingCertified,false);assert.equal(f.margin.estimated,true);assert.match(f.ticketDefinition,/pas un client unique/);assert.equal(validateAnalyticsAnswer('## Résultat\n**200 DH** [S1]'),'Résultat\n200 DH [S1]');const marginAnswer=await answerAnalytics('Fixture marge calculée',f);assert.match(marginAnswer.answer,/40 DH/);
+
+const plan={topics:['SALES','CUSTOMERS','MARGIN'],productIds:[],actions:[]};const rendered=renderAnalyticsPlan(validateAnalyticsPlan(JSON.stringify(plan),f),f);assert.match(rendered,/6 sur 10 \(60 %\)/);assert.match(rendered,/40 DH/);assert.ok(!rendered.includes('1 sur 10'));for(const extra of [{answer:'999999 DH'},{ratio:999999}])assert.throws(()=>validateAnalyticsPlan(JSON.stringify({...plan,...extra}),f),{code:'INVALID_AI_PLAN'});assert.throws(()=>validateAnalyticsPlan(JSON.stringify({...plan,productIds:['UNKNOWN']}),f),{code:'INVALID_AI_PLAN'});assert.throws(()=>validateAnalyticsPlan(JSON.stringify({...plan,actions:['INVENT_A_CAUSE']}),f),{code:'INVALID_AI_PLAN'});const invented=await answerAnalytics('Fixture tentative montant inventé',f,{generate:async()=>JSON.stringify({...plan,answer:'999999 DH'})});assert.equal(invented.engine,'CALCULATED');assert.equal(invented.aiValidationFailed,true);assert.ok(!invented.answer.includes('999999'));
+
+assert.ok(rendered.includes('\n\n'),'answers must contain real paragraph breaks');assert.ok(!rendered.includes('\\n'));
+
+const basketUnits=renderAnalyticsPlan({topics:['SALES'],productIds:[],actions:[]},{...f,sales:{...f.sales,current:200,tickets:10,previous:90,previousTickets:9,delta:110}});assert.match(basketUnits,/variation 10 DH/);assert.ok(!basketUnits.includes('points'));
