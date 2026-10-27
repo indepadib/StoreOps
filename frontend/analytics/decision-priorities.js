@@ -1,0 +1,34 @@
+// Deterministic recommendations from the same scoped evidence as the report.
+// Amounts are observations, never recoverable gains or additive opportunities.
+const valid=v=>typeof v==='number'&&Number.isFinite(v);
+const n=v=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v);
+const dh=v=>n(v)+' DH';
+const days=(a,b)=>(Date.parse(b)-Date.parse(a))/86400000+1;
+export function decisionPriorities({data,stock,stores=[],period={},today,label=p=>p.label||p.key}={}){
+ const items=[],add=x=>items.push(x),c=data?.summary?.current,p=data?.summary?.previous,cov=data?.coverage;
+ const sameDays=days(period.periodStart,period.periodEnd)===days(period.compareStart,period.compareEnd);
+ const closed=!!today&&period.periodEnd<today&&period.compareEnd<today;
+ const coverage=stores.length>0&&cov?.storesRequested===stores.length&&cov.currentStoresReady===stores.length&&cov.comparisonStoresReady===stores.length;
+ const comparable=!!c&&!!p&&valid(c.sales)&&valid(p.sales)&&coverage&&sameDays&&closed&&data?.quality?.status==='OK'&&period.compareEnd<period.periodStart;
+ const basis=`${period.periodStart||'?'} → ${period.periodEnd||'?'} / ${period.compareStart||'?'} → ${period.compareEnd||'?'}`;
+ if(!comparable)add({id:'evidence',tier:0,title:'Fiabiliser la comparaison avant de décider',evidence:!data?'Ventes en cours de chargement.':!coverage?'Lecture des deux fenêtres incomplète.':!closed?'La comparaison comprend une journée non clôturée.':!sameDays?'Les fenêtres ne contiennent pas le même nombre de jours.':data.quality?.status!=='OK'?'Des contrôles de qualité restent à résoudre.':'Les fenêtres se chevauchent ou sont invalides.',action:'Choisir deux périodes clôturées de même durée et vérifier les alertes de qualité.',owner:'Responsable pilotage',measure:'Deux fenêtres complètes ; contrôles OK.',review:'Avant toute décision de prix',section:'sales',kind:'À vérifier'});
+ if(comparable){
+  for(const s of [...(data.stores||[])].filter(s=>valid(s.deltaSales)&&s.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,1)){
+   const known=[s.sales,s.previousSales,s.tickets,s.previousTickets].every(valid)&&s.tickets>0&&s.previousTickets>0;
+   const traffic=known?(s.tickets-s.previousTickets)*(s.previousSales/s.previousTickets):null,basket=known?s.tickets*(s.sales/s.tickets-s.previousSales/s.previousTickets):null;
+   const driver=known&&traffic+basket<0?(traffic<basket?'fréquentation':'panier'):'à qualifier';
+   add({id:'store:'+s.storeId,tier:2,amount:-s.deltaSales,title:`${s.storeName} : comprendre le recul`,evidence:`${dh(s.deltaSales)} de CA TTC sur les fenêtres comparées.`+(known?` Décomposition : visites ${dh(traffic)}, panier ${dh(basket)}.`:''),action:driver==='fréquentation'?'Comparer les jours et créneaux, puis les retours des clients identifiés. Vérifier disponibilité et calendrier commercial.':driver==='panier'?'Isoler les rayons et articles qui baissent ; distinguer volumes, prix réalisé et mix avant de changer un tarif.':'Vérifier les tickets et le périmètre de comparaison.',owner:'Responsable magasin',measure:'CA, tickets et panier sur les mêmes jours de semaine.',review:'Point proposé sous 48 h',section:'network',kind:'Diagnostic',basis});
+  }
+  for(const a of [...(data.products||[])].filter(a=>valid(a.deltaSales)&&a.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,2))add({id:'product:'+a.key,tier:2,amount:-a.deltaSales,title:`${label(a)} : enquêter avant de changer le prix`,evidence:`${dh(a.deltaSales)} de CA TTC sur l’article. Cette variation recoupe celle du magasin.`,action:'Comparer prix réalisé, volumes, pénétration panier, rachat et retour sans article. Contrôler les promotions et la disponibilité.',owner:'Responsable commercial',measure:'Pénétration en points, acheteurs revenus et marge à coût comparable.',review:'Diagnostic proposé aujourd’hui',section:'sales',product:a.key,question:`Quel est l’impact de l’évolution du prix de l’article ${a.key} sur les ventes, le panier et le retour des clients ?`,kind:'Enquête article',basis});
+ }
+ const scoped=(stock?.stores||[]).filter(s=>stores.some(x=>x.id===s.storeId));
+ for(const s of scoped){const i=s.insights;if(!i)continue;
+  if(valid(i.negative)&&i.negative>0)add({id:'negative:'+s.storeId,tier:1,title:`${s.storeName} : vérifier ${n(i.negative)} stocks négatifs`,evidence:`${n(i.negative)} positions article/magasin en anomalie dans le stock actuel.`,action:'Compter les références prioritaires, rapprocher réceptions et mouvements, puis faire valider la correction dans le système source.',owner:'Responsable magasin / stock',measure:'Nombre de négatifs confirmés puis corrigés après nouvelle lecture.',review:'Contrôle proposé aujourd’hui',section:'detention',kind:'Contrôle terrain',basis:s.stockReadAt||'Date de lecture à vérifier'});
+  if(s.referenceComplete===true&&s.assortmentStatus==='READY'&&valid(i.expectedDetentionPct)&&valid(i.replenishable)&&i.replenishable>0)add({id:'replenish:'+s.storeId,tier:1,title:`${s.storeName} : préparer le réapprovisionnement`,evidence:`${n(i.replenishable)} positions attendues absentes en magasin avec stock entrepôt positif ; détention ${n(i.expectedDetentionPct)} %.`,action:'Ouvrir les références concernées, confirmer les quantités disponibles, les commandes en cours et les unités avant de préparer le transfert.',owner:'Responsable magasin / approvisionnement',measure:'Références redevenues disponibles et taux de détention après réception.',review:'Vérification proposée aujourd’hui',section:'detention',kind:'Disponibilité',basis:s.stockReadAt||'Date de lecture à vérifier'});
+ }
+ if(scoped.length!==stores.length||scoped.some(s=>!s.insights||s.referenceComplete!==true||s.insights.expectedDetentionPct==null))add({id:'stock-coverage',tier:3,title:'Compléter la preuve de disponibilité',evidence:'La détention attendue n’est pas complètement mesurée sur les magasins sélectionnés.',action:'Charger les stocks magasin et entrepôt sur le référentiel commun. Une quantité inconnue ne vaut pas zéro.',owner:'Responsable stock',measure:'Détention calculable sur tous les magasins sélectionnés.',review:'Avant de conclure à une rupture',section:'detention',kind:'À compléter'});
+ items.sort((a,b)=>a.tier-b.tier||(b.amount||0)-(a.amount||0)||a.id.localeCompare(b.id));
+ return{items,comparable,basis,note:'Ordre : preuve à fiabiliser, contrôles de disponibilité, puis reculs de CA classés par montant observé. Les enjeux se recoupent : ne pas les additionner. Responsables et délais proposés, sans affectation automatique.'};
+}
+
+export function decisionPlanText(model,scopeLabel){return[`PLAN DE DÉCISION · ${scopeLabel}`,model.basis,model.note,...model.items.map((a,i)=>`\n${i+1}. ${a.title}\nPreuve : ${a.evidence}\nSource / fenêtre : ${a.basis||model.basis}\nAction : ${a.action}\nResponsable proposé : ${a.owner}\nRevue : ${a.review}\nMesure : ${a.measure}`)].join('\n');}

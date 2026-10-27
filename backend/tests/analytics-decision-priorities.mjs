@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import {decisionPriorities,decisionPlanText} from '../../frontend/analytics/decision-priorities.js';
+const input={today:'2026-10-27',period:{periodStart:'2026-10-21',periodEnd:'2026-10-26',compareStart:'2026-10-15',compareEnd:'2026-10-20'},stores:[{id:'A'}],data:{quality:{status:'OK'},coverage:{storesRequested:1,currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:800},previous:{sales:1000}},stores:[{storeId:'A',storeName:'A',sales:800,previousSales:1000,tickets:80,previousTickets:100,deltaSales:-200}],products:[{key:'SMALL',deltaSales:-10},{key:'BIG',deltaSales:-100},{key:'MID',deltaSales:-50}]},stock:{stores:[{storeId:'A',storeName:'A',referenceComplete:true,assortmentStatus:'READY',stockReadAt:'2026-10-27T08:00:00Z',insights:{negative:2,expectedDetentionPct:80,replenishable:3}}]}};
+let model=decisionPriorities(input);assert.equal(model.comparable,true);assert.equal(model.items[0].id,'negative:A');assert.deepEqual(model.items.filter(x=>x.product).map(x=>x.product),['BIG','MID']);assert.match(model.items.find(x=>x.id==='store:A').evidence,/visites -200 DH, panier 0 DH/);assert.match(model.note,/ne pas les additionner/);assert.ok(model.items.every(x=>x.owner&&x.measure&&x.review&&x.action));assert.match(decisionPlanText(model,'A'),/Responsable proposé/);
+for(const modify of [x=>x.data.coverage.comparisonStoresReady=0,x=>x.data.quality.status='WARN',x=>x.period.periodEnd='2026-10-27',x=>x.period.compareStart='2026-10-14',x=>x.period.compareEnd='2026-10-22',x=>x.data.summary.current.sales=null]){const x=structuredClone(input);modify(x);const r=decisionPriorities(x);assert.equal(r.comparable,false);assert.equal(r.items[0].id,'evidence');assert.equal(r.items.some(a=>a.amount>0),false);assert.ok(r.items.some(a=>a.id==='negative:A'),'stock evidence independent of sales');}
+const x=structuredClone(input);x.stock.stores[0].insights.expectedDetentionPct=null;x.stock.stores[0].insights.replenishable=null;x.stock.stores[0].insights.negative=null;model=decisionPriorities(x);assert.ok(model.items.some(a=>a.id==='stock-coverage'));assert.equal(model.items.some(a=>a.id.startsWith('replenish:')||a.id.startsWith('negative:')),false);
+const foreign=structuredClone(input);foreign.stock.stores[0].storeId='OUTSIDE';assert.equal(decisionPriorities(foreign).items.some(a=>a.id.endsWith(':OUTSIDE')),false);
+const missing=decisionPriorities({stores:[{id:'A'}]});assert.equal(missing.comparable,false);assert.equal(missing.items[0].id,'evidence');
+console.log('decision priorities: scoped proof, ranking, gates, decomposition and actionable export OK');
+const source=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
+const fn=source.slice(source.indexOf('  function mergeDecisionCoverage('),source.indexOf('  function mergeDecisionParts('));
+const merge=vm.runInNewContext(fn+';mergeDecisionCoverage');
+const parts=[{coverage:{storesRequested:1,currentStoresReady:1,comparisonStoresReady:1}},{coverage:{storesRequested:1,currentStoresReady:1,comparisonStoresReady:1}}];
+assert.deepEqual(JSON.parse(JSON.stringify(merge(parts,'STORES'))),{storesRequested:2,currentStoresReady:2,comparisonStoresReady:2});
+assert.equal(merge(parts,'TIME').currentStoresReady,1,'time chunks must not multiply shops');
+parts[1].coverage.comparisonStoresReady=0;assert.equal(merge(parts,'STORES').comparisonStoresReady,1);assert.equal(merge(parts,'TIME').comparisonStoresReady,0);
+assert.match(source,/mergeDecisionParts\(results,[^\n]+,'STORES'\)/,'the multi-store fallback must use the store partition');
+console.log('multi-store fallback coverage: sum stores; minimum across time; missing comparison retained OK');
