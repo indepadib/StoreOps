@@ -1,5 +1,6 @@
 import {investigationContext,requestInvestigation,renderInvestigation,initInvestigation} from './assistant-investigation.js?v=2';
 import {supplierDetention} from './insight-models.js';
+import {decisionPriorities,decisionPlanText} from './decision-priorities.js';
 const core=window.RETAIL_INTELLIGENCE,$=id=>document.getElementById(id),esc=core.escapeHtml,number=v=>v==null||!Number.isFinite(Number(v))?'À compléter':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v),money=v=>v==null?'À compléter':number(v)+' DH',pct=v=>v==null?'À compléter':number(v)+' %';
 let pricingSnapshot=null,competitorGeneration=0;
 const state={data:null,stock:null,suppliers:null,baskets:null,catalog:new Map(),stockDetail:null,key:null,stockKey:null,stockLoading:false,stockController:null,scopeGeneration:0,pricingGeneration:0,pricingController:null};
@@ -43,7 +44,17 @@ function supplierDetentionTable(){
 }
 
 function actionCards(actions){return `<div class="studio-actions">${actions.map(a=>`<article><strong>${esc(a.store?a.store+' · ':'')}${esc(a.title)}${a.count!=null?' · '+esc(a.count):''}</strong><p>${esc(a.detail||'')}</p></article>`).join('')}</div>`}
-function render(){renderBrief();renderStudio()}
+function priorityModel(){return decisionPriorities({data:state.data,stock:state.stock,stores:stores(),period:scope(),today:new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),label:productLabel})}
+function renderPriorities(){
+ const m=priorityModel(),host=$('decisionPriorities');if(!host)return;
+ const item=(a,i)=>`<article class="priority-item"><span class="priority-tag">${i+1} · ${esc(a.kind)}</span><h3>${esc(a.title)}</h3><p>${esc(a.evidence)}</p><details><summary>Décision, responsable et mesure</summary><p><strong>À faire :</strong> ${esc(a.action)}</p><p><strong>Responsable proposé :</strong> ${esc(a.owner)} · ${esc(a.review)}</p><p><strong>Vérifier le résultat :</strong> ${esc(a.measure)}</p><small>Source / fenêtre : ${esc(a.basis||m.basis)}</small></details><div class="priority-links"><button type="button" data-studio-section="${esc(a.section)}">Ouvrir les preuves</button>${a.product?`<button type="button" data-priority-product="${esc(a.product)}" data-priority-question="${esc(a.question)}">Préparer l’enquête client / prix</button>`:''}</div></article>`;
+ host.innerHTML=`<header><div><span class="studio-kicker">DU CONSTAT À L’ACTION</span><h2>Que décider maintenant ?</h2><p>${esc(m.basis)} · ${esc(core.getStoreScopeLabel())}</p></div><button type="button" id="decisionPlanExport" ${m.items.length?'':'disabled'}>Exporter le plan d’action</button></header><p class="studio-note">${esc(m.note)}</p><div class="priority-grid">${m.items.slice(0,3).map(item).join('')}</div>${m.items.length>3?`<details class="priority-more"><summary>${m.items.length-3} autres priorités documentées</summary><div class="priority-grid">${m.items.slice(3).map((a,i)=>item(a,i+3)).join('')}</div></details>`:''}${m.items.length?'':'<p>Aucun recul de CA ni anomalie exploitable détecté dans les preuves chargées. Poursuivre la surveillance ; ceci ne certifie pas l’absence de problème.</p>'}`;
+}
+function render(){renderBrief();renderStudio();renderPriorities()}
+document.addEventListener('click',e=>{
+ const b=e.target.closest('[data-priority-product]');if(b){setAssistant(true);$('assistantArticle').value=b.dataset.priorityProduct;$('assistantEventDate').value='';for(const id of ['assistantArticle','assistantEventDate'])$(id).dispatchEvent(new Event('change'));$('analyticsAssistantQuestion').value=b.dataset.priorityQuestion;$('analyticsAssistantQuestion').focus();$('assistantStatus').textContent='Enquête préparée sur les deux fenêtres affichées. Envoyer pour comparer prix, paniers et retour client.';}
+ if(e.target.closest('#decisionPlanExport')){const blob=new Blob([decisionPlanText(priorityModel(),core.getStoreScopeLabel())],{type:'text/plain;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`StoreOps-plan-actions-${scope().periodEnd}.txt`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+});
 async function loadStockBrief(force=false){
  const wanted=stockKey();if(!wanted||state.stockLoading)return;if(force)state.stockDetail=null;const generation=state.scopeGeneration;state.stockLoading=true;state.stockController?.abort();const controller=new AbortController();state.stockController=controller;$('studioStockRefresh').disabled=true;$('briefRefreshStock').disabled=true;
  try{const q=new URLSearchParams({storeIds:stores().map(s=>s.id).join(',')});let brief=await core.api('/api/analytics/operational-summary?'+q,{noRetry:true,signal:controller.signal});if(generation!==state.scopeGeneration)return;state.stock=brief;render();if(force||brief.coverage.ready<brief.coverage.total){
