@@ -72,3 +72,5 @@ assert.equal(commonReferenceAssortment({products:['A'],complete:false}).status,'
 console.log('PASS common full-reference assortment, orphan exclusion, exact revenue drivers, structured provider plan and safe failure diagnosis');
 
 const dcKpi=detentionInsights(positions,{complete:true,warehouseComplete:true,assortmentReady:true});assert.equal(dcKpi.warehouseExpectedDetentionPct,33.33);assert.equal(commonKpi.warehouseExpectedDetentionPct,null);
+
+const completeResponse=await answerAnalytics('Fixture CA, magasins, clients, identification et marge',f,{generate:async()=>JSON.stringify({topics:['SALES','PRODUCTS'],productIds:[],actions:['TRAFFIC']})});assert.equal(completeResponse.engine,'AI_GROUNDED');assert.match(completeResponse.answer,/Magasin test \[S1\]/);assert.match(completeResponse.answer,/Tickets identifiés : 6 sur 10 \(60 %\)/);assert.match(completeResponse.answer,/Marge calculée HT \[S1\] : 40 DH/);
