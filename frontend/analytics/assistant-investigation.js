@@ -15,6 +15,7 @@ export async function requestInvestigation(body,{api,signal,onProgress,isCurrent
 export function renderInvestigation(container,result){
  const r=result.analysis;if(!r)return false;
  container.classList.add('assistant-investigation');$('analyticsAssistant').classList.add('expanded');$('analyticsAssistantExpand').setAttribute('aria-expanded','true');
+ const context=document.querySelector('.assistant-context');if(context)context.open=false;
  const number=v=>v==null?'À compléter':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v),groupNames={REPURCHASED:'Rachètent l’article',RETURNED_WITHOUT:'Reviennent sans lui',OTHER_STORE:'Revus ailleurs',NOT_OBSERVED:'Non revus sur la fenêtre'};
  const paragraphs=result.answer.split('\n\n');for(const text of paragraphs.splice(0,2)){const p=document.createElement('p');p.textContent=text;container.appendChild(p)}
  const cards=document.createElement('div');cards.className='impact-cohorts';

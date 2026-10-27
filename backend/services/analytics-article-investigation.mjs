@@ -51,7 +51,7 @@ export async function articleInvestigation(stores,networkStores,input,{read=read
  networkStores=networkStores.filter(s=>connected(s.id));
  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),eventDate=input.eventDate||questionEventDate(input.question,today.slice(0,4)),period=impactPeriod({...input,eventDate},today),resolved=await resolve(input);
  if(!resolved.product)return {status:200,data:{engine:'ARTICLE_CLARIFICATION',answer:resolved.reason+' Choisissez le code article dans le contexte de l’enquête'+(resolved.candidates.length?' ou parmi les propositions ci-dessous.':'.')+' Je ne remplace pas cette enquête par les indicateurs globaux du magasin.',candidates:resolved.candidates,sources:[]}};
- const product=resolved.product,scope=stores.map(s=>s.id).sort().join(','),networkScope=networkStores.map(s=>s.id).sort().join(','),key=analyticsCacheKey('article-impact-v1',[config.dynamics.dataAreaId,scope,networkScope,product.productNumber,period.start,period.end,period.compareStart,period.compareEnd,period.eventDate||'SELECTED_PERIOD']);
+ const product=resolved.product,scope=stores.map(s=>s.id).sort().join(','),networkScope=networkStores.map(s=>s.id).sort().join(','),key=analyticsCacheKey('article-impact-v2',[config.dynamics.dataAreaId,scope,networkScope,product.productNumber,period.start,period.end,period.compareStart,period.compareEnd,period.eventDate||'SELECTED_PERIOD']);
  const hit=await read(key);if(hit)return {status:200,data:{...hit,answer:renderArticleImpact(hit.analysis,input.question),cached:true}};
  const [currentReads,previousReads]=await Promise.all([Promise.all(networkStores.map(s=>cachedWindow(s,period.start,period.end,read))),Promise.all(stores.map(s=>cachedWindow(s,period.compareStart,period.compareEnd,read)))]);
  const tasks=[...new Map(currentReads.concat(previousReads).flatMap(x=>x.tasks).map(t=>[t.storeId+'|'+t.date,t])).values()];
@@ -62,5 +62,6 @@ export async function articleInvestigation(stores,networkStores,input,{read=read
  const alternatives=report.cohort.alternatives;
  if(alternatives.length){try{const refs=await catalog(alternatives.map(a=>a.productNumber)),map=new Map(refs.items.map(r=>[r.productNumber,r]));for(const a of alternatives){const r=map.get(a.productNumber);a.productName=r?.productName||null;a.sameFamily=!!product.hierarchy?.family?.id&&r?.hierarchy?.family?.id===product.hierarchy.family.id}}catch{/* Codes and counts remain usable without optional names. */}}
  const sources=[{id:'S3',name:'Tickets Dynamics · enquête article et cohortes agrégées',scope,networkScope,period}],result={engine:'ARTICLE_IMPACT',analysis:report,answer:renderArticleImpact(report,input.question),sources,period,checkedAt:new Date().toISOString(),providerDataSent:false};
- await write(key,'article-impact-v1',result,300);return {status:200,data:result};
+ await write(key,'article-impact-v2',result,300);return {status:200,data:result};
 }
+
