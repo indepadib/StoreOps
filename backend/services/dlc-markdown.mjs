@@ -241,6 +241,10 @@ export function listPrinters(storeId=null){
 }
 export function upsertPrinter({id=null,user,storeId,name,bridgeKey,protocol='ZPL_BRIDGE',mediaWidthMm=60,mediaHeightMm=40,dpi=203,colorMode='MONO_PRECOLORED',active=true,isDefault=false}={}){
  const sid=clean(storeId);if(!sid)throw Object.assign(new Error('Magasin obligatoire.'),{status:400});
+ protocol=clean(protocol).toUpperCase();
+ if(!['ZPL_BRIDGE','ZPL_RAWBT'].includes(protocol))throw Object.assign(new Error('Mode imprimante non pris en charge.'),{status:400});
+ if(protocol==='ZPL_BRIDGE'&&!clean(bridgeKey))throw Object.assign(new Error('Clé bridge obligatoire.'),{status:400});
+ if(id&&!db.prepare('SELECT id FROM store_label_printers WHERE id=? AND store_id=?').get(id,sid))throw Object.assign(new Error('Imprimante introuvable dans ce magasin.'),{status:404});
  const pid=id||uid('printer');
  if(isDefault)db.prepare('UPDATE store_label_printers SET is_default=0 WHERE store_id=?').run(sid);
  if(id){
@@ -377,7 +381,25 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
  return db.prepare('SELECT * FROM label_print_jobs WHERE id=?').get(id);
 }
 export function listPrintJobs(storeId,{limit=100}={}){
- return db.prepare("SELECT j.*,p.name printer_name FROM label_print_jobs j JOIN store_label_printers p ON p.id=j.printer_id WHERE j.store_id=? ORDER BY j.created_at DESC LIMIT ?").all(storeId,Math.max(1,Math.min(500,Number(limit)||100)));
+ return db.prepare("SELECT j.*,p.name printer_name,p.protocol printer_protocol FROM label_print_jobs j JOIN store_label_printers p ON p.id=j.printer_id WHERE j.store_id=? ORDER BY j.created_at DESC LIMIT ?").all(storeId,Math.max(1,Math.min(500,Number(limit)||100)));
+}
+export function mobilePrintJob({jobId,user,action,confirmed=false}={}){
+ const job=db.prepare('SELECT j.*,p.protocol,p.bridge_key FROM label_print_jobs j JOIN store_label_printers p ON p.id=j.printer_id WHERE j.id=?').get(jobId);
+ if(!job)throw Object.assign(new Error('Job introuvable.'),{status:404});
+ if(!(user&&(user.role==='ops_director'||user.permissions_profile==='platform_admin'||user.id==='u-admin'||user.store_id===job.store_id||user.permissions_profile==='quality_audit')))throw Object.assign(new Error('Accès interdit à ce magasin.'),{status:403});
+ if(job.protocol!=='ZPL_RAWBT')throw Object.assign(new Error('Ce job utilise le relais magasin.'),{status:409});
+ if(action==='prepare'){
+  if(Buffer.byteLength(job.payload,'utf8')>180000)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
+  const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(jobId);
+  if(!result.changes)throw Object.assign(new Error('Job déjà transmis ou terminé. Vérifier la sortie physique avant toute reprise.'),{status:409});
+  db.prepare("UPDATE dlc_markdown_operations SET status='PRINTING',updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT operation_id FROM label_print_job_items WHERE job_id=?)").run(jobId);
+  audit({storeId:job.store_id,userId:user.id,action:'LABEL_RAWBT_PREPARED',entityType:'LABEL_PRINT_JOB',entityId:jobId});
+  return{id:jobId,payload:job.payload,total_labels:job.total_labels,status:'PRINTING'};
+ }
+ if(!['confirm','failed'].includes(action)||!confirmed||job.status!=='PRINTING')throw Object.assign(new Error('Confirmation explicite et job en cours requis.'),{status:409});
+ const result=completePrintJob({jobId,bridgeKey:job.bridge_key,success:action==='confirm',error:'Sortie vérifiée par opérateur : impression absente ou incomplète. Ne relancer qu’après contrôle des étiquettes.'});
+ audit({storeId:job.store_id,userId:user.id,action:action==='confirm'?'LABEL_RAWBT_CONFIRMED':'LABEL_RAWBT_FAILED',entityType:'LABEL_PRINT_JOB',entityId:jobId});
+ return result;
 }
 export function listMarkdownOperations(storeId,{limit=200}={}){
  return db.prepare("SELECT o.*,d.product_name,d.product_number,d.ean,d.expiry_date,d.lot_ref,u.name created_by_name FROM dlc_markdown_operations o JOIN dlc_records d ON d.id=o.dlc_id LEFT JOIN users u ON u.id=o.created_by WHERE o.store_id=? ORDER BY o.created_at DESC LIMIT ?").all(storeId,Math.max(1,Math.min(1000,Number(limit)||200)));
@@ -392,7 +414,7 @@ export function retryPrintJob({jobId,user}={}){
 }
 export function claimPrintJob({bridgeKey}={}){
  const key=clean(bridgeKey);if(!key)return null;
- const printer=db.prepare('SELECT * FROM store_label_printers WHERE bridge_key=? AND active=1 ORDER BY is_default DESC LIMIT 1').get(key);if(!printer)return null;
+ const printer=db.prepare("SELECT * FROM store_label_printers WHERE bridge_key=? AND active=1 AND protocol='ZPL_BRIDGE' ORDER BY is_default DESC LIMIT 1").get(key);if(!printer)return null;
  const job=db.prepare("SELECT * FROM label_print_jobs WHERE printer_id=? AND status='PENDING' ORDER BY created_at LIMIT 1").get(printer.id);if(!job)return null;
  db.prepare("UPDATE label_print_jobs SET status='PRINTING',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(job.id);
  db.prepare("UPDATE dlc_markdown_operations SET status='PRINTING',updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT operation_id FROM label_print_job_items WHERE job_id=?)").run(job.id);

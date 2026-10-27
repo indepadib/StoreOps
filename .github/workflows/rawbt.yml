@@ -1,0 +1,14 @@
+name: RawBT print contract
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  rawbt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/tests/dlc-rawbt.mjs

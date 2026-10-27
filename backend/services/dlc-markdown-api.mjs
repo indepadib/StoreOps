@@ -4,7 +4,7 @@ import { getStoreCommerceProduct } from './loss-api.mjs';
 import {
  listMarkdownRecommendations,markdownDashboard,listMarkdownRules,upsertMarkdownRule,markdownPosProfiles,validatePosProfile,
  listPrinters,upsertPrinter,operationPreview,createMarkdownOperation,approveMarkdownOperation,createPrintJob,listPrintJobs,listMarkdownOperations,retryPrintJob,
- confirmLabelsApplied,listMarkdownAlerts,claimPrintJob,completePrintJob,runMarkdownMonitor
+ confirmLabelsApplied,listMarkdownAlerts,claimPrintJob,completePrintJob,runMarkdownMonitor,mobilePrintJob
 } from './dlc-markdown.mjs';
 
 const clean=v=>String(v??'').trim();
@@ -75,6 +75,11 @@ export async function handleDlcMarkdownApi({req,url,user}){
  p=route(path,'/api/label-print-jobs/:jobId/retry');if(p&&req.method==='POST'){
   const job=db.prepare('SELECT * FROM label_print_jobs WHERE id=?').get(p.jobId);if(!job)return{status:404,data:{error:'Job introuvable'}};
   requireExecute(user,job.store_id);return{status:200,data:retryPrintJob({jobId:p.jobId,user})}
+ }
+ p=route(path,'/api/label-print-jobs/:jobId/rawbt');if(p&&req.method==='POST'){
+  const job=db.prepare('SELECT store_id FROM label_print_jobs WHERE id=?').get(p.jobId);if(!job)return{status:404,data:{error:'Job introuvable'}};
+  requireExecute(user,job.store_id);const b=await body(req);
+  return{status:200,data:mobilePrintJob({jobId:p.jobId,user,action:b.action,confirmed:b.confirmed===true})};
  }
  if(path==='/api/dlc-markdown/dashboard'&&req.method==='GET'){requireDirector(user);return{status:200,data:{dashboard:markdownDashboard(null),alerts:listMarkdownAlerts(null),rules:listMarkdownRules(),posProfiles:markdownPosProfiles()}}}
  return null;
