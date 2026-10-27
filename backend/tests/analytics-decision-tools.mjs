@@ -4,7 +4,7 @@ process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'analytics-tools-')),'qa.
 delete process.env.ANTHROPIC_API_KEY;
 const {db}=await import('../db.mjs');
 const {analyticsCacheKey,writeAnalyticsCache}=await import('../services/analytics-persistent-cache.mjs');
-const {assistantFacts,answerAnalytics}=await import('../services/analytics-assistant.mjs');
+const {assistantFacts,answerAnalytics,validateAnalyticsAnswer}=await import('../services/analytics-assistant.mjs');
 const {handleDecisionToolsApi}=await import('../services/analytics-decision-tools-api.mjs');
 const {competitorObservations}=await import('../services/analytics-competitors.mjs');
 const {basketEvidence,compareBasketEvidence}=await import('../services/customer-product-intelligence.mjs');
@@ -38,3 +38,9 @@ const row={dataAreaId:'X',store:'qa-A',terminalId:'T',transactionId:'1',sku:'SKU
 const evidence=basketEvidence([row,{...row,sales:20,periodic:0},{...row,date:'2026-10-21',sales:5}],fields,{storeId:'qa-A',amount:r=>r.sales});const report=compareBasketEvidence(evidence,{baskets:[]});assert.equal(report.summary.tickets,2);assert.equal(report.summary.promotionSales,15,'only discounted lines, never every line of the same SKU');assert.equal(report.summary.sales,35);assert.equal(report.products[0].current.promotionSales,15);
 assert.equal(releasedProductProfile({ItemNumber:'SKU',SalesPrice:12,SalesPriceDate:'2026-10-21T12:00:00Z'}).salesPriceDate,'2026-10-21T12:00:00Z');assert.equal(releasedProductProfile({ItemNumber:'SKU',SalesPrice:null}).salesPrice,null);
 console.log('PASS assistant server evidence, privacy, dates and scope; competitor provenance and management; exact discounted lines and daily tickets; master price date');
+
+assert.equal(f.currency,'MAD');assert.equal(f.moneyUnit,'DH');assert.equal(f.salesBasis,'TTC');assert.equal(f.marginBasis,'HT');
+for(const text of ['CA : 200 € [S1]','CA : 200 EUR','200 euros','200 USD','200 dollars','$200','200 £','200 ¥'])assert.throws(()=>validateAnalyticsAnswer(text),{code:'INVALID_AI_CURRENCY'});assert.equal(validateAnalyticsAnswer('CA TTC : 200 DH [S1]'),'CA TTC : 200 DH [S1]');
+
+const rejectedAI=await answerAnalytics('Fixture devise invalide',f,{generate:async()=> 'CA : 200 € [S1]'});assert.equal(rejectedAI.engine,'CALCULATED');assert.equal(rejectedAI.aiValidationFailed,true);assert.ok(!rejectedAI.answer.includes('€'));assert.match(rejectedAI.answer,/200 DH/);
+const validAI=await answerAnalytics('Fixture devise valide',f,{generate:async()=> 'CA TTC : 200 DH [S1]'});assert.equal(validAI.engine,'AI_GROUNDED');assert.equal(validAI.aiValidationFailed,false);
