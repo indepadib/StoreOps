@@ -1,5 +1,4 @@
 import {readStoreStockSnapshot,readWarehouseStockSnapshot,supplyWarehouseForStore,readPreparedAnalyticsStock} from './dynamics-stock.mjs';
-import {assortmentIndex} from './assortment-resolver.mjs';
 import {readAnalyticsCatalog} from './analytics-catalog.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {config} from '../config.mjs';
@@ -27,22 +26,28 @@ export function detentionRows({storeId,local,supply,assortment,referenceProducts
   return{storeId,productNumber,expected:isExpected,storeAvailable,warehouseAvailable,storeHeld:storeAvailable==null?null:storeAvailable>0,warehouseHeld:warehouseAvailable==null?null:warehouseAvailable>0,state:storeAvailable==null?'UNKNOWN':storeAvailable<0?'NEGATIVE':storeAvailable>0?'HELD':isExpected===true?'EXPECTED_NOT_HELD':'NOT_HELD',warehouseId:local.warehouseId||null,supplyWarehouseId:supply.warehouseId||null};
  });
 }
+// Business rule confirmed by operations: the entire common article reference is
+// expected in every store. Stock-only orphan codes stay visible, outside the denominator.
+export function commonReferenceAssortment(reference){
+ return {status:reference.complete&&reference.products.length?'READY':'INCOMPLETE',included:new Set(reference.products),basis:'ALL_REFERENCE_ARTICLES',label:'Tous les articles du référentiel commun sont attendus dans chaque magasin'};
+}
 export async function readDetentionPage(store,{offset=0,limit=120,expectedSnapshot=null,force=false}={}){
- const key=analyticsCacheKey('detention-universe-v2',[store.id]);let universe=!force?await readAnalyticsCache(key):null;
- const previousKey=analyticsCacheKey('detention-previous-v2',[store.id]);
+ const key=analyticsCacheKey('detention-universe-v3',[store.id]);let universe=!force?await readAnalyticsCache(key):null;
+ const previousKey=analyticsCacheKey('detention-previous-v3',[store.id]);
  if(expectedSnapshot&&universe?.checkedAt!==expectedSnapshot){const previous=await readAnalyticsCache(previousKey);if(previous?.checkedAt===expectedSnapshot)universe=previous;else throw Object.assign(new Error('Image stock expirée. Relancer la lecture complète.'),{status:409,code:'STOCK_SNAPSHOT_CHANGED'})}
  if(!universe){
   const [reads,reference]=await Promise.all([Promise.allSettled([readPreparedAnalyticsStock(store.id),readPreparedAnalyticsStock(store.id,'supply')]),referenceIndex()]);
   const [local,supply]=reads.map(r=>r.status==='fulfilled'?r.value:{status:'UNAVAILABLE',complete:false,items:[],error:r.reason?.message});
-  const assortment=assortmentIndex(store.id,{maxAgeHours:72}),rows=detentionRows({storeId:store.id,local,supply,assortment,referenceProducts:reference.products});
+  const assortment=commonReferenceAssortment(reference),rows=detentionRows({storeId:store.id,local,supply,assortment,referenceProducts:reference.products});
   universe={rows,stockReadAt:local.checkedAt||null,warehouseReadAt:supply.checkedAt||null,stockReadStartedAt:local.startedAt||null,warehouseReadStartedAt:supply.startedAt||null,checkedAt:new Date().toISOString(),storeWarehouseId:local.warehouseId,supplyWarehouseId:supply.warehouseId,stockComplete:local.complete===true,supplyComplete:supply.complete===true,referenceComplete:reference.complete,assortmentStatus:assortment.status,status:local.complete&&supply.complete&&reference.complete&&assortment.status==='READY'?'READY':'PARTIAL'};
-  const old=await readAnalyticsCache(key);if(old)await writeAnalyticsCache(previousKey,'detention-previous-v2',old,1800);
-  await writeAnalyticsCache(key,'detention-universe-v2',universe,900);
+  universe.assortmentBasis=assortment.basis;universe.assortmentLabel=assortment.label;
+  const old=await readAnalyticsCache(key);if(old)await writeAnalyticsCache(previousKey,'detention-previous-v3',old,1800);
+  await writeAnalyticsCache(key,'detention-universe-v3',universe,900);
  }
  if(expectedSnapshot&&expectedSnapshot!==universe.checkedAt)throw Object.assign(new Error('Image stock renouvelée pendant la lecture. Relancer pour éviter de mélanger deux images.'),{status:409,code:'STOCK_SNAPSHOT_CHANGED'});
  const page=universe.rows.slice(offset,offset+limit),catalogKey=analyticsCacheKey('catalog-v10',page.map(x=>x.productNumber).sort());
  let catalog=page.length?await readAnalyticsCache(catalogKey):{items:[]};
  if(!catalog&&page.length){catalog=await readAnalyticsCatalog(page.map(x=>x.productNumber));await writeAnalyticsCache(catalogKey,'catalog-v10',catalog,86400)}
  const refs=new Map((catalog?.items||[]).map(x=>[x.productNumber,x]));
- return{...universe,rows:page.map(x=>({...x,storeName:store.name,productName:refs.get(x.productNumber)?.productName||null,hierarchy:refs.get(x.productNumber)?.hierarchy||{},hierarchyStatus:refs.get(x.productNumber)?.hierarchyStatus||'MISSING',unit:refs.get(x.productNumber)?.inventoryUnit||null,primaryVendorAccount:refs.get(x.productNumber)?.primaryVendorAccount||null,vendorName:refs.get(x.productNumber)?.vendorName||null,supplyMode:refs.get(x.productNumber)?.supplyMode||null})),total:universe.rows.length,offset,limit,nextOffset:offset+page.length<universe.rows.length?offset+page.length:null,snapshotOnly:true,note:'Stock actuel, pas un historique. Taux de détention sur références attendues uniquement ; données incomplètes ou assortiment inconnu = taux indisponible. Quantités en unité de stock, non additionnables entre articles.'};
+ return{...universe,rows:page.map(x=>({...x,storeName:store.name,productName:refs.get(x.productNumber)?.productName||null,hierarchy:refs.get(x.productNumber)?.hierarchy||{},hierarchyStatus:refs.get(x.productNumber)?.hierarchyStatus||'MISSING',unit:refs.get(x.productNumber)?.inventoryUnit||null,primaryVendorAccount:refs.get(x.productNumber)?.primaryVendorAccount||null,vendorName:refs.get(x.productNumber)?.vendorName||null,supplyMode:refs.get(x.productNumber)?.supplyMode||null})),total:universe.rows.length,offset,limit,nextOffset:offset+page.length<universe.rows.length?offset+page.length:null,snapshotOnly:true,note:'Stock actuel, pas un historique. Tous les articles du référentiel commun sont attendus dans chaque magasin ; détention = articles attendus avec stock positif / total des articles du référentiel. Lecture incomplète = taux indisponible. Quantités en unité de stock, non additionnables entre articles.'};
 }
