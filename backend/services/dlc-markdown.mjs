@@ -1,3 +1,4 @@
+import {escposLabelBytes} from '../../frontend/js/escpos-label.js';
 import { db, uid, audit, todayISO } from '../db.mjs';
 import { createDlcRecord } from './dlc.mjs';
 
@@ -242,7 +243,7 @@ export function listPrinters(storeId=null){
 export function upsertPrinter({id=null,user,storeId,name,bridgeKey,protocol='ZPL_BRIDGE',mediaWidthMm=60,mediaHeightMm=40,dpi=203,colorMode='MONO_PRECOLORED',active=true,isDefault=false}={}){
  const sid=clean(storeId);if(!sid)throw Object.assign(new Error('Magasin obligatoire.'),{status:400});
  protocol=clean(protocol).toUpperCase();
- if(!['ZPL_BRIDGE','ZPL_RAWBT'].includes(protocol))throw Object.assign(new Error('Mode imprimante non pris en charge.'),{status:400});
+ if(!['ZPL_BRIDGE','ZPL_RAWBT','ESCPOS_RAWBT'].includes(protocol))throw Object.assign(new Error('Mode imprimante non pris en charge.'),{status:400});
  if(protocol==='ZPL_BRIDGE'&&!clean(bridgeKey))throw Object.assign(new Error('Clé bridge obligatoire.'),{status:400});
  if(id&&!db.prepare('SELECT id FROM store_label_printers WHERE id=? AND store_id=?').get(id,sid))throw Object.assign(new Error('Imprimante introuvable dans ce magasin.'),{status:404});
  const pid=id||uid('printer');
@@ -367,12 +368,15 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
  const chunks=[],items=[];for(const op of ops){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(op.dlc_id),profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(op.markdown_code),quantity=Math.floor(Number(op.quantity));
   if(quantity<=0||Math.abs(quantity-Number(op.quantity))>1e-6)throw Object.assign(new Error('Le pilote étiquette actuel imprime des unités entières uniquement. Vérifier l’unité du lot.'),{status:409,code:'LABEL_INTEGER_QUANTITY_REQUIRED'});
-  const label=labelZpl(op,record,profile,printer);for(let i=0;i<quantity;i++)chunks.push(label);
+  const mobile=printer.protocol!=='ZPL_BRIDGE';
+  if(profile.symbology!=='CODE128')throw Object.assign(new Error('Profil CODE128 requis.'),{status:409});
+  const label=mobile?Buffer.from(escposLabelBytes({label_kind:op.markdown_code,barcode_content:op.barcode_content,product_name:record.product_name,original_price:op.original_price,final_price:op.final_price,expiry_date:record.expiry_date})):labelZpl(op,record,profile,printer);for(let i=0;i<quantity;i++)chunks.push(label);
   items.push({op,record,quantity});
  }
- const id=uid('print'),payload=chunks.join('\n'),total=items.reduce((s,x)=>s+x.quantity,0);
+ const format=printer.protocol==='ZPL_BRIDGE'?'ZPL':'ESCPOS_BASE64';
+ const id=uid('print'),payload=format==='ZPL'?chunks.join('\n'):Buffer.concat(chunks).toString('base64'),total=items.reduce((s,x)=>s+x.quantity,0);
  db.exec('BEGIN');try{
-  db.prepare("INSERT INTO label_print_jobs(id,store_id,printer_id,idempotency_key,status,payload_format,payload,total_labels,created_by) VALUES(?,?,?,?,?,?,?,?,?)").run(id,storeId,printer.id,key,'PENDING','ZPL',payload,total,user.id);
+  db.prepare("INSERT INTO label_print_jobs(id,store_id,printer_id,idempotency_key,status,payload_format,payload,total_labels,created_by) VALUES(?,?,?,?,?,?,?,?,?)").run(id,storeId,printer.id,key,'PENDING',format,payload,total,user.id);
   const ins=db.prepare("INSERT INTO label_print_job_items(id,job_id,operation_id,dlc_id,quantity,label_kind,barcode_content,product_name,original_price,final_price,expiry_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
   for(const x of items){ins.run(uid('printitem'),id,x.op.id,x.op.dlc_id,x.quantity,x.op.markdown_code,x.op.barcode_content,x.record.product_name,x.op.original_price,x.op.final_price,x.record.expiry_date);db.prepare("UPDATE dlc_markdown_operations SET status='QUEUED',updated_at=CURRENT_TIMESTAMP WHERE id=?").run(x.op.id)}
   db.exec('COMMIT');
@@ -387,14 +391,21 @@ export function mobilePrintJob({jobId,user,action,confirmed=false}={}){
  const job=db.prepare('SELECT j.*,p.protocol,p.bridge_key FROM label_print_jobs j JOIN store_label_printers p ON p.id=j.printer_id WHERE j.id=?').get(jobId);
  if(!job)throw Object.assign(new Error('Job introuvable.'),{status:404});
  if(!(user&&(user.role==='ops_director'||user.permissions_profile==='platform_admin'||user.id==='u-admin'||user.store_id===job.store_id||user.permissions_profile==='quality_audit')))throw Object.assign(new Error('Accès interdit à ce magasin.'),{status:403});
- if(job.protocol!=='ZPL_RAWBT')throw Object.assign(new Error('Ce job utilise le relais magasin.'),{status:409});
+ if(!['ZPL_RAWBT','ESCPOS_RAWBT'].includes(job.protocol))throw Object.assign(new Error('Ce job utilise le relais magasin.'),{status:409});
  if(action==='prepare'){
-  if(Buffer.byteLength(job.payload,'utf8')>180000)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
-  const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(jobId);
+  let payload=job.payload;
+  if(job.payload_format!=='ESCPOS_BASE64'){
+   const items=db.prepare('SELECT * FROM label_print_job_items WHERE job_id=? ORDER BY rowid').all(jobId);
+   if(!items.length)throw Object.assign(new Error('Lot historique sans details : preparation impossible.'),{status:409});
+   const chunks=[];for(const item of items){const label=Buffer.from(escposLabelBytes(item));for(let i=0;i<item.quantity;i++)chunks.push(label)}
+   payload=Buffer.concat(chunks).toString('base64');
+  }
+  if(Buffer.from(payload,'base64').length>180000)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
+  const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',payload=?,payload_format='ESCPOS_BASE64',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(payload,jobId);
   if(!result.changes)throw Object.assign(new Error('Job déjà transmis ou terminé. Vérifier la sortie physique avant toute reprise.'),{status:409});
   db.prepare("UPDATE dlc_markdown_operations SET status='PRINTING',updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT operation_id FROM label_print_job_items WHERE job_id=?)").run(jobId);
   audit({storeId:job.store_id,userId:user.id,action:'LABEL_RAWBT_PREPARED',entityType:'LABEL_PRINT_JOB',entityId:jobId});
-  return{id:jobId,payload:job.payload,total_labels:job.total_labels,status:'PRINTING'};
+  return{id:jobId,payload,payload_format:'ESCPOS_BASE64',total_labels:job.total_labels,status:'PRINTING'};
  }
  if(!['confirm','failed'].includes(action)||!confirmed||job.status!=='PRINTING')throw Object.assign(new Error('Confirmation explicite et job en cours requis.'),{status:409});
  const result=completePrintJob({jobId,bridgeKey:job.bridge_key,success:action==='confirm',error:'Sortie vérifiée par opérateur : impression absente ou incomplète. Ne relancer qu’après contrôle des étiquettes.'});

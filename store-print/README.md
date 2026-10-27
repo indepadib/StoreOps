@@ -30,3 +30,7 @@ After preparing an operation, in the print queue choose `Préparer sur ce PDA`, 
 The existing PC bridge ignores printers using ZPL_RAWBT. Windows users must use the PC relay mode. No bridge token is passed to Android or included in RawBT links.
 
 Transport reference: https://github.com/402d/RawBt-and-ESCPOS-coffee (rawbt:base64 byte payload).
+
+## LNX3 correction: ESC/POS at 203 dpi
+The confirmed PDA configuration is RawBT ESC/POS general, 203 dpi, 384-dot print area. Android transport now uses ESCPOS_RAWBT and binary ESC/POS encoded once as base64. Legacy ZPL_RAWBT printer records are treated as this Android ESC/POS transport; no admin account is needed for the shared test. The PC ZPL_BRIDGE path stays ZPL.
+Pending historical ZPL mobile jobs are rebuilt from their saved line snapshots when explicitly prepared. Jobs already handed off still require physical verification before manual failure/requeue; nothing is automatically resent. Text is ASCII-transliterated for the printer code page; CODE128 uses GS k with code set B. The layout is a continuous ESC/POS print, not guaranteed gap-aware label positioning: validate the actual paper advance and POS scan before operational use. The shared test has no sales barcode and no price/approval bypass.
