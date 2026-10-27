@@ -95,6 +95,11 @@ export function extractAnalyticsPlan(response){
  if(calls.length!==1||calls[0].name!=='select_analysis')throw Object.assign(new Error('Plan structuré absent.'),{code:'INVALID_AI_PLAN'});
  return JSON.stringify(calls[0].input);
 }
+export function compatibleAnalyticsPlanRequest(request){
+ // Some gateway/model combinations reject grammar constraints. Keep forced
+ // tool selection and the same server validation without provider strict mode.
+ return {...request,tools:request.tools.map(({strict,...tool})=>({...tool,input_schema:{...tool.input_schema,properties:Object.fromEntries(Object.entries(tool.input_schema.properties).map(([key,{minItems,maxItems,...value}])=>[key,value]))}}))};
+}
 export function analyticsAiFailure(error){
  if(['INVALID_AI_CURRENCY','INVALID_AI_PLAN'].includes(error?.code))return 'INVALID_PLAN';
  if(error?.name==='APIConnectionTimeoutError'||error?.name==='AbortError')return 'TIMEOUT';
@@ -110,7 +115,9 @@ export async function answerAnalytics(question,facts,{generate=null}={}){
   if(generate)answer=await generate(question,facts);
   else{
    const {default:Anthropic}=await import('@anthropic-ai/sdk');const client=new Anthropic({timeout:18000,maxRetries:0});
-   answer=extractAnalyticsPlan(await client.messages.create(analyticsPlanRequest(question,facts)));
+   const request=analyticsPlanRequest(question,facts);let response;
+   try{response=await client.messages.create(request)}catch(error){if(error?.status!==400)throw error;response=await client.messages.create(compatibleAnalyticsPlanRequest(request))}
+   answer=extractAnalyticsPlan(response);
   }
   answer=renderAnalyticsPlan(validateAnalyticsPlan(answer,facts),facts);engine='AI_GROUNDED';aiStatus='READY';
  }catch(error){answer=fallback;aiUnavailable=true;aiStatus=analyticsAiFailure(error);aiValidationFailed=aiStatus==='INVALID_PLAN'}}
