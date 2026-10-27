@@ -4,7 +4,7 @@ process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'analytics-tools-')),'qa.
 delete process.env.ANTHROPIC_API_KEY;
 const {db}=await import('../db.mjs');
 const {analyticsCacheKey,writeAnalyticsCache}=await import('../services/analytics-persistent-cache.mjs');
-const {assistantFacts,answerAnalytics,validateAnalyticsAnswer,validateAnalyticsPlan,renderAnalyticsPlan,analyticsPlanRequest,extractAnalyticsPlan,analyticsAiFailure}=await import('../services/analytics-assistant.mjs');
+const {assistantFacts,answerAnalytics,validateAnalyticsAnswer,validateAnalyticsPlan,renderAnalyticsPlan,analyticsPlanRequest,extractAnalyticsPlan,analyticsAiFailure,compatibleAnalyticsPlanRequest}=await import('../services/analytics-assistant.mjs');
 const {handleDecisionToolsApi}=await import('../services/analytics-decision-tools-api.mjs');
 const {competitorObservations}=await import('../services/analytics-competitors.mjs');
 const {basketEvidence,compareBasketEvidence}=await import('../services/customer-product-intelligence.mjs');
@@ -54,6 +54,7 @@ assert.ok(rendered.includes('\n\n'),'answers must contain real paragraph breaks'
 const basketUnits=renderAnalyticsPlan({topics:['SALES'],productIds:[],actions:[]},{...f,sales:{...f.sales,current:200,tickets:10,previous:90,previousTickets:9,delta:110}});assert.match(basketUnits,/variation 10 DH/);assert.ok(!basketUnits.includes('points'));
 
 const request=analyticsPlanRequest('Question',f);assert.equal(request.tool_choice.name,'select_analysis');assert.equal(request.tools[0].strict,true);assert.equal(request.tools[0].input_schema.additionalProperties,false);
+const compatible=compatibleAnalyticsPlanRequest(request);assert.equal(compatible.tool_choice.name,'select_analysis');assert.equal(compatible.tools[0].strict,undefined);assert.equal(compatible.tools[0].input_schema.properties.topics.maxItems,undefined);assert.equal(compatible.tools[0].input_schema.additionalProperties,false);assert.equal(request.tools[0].strict,true);
 assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'tool_use',name:'select_analysis',input:plan}]}),f),plan);
 assert.throws(()=>extractAnalyticsPlan({content:[{type:'text',text:'999999 DH'}]}),{code:'INVALID_AI_PLAN'});
 assert.deepEqual(validateAnalyticsPlan('```json\n'+JSON.stringify(plan)+'\n```',f),plan);
