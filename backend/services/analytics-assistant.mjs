@@ -79,10 +79,11 @@ export function ruleExplanation(question,f){
  if(!selected.length){add('SALES','TRAFFIC');add('NETWORK','BASKET')}
  return renderAnalyticsPlan({topics:selected,productIds:[],actions:actions.slice(0,3)},f);
 }
-export function completeAnalyticsPlan(plan,question){
+export function completeAnalyticsPlan(plan,question,facts){
  const q=question.toLowerCase(),required=[];
  for(const [topic,pattern] of [['SALES',/\bca\b|vente|ticket|panier|activité|activite/],['NETWORK',/réseau|reseau|magasin/],['CUSTOMERS',/client|identification|fidélité|fidelite/],['MARGIN',/marge|coût|cout/],['STOCK',/stock|détention|detention|rupture/],['PROMOTIONS',/promo|remise/],['PRODUCTS',/article|produit|prix|volume/]])if(pattern.test(q))required.push(topic);
- return {...plan,topics:[...new Set([...required,...plan.topics])]};
+ const ranked=/contribu|plus.*(?:article|produit)|(?:article|produit).*plus/.test(q);
+ return {...plan,topics:[...new Set([...required,...plan.topics])],productIds:ranked?[...(facts?.products||[])].sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta)||a.article.localeCompare(b.article)).slice(0,3).map(p=>p.article):plan.productIds};
 }
 export function validateAnalyticsAnswer(answer){
  if(!String(answer||'').trim())throw new Error('Empty');
@@ -129,7 +130,7 @@ export async function answerAnalytics(question,facts,{generate=null}={}){
    try{response=await client.messages.create(request)}catch(error){if(error?.status!==400)throw error;response=await client.messages.create(compatibleAnalyticsPlanRequest(request))}
    answer=extractAnalyticsPlan(response);
   }
-  answer=renderAnalyticsPlan(completeAnalyticsPlan(validateAnalyticsPlan(answer,facts),question),facts);engine='AI_GROUNDED';aiStatus='READY';
+  answer=renderAnalyticsPlan(completeAnalyticsPlan(validateAnalyticsPlan(answer,facts),question,facts),facts);engine='AI_GROUNDED';aiStatus='READY';
  }catch(error){answer=fallback;aiUnavailable=true;aiStatus=analyticsAiFailure(error);aiValidationFailed=aiStatus==='INVALID_PLAN';if(['JSON','FIELDS','TOPICS','PRODUCTS','ACTIONS','TOOL'].includes(error?.detail))aiValidationDetail=error.detail}}
  const result={answer,engine,aiUnavailable,aiValidationFailed,aiStatus,aiValidationDetail,durationMs:Date.now()-started,sources:facts.sources,period:facts.period,checkedAt:new Date().toISOString()};await writeAnalyticsCache(key,'analytics-assistant-v5',result,engine==='AI_GROUNDED'?120:30);return result;
 }
