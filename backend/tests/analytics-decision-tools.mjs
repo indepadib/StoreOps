@@ -12,7 +12,7 @@ const {releasedProductProfile}=await import('../services/released-product-sourci
 for(const id of ['qa-A','qa-B'])db.prepare('INSERT OR IGNORE INTO stores(id,name,code,active) VALUES(?,?,?,1)').run(id,id,id);
 const stores=[{id:'qa-A',name:'Magasin test'}],user={id:'qa-user',role:'store_manager',store_id:'qa-A'};
 const input={start:'2026-10-20',end:'2026-10-21',compareStart:'2026-10-18',compareEnd:'2026-10-19'};
-const part={coverage:{currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:200,tickets:10,identifiedSales:100},previous:{sales:160,tickets:8,identifiedSales:80}},products:[{key:'SKU',label:'Produit test',sales:200,previousSales:160}],stores:[{storeId:'qa-A',storeName:'Magasin test',sales:200,previousSales:160,tickets:10}],crm:{customerMergeRows:[{customerAccount:'PRIVATE_ACCOUNT',customerName:'PRIVATE_NAME'}]},margin:{status:'ESTIMATED',coveragePct:99},quality:{status:'OK'},generatedAt:'2026-10-22T10:00:00Z'};
+const part={coverage:{currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:200,tickets:10,identifiedSales:100,marginValue:40,marginSalesBase:170},previous:{sales:160,tickets:8,identifiedSales:80}},products:[{key:'SKU',label:'Produit test',sales:200,previousSales:160}],stores:[{storeId:'qa-A',storeName:'Magasin test',sales:200,previousSales:160,tickets:10}],crm:{customerMergeRows:[{customerAccount:'PRIVATE_ACCOUNT',customerName:'PRIVATE_NAME'}]},margin:{status:'ESTIMATED',coveragePct:99},quality:{status:'OK'},generatedAt:'2026-10-22T10:00:00Z'};
 const cache=analyticsCacheKey('decision-v32',['qa-A',input.start,input.end,input.compareStart,input.compareEnd]);
 await writeAnalyticsCache(cache,'decision-v32',part,300);
 const f=await assistantFacts(stores,{...input,sales:999999});assert.equal(f.sales.current,200);assert.equal(f.sales.delta,40);assert.equal(f.sales.averageBasket,20);assert.equal(f.sales.identifiedCustomers,1);assert.ok(!JSON.stringify(f).includes('PRIVATE_'));
@@ -44,3 +44,5 @@ for(const text of ['CA : 200 € [S1]','CA : 200 EUR','200 euros','200 USD','200
 
 const rejectedAI=await answerAnalytics('Fixture devise invalide',f,{generate:async()=> 'CA : 200 € [S1]'});assert.equal(rejectedAI.engine,'CALCULATED');assert.equal(rejectedAI.aiValidationFailed,true);assert.ok(!rejectedAI.answer.includes('€'));assert.match(rejectedAI.answer,/200 DH/);
 const validAI=await answerAnalytics('Fixture devise valide',f,{generate:async()=> 'CA TTC : 200 DH [S1]'});assert.equal(validAI.engine,'AI_GROUNDED');assert.equal(validAI.aiValidationFailed,false);
+
+assert.equal(f.margin.valueHT,40);assert.equal(f.margin.salesBaseHT,170);assert.equal(f.margin.accountingCertified,false);assert.equal(f.margin.estimated,true);assert.match(f.ticketDefinition,/pas un client unique/);assert.equal(validateAnalyticsAnswer('## Résultat\n**200 DH** [S1]'),'Résultat\n200 DH [S1]');const marginAnswer=await answerAnalytics('Fixture marge calculée',f);assert.match(marginAnswer.answer,/40 DH/);
