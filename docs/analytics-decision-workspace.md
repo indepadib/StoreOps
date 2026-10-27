@@ -39,3 +39,7 @@ Marjane et Carrefour sont les enseignes retenues. Les relevés sont enregistrés
 ## Vérifications
 
 Tests reproductibles : analytics-action-intelligence.mjs, analytics-decision-tools.mjs, customer-product-intelligence.mjs, customer-bi-ui.mjs, analytics-period-race.mjs, analytics-loading-failure.mjs, analytics-performance-contract.mjs, pricing-hardening.mjs et sales-parent-parity.mjs. Les tests de preuves utilisent uniquement des données fictives et refusent les périodes incomplètes, magasins interdits, sources expirées et relevés invalides. Les contrôles visuels locaux (bureau/mobile, PNG et PDF une page) ne valident pas les données Dynamics de production.
+
+## Devise et contrôle des réponses IA
+
+Les faits transmis explicitent MAD/DH, CA TTC et marge HT. Le modèle doit répondre en texte simple et conserver ces unités. Une réponse utilisant une autre devise est rejetée avant affichage et remplacée par la lecture calculée des faits serveur, avec un libellé explicite. Ce contrôle ne constitue pas une certification de toutes les interprétations du modèle. Les tests couvrent une réponse IA valide et le rejet effectif d’une réponse simulée en monnaie incompatible.
