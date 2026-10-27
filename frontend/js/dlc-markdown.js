@@ -2,6 +2,8 @@ import{api}from'./api.js';
 import{app,isDirector,isQualityAudit}from'./state.js';
 import{esc,toast}from'./ui.js';
 import{rawbtLink,isAndroid}from'./rawbt-print.js';
+import{escposTestBytes}from'./escpos-label.js';
+const isRawbt=p=>['ZPL_RAWBT','ESCPOS_RAWBT'].includes(p);
 
 let workspace=null,rules=[];
 const money=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' DH';
@@ -58,7 +60,7 @@ function operationsBlock(){
 }
 function jobsBlock(){
  const jobs=workspace?.jobs||[];if(!jobs.length)return'<div class="small muted">Aucun job d’impression.</div>';
- return `<div class="md-history-list">${jobs.slice(0,20).map(j=>`<div class="md-history-row"><div><strong>${esc(j.printer_protocol==='ZPL_RAWBT'&&j.status==='PRINTING'?'RawBT · sortie à confirmer':jobLabel(j.status))}</strong><small>${j.total_labels} étiquette(s) · ${esc(j.printer_name||'Imprimante')}</small></div><div>${j.printer_protocol==='ZPL_RAWBT'&&j.status==='PENDING'?`<button class="btn brand" data-md-rawbt="${esc(j.id)}">Préparer sur ce PDA</button>`:''}${j.printer_protocol==='ZPL_RAWBT'&&j.status==='PRINTING'?`<button class="btn soft" data-md-confirm="${esc(j.id)}">Confirmer la sortie</button><button class="btn soft" data-md-failed="${esc(j.id)}">Signaler un échec</button>`:''}${j.status==='FAILED'? `<button class="btn soft" data-md-retry="${esc(j.id)}">Remettre en attente après contrôle</button>`:''}</div><div data-md-rawbt-host="${esc(j.id)}"></div></div>`).join('')}</div>`
+ return `<div class="md-history-list">${jobs.slice(0,20).map(j=>`<div class="md-history-row"><div><strong>${esc(isRawbt(j.printer_protocol)&&j.status==='PRINTING'?'RawBT · sortie à confirmer':jobLabel(j.status))}</strong><small>${j.total_labels} étiquette(s) · ${esc(j.printer_name||'Imprimante')}</small></div><div>${isRawbt(j.printer_protocol)&&j.status==='PENDING'?`<button class="btn brand" data-md-rawbt="${esc(j.id)}">Préparer sur ce PDA</button>`:''}${isRawbt(j.printer_protocol)&&j.status==='PRINTING'?`<button class="btn soft" data-md-confirm="${esc(j.id)}">Confirmer la sortie</button><button class="btn soft" data-md-failed="${esc(j.id)}">Signaler un échec</button>`:''}${j.status==='FAILED'? `<button class="btn soft" data-md-retry="${esc(j.id)}">Remettre en attente après contrôle</button>`:''}</div><div data-md-rawbt-host="${esc(j.id)}"></div></div>`).join('')}</div>`
 }
 function rulesAdmin(){
  if(!isDirector())return'';
@@ -76,7 +78,7 @@ function rulesAdmin(){
    </div><button class="btn brand" id="mdSaveRule">Enregistrer la règle</button>
    <div class="md-rule-list">${rules.map(r=>`<div><strong>${esc(r.markdown_code)} · J-${r.days_before_expiry}</strong><span>${esc(r.scope_type)} ${esc(r.scope_value||'tous')} · ${esc(r.store_id||'réseau')} · priorité ${r.priority}</span></div>`).join('')||'<small>Aucune règle active : aucune démarque n’est inventée par défaut.</small>'}</div></section>
    <section><h4>Validation caisse</h4>${(workspace.posProfiles||[]).map(p=>`<div class="md-pos-admin"><strong>${esc(p.markdown_code)} · préfixe ${esc(p.prefix)}</strong><span>${p.validation_state==='VALIDATED'?'Validé · '+esc(p.symbology||''):'Test réel Store Commerce requis'}</span>${p.validation_state!=='VALIDATED'? `<input data-pos-note="${esc(p.markdown_code)}" placeholder="Preuve : caisse, date, résultat du scan"><button class="btn soft" data-pos-validate="${esc(p.markdown_code)}">Valider après test CODE128 réussi</button>`:''}</div>`).join('')}</section>
-   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="60 × 40 mm" disabled></div><div class="field"><label>Technologie</label><select id="mdPrinterProtocol"><option value="ZPL_BRIDGE" ${printer?.protocol==='ZPL_RAWBT'?'':'selected'}>ZPL · relais magasin (PC)</option><option value="ZPL_RAWBT" ${printer?.protocol==='ZPL_RAWBT'?'selected':''}>ZPL · RawBT Bluetooth (Android)</option></select></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">RawBT : aucune clé bridge nécessaire. Associer la LNX3 sur chaque PDA et configurer RawBT en ZPL brut. Le relais PC reste disponible en choisissant son mode. Vérifier le format physique 60 × 40 mm et le scan caisse avant usage.</p></section>
+   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="60 × 40 mm" disabled></div><div class="field"><label>Technologie</label><select id="mdPrinterProtocol"><option value="ZPL_BRIDGE" ${isRawbt(printer?.protocol)?'':'selected'}>ZPL · relais magasin (PC)</option><option value="ESCPOS_RAWBT" ${isRawbt(printer?.protocol)?'selected':''}>ESC/POS · RawBT Bluetooth (Android) · 203 dpi</option></select></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">RawBT : aucune clé bridge nécessaire. Associer la LNX3 sur chaque PDA et configurer RawBT en ESC/POS general, 203 dpi. Le relais PC reste disponible en choisissant son mode. Vérifier le format physique 60 × 40 mm et le scan caisse avant usage.</p></section>
   </div>
  </details>`
 }
@@ -102,13 +104,13 @@ async function preview(id){
 }
 async function printOne(id,previewData){
  const card=document.querySelector(`[data-md-card="${CSS.escape(id)}"]`),q=Number(card?.querySelector('[data-md-qty]')?.value||0),code=card?.querySelector('[data-md-code]')?.value||previewData.markdownCode,printer=activePrinter();
- if(printer?.protocol==='ZPL_RAWBT'&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
+ if(isRawbt(printer?.protocol)&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
  if(!previewData.printReady||!printer)throw new Error("Prix, profil POS et imprimante doivent être validés avant impression.");
  if(!Number.isInteger(q)||q<=0)throw new Error("Le nombre d’étiquettes doit être un entier positif.");
  const key=crypto.randomUUID(),created=await api(`/api/dlc-markdown/${encodeURIComponent(id)}/operations`,{method:'POST',body:{quantity:q,markdownCode:code,idempotencyKey:'pda:'+key}});
  if(created.operation?.status==='PENDING_APPROVAL'){toast('Opération créée · approbation requise avant impression.');await reload();return}
  const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:[created.operation.id],printerId:printer.id,idempotencyKey:'print:'+key}});
- toast(printer.protocol==='ZPL_RAWBT'?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`${job.total_labels} étiquette(s) placée(s) en file d’impression.`);await reload()
+ toast(isRawbt(printer.protocol)?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`${job.total_labels} étiquette(s) placée(s) en file d’impression.`);await reload()
 }
 function selectedRows(){
  return [...document.querySelectorAll('[data-md-select]:checked')].map(box=>{
@@ -124,7 +126,7 @@ function syncBulkState(){
 }
 async function bulkPrint(){
  const rows=selectedRows(),printer=activePrinter();if(!rows.length)throw new Error('Sélectionne au moins un article.');if(!printer)throw new Error('Aucune imprimante magasin configurée.');
- if(printer.protocol==='ZPL_RAWBT'&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
+ if(isRawbt(printer.protocol)&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
  const prepared=[];
  for(const row of rows){
   if(!Number.isInteger(row.quantity)||row.quantity<=0)throw new Error('Chaque quantité à imprimer doit être un nombre entier positif.');
@@ -135,7 +137,7 @@ async function bulkPrint(){
  const batchKey=crypto.randomUUID(),created=await api(`/api/stores/${app.storeId}/dlc-markdown/bulk-operations`,{method:'POST',body:{items:prepared.map((x,i)=>({dlcId:x.id,quantity:x.quantity,markdownCode:x.markdownCode,idempotencyKey:`bulk:${batchKey}:${i}`}))}});
  const blocked=(created.operations||[]).filter(x=>x.status!=='APPROVED');if(blocked.length){toast(`${blocked.length} opération(s) attendent une approbation ; aucune impression groupée lancée.`);await reload();return}
  const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:(created.operations||[]).map(x=>x.id),printerId:printer.id,idempotencyKey:'bulk-print:'+batchKey}});
- toast(printer.protocol==='ZPL_RAWBT'?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`Lot envoyé · ${job.total_labels} étiquette(s) pour ${prepared.length} article(s).`);await reload()
+ toast(isRawbt(printer.protocol)?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`Lot envoyé · ${job.total_labels} étiquette(s) pour ${prepared.length} article(s).`);await reload()
 }
 async function saveRule(){
  const scope=document.getElementById('mdRuleScope').value,value=document.getElementById('mdRuleValue').value.trim();
@@ -155,12 +157,12 @@ async function savePrinter(){
  toast('Imprimante magasin enregistrée.');await reload()
 }
 function bind(){
- document.getElementById('mdRawbtTest')?.addEventListener('click',()=>{try{if(!isAndroid())throw new Error('Test à lancer sur le PDA Android avec RawBT.');const link=document.getElementById('mdRawbtTestLink');link.href=rawbtLink('^XA\n^CI28\n^PW480\n^LL320\n^FO20,30^A0N,30,30^FDSTOREOPS - TEST ZPL^FS\n^FO20,90^A0N,22,22^FDTEST SANS VALEUR COMMERCIALE^FS\n^FO20,140^A0N,22,22^FDVerifier centrage et format 60x40^FS\n^XZ');link.hidden=false;toast('Touche Ouvrir RawBT pour envoyer le test.');}catch(e){toast(e.message)}});
+ document.getElementById('mdRawbtTest')?.addEventListener('click',()=>{try{if(!isAndroid())throw new Error('Test à lancer sur le PDA Android avec RawBT.');const link=document.getElementById('mdRawbtTestLink');link.href=rawbtLink(escposTestBytes());link.hidden=false;toast('Touche Ouvrir RawBT pour envoyer le test.');}catch(e){toast(e.message)}});
  document.querySelectorAll('[data-md-rawbt]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{
   if(!isAndroid())throw new Error('Ouvre StoreOps sur le PDA Android équipé de RawBT.');
   const job=await api(`/api/label-print-jobs/${encodeURIComponent(b.dataset.mdRawbt)}/rawbt`,{method:'POST',body:{action:'prepare'}});
   const host=document.querySelector(`[data-md-rawbt-host="${CSS.escape(job.id)}"]`);
-  host.innerHTML=`<p>RawBT doit utiliser le mode ZPL brut. Après impression, reviens confirmer la sortie. Aucun renvoi automatique.</p><a class="btn brand" href="${esc(rawbtLink(job.payload))}">Ouvrir RawBT et imprimer</a><button class="btn soft" data-md-mobile-done>Vérifier la sortie</button>`;
+  host.innerHTML=`<p>RawBT doit utiliser ESC/POS general, 203 dpi. Après impression, reviens confirmer la sortie. Aucun renvoi automatique.</p><a class="btn brand" href="${esc(rawbtLink(job.payload,job.payload_format))}">Ouvrir RawBT et imprimer</a><button class="btn soft" data-md-mobile-done>Vérifier la sortie</button>`;
   host.querySelector('a').addEventListener('click',e=>{if(e.currentTarget.dataset.sent){e.preventDefault();return}e.currentTarget.dataset.sent='1';e.currentTarget.textContent='Transmis à RawBT · vérifier la sortie';});
   host.querySelector('[data-md-mobile-done]').addEventListener('click',()=>reload().catch(e=>toast(e.message)));
  }catch(e){toast(e.message);b.disabled=false}}));
