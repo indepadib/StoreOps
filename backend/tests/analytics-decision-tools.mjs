@@ -55,6 +55,7 @@ const basketUnits=renderAnalyticsPlan({topics:['SALES'],productIds:[],actions:[]
 
 const request=analyticsPlanRequest('Question',f);assert.equal(request.tool_choice.name,'select_analysis');assert.equal(request.tools[0].strict,true);assert.equal(request.tools[0].input_schema.additionalProperties,false);
 const compatible=compatibleAnalyticsPlanRequest(request);assert.equal(compatible.tool_choice.name,'select_analysis');assert.equal(compatible.tools[0].strict,undefined);assert.equal(compatible.tools[0].input_schema.properties.topics.maxItems,undefined);assert.equal(compatible.tools[0].input_schema.additionalProperties,false);assert.equal(request.tools[0].strict,true);
+const longer=validateAnalyticsPlan(JSON.stringify({...plan,actions:['TRAFFIC','BASKET','COSTS','IDENTIFICATION','PRICING']}),f);assert.deepEqual(longer.actions,['TRAFFIC','BASKET','COSTS']);assert.throws(()=>validateAnalyticsPlan(JSON.stringify({...plan,actions:['TRAFFIC','INVENT_A_CAUSE']}),f),{code:'INVALID_AI_PLAN'});
 assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'tool_use',name:'select_analysis',input:plan}]}),f),plan);
 assert.throws(()=>validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'text',text:'999999 DH'}]}),f),{code:'INVALID_AI_PLAN'});
 assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'text',text:'```json\n'+JSON.stringify(plan)+'\n```'}]}),f),plan);
