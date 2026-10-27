@@ -12,3 +12,4 @@ jobs:
         with:
           node-version: '22'
       - run: node backend/tests/dlc-rawbt.mjs
+      - run: node backend/tests/rawbt-store-view.mjs
