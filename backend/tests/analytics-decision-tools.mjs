@@ -56,7 +56,8 @@ const basketUnits=renderAnalyticsPlan({topics:['SALES'],productIds:[],actions:[]
 const request=analyticsPlanRequest('Question',f);assert.equal(request.tool_choice.name,'select_analysis');assert.equal(request.tools[0].strict,true);assert.equal(request.tools[0].input_schema.additionalProperties,false);
 const compatible=compatibleAnalyticsPlanRequest(request);assert.equal(compatible.tool_choice.name,'select_analysis');assert.equal(compatible.tools[0].strict,undefined);assert.equal(compatible.tools[0].input_schema.properties.topics.maxItems,undefined);assert.equal(compatible.tools[0].input_schema.additionalProperties,false);assert.equal(request.tools[0].strict,true);
 assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'tool_use',name:'select_analysis',input:plan}]}),f),plan);
-assert.throws(()=>extractAnalyticsPlan({content:[{type:'text',text:'999999 DH'}]}),{code:'INVALID_AI_PLAN'});
+assert.throws(()=>validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'text',text:'999999 DH'}]}),f),{code:'INVALID_AI_PLAN'});
+assert.deepEqual(validateAnalyticsPlan(extractAnalyticsPlan({content:[{type:'text',text:'```json\n'+JSON.stringify(plan)+'\n```'}]}),f),plan);
 assert.deepEqual(validateAnalyticsPlan('```json\n'+JSON.stringify(plan)+'\n```',f),plan);
 assert.match(basketUnits,/effet nombre de tickets 10 DH ; effet panier 100 DH/);assert.match(basketUnits,/Somme : 110 DH/);
 assert.equal(analyticsAiFailure({status:401,message:'secret'}),'PROVIDER_ACCESS');assert.equal(analyticsAiFailure({status:400}),'PROVIDER_CONFIGURATION');assert.equal(analyticsAiFailure({name:'APIConnectionTimeoutError'}),'TIMEOUT');
