@@ -1,3 +1,5 @@
+import {prepareGlovoPrices,glovoAssortmentPage,glovoJobs,glovoJob,downloadGlovoReport} from './glovo-v2.mjs';
+import {resolveGlovoBearerToken} from './glovo-availability.mjs';
 import {canAccessStore,canManageStore} from './permissions.mjs';
 import {sellThroughSnapshot} from './sell-through.mjs';
 import {buildGlovoAvailability,pushGlovoAvailability,verifyGlovoConnection} from './glovo-availability.mjs';
@@ -13,6 +15,11 @@ export async function handleStoreGrowthApi({req,url,user}){
  const path=url.pathname;let p;
  p=route(path,'/api/stores/:storeId/sell-through');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await sellThroughSnapshot(p.storeId,{businessDate:url.searchParams.get('date')||undefined,force:url.searchParams.get('force')==='1'})}}
  p=route(path,'/api/stores/:storeId/channels/glovo');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/prices/prepare');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:200,data:await prepareGlovoPrices(p.storeId,{offset:url.searchParams.get('offset')||0})}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/assortment');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await glovoAssortmentPage(p.storeId,{offset:url.searchParams.get('offset')||0,readStock:buildGlovoAvailability})}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/jobs');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:glovoJobs(p.storeId)}}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/jobs/:jobId');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:glovoJob(p.storeId,p.jobId)}}
+ p=route(path,'/api/stores/:storeId/channels/glovo/jobs/:jobId/report');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:200,data:await downloadGlovoReport(p.storeId,p.jobId,{token:await resolveGlovoBearerToken()})}}
  p=route(path,'/api/stores/:storeId/channels/glovo/verify');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:200,data:await verifyGlovoConnection(p.storeId)}}
  p=route(path,'/api/stores/:storeId/channels/glovo/sync');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:202,data:await pushGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
  p=route(path,'/api/stores/:storeId/cool-save/suggestions');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await coolSaveSuggestions(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}

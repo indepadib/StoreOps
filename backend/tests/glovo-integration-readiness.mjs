@@ -56,7 +56,7 @@ assert.match(service,/GLOVO_STOCK_MAPPING_EMPTY/);
 assert.match(service,/verifyGlovoConnection/);
 assert.match(growth,/channels\/glovo\/verify/);
 for(const key of ['GLOVO_READ_API_KEY','GLOVO_PARTNER_STORE_IDS','GLOVO_CLIENT_ID','GLOVO_CLIENT_SECRET','GLOVO_TOKEN_URL','GLOVO_PUSH_ENABLED'])assert.match(netlify,new RegExp(key));
-for(const key of ['GLOVO_PUSH_ENABLED=0','GLOVO_API_BASE_URL=','GLOVO_TOKEN_AUTH_STYLE=basic'])assert.ok(env.includes(key),key);
+for(const key of ['GLOVO_PUSH_ENABLED=0','GLOVO_API_BASE_URL=','GLOVO_TOKEN_AUTH_STYLE=body'])assert.ok(env.includes(key),key);
 assert.match(ui,/Tester la connexion/);
 assert.match(ui,/Push verrouillé/);
 assert.match(ui,/GLOVO_PUSH_ENABLED=1/);
