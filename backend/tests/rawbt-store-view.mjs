@@ -19,5 +19,9 @@ for(const director of [false,true]){
  assert.equal(link.hidden,false);
  assert.deepEqual([...Buffer.from(link.href.split(',')[1],'base64').subarray(0,2)],[27,64]);
  assert.ok(!Buffer.from(link.href.split(',')[1],'base64').includes(Buffer.from('^XA')));
+ vm.runInContext("app.storeId='val-fleuri';app.user={role:'store_manager',store_id:'val-fleuri'};",context);
+ const card=vm.runInContext("recommendationCard({id:'test',status:'ACTION_REQUIRED',markdownCode:'MD20',quantityToReview:1,productName:'Test',productNumber:'HS-005943'})",context);
+ assert.match(card,/<option value="MD50">/);
+ assert.ok(!/<select data-md-code="test"[^>]*disabled/.test(card),'store manager can choose MD50');
 }
 console.log('RawBT test visible in store/director views; administration remains restricted: OK');
