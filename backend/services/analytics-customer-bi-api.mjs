@@ -45,6 +45,10 @@ export async function handleCustomerBiApi({req,url,user}){
  if(currentDays>31||previousDays>31)return{status:400,data:{error:'31 jours maximum par fenêtre.'}};
  if(!stores.length)return{status:422,data:{error:'Aucun magasin du périmètre ne dispose de connexion ventes configurée.',excludedStores}};
  const key=analyticsCacheKey('customer-bi-v4',[stores.map(s=>s.id).sort().join(','),start,end,beforeStart,beforeEnd]);const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
+ if(url.searchParams.get('preparedOnly')==='1'){
+  const tasks=[];for(const store of stores)for(const [a,b] of [[start,end],[beforeStart,beforeEnd]]){const exact=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[store.id,a,b]));if(exact)continue;for(let date=a;date<=b;){if(!await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[store.id,date,date])))tasks.push({storeId:store.id,date});const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+1);date=d.toISOString().slice(0,10)}}
+  if(tasks.length)return{status:202,data:{status:'PREPARATION_REQUIRED',tasks}};
+ }
  const current=[],previous=[];for(const store of stores){const [c,p]=await Promise.all([readStoreBasketEvidence(store.id,{startDate:start,endDate:end}),readStoreBasketEvidence(store.id,{startDate:beforeStart,endDate:beforeEnd})]);current.push(c);previous.push(p)}
  const report=compareBasketEvidence(combineBasketEvidence(current),combineBasketEvidence(previous),{currentEndDate:end,comparable:currentDays===previousDays&&end<today});
  report.quality.currentDayIncomplete=end===today;

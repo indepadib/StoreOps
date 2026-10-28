@@ -19,7 +19,8 @@ parts[1].coverage.comparisonStoresReady=0;assert.equal(merge(parts,'STORES').com
 assert.match(source,/mergeDecisionParts\(results,[^\n]+,'STORES'\)/,'the multi-store fallback must use the store partition');
 console.log('multi-store fallback coverage: sum stores; minimum across time; missing comparison retained OK');
 const analytics=readFileSync(new URL('../../frontend/analytics/analytics.js',import.meta.url),'utf8');
-assert.match(analytics,/\$\('#refreshBtn'\)\.addEventListener\('click', \(\) => refreshForPeriod\(true\)\)/,'manual refresh must re-read the source instead of accepting the same in-memory snapshot');
+assert.match(analytics,/\$\('#verifySourceBtn'\)\.addEventListener\('click', \(\) => refreshForPeriod\(true\)\)/,'explicit source verification must force a fresh read');
+assert.match(analytics,/retail-intelligence:quick-refresh/,'quick refresh must explicitly invalidate the fresh browser view');
 const proof={status:'READY',quality:{rejectedIdentity:0},stores:[{storeId:'A'}],period:{start:'2026-10-21',end:'2026-10-26',compareStart:'2026-10-15',compareEnd:'2026-10-20'},current:{storeSales:800},previous:{storeSales:1200}};
 model=decisionPriorities({...input,proof});assert.equal(model.comparable,false);assert.match(model.evidenceConflict,/1\u202f200 DH/);assert.equal(model.items.some(x=>x.amount>0),false);assert.match(model.items[0].action,/Actualiser/);
 proof.previous.storeSales=1000;assert.equal(decisionPriorities({...input,proof}).evidenceConflict,null);

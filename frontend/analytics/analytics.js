@@ -1050,7 +1050,8 @@
       refreshForPeriod(false);
     });
 
-    $('#refreshBtn').addEventListener('click', () => refreshForPeriod(true));
+    $('#refreshBtn').addEventListener('click', () => {refreshForPeriod(false);document.dispatchEvent(new CustomEvent('retail-intelligence:quick-refresh'));});
+    $('#verifySourceBtn').addEventListener('click', () => refreshForPeriod(true));
 
     $('#storeSearch').addEventListener('input', e => {
       state.storeSearch = e.target.value || '';

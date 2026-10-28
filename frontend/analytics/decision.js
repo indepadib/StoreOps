@@ -161,6 +161,7 @@
     if(expectedKey&&expectedKey!==queryKey(sectionState()))return;
     const el=$('#executiveSalesValue');if(el)el.textContent=done>=total?'Finalisation…':`Analyse ${done}/${total}`;
     const foot=$('#executiveComparisonValue');if(foot)foot.textContent='Lecture Dynamics par blocs';
+    const visible=$('#briefQuality');if(visible)visible.textContent=`Lecture des ventes ${done}/${total} blocs · les chiffres définitifs seront publiés à la fin.`;
   }
   function selectedStoreIds(s){
     const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds.filter(Boolean):[];
@@ -891,6 +892,7 @@
     $('#supplierSearch')?.addEventListener('input',e=>{state.supplierSearch=e.target.value||'';renderSupplier()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force);if(sectionState()?.section==='suppliers')loadSupplierOps(!!e.detail?.force)});
     document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
+    document.addEventListener('retail-intelligence:quick-refresh',()=>{state.freshKey=null;if(sectionNeedsDecision())load(false)});
     document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false);if(state.data&&sectionNeedsCatalog())maybeLoadCatalog(false);if(sectionState()?.section==='suppliers')loadSupplierOps(false)});
     const s=sectionState();if(s?.stores?.length&&sectionNeedsDecision(s))load(false);
   }
