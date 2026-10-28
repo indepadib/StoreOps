@@ -1,3 +1,4 @@
+import {readOperationalWarehouseStock} from './operational-stock.mjs';
 import {readRetailHierarchyContext} from './retail-hierarchy-data.mjs';
 import {attachRetailHierarchy} from './retail-hierarchy.mjs';
 import { config } from '../config.mjs';
@@ -110,14 +111,17 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   if(supplyWarehouse&&config.dynamics.dataAreaId)supplyFilters.push(`${config.dynamics.dataAreaField} eq '${esc(config.dynamics.dataAreaId)}'`);
   const select=[productField,availableField,physicalField,nameField,eanField,warehouseField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
   const requestOpts={select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:c.pageSize||config.dynamics.odataPageSize,maxRows:c.maxRows||config.dynamics.odataMaxRows};
-  const stockPromise=odataGetAll(entity,{filter:filters.join(' and '),...requestOpts});
-  const supplyPromise=supplyWarehouse?odataGetAll(entity,{filter:supplyFilters.join(' and '),...requestOpts}):Promise.resolve({value:[],rowCount:0,pages:0,truncated:false});
+  const stockPromise=readOperationalWarehouseStock(warehouse);
+  const supplyPromise=supplyWarehouse?readOperationalWarehouseStock(supplyWarehouse):Promise.resolve({status:'UNAVAILABLE',value:[],rowCount:0,pages:0,truncated:false});
+  const initial=await Promise.all([stockPromise,supplyPromise]);
+  if(initial.some(x=>x.status==='PREPARING'))return{status:'PREPARING',storeId,warehouse,items:[],progress:initial.find(x=>x.status==='PREPARING').progress,summary:{total:null,negative:null,outOfStock:null,nearOutOfStock:null,ghostStock:null,ruptureReady:false,assortmentReady:false}};
+  if(initial[0].status!=='READY')return{status:'UNAVAILABLE',storeId,warehouse,items:[],error:initial[0].error,summary:{total:null,negative:null,outOfStock:null,ruptureReady:false,assortmentReady:false}};
   const salesPromise=readStoreSalesActivityWindow(storeId,{businessDate:businessDate||new Date().toISOString().slice(0,10),days:30});
   const [stockResult,supplyResult,salesResult]=await Promise.allSettled([stockPromise,supplyPromise,salesPromise]);
   if(stockResult.status==='rejected')throw stockResult.reason;
   const fetched=stockResult.value;
   const supplyFetched=supplyResult.status==='fulfilled'?supplyResult.value:{value:[],rowCount:0,pages:0,truncated:false,error:supplyResult.reason?.message||String(supplyResult.reason||'')};
-  const supplyReadReady=!!supplyWarehouse&&supplyResult.status==='fulfilled'&&!supplyFetched.truncated;
+  const supplyReadReady=!!supplyWarehouse&&supplyResult.status==='fulfilled'&&supplyFetched.status==='READY'&&!supplyFetched.truncated;
   const salesActivity=salesResult.status==='fulfilled'?salesResult.value:{status:'UNAVAILABLE',products:[],error:{code:salesResult.reason?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:salesResult.reason?.message||String(salesResult.reason||'')}};
   const aggregated=aggregateRows(fetched.value,{productField,availableField,physicalField,nameField,eanField});
   const supplyAggregated=aggregateRows(supplyFetched.value,{productField,availableField,physicalField,nameField,eanField});
@@ -181,6 +185,7 @@ export async function getStockSignals(storeId,{businessDate=null,force=false}={}
 
   const promise=(async()=>{
     const value=await computeStockSignals(storeId,{businessDate:day});
+    if(['PREPARING','UNAVAILABLE'].includes(value.status))return value;
     signalCache.set(key,{value,expiresAt:Date.now()+ttl});
     await writeAnalyticsCache(persistentKey,'stock-signals-v3',value,stockSignalsCacheSeconds());
     return {...value,cache:{status:'MISS',ttlSeconds:stockSignalsCacheSeconds()}}

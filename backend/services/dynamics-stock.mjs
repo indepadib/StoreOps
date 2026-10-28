@@ -1,3 +1,4 @@
+import {readOperationalWarehouseStock} from './operational-stock.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {randomUUID} from 'node:crypto';
 import { config } from '../config.mjs';
@@ -90,7 +91,8 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
   const nameField=clean(config.dynamics.stock.nameField),eanField=clean(config.dynamics.stock.eanField),filters=[`${fields.warehouse} eq '${escapeOData(warehouseId)}'`];
   if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
   const select=[fields.item,fields.warehouse,fields.onHand,fields.availableOnHand,nameField,eanField,config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
-  const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
+  const fetched=await readOperationalWarehouseStock(warehouseId,{force});
+  if(fetched.status!=='READY')return{...fetched,storeId,warehouseId,items:[],source:`D365/${entity}`};
   const map=new Map();
   for(const row of fetched.value||[]){
    const productNumber=clean(row[fields.item]);if(!productNumber)continue;
@@ -100,7 +102,7 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
    if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
    map.set(productNumber,cur)
   }
-  const value={status:fetched.truncated?'TRUNCATED':'READY',storeId,warehouseId,items:[...map.values()],rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,complete:!fetched.truncated,source:`D365/${entity}`};
+  const value={status:fetched.truncated?'TRUNCATED':'READY',storeId,warehouseId,items:[...map.values()],rowCount:fetched.rowCount,pages:fetched.pages,truncated:!!fetched.truncated,complete:!fetched.truncated,source:`D365/${entity}`,checkedAt:fetched.checkedAt};
   stockSnapshotCache.set(cacheKey,{value,storedAt:Date.now(),expiresAt:Date.now()+stockSnapshotCacheMs()});return{...value,cache:{status:'MISS',ageMs:0}}
  })();
  if(!force)stockSnapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&stockSnapshotInflight.get(cacheKey)===task)stockSnapshotInflight.delete(cacheKey)}

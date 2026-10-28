@@ -64,7 +64,7 @@ async function verify(){
 }
 async function sync(){
  const b=$('#syncGlovo');if(b?.disabled)return;b.disabled=true;const old=b.textContent;b.textContent='Synchronisation…';
- try{const r=await api(`/api/stores/${app.storeId}/channels/glovo/sync`,{method:'POST'});lastResult={title:'Synchronisation envoyée à Glovo',detail:`${r.sentProducts||0} SKU envoyés · ${r.excludedProducts||0} absents du catalogue Glovo · job ${r.jobId||'sans identifiant'} · statut ${r.jobStatus||r.status||'QUEUED'}`};toast(`Glovo : ${r.sentProducts||0} produits envoyés, traitement à suivre.`);await renderChannelAvailability()}catch(e){lastResult={title:'Synchronisation non envoyée',detail:e.message};toast(e.message);draw()}finally{if(b&&document.body.contains(b)){b.disabled=false;b.textContent=old}}
+ try{await api(`/api/stores/${app.storeId}/channels/glovo?force=1`);const r=await api(`/api/stores/${app.storeId}/channels/glovo/sync`,{method:'POST'});lastResult={title:'Synchronisation envoyée à Glovo',detail:`${r.sentProducts||0} SKU envoyés · ${r.excludedProducts||0} absents du catalogue Glovo · job ${r.jobId||'sans identifiant'} · statut ${r.jobStatus||r.status||'QUEUED'}`};toast(`Glovo : ${r.sentProducts||0} produits envoyés, traitement à suivre.`);await renderChannelAvailability()}catch(e){lastResult={title:'Synchronisation non envoyée',detail:e.message};toast(e.message);draw()}finally{if(b&&document.body.contains(b)){b.disabled=false;b.textContent=old}}
 }
 export async function renderChannelAvailability(){
  const host=$('#channelAvailabilityContent');if(host)host.innerHTML='<div class="growth-loading">Préparation de la disponibilité Glovo…</div>';
@@ -90,3 +90,8 @@ async function renderJobs(){
  host.querySelectorAll('[data-glovo-report]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const report=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/jobs/${encodeURIComponent(b.dataset.glovoReport)}/report`,{method:'POST'});downloadGlovoFile('glovo-rapport.txt',report.content,'text/plain;charset=utf-8');toast(report.interpretation)}catch(e){toast(e.message)}finally{b.disabled=false}}));
  }catch(e){host.textContent=e.message}
 }
+
+window.addEventListener?.('storeops-stock-progress',event=>{
+ if(event.detail?.path!==`/api/stores/${app.storeId}/channels/glovo`)return;
+ const host=$('#channelAvailabilityContent');if(host?.querySelector('.growth-loading'))host.querySelector('.growth-loading').textContent=`Chargement du stock Dynamics… ${event.detail.progress?.rowsRead||0} lignes lues`;
+});

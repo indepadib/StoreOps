@@ -52,3 +52,21 @@ export async function deleteAnalyticsCache(key){
 export function analyticsCacheKey(group,parts=[]){
   return [clean(group),...(parts||[]).map(v=>clean(v))].join('|')
 }
+
+// Compare-and-set for paged operational reads. Prevents a slower instance from
+// replacing a newer cursor with an older page after concurrent requests.
+export async function readAnalyticsCacheFresh(key){
+ try{const database=await getAnalyticsDatabase();const rows=await database.sql`SELECT payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;return rows?.[0]?.payload||null}catch{return memoryRead(key)}
+}
+export async function compareAnalyticsCache(key,payload,expectedRevision){
+ const json=JSON.stringify(payload),expected=expectedRevision==null?null:String(expectedRevision);
+ try{
+  const database=await getAnalyticsDatabase();
+  const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at)
+   VALUES(${key},'operational-stock-v1',CAST(${json} AS JSONB),NOW(),NOW()+INTERVAL '15 minutes')
+   ON CONFLICT(cache_key) DO UPDATE SET payload=EXCLUDED.payload,generated_at=NOW(),expires_at=EXCLUDED.expires_at
+   WHERE (${expected}::text IS NULL AND retail_intelligence_cache.expires_at<=NOW()) OR retail_intelligence_cache.payload->>'revision'=${expected}::text RETURNING cache_key`;
+  if(!rows?.length)return false;
+ }catch{const old=memoryRead(key);if((old?.revision??null)!==expectedRevision)return false}
+ memory.set(key,{payload,expiresAt:now()+900000});return true;
+}

@@ -14,7 +14,7 @@ function body(req){return new Promise((resolve,reject)=>{let d='';req.on('data',
 export async function handleStoreGrowthApi({req,url,user}){
  const path=url.pathname;let p;
  p=route(path,'/api/stores/:storeId/sell-through');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await sellThroughSnapshot(p.storeId,{businessDate:url.searchParams.get('date')||undefined,force:url.searchParams.get('force')==='1'})}}
- p=route(path,'/api/stores/:storeId/channels/glovo');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined})}}
+ p=route(path,'/api/stores/:storeId/channels/glovo');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await buildGlovoAvailability(p.storeId,{businessDate:url.searchParams.get('date')||undefined,force:url.searchParams.get('force')==='1'})}}
  p=route(path,'/api/stores/:storeId/channels/glovo/prices/prepare');if(p&&req.method==='POST'){requireStore(user,p.storeId);ensureManage(user,p.storeId);return{status:200,data:await prepareGlovoPrices(p.storeId,{offset:url.searchParams.get('offset')||0})}}
  p=route(path,'/api/stores/:storeId/channels/glovo/assortment');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:await glovoAssortmentPage(p.storeId,{offset:url.searchParams.get('offset')||0,readStock:buildGlovoAvailability})}}
  p=route(path,'/api/stores/:storeId/channels/glovo/jobs');if(p&&req.method==='GET'){requireStore(user,p.storeId);return{status:200,data:{items:glovoJobs(p.storeId)}}}
