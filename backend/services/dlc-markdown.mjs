@@ -326,8 +326,8 @@ export function createMarkdownOperation({dlcId,user,quantity,markdownCode=null,o
  if(q>rec.quantityToReview+1e-6)throw Object.assign(new Error('La quantité dépasse le solde à revoir. Recompter ou corriger le lot avant impression.'),{status:409,code:'MARKDOWN_QTY_EXCEEDS_REMAINING'});
  const code=clean(markdownCode||rec.markdownCode).toUpperCase();
  if(!code)throw Object.assign(new Error('Aucune règle markdown applicable.'),{status:409,code:'MARKDOWN_RULE_MISSING'});
- if(code!==rec.markdownCode&&!isDirector(user)&&!isQuality(user))throw Object.assign(new Error('Changement de niveau de démarque non autorisé pour ce profil.'),{status:403,code:'MARKDOWN_OVERRIDE_FORBIDDEN'});
- const requestedRule=code===rec.markdownCode?rec.rule:listMarkdownRules({activeOnly:true}).find(r=>r.markdown_code===code&&matchRule(r,record)&&Number(r.days_before_expiry)>=rec.daysRemaining);
+ if(code!==rec.markdownCode&&!isDirector(user)&&!isQuality(user)&&!(user?.store_id===record.store_id&&['store_manager','employee'].includes(user?.role)))throw Object.assign(new Error('Changement de niveau de démarque non autorisé pour ce profil.'),{status:403,code:'MARKDOWN_OVERRIDE_FORBIDDEN'});
+ const requestedRule=code===rec.markdownCode?rec.rule:listMarkdownRules({activeOnly:true}).find(r=>r.markdown_code===code&&matchRule(r,record));
  if(!requestedRule)throw Object.assign(new Error('Aucune règle active n’autorise ce niveau de démarque pour cet article.'),{status:409,code:'MARKDOWN_OVERRIDE_RULE_MISSING'});
  const preview=operationPreview({dlcId,markdownCode:code,originalPrice}),key=clean(idempotencyKey)||[dlcId,code,q,clean(user?.id),todayISO()].join('|');
  const existing=db.prepare('SELECT * FROM dlc_markdown_operations WHERE idempotency_key=?').get(key);if(existing)return existing;
@@ -373,7 +373,7 @@ export function createPrintJob({storeId,user,operationIds=[],printerId=null,idem
   const label=mobile?Buffer.from(escposLabelBytes({label_kind:op.markdown_code,barcode_content:op.barcode_content,product_name:record.product_name,original_price:op.original_price,final_price:op.final_price,expiry_date:record.expiry_date})):labelZpl(op,record,profile,printer);for(let i=0;i<quantity;i++)chunks.push(label);
   items.push({op,record,quantity});
  }
- const format=printer.protocol==='ZPL_BRIDGE'?'ZPL':'ESCPOS_BASE64';
+ const format=printer.protocol==='ZPL_BRIDGE'?'ZPL':'ESCPOS_RASTER_BASE64';
  const id=uid('print'),payload=format==='ZPL'?chunks.join('\n'):Buffer.concat(chunks).toString('base64'),total=items.reduce((s,x)=>s+x.quantity,0);
  db.exec('BEGIN');try{
   db.prepare("INSERT INTO label_print_jobs(id,store_id,printer_id,idempotency_key,status,payload_format,payload,total_labels,created_by) VALUES(?,?,?,?,?,?,?,?,?)").run(id,storeId,printer.id,key,'PENDING',format,payload,total,user.id);
@@ -394,18 +394,18 @@ export function mobilePrintJob({jobId,user,action,confirmed=false}={}){
  if(!['ZPL_RAWBT','ESCPOS_RAWBT'].includes(job.protocol))throw Object.assign(new Error('Ce job utilise le relais magasin.'),{status:409});
  if(action==='prepare'){
   let payload=job.payload;
-  if(job.payload_format!=='ESCPOS_BASE64'){
+  if(job.payload_format!=='ESCPOS_RASTER_BASE64'){
    const items=db.prepare('SELECT * FROM label_print_job_items WHERE job_id=? ORDER BY rowid').all(jobId);
    if(!items.length)throw Object.assign(new Error('Lot historique sans details : preparation impossible.'),{status:409});
    const chunks=[];for(const item of items){const label=Buffer.from(escposLabelBytes(item));for(let i=0;i<item.quantity;i++)chunks.push(label)}
    payload=Buffer.concat(chunks).toString('base64');
   }
   if(Buffer.from(payload,'base64').length>180000)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
-  const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',payload=?,payload_format='ESCPOS_BASE64',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(payload,jobId);
+  const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',payload=?,payload_format='ESCPOS_RASTER_BASE64',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(payload,jobId);
   if(!result.changes)throw Object.assign(new Error('Job déjà transmis ou terminé. Vérifier la sortie physique avant toute reprise.'),{status:409});
   db.prepare("UPDATE dlc_markdown_operations SET status='PRINTING',updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT operation_id FROM label_print_job_items WHERE job_id=?)").run(jobId);
   audit({storeId:job.store_id,userId:user.id,action:'LABEL_RAWBT_PREPARED',entityType:'LABEL_PRINT_JOB',entityId:jobId});
-  return{id:jobId,payload,payload_format:'ESCPOS_BASE64',total_labels:job.total_labels,status:'PRINTING'};
+  return{id:jobId,payload,payload_format:'ESCPOS_RASTER_BASE64',total_labels:job.total_labels,status:'PRINTING'};
  }
  if(!['confirm','failed'].includes(action)||!confirmed||job.status!=='PRINTING')throw Object.assign(new Error('Confirmation explicite et job en cours requis.'),{status:409});
  const result=completePrintJob({jobId,bridgeKey:job.bridge_key,success:action==='confirm',error:'Sortie vérifiée par opérateur : impression absente ou incomplète. Ne relancer qu’après contrôle des étiquettes.'});

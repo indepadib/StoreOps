@@ -3,6 +3,7 @@ import{app,isDirector,isQualityAudit}from'./state.js';
 import{esc,toast}from'./ui.js';
 import{rawbtLink,isAndroid}from'./rawbt-print.js';
 import{escposTestBytes}from'./escpos-label.js';
+import{barcodeSvg}from'./code128-raster.js';
 const isRawbt=p=>['ZPL_RAWBT','ESCPOS_RAWBT'].includes(p);
 
 let workspace=null,rules=[];
@@ -28,7 +29,7 @@ function renderKpis(d){
  </div>`
 }
 function recommendationCard(r){
- const p=posState(r.markdownCode),expired=r.status==='EXPIRED_WITHDRAW',code=r.markdownCode||'—',allowOverride=isDirector()||isQualityAudit();
+ const p=posState(r.markdownCode),expired=r.status==='EXPIRED_WITHDRAW',code=r.markdownCode||'—',allowOverride=isDirector()||isQualityAudit()||(['store_manager','employee'].includes(app.user?.role)&&app.user?.store_id===app.storeId);
  return `<article class="md-action-card md-${tone(r.status)}" data-md-card="${esc(r.id)}">
   <div class="md-card-head"><div class="md-card-title">${r.status==='ACTION_REQUIRED'?`<label class="md-select"><input type="checkbox" data-md-select="${esc(r.id)}"> Sélectionner</label>`:'' }<span class="md-eyebrow">${esc(r.department||'RAYON À QUALIFIER')} · ${esc(r.productNumber||'CODE ARTICLE MANQUANT')}</span><h3>${esc(r.productName)}</h3><small>${r.ean?'EAN '+esc(r.ean)+' · ':''}${r.lotRef?'Lot '+esc(r.lotRef)+' · ':''}${date(r.expiryDate)}</small></div><span class="pill">${esc(stateLabel(r.status))}</span></div>
   <div class="md-facts"><div><span>Échéance</span><strong>${r.daysRemaining==null?'—':r.daysRemaining+' j'}</strong></div><div><span>À vérifier</span><strong>${qty(r.quantityToReview)}</strong><small>${esc(r.quantityConfidence==='ESTIMATE_REQUIRES_PHYSICAL_CONFIRMATION'?'estimation · comptage obligatoire':'dernier comptage connu')}</small></div><div><span>Déjà imprimé</span><strong>${qty(r.alreadyPrintedQuantity)}</strong></div><div><span>Recommandation</span><strong>${esc(code)}${r.discountPercent!=null?' · -'+r.discountPercent+'%':''}</strong></div></div>
@@ -45,7 +46,7 @@ function recommendationCard(r){
 function labelPreview(data,r){
  const ready=data.printReady,code=data.markdownCode,printer=activePrinter(),theme=code==='MD50'?'md50':'md20';
  return `<div class="md-preview-shell">
-  <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice??data.previewFinalPrice)}</span></div><div class="md-barcode-placeholder">${esc(data.symbology||'CODE128')} · aperçu<strong>${esc(data.barcodeContent||'')}</strong></div></div>
+  <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice??data.previewFinalPrice)}</span></div><div class="md-barcode-placeholder">${data.barcodeContent?barcodeSvg(data.barcodeContent):''}<strong>${esc(data.barcodeContent||'')}</strong></div></div>
   <div class="md-preview-meta">
    <strong>${ready?'Étiquette prête techniquement':'Impression bloquée'}</strong>
    <p>${data.priceSource==='D365_COMMERCE'?'Prix relu depuis Dynamics Commerce.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'CODE128 prévu : scan en caisse à valider. Le nouveau prix affiché reste indicatif avant cette validation.'}</p>
