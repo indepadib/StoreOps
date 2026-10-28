@@ -59,7 +59,7 @@ export async function buildGlovoAvailability(storeId,{businessDate=localDay(),fo
  if(!force&&availabilityInflight.has(cacheKey))return availabilityInflight.get(cacheKey);
  const task=(async()=>{
   const stock=await readStoreStockSnapshot(storeId,{force}),assortment=assortmentIndex(storeId,{businessDate}),cfg=glovoIntegrationConfig(storeId);
-  if(stock.status!=='READY'||stock.truncated)return{status:'PARTIAL',storeId,businessDate,generatedAt:new Date().toISOString(),privacyMode:'AVAILABILITY_ONLY',catalog:{version:GLOVO_CATALOG_VERSION,source:GLOVO_CATALOG_SOURCE,allowedSkus:GLOVO_SKUS.size},items:[],summary:{available:0,unavailable:0,total:0},diagnostics:{stockStatus:stock.status,stockTruncated:!!stock.truncated,assortmentState:assortment.status,rawQuantityExposed:false},integration:cfg};
+  if(stock.status!=='READY'||stock.truncated)return{status:stock.status==='PREPARING'?'PREPARING':'PARTIAL',progress:stock.progress||null,storeId,businessDate,generatedAt:new Date().toISOString(),privacyMode:'AVAILABILITY_ONLY',catalog:{version:GLOVO_CATALOG_VERSION,source:GLOVO_CATALOG_SOURCE,allowedSkus:GLOVO_SKUS.size},items:[],summary:{available:null,unavailable:null,total:null},diagnostics:{stockStatus:stock.status,stockTruncated:!!stock.truncated,assortmentState:assortment.status,rawQuantityExposed:false},integration:cfg};
   const safety=buffer(),stockBySku=new Map((stock.items||[]).map(row=>[clean(row.productNumber),row])),items=[];
   for(const sku of GLOVO_SKUS){
    const row=stockBySku.get(sku)||null,inStoreAssortment=assortment.status!=='READY'||assortment.included.has(sku),active=!!row&&inStoreAssortment&&n(row.availableOnHandQuantity)>safety;

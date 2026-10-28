@@ -28,6 +28,8 @@ jobs:
           set -euo pipefail
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js frontend/analytics -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
           node --check frontend/sw.js
+      - name: Operational stock progressive reads
+        run: node backend/tests/operational-stock.mjs
       - name: Analytics evidence and decision tools
         run: |
           node backend/tests/analytics-action-intelligence.mjs

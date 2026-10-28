@@ -76,7 +76,7 @@ async function parseJsonResponse(r,url){
   }
   try{return await r.json()}catch{const e=new Error(`Réponse JSON invalide depuis ${url}.`);e.status=r.status;e.code='API_INVALID_JSON';throw e}
 }
-export async function api(path,options={}){
+async function requestApiOnce(path,options={}){
   if(isShowcase())return (await showcaseRuntime()).api(path,options);
   const cached=bootResponse(path,options);if(cached?.handled){if(cached.error)throw cached.error;return cached.data}
   const {noRetry=false,...requestOptions}=options||{};
@@ -95,4 +95,22 @@ export async function health(){
 export async function apiBlob(path){
   if(isShowcase())return (await showcaseRuntime()).apiBlob(path);
   const headers=applyAuth({}),r=await fetchSafeRead(apiUrl(path),{headers},'GET');if(!r.ok)throw new Error(`Erreur HTTP ${r.status}`);return r.blob()
+}
+
+// Related widgets share a browser request. Each server call advances at most one
+// stock page, so a cold warehouse read never holds one function for all pages.
+const operationalReads=new Map();
+export function api(path,options={}){
+ const progressive=methodOf(options)==='GET'&&/^\/api\/stores\/[^/]+\/(stock-signals|channels\/glovo|business-pulse\/stockouts)(?:\?|$)/.test(path);
+ if(!progressive)return requestApiOnce(path,options);
+ const auth=applyAuth({}),key=JSON.stringify([path,auth,options]);
+ if(operationalReads.has(key))return operationalReads.get(key);
+ const task=(async()=>{for(let page=0;page<80;page++){
+  const value=await requestApiOnce(path,{...options,noRetry:true});
+  if(value?.status==='UNAVAILABLE')throw Object.assign(new Error('Le stock Dynamics reste indisponible après plusieurs essais. Aucun stock nul n’a été déduit. Réessayer dans quelques instants.'),{code:'STOCK_UNAVAILABLE'});
+  if(value?.status!=='PREPARING')return value;
+  if(typeof CustomEvent==='function')window.dispatchEvent?.(new CustomEvent('storeops-stock-progress',{detail:{path,progress:value.progress}}));
+  await wait(Math.max(250,Math.min(3000,Number(value.progress?.retryAfterMs)||250)));
+ }throw new Error('Préparation du stock trop longue. Réessayer dans quelques instants.');})();
+ operationalReads.set(key,task);return task.finally(()=>{if(operationalReads.get(key)===task)operationalReads.delete(key)});
 }
