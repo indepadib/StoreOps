@@ -33,6 +33,7 @@ jobs:
           node backend/tests/analytics-action-intelligence.mjs
           node backend/tests/analytics-decision-priorities.mjs
           node backend/tests/basket-direction-report.mjs
+          node backend/tests/analytics-analysis-axes.mjs
           node backend/tests/analytics-decision-tools.mjs
           node backend/tests/article-impact-analysis.mjs
       - name: Analytics selector contract
