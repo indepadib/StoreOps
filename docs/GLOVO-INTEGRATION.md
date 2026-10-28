@@ -1,3 +1,52 @@
+# Glovo 2.0 - complément du 27 octobre 2026
+
+Cette section remplace les anciennes indications plus bas lorsqu’elles divergent.
+
+- Méthode : `PUT /v2/chains/{chain_id}/vendors/{vendor_id}/catalog`, produits déjà présents chez Glovo uniquement.
+- Payload : `sku`, `active`, et `price` si le mode prix est activé. Les quantités Dynamics restent privées. Avant chaque envoi, StoreOps lit toutes les pages du catalogue distant et ne conserve que les SKU présents chez Glovo ; une lecture incomplète ou aucune correspondance bloque le push. Le résultat indique le nombre de produits exclus.
+- OAuth par défaut : `POST {GLOVO_API_BASE_URL}/v2/oauth/token`, formulaire contenant client_id et client_secret. Le mode Basic reste disponible explicitement pour une configuration existante.
+- Magasin test fourni : **51530**. Le configurer dans `GLOVO_VENDOR_IDS_JSON` pour un seul magasin source après vérification du mapping. Aucun magasin de production n’est automatiquement réaffecté au test. Le magasin test n’implique pas automatiquement un hôte sandbox : utiliser l’environnement correspondant aux identifiants remis par Glovo.
+- Les identifiants et le lien à usage unique ne sont jamais inclus dans les sources ni les logs.
+
+## Prix standards
+
+Configurer `GLOVO_PRICE_BASIS=TTC_PER_SALES_UNIT` uniquement après confirmation que les prix Dynamics utilisés sont TTC ; `GLOVO_PRICE_CURRENCY=MAD` confirme la devise des prix de fiche qui ne la portent pas. Activer `GLOVO_PRICE_SYNC_ENABLED=1` après ce contrôle.
+
+L’écran Glovo propose « Préparer les prix » : lectures par lots de 20, trois lectures simultanées, date courante Casablanca. Les accords tarifaires magasin uniques priment sur la fiche article. La quantité tarifaire est normalisée à une unité de vente. Les conflits, devises étrangères, unités autres que pièces non mappées, données simulées, erreurs ou prix nuls sont refusés. Les promotions et les prix moyens des tickets ne servent pas de prix standard. Les prix préparés expirent après 15 minutes ; la synchronisation prix exige un prix valide et récent pour chaque SKU du catalogue autorisé. Sinon aucun lot n’est envoyé.
+
+## Assortiment à transmettre
+
+« Exporter l’assortiment » produit un CSV par magasin : SKU, nom, EAN, prix, devise, image directe, catégorie et liste des champs manquants. Le périmètre reste l’assortiment Glovo approuvé existant (1 035 SKU), distinct du référentiel complet des magasins. Les URLs d’images peuvent être configurées par `GLOVO_PRODUCT_IMAGES_JSON`. Aucune URL ni catégorie n’est inventée. Un export avec des champs manquants est un fichier de travail, pas un assortiment certifié prêt pour Glovo.
+
+## Notifications et rapports
+
+URL à communiquer à Glovo une fois déployée : `https://storeops.ma/api/partners/glovo/catalog/webhook`.
+
+Configurer `GLOVO_WEBHOOK_TOKEN`, token indépendant des identifiants OAuth ; le transmettre à Glovo par un canal sécurisé. Le webhook accepte `Authorization: Bearer <token>` ou le token brut dans Authorization. Le token n’est jamais renvoyé à l’écran. Le push reste bloqué sans token de webhook.
+
+Le webhook reçoit `job_id`, `status`, `platform_vendor_id`, `download_url`. Il contrôle le token, le job connu et son vendor. Notifications finales répétées : acquittées sans régression. Les jobs et notifications sont conservés dans la base StoreOps, persistée par le serveur Netlify. Un job QUEUED ou IN_PROGRESS bloque un nouvel envoi du même magasin. Une erreur réseau ou une réponse indéterminée conserve UNKNOWN et bloque la relance : faire rapprocher le résultat auprès de Glovo avant intervention administrative, ne jamais relancer aveuglément.
+
+L’écran affiche les derniers jobs et permet de télécharger le rapport après notification. Configurer les domaines HTTPS exacts des rapports dans `GLOVO_REPORT_ALLOWED_HOSTS` avant téléchargement. Les redirections sont refusées pour ne pas transmettre le token OAuth à un autre hôte ; limite de 5 Mo et délai de 15 secondes. Les URLs de rapport restent côté serveur. Le rapport brut est fourni pour contrôler les rejets par SKU ; COMPLETED n’est pas une certification de succès de chaque ligne.
+
+## Routes applicatives
+
+Toutes les routes suivantes exigent la session et les droits sur le magasin ; les POST exigent les droits de gestion :
+- `POST /api/stores/{storeId}/channels/glovo/prices/prepare?offset=0`
+- `GET /api/stores/{storeId}/channels/glovo/assortment?offset=0`
+- `GET /api/stores/{storeId}/channels/glovo/jobs`
+- `GET /api/stores/{storeId}/channels/glovo/jobs/{jobId}`
+- `POST /api/stores/{storeId}/channels/glovo/jobs/{jobId}/report`
+
+La réception du webhook utilise son authentification partenaire propre, avant la session Microsoft.
+
+## Validation
+
+`node backend/tests/glovo-v2.mjs` et `node backend/tests/glovo-integration-readiness.mjs`.
+
+Ces tests vérifient les contrats avec des réponses simulées. Ils ne prouvent ni la configuration du compte Glovo, ni le chargement du catalogue, ni le résultat d’un envoi réel. L’activation, le mapping du magasin source, les secrets et la validation tarifaire restent des étapes de configuration.
+
+---
+
 # StoreOps × Glovo — Guide de branchement
 
 > Version d'intégration : 30/09/2026  

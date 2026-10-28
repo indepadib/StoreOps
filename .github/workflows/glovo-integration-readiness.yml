@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'backend/services/glovo-availability.mjs'
+      - 'backend/services/glovo-v2.mjs'
+      - 'backend/tests/glovo-v2.mjs'
       - 'backend/services/store-growth-api.mjs'
       - 'frontend/js/pages/channel-availability.js'
       - 'netlify/functions/api.mts'
@@ -27,10 +29,13 @@ jobs:
           node-version: '22'
       - name: Syntax
         run: |
+          node --check backend/services/glovo-v2.mjs
           node --check backend/services/glovo-availability.mjs
           node --check backend/services/store-growth-api.mjs
           node --check frontend/js/pages/channel-availability.js
       - name: Glovo integration contract
         run: node backend/tests/glovo-integration-readiness.mjs
+      - name: Glovo 2.0 behavior
+        run: node backend/tests/glovo-v2.mjs
       - name: Existing V2.40 Glovo contract
         run: node backend/tests/v240-store-truth-glovo.mjs

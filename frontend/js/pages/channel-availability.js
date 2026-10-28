@@ -28,8 +28,8 @@ function draw(){
  ensureStyles();const host=$('#channelAvailabilityContent');if(!host||!data)return;
  const s=data.summary||{},cfg=data.integration||{},catalog=data.catalog||{},d=data.diagnostics||{},mappingOk=Number(d.catalogMatchedStockRows||0)>0;
  host.innerHTML=`<div class="growth-shell">
-  <div class="manager-hub-head"><span class="manager-eyebrow">CANAL E-COMMERCE · GLOVO</span><h2>Disponibilité Glovo pilotée par le stock magasin.</h2><p>StoreOps lit Dynamics, applique le catalogue autorisé et ne transmet à Glovo que <strong>SKU + Disponible / Indisponible</strong>.</p></div>
-  <div class="privacy-banner"><div><span>PRIVACY MODE</span><strong>La quantité réelle ne sort jamais de StoreOps</strong><small>Payload officiel Catalog API : sku + active uniquement dans notre intégration.</small></div><b>✓</b></div>
+  <div class="manager-hub-head"><span class="manager-eyebrow">CANAL E-COMMERCE · GLOVO</span><h2>Catalogue Glovo 2.0 : disponibilité et prix.</h2><p>StoreOps lit Dynamics, applique le catalogue autorisé et transmet <strong>SKU + disponibilité</strong>, avec les prix lorsque leur base TTC est validée.</p></div>
+  <div class="privacy-banner"><div><span>PRIVACY MODE</span><strong>La quantité réelle ne sort jamais de StoreOps</strong><small>Les quantités restent internes. Les prix standards sont préparés séparément des promotions.</small></div><b>✓</b></div>
   <div class="growth-kpis"><div><span>Disponibles</span><strong>${n(s.available)}</strong><small>actifs côté canal</small></div><div><span>Indisponibles</span><strong>${n(s.unavailable)}</strong><small>désactivés côté canal</small></div><div><span>Catalogue Glovo</span><strong>${n(s.total)}</strong><small>${catalog.version?`whitelist · ${esc(catalog.version)}`:'SKU autorisés'}</small></div></div>
   <div class="glovo-readiness">
    <div><span>Stock Dynamics</span><strong>${esc(d.stockStatus||data.status||'—')}</strong></div>
@@ -39,13 +39,19 @@ function draw(){
   </div>
   ${!mappingOk&&data.status==='READY'?'<div class="glovo-warning"><strong>Synchronisation bloquée par sécurité</strong><span>Aucun SKU du catalogue Glovo ne correspond au snapshot stock. Vérifier le mapping article avant tout push.</span></div>':''}
   <section class="channel-card"><div><span class="manager-eyebrow">CONNEXION GLOVO · SANS ÉCRITURE</span><strong>${cfg.credentialsReady?'Paramètres suffisants pour tester':'Configuration à compléter'}</strong><p>${cfg.credentialsReady?'StoreOps peut interroger le Catalog API pour vérifier Chain ID, Vendor ID et authentification sans modifier le catalogue.':'Renseigner Chain ID, Vendor ID et l’authentification Glovo côté serveur / Netlify.'}</p><small>Chain : ${esc(cfg.chainId||'—')} · API : ${esc(cfg.apiBaseUrl||'—')}</small><div class="glovo-actions"><button id="verifyGlovo" class="btn soft" ${cfg.credentialsReady?'':'disabled'}>Tester la connexion</button></div></div><span class="pill">${cfg.credentialsReady?'À tester':'Incomplet'}</span></section>
-  <section class="channel-card"><div><span class="manager-eyebrow">PUSH DISPONIBILITÉ</span><strong>${cfg.ready?'Push activé':'Push verrouillé'}</strong><p>${cfg.ready?'Le bouton envoie le catalogue autorisé en mise à jour asynchrone.':'Après validation du test/sandbox, activer GLOVO_PUSH_ENABLED=1. Tant que ce flag reste à 0, aucun push Glovo n’est possible.'}</p><div class="glovo-actions"><button id="syncGlovo" class="btn brand" ${cfg.ready&&mappingOk?'':'disabled'}>Synchroniser la disponibilité</button></div></div><span class="pill">${cfg.pushEnabled?'Activé':'Sécurité ON'}</span></section>
+  <section class="channel-card"><div><span class="manager-eyebrow">MISE À JOUR DU CATALOGUE</span><strong>${cfg.ready?'Push activé':'Push verrouillé'}</strong><p>${cfg.ready?'Le bouton envoie le catalogue autorisé en mise à jour asynchrone.':'Après validation du test/sandbox, activer GLOVO_PUSH_ENABLED=1. Tant que ce flag reste à 0, aucun push Glovo n’est possible.'}</p><div class="glovo-actions"><button id="syncGlovo" class="btn brand" ${cfg.ready&&cfg.webhookConfigured&&mappingOk?'':'disabled'}>Synchroniser le catalogue</button></div></div><span class="pill">${cfg.pushEnabled?'Activé':'Sécurité ON'}</span></section>
   <section class="channel-card"><div><span class="manager-eyebrow">API STOREOPS OPTIONNELLE · LECTURE SEULE</span><strong>${cfg.partnerPullConfigured?'Endpoint sécurisé prêt':'Endpoint fermé'}</strong><p>À utiliser uniquement si Glovo ou un middleware souhaite venir lire la disponibilité depuis StoreOps. Ce flux reste séparé du Partner API/Catalog officiel.</p><small>${esc(cfg.partnerEndpoint||'')}</small></div><span class="pill">${cfg.partnerPullConfigured?'Bearer requis':'Désactivé'}</span></section>
+  <section class="channel-card"><div><span class="manager-eyebrow">PRIX ET ASSORTIMENT</span><strong>${cfg.priceSyncEnabled?'Synchronisation des prix activée':'Disponibilité seule activée'}</strong><p>Préparer les prix standards TTC avant leur envoi. Les prix manquants ou les unités non reconnues bloquent le mode prix. L’export signale les images, EAN et catégories à compléter pour Glovo.</p><div class="glovo-actions"><button id="prepareGlovoPrices" class="btn soft">Préparer les prix</button><button id="exportGlovoAssortment" class="btn soft">Exporter l’assortiment</button></div></div></section>
+  <section class="channel-card"><div><span class="manager-eyebrow">RÉSULTATS GLOVO</span><strong>${cfg.webhookConfigured?'Notifications configurées':'Token de notification à configurer'}</strong><small>${esc(cfg.webhookPath||'')}</small><p>Un envoi accepté attend la notification de fin. Le rapport détaille les éventuels rejets par produit.</p><div id="glovoJobs"></div><button id="refreshGlovoJobs" class="btn soft">Actualiser les résultats</button></div></section>
   ${lastResult?`<div class="glovo-result"><strong>${esc(lastResult.title)}</strong><small>${esc(lastResult.detail)}</small></div>`:''}
   <div class="glovo-filterbar"><input id="glovoSearch" value="${esc(query)}" placeholder="Rechercher SKU, article ou EAN"><div class="glovo-filters"><button data-glovo-filter="ALL" class="${filter==='ALL'?'active':''}">Tous</button><button data-glovo-filter="ON" class="${filter==='ON'?'active':''}">Disponibles</button><button data-glovo-filter="OFF" class="${filter==='OFF'?'active':''}">Indisponibles</button></div></div>
   <div class="row" style="margin:4px 0 8px"><strong>Catalogue magasin</strong><span class="small muted" id="glovoListCount"></span></div><div class="channel-list" id="glovoList"></div>
   <div class="growth-trust">Buffer interne : ${d.safetyBuffer??0} · entrepôt magasin : ${esc(d.warehouseId||'—')} · quantité brute exposée : non.</div>
  </div>`;
+ $('#prepareGlovoPrices')?.addEventListener('click',preparePrices);
+ $('#exportGlovoAssortment')?.addEventListener('click',exportAssortment);
+ $('#refreshGlovoJobs')?.addEventListener('click',renderJobs);
+ void renderJobs();
  $('#verifyGlovo')?.addEventListener('click',verify);
  $('#syncGlovo')?.addEventListener('click',sync);
  $('#glovoSearch')?.addEventListener('input',e=>{query=e.target.value||'';renderList()});
@@ -58,9 +64,29 @@ async function verify(){
 }
 async function sync(){
  const b=$('#syncGlovo');if(b?.disabled)return;b.disabled=true;const old=b.textContent;b.textContent='Synchronisation…';
- try{const r=await api(`/api/stores/${app.storeId}/channels/glovo/sync`,{method:'POST'});lastResult={title:'Synchronisation envoyée à Glovo',detail:`${r.sentProducts||0} SKU · job ${r.jobId||'sans identifiant'} · statut ${r.jobStatus||r.status||'QUEUED'}`};toast(`Glovo : ${r.sentProducts||0} disponibilités envoyées.`);await renderChannelAvailability()}catch(e){lastResult={title:'Synchronisation non envoyée',detail:e.message};toast(e.message);draw()}finally{if(b&&document.body.contains(b)){b.disabled=false;b.textContent=old}}
+ try{const r=await api(`/api/stores/${app.storeId}/channels/glovo/sync`,{method:'POST'});lastResult={title:'Synchronisation envoyée à Glovo',detail:`${r.sentProducts||0} SKU envoyés · ${r.excludedProducts||0} absents du catalogue Glovo · job ${r.jobId||'sans identifiant'} · statut ${r.jobStatus||r.status||'QUEUED'}`};toast(`Glovo : ${r.sentProducts||0} produits envoyés, traitement à suivre.`);await renderChannelAvailability()}catch(e){lastResult={title:'Synchronisation non envoyée',detail:e.message};toast(e.message);draw()}finally{if(b&&document.body.contains(b)){b.disabled=false;b.textContent=old}}
 }
 export async function renderChannelAvailability(){
  const host=$('#channelAvailabilityContent');if(host)host.innerHTML='<div class="growth-loading">Préparation de la disponibilité Glovo…</div>';
  try{data=await api(`/api/stores/${app.storeId}/channels/glovo`);draw()}catch(e){if(host)host.innerHTML=`<div class="growth-error">${esc(e.message)}</div>`;toast(e.message)}
+}
+
+const glovoPath=()=>`/api/stores/${encodeURIComponent(app.storeId)}/channels/glovo`;
+async function preparePrices(){
+ const store=app.storeId,b=$('#prepareGlovoPrices');if(!b||b.disabled)return;b.disabled=true;let offset=0,ready=0;
+ try{do{if(app.storeId!==store)throw new Error('Magasin changé : préparation arrêtée.');const r=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/prices/prepare?offset=${offset}`,{method:'POST'});ready+=r.ready||0;offset=r.nextOffset;b.textContent=`Prix préparés : ${ready} / ${r.total}`;}while(offset!==null);toast(`${ready} prix valides préparés. Les autres nécessitent une vérification.`)}catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Préparer les prix'}
+}
+function downloadGlovoFile(name,content,type){const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+async function exportAssortment(){
+ const store=app.storeId,b=$('#exportGlovoAssortment');if(!b||b.disabled)return;b.disabled=true;let offset=0,items=[];
+ try{do{if(app.storeId!==store)throw new Error('Magasin changé : export arrêté.');const r=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/assortment?offset=${offset}`);items.push(...r.items);offset=r.nextOffset;b.textContent=`Export : ${items.length} / ${r.total}`;}while(offset!==null);
+ const fields=['sku','name','barcode','price','currency','imageUrl','category','missing'],cell=v=>'"'+String(Array.isArray(v)?v.join(' | '):v??'').replace(/^[\s=+@-]/,"'$&").replaceAll('"','""')+'"';
+ downloadGlovoFile(`glovo-assortiment-${store}.csv`,'\ufeff'+[fields.join(';'),...items.map(x=>fields.map(k=>cell(x[k])).join(';'))].join('\r\n'),'text/csv;charset=utf-8');toast(`${items.length} produits exportés, dont ${items.filter(x=>x.missing.length).length} à compléter.`)
+ }catch(e){toast(e.message)}finally{b.disabled=false;b.textContent='Exporter l’assortiment'}
+}
+async function renderJobs(){
+ const store=app.storeId,host=$('#glovoJobs');if(!host)return;
+ try{const r=await api(glovoPath()+'/jobs');if(store!==app.storeId||!host.isConnected)return;host.innerHTML=r.items.length?r.items.map(x=>`<div class="glovo-result"><strong>${esc(x.status)} · ${n(x.sentProducts)} produits</strong><small>${esc(x.jobId)} · ${esc(x.updatedAt||x.submittedAt||'')} · rapport ${esc(x.reportStatus||'EN ATTENTE')}</small>${x.reportStatus==='AVAILABLE'||x.reportStatus==='DOWNLOADED'?`<button class="btn soft" data-glovo-report="${esc(x.jobId)}">Télécharger le rapport</button>`:''}</div>`).join(''):'<p>Aucune mise à jour envoyée.</p>';
+ host.querySelectorAll('[data-glovo-report]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const report=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/jobs/${encodeURIComponent(b.dataset.glovoReport)}/report`,{method:'POST'});downloadGlovoFile('glovo-rapport.txt',report.content,'text/plain;charset=utf-8');toast(report.interpretation)}catch(e){toast(e.message)}finally{b.disabled=false}}));
+ }catch(e){host.textContent=e.message}
 }
