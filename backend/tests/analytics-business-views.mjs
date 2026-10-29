@@ -6,7 +6,7 @@ const {rankedAnswer,rankingIntent}=await import('../services/analytics-question-
 const {answerAnalytics}=await import('../services/analytics-assistant.mjs');
 const {receiptEvidence,prepareReceiptHistory}=await import('../services/analytics-receipt-history.mjs');
 const {aggregateValidatedMargin}=await import('../services/decision-intelligence.mjs');
-const {relativeMetric,historicalMetric,origin}=await import('../../frontend/analytics/detention-metrics.js');
+const {relativeMetric,historicalMetric,origin,filterDetentionRows}=await import('../../frontend/analytics/detention-metrics.js');
 const period={start:'2026-10-21',end:'2026-10-26',compareStart:'2026-10-15',compareEnd:'2026-10-20'};
 const products=Array.from({length:70},(_,i)=>({article:'HS-'+String(i).padStart(6,'0'),label:'Produit '+i,sales:1000-i*10,previousSales:900,delta:100-i*10,units:100-i,quantityUnit:'PC',marginValue:i===0?null:i}));
 const facts={period,sources:[],allProducts:products,products:products.slice(40),productsByStore:[{store:'Trèfle',products:products.slice(30,50)}],hierarchy:{department:[{key:'PGC',label:'PGC',sales:2000,previousSales:1900,delta:100}]},sales:{},stores:[]};
@@ -25,8 +25,9 @@ assert.equal(receiptEvidence({sku:'A',received:2,status:'Backorder'},m).productN
 assert.equal(receiptEvidence({sku:'A',status:'Received',qty:10},m).productNumber,'A');
 assert.equal(receiptEvidence({sku:'A',status:'Received',qty:10},{...m,type:'TO'}),null);
 const pgc={hierarchy:{department:{id:'1',label:'PGC'}}},rows=[{...pgc,productNumber:'A',storeAvailable:0,warehouseAvailable:1},{...pgc,productNumber:'B',storeAvailable:2,warehouseAvailable:3},{...pgc,productNumber:'C',storeAvailable:2,warehouseAvailable:0}];
-assert.equal(relativeMetric(rows,{complete:true}).rate,50);assert.equal(relativeMetric([...rows,{...pgc,storeAvailable:null,warehouseAvailable:1}],{complete:true}).rate,null);assert.equal(relativeMetric(rows).rate,null);
+assert.equal(relativeMetric(filterDetentionRows(rows,{view:'relative',department:'BAZAR'}),{complete:true}).rate,50);assert.equal(filterDetentionRows(rows,{view:'store',department:'BAZAR'}).length,0);assert.equal(relativeMetric(rows,{complete:true}).rate,50);assert.equal(relativeMetric([...rows,{...pgc,storeAvailable:null,warehouseAvailable:1}],{complete:true}).rate,null);assert.equal(relativeMetric(rows).rate,null);
 const historical=historicalMetric([{productNumber:'A'},{productNumber:'B'},{productNumber:'EPUISE'}],rows,{complete:true,stockComplete:true});assert.equal(historical.denominator,3);assert.equal(historical.held,1);assert.equal(historical.missing,2);assert.equal(historicalMetric([{productNumber:'A'}],rows,{complete:false,stockComplete:true}).rate,null);
+assert.equal(historicalMetric([{productNumber:'A'}],rows,{kind:'supply',complete:true,stockComplete:true}).denominator,2);assert.equal(historicalMetric([{productNumber:'A'}],rows,{kind:'supply',includeCurrent:false,complete:true,stockComplete:true}).denominator,1);
 assert.equal(origin({vendorName:'Extenc International SAS'}),'IMPORT');assert.equal(origin({vendorName:'Fournisseur local'}),'LOCAL');assert.equal(origin({}),'UNKNOWN');
 // Paginated preparation scopes one warehouse, deduplicates repeats and preserves expired-snapshot safety.
 const cache=new Map(),queries=[],deps={warehouse:'MAG',read:async k=>cache.get(k),write:async(k,t,v)=>cache.set(k,structuredClone(v)),resolve:async type=>({...m,type,entity:type,document:'doc',line:'line',warehouse:'warehouse'}),get:async(entity,query)=>{queries.push(query);return{value:[{sku:'A',received:2,doc:'1',line:1},{sku:'A',received:1,doc:'2',line:1},{sku:'B',received:0,status:'Backorder'}]}}};

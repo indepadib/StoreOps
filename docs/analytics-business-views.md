@@ -3,7 +3,7 @@
 Ranking questions bypass provider calls and the generic three-product plan. The count (default10, maximum50), ordering, metric and supported store scope are deterministic. They use all products in the prepared decision evidence, not the30 biggest movements. Unknown measures and unsupported crosses request clarification instead of returning network totals. Units must be comparable. Categories and departments have their own rankings. No customer identifiers are included in facts.
 
 Detention has three business bases plus a supplementary common-reference comparison:
-- Warehouse history: distinct products received at least once, currently positive at that warehouse / historically received products. Shared warehouse counted once.
+- Warehouse history: distinct products received at least once, currently positive at that warehouse / historically received products. Current positive presence also proves a warehouse passage and is included even without a purchase/transfer receipt line. Old unexposed movement journals remain unverified. Shared warehouse counted once.
 - Store history: the same ratio using actual destination-store receipts, with department and origin filters.
 - Relative PGC: store-positive positions / PGC positions positive on the supply platform. Platform-zero positions excluded; unknown quantities or unclassified potential platform positions block the percentage.
 
