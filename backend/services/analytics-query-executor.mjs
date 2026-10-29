@@ -21,6 +21,7 @@ function network(e,q){const s=e.facts.sales||{},m=e.facts.margin||{},b=e.baskets
   const shops=[...(e.table.stores||[])].filter(r=>known(r.delta)).sort((a,b)=>a.delta-b.delta);lines.push(...shops.slice(0,5).map(r=>`${r.label} : écart ${money(r.delta)}, CA ${money(r.sales)}, ${n(r.tickets)} tickets et panier ${money(r.averageBasket)}.`));
   const products=[...(e.table.products||[])].filter(r=>known(r.delta)&&r.delta!==0).sort((a,b)=>Math.abs(b.delta)-Math.abs(a.delta));lines.push('Principales contributions observées :',...products.slice(0,5).map(r=>`${r.label} (${r.article}) : ${money(r.delta)}. Les compensations entre hausses et baisses empêchent d’additionner des pourcentages comme des parts de perte.`));
  }
+ if(q.metrics.includes('promotionSales'))lines.push('Le CA avec remise mesure les ventes remisées enregistrées. Il ne démontre pas un effet incrémental, une causalité ou un retour sur investissement.');
  if(q.metrics.includes('tickets'))lines.push('Un ticket est une transaction, pas un client unique.');
  return{title:q.operation==='drivers'?'Décomposition de l’activité':'Indicateurs demandés',columns,rows,lines};
 }
@@ -31,6 +32,9 @@ function basketAnswer(e,q){const b=e.baskets;if(!b)return{title:'Paniers et clie
 export function executeQuery(q,e){
  const productFilter=q.filters.codes?.length||q.filters.text||q.filters.category||q.filters.supplier||q.filters.origin||q.filters.unit;
  if(productFilter&&['network','stores','days','hours','cashiers','baskets','customers'].includes(q.entity))return{title:'Croisement à préciser',lines:['Les agrégats de cette vue ne permettent pas de croiser ce filtre article, catégorie ou fournisseur avec les tickets, clients ou horaires sans dédoublonnage. Demandez une liste d’articles filtrée, ou l’analyse des paniers d’un article précis. Le filtre demandé n’est pas ignoré.']};
+ if(['network','baskets'].includes(q.entity)&&['rank','list','count','affinity','pricing'].includes(q.operation))return{title:'Préciser le regroupement',lines:['Quel groupe souhaitez-vous classer ou lister : articles, magasins, rayons ou fournisseurs ? Pour les associations et prix réalisés, précisez un article. Un indicateur global ne remplace pas cette liste.']};
+ if(q.entity==='customers'&&['rank','list'].includes(q.operation))return{title:'Liste clients à préciser',lines:['La liste individuelle des clients et leurs achats se consulte dans Clients & CRM. Ici, demandez le retour des clients identifiés, le taux d’identification ou la cohorte d’un article ; je ne remplace pas votre demande de liste par un résumé.']};
+ if(q.entity==='customers'&&q.operation==='count')return{title:'Clients distincts identifiés',columns:['Mesure','Valeur'],rows:[['Clients identifiés de la période',n(e.facts.sales?.identifiedCustomers)]],lines:['Comptes identifiés distincts dans les preuves disponibles ; les clients anonymes ne sont pas identifiables.']};
  if(['network','baskets','customers'].includes(q.entity)){
   if(q.entity==='network')return network(e,q);if(q.entity==='customers'&&q.operation!=='retention'){const r=network(e,{...q,metrics:q.metrics.includes('identifiedTicketRate')?q.metrics:['identifiedTicketRate','identifiedSalesShare']});r.title='Identification et clients';r.lines.push('Clients distincts identifiés : '+n(e.facts.sales?.identifiedCustomers)+'. Les tickets et clients uniques ne sont pas interchangeables.');return r;}if(q.entity==='baskets'&&q.operation!=='retention')return network(e,{...q,metrics:q.metrics.length?q.metrics:['tickets','averageBasket']});return basketAnswer(e,q);
  }
