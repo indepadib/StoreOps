@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {storeOperationalSettings} from './store-settings.mjs';
 import {config} from '../config.mjs';
 import {probeDataEntity,odataGet} from './dynamics.mjs';
@@ -31,8 +32,9 @@ export async function prepareReceiptHistory(storeId,{kind='store',cursor=0,snaps
  const read=deps.read||readAnalyticsCache,write=deps.write||writeAnalyticsCache,resolve=deps.resolve||mapping,get=deps.get||odataGet;
  const warehouse=deps.warehouse|| (kind==='supply'?supplyWarehouseForStore(storeId):storeOperationalSettings(storeId).storeWarehouseId);if(!warehouse)throw Object.assign(new Error('Dépôt non configuré.'),{status:422});
  const readyKey=key(kind,warehouse),ready=await read(readyKey);if(cursor===0&&!snapshot&&ready)return{...ready,products:undefined,nextCursor:null,cached:true};
- const prepKey=analyticsCacheKey('receipt-prep-v1',[config.dynamics.dataAreaId,kind,warehouse]);let acc=await read(prepKey);
- if(!snapshot){if(cursor!==0)throw Object.assign(new Error('Relancer la préparation historique.'),{status:409});acc={snapshot:new Date().toISOString(),cursor:0,type:0,offset:0,products:{},sources:[],phase:'MAP',documentOffset:0,documents:[],batch:0,scanned:0,issues:[]}}
+ if(snapshot&&!/^[a-f0-9-]{36}$/.test(snapshot))throw Object.assign(new Error('Image historique invalide.'),{status:400});
+ const prepKey=(token,page)=>analyticsCacheKey('receipt-prep-v2',[config.dynamics.dataAreaId,kind,warehouse,token,page]);let acc=snapshot?await read(prepKey(snapshot,cursor)):null;if(acc)acc=structuredClone(acc);
+ if(!snapshot){if(cursor!==0)throw Object.assign(new Error('Relancer la préparation historique.'),{status:409});acc={snapshot:randomUUID(),startedAt:new Date().toISOString(),cursor:0,type:0,offset:0,products:{},sources:[],phase:'MAP',documentOffset:0,documents:[],batch:0,scanned:0,issues:[]}}
  if(!acc||snapshot&&acc.snapshot!==snapshot||cursor!==acc.cursor)throw Object.assign(new Error('Préparation historique expirée ou hors séquence.'),{status:409});
  const type=['PO','TO'][acc.type];
  try{
@@ -52,6 +54,6 @@ export async function prepareReceiptHistory(storeId,{kind='store',cursor=0,snaps
  }catch(e){acc.issues.push({type,reason:e.status===422?e.message:`Lecture ${type} indisponible ou interrompue ; historique incomplet`});acc.type++;acc.phase='MAP'}
  if(acc.scanned>100000)throw Object.assign(new Error('Historique trop volumineux : taux non publié ; source agrégée requise.'),{status:422});
  acc.cursor++;
- if(acc.type>=2){const complete=!acc.issues.length,value={status:complete?'READY':'PARTIAL',complete,warehouseId:warehouse,products:Object.values(acc.products),sources:acc.sources,issues:acc.issues,checkedAt:new Date().toISOString(),startedAt:acc.snapshot,coverage:'Toutes les lignes accessibles, sans filtre de date. Archives supprimées et ouverture non certifiées ; dates demandées de livraison jamais utilisées comme dates de réception.'};await write(readyKey,'receipt-history-v1',value,86400);return{...value,products:undefined,nextCursor:null,snapshot:acc.snapshot,scanned:acc.scanned}}
- await write(prepKey,'receipt-prep-v1',acc,3600);return{status:'PREPARING',nextCursor:acc.cursor,snapshot:acc.snapshot,scanned:acc.scanned,warehouseId:warehouse};
+ if(acc.type>=2){const complete=!acc.issues.length,value={status:complete?'READY':'PARTIAL',complete,warehouseId:warehouse,products:Object.values(acc.products),sources:acc.sources,issues:acc.issues,checkedAt:new Date().toISOString(),startedAt:acc.startedAt,coverage:'Toutes les lignes accessibles, sans filtre de date. Archives supprimées et ouverture non certifiées ; dates demandées de livraison jamais utilisées comme dates de réception.'};await write(readyKey,'receipt-history-v1',value,86400);return{...value,products:undefined,nextCursor:null,snapshot:acc.snapshot,scanned:acc.scanned}}
+ await write(prepKey(acc.snapshot,acc.cursor),'receipt-prep-v2',acc,3600);return{status:'PREPARING',nextCursor:acc.cursor,snapshot:acc.snapshot,scanned:acc.scanned,warehouseId:warehouse};
 }
