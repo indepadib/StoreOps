@@ -37,6 +37,7 @@ jobs:
           node backend/tests/basket-direction-report.mjs
           node backend/tests/analytics-analysis-axes.mjs
           node backend/tests/analytics-business-views.mjs
+          node backend/tests/analytics-query-agent.mjs
           node backend/tests/analytics-decision-tools.mjs
           node backend/tests/article-impact-analysis.mjs
       - name: Analytics selector contract
@@ -205,3 +206,4 @@ jobs:
         shell: bash
         run: |
           if [ -f /tmp/storeops-api.pid ]; then kill "$(cat /tmp/storeops-api.pid)" || true; fi
+

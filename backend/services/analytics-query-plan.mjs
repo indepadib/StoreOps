@@ -1,0 +1,72 @@
+export const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[’']/g,' ').replace(/[^a-z0-9_.,%<>!= -]+/g,' ').replace(/\s+/g,' ').trim();
+export const entities=['network','products','stores','department','rayon','family','suppliers','cashiers','days','hours','baskets','customers','stock'];
+export const metrics=['sales','previousSales','delta','changePct','sharePct','tickets','previousTickets','averageBasket','units','marginValue','marginRate','identifiedTicketRate','identifiedSalesShare','promotionSales','discountAmount','penetrationPct','realizedUnitPrice','repurchasePct'];
+export const operations=['summary','count','rank','list','compare','drivers','concentration','affinity','pricing','retention','actions'];
+const own=(x,k)=>Object.hasOwn(x,k),obj=x=>x&&typeof x==='object'&&!Array.isArray(x);
+export function validateQueryPlan(value){
+ if(!obj(value)||Object.keys(value).some(k=>!['queries','clarification'].includes(k))||!Array.isArray(value.queries)||value.queries.length>4)throw Error('INVALID_QUERY_PLAN');
+ if(value.clarification!=null&&(typeof value.clarification!=='string'||value.clarification.length>240))throw Error('INVALID_QUERY_PLAN');
+ const queries=value.queries.map(q=>{
+  if(!obj(q)||Object.keys(q).some(k=>!['entity','operation','metrics','limit','offset','direction','filters','threshold','absolute'].includes(k))||!entities.includes(q.entity)||!operations.includes(q.operation)||!Array.isArray(q.metrics)||!q.metrics.length||q.metrics.length>6||q.metrics.some(m=>!metrics.includes(m)))throw Error('INVALID_QUERY_PLAN');
+  const limit=q.limit??10,offset=q.offset??0;if(!Number.isInteger(limit)||limit<1||limit>50||!Number.isInteger(offset)||offset<0||offset>200||q.direction!=null&&!['asc','desc'].includes(q.direction)||q.absolute!=null&&typeof q.absolute!=='boolean')throw Error('INVALID_QUERY_PLAN');
+  const f=q.filters||{};if(!obj(f)||Object.keys(f).some(k=>!['codes','text','category','supplier','origin','unit','store'].includes(k)))throw Error('INVALID_QUERY_PLAN');
+  for(const [k,v] of Object.entries(f)){if(k==='codes'){if(!Array.isArray(v)||v.length>50||v.some(s=>typeof s!=='string'||!/^[A-Z0-9_.-]{1,64}$/.test(s)))throw Error('INVALID_QUERY_PLAN')}else if(typeof v!=='string'||v.length>100||/[\x00-\x1f]/.test(v))throw Error('INVALID_QUERY_PLAN')}
+  if(f.origin&&!['IMPORT','LOCAL','UNKNOWN'].includes(f.origin))throw Error('INVALID_QUERY_PLAN');
+  let threshold=null;if(q.threshold!=null){const t=q.threshold;if(!obj(t)||Object.keys(t).some(k=>!['metric','operator','value'].includes(k))||!metrics.includes(t.metric)||!['gt','gte','lt','lte','eq'].includes(t.operator)||!Number.isFinite(t.value)||Math.abs(t.value)>1e12)throw Error('INVALID_QUERY_PLAN');threshold={...t}}
+  return{entity:q.entity,operation:q.operation,metrics:[...new Set(q.metrics)],limit,offset,direction:q.direction||'desc',filters:{...f,codes:f.codes||[]},threshold,absolute:q.absolute===true};
+ });return{queries,clarification:value.clarification||null};
+}
+const numberCount=q=>{const m=q.match(/(?:top|flop|liste (?:de|des)|les|premiers?|meilleurs?)\s+(\d{1,3})\b/)||q.match(/\b(\d{1,3})\s+(?:meilleurs?|premiers?|produits?|articles?|magasins?|fournisseurs?|rayons?)\b/);return m?Math.max(1,Math.min(50,Number(m[1]))):10};
+export function parseQuery(question,{previousPlan=null}={}){
+ const q=normalize(question),codes=[...new Set((String(question).toUpperCase().match(/\b[A-Z]{1,8}-(?=[A-Z0-9_.-]*\d)[A-Z0-9_.-]{1,48}\b/g)||[]))];
+ if(/salaire|paie|concurren|previ[sz]|forecast|budget|objectif|retard|livraison|delai|taux de service|facture|prix d achat|prix achat|dernier achat/.test(q))return{queries:[],clarification:'Cette demande nécessite une source spécifique (tarifs d’achat, livraisons, objectifs, concurrence ou données RH) qui n’est pas incluse dans les preuves de vente de ce moteur. Précisez le rapport et la source à utiliser ; je ne remplace pas cet indicateur par le CA.'};
+ if(!q)return{queries:[],clarification:'Quelle mesure souhaitez-vous examiner ?'};
+ if(/^(bonjour|salut|hello|bonsoir|merci)[ !.]*$/.test(q))return{queries:[],clarification:'Je peux comparer les ventes et paniers, expliquer une variation, chercher des articles, analyser les fournisseurs, la marge, les clients identifiés ou les stocks. Quelle décision voulez-vous préparer ?'};
+ const follow=/^(et|idem|pareil|aussi|seulement|uniquement|plutot|pour |les suivants|continue)/.test(q)&&previousPlan?.queries?.length;
+ let entity=/fournisseur/.test(q)?'suppliers':/caissier|staff|operateur/.test(q)?'cashiers':/departement/.test(q)?'department':/rayon|categorie/.test(q)?'rayon':/famille/.test(q)?'family':/par jour|quotidien|journee|jour par jour/.test(q)?'days':/heure|creneau|horaire/.test(q)?'hours':/article|produit|reference|sku/.test(q)||codes.length?'products':/magasin|reseau/.test(q)?'stores':/panier|ticket/.test(q)?'baskets':/client|fidel|crm|identifi/.test(q)?'customers':/stock|rupture|detention|reappro|entrepot|inventaire|demarque/.test(q)?'stock':'network';
+ let op=/vend.*avec|achet.*ensemble|association|affinit|accompagn/.test(q)?'affinity':/habitu|revien|revu|client.*reven|reven.*client|perdu|perte de client|reachat|rach[ae]t|retention|recurren/.test(q)?'retention':/prix|tarif|pricing|elasticit/.test(q)&&entity==='products'?'pricing':/pourquoi|expliqu|cause|decompos|moteur/.test(q)?'drivers':/pareto|80 ?%|concentr|dependan|poids des/.test(q)?'concentration':/compare|comparaison|versus|\bvs\b|difference|ecart entre/.test(q)?'compare':/top\b|meilleur|flop|classe|plus vendu|moins vendu|plus fort|plus faible|plus rentab|priorit/.test(q)?'rank':/liste|cherche|trouve|recherche|quels sont|quelles sont|donne.*articles|detail.*articles/.test(q)?'list':'summary';
+ if(/combien|nombre|\bnb\b/.test(q)&&/article|produit|reference|fournisseur/.test(q)&&!/quantite|volume|unite/.test(q))op='count';
+ const requested=[];const add=(m,p)=>{if(p.test(q)&&!requested.includes(m))requested.push(m)};
+ add('sales',/\bca\b|chiffre|vente|activite/);add('delta',/evolu|progress|variation|hausse|baisse|chute|contribut/);add('tickets',/ticket|frequent/);add('averageBasket',/panier/);add('units',/volume|quantite|unite|plus vendu|moins vendu/);add('marginRate',/taux.*marge|marge.*%/);if(!requested.includes('marginRate'))add('marginValue',/marge|rentab/);add('identifiedTicketRate',/identif|fidelis|recrut/);add('promotionSales',/promo|remis/);add('penetrationPct',/penetration/);add('realizedUnitPrice',/prix|tarif/);add('repurchasePct',/reachat|retention|rachat/);
+ const previous=follow?previousPlan.queries[0]:null;if(previous){if(entity==='network')entity=previous.entity;if(op==='summary'&&!/bilan|resume|synthese/.test(q))op=previous.operation;}
+ const filters={...(previous?.filters||{}),codes:codes.length?codes:previous?.filters?.codes||[]};
+ if(/val[ -]?fleuri/.test(q)&&!/trefle/.test(q))filters.store='Val Fleuri';else if(/trefle/.test(q)&&!/val[ -]?fleuri/.test(q))filters.store='Trèfle';else if(/trefle/.test(q)&&/val[ -]?fleuri/.test(q))delete filters.store;
+ if(/reseau|deux magasins|tous les magasins/.test(q))delete filters.store;
+ if(/import/.test(q))filters.origin='IMPORT';else if(/local/.test(q))filters.origin='LOCAL';
+ const quote=String(question).match(/[«"]([^»"]{2,100})[»"]/);if(quote)filters.text=quote[1];
+ if(/\bpgc\b/.test(q))filters.category='PGC';
+ const cat=q.match(/(?:du|le|la|dans le|dans la)\s+(?:rayon|famille|departement|categorie)\s+([a-z][a-z0-9 -]{1,60}?)(?=\s+(?:par|avec|sans|chez|a trefle|a val fleuri|qui|sur|pour)\b|$)/);if(cat&&!/^(les|des|tous|toutes|plus|meilleur)/.test(cat[1]))filters.category=cat[1];
+ const supplier=q.match(/(?:du|le|chez le|pour le)\s+fournisseur\s+([a-z][a-z0-9 -]{1,70}?)(?=\s+(?:par|avec|sans|a trefle|a val fleuri|qui|sur|pour)\b|$)/);if(supplier&&!/^(les|des|tous|plus|meilleur)/.test(supplier[1]))filters.supplier=supplier[1];
+ const unit=q.match(/(?:en|unite)\s+(kg|g|pc|l|ml)\b/);if(unit)filters.unit=unit[1].toUpperCase();
+ if(/article|produit|reference|sku/.test(q)&&!/(?:par|entre les) fournisseurs/.test(q))entity='products';
+ if(/stock|rupture|detention|reappro|entrepot|inventaire|demarque/.test(q))entity='stock';
+ if(op==='affinity'||op==='pricing'||op==='retention'&&codes.length)entity='products';
+ const metric=requested.length?requested.slice(0,6):previous?.metrics||['sales'];
+ if(op==='drivers'&&!/stock|rupture|detention|reappro|inventaire|demarque/.test(q))entity=/article|produit/.test(q)?'products':/magasin/.test(q)?'stores':'network';
+ if(/qu[ei] faire|action|prioris|recommand/.test(q)&&/stock|rupture|detention|reappro|inventaire|demarque/.test(q)){entity='stock';op='actions'}
+ const recognized=follow||codes.length||quote||/\bca\b|chiffre|vente|activite|article|produit|reference|magasin|reseau|rayon|famille|categorie|departement|fournisseur|caissier|panier|ticket|client|fidel|crm|marge|rentab|cout|promo|remis|stock|rupture|detention|reappro|entrepot|inventaire|demarque|pareto|concentr|affinit|prix|tarif|synthese|resume|bilan|recrut|identif/.test(q);
+ if(!recognized)return null;
+ let threshold=previous?.threshold||null;const thresholdMatch=q.match(/(ca|ventes?|marge|tickets?|volume|quantite)\s*(>=|<=|>|<|=|superieur a|inferieur a|plus de|moins de)\s*(-?\d+(?:[.,]\d+)?)/);if(thresholdMatch)threshold={metric:/marge/.test(thresholdMatch[1])?'marginValue':/ticket/.test(thresholdMatch[1])?'tickets':/volume|quantite/.test(thresholdMatch[1])?'units':'sales',operator:{'>':'gt','>=':'gte','<':'lt','<=':'lte','=':'eq','superieur a':'gt','inferieur a':'lt','plus de':'gt','moins de':'lt'}[thresholdMatch[2]],value:Number(thresholdMatch[3].replace(',','.'))};
+ if(/(?:article|produit).*(?:baisse|chute)|(?:baisse|chute).*(?:article|produit)/.test(q)){threshold={metric:'delta',operator:'lt',value:0};op='rank';metric.splice(0,metric.length,'delta')}
+ if(/ne.*vend.*pas|sans vente|zero vente/.test(q))threshold={metric:'sales',operator:'eq',value:0};
+ if(op==='count'&&/vendu|actif/.test(q))threshold={metric:'sales',operator:'gt',value:0};
+ if(/marge negative/.test(q))threshold={metric:'marginValue',operator:'lt',value:0};
+ const sort=q.match(/(?:par|selon|en fonction du|en termes de)\s+(?:le |la |du |leur )?(taux de marge|marge|rentabilite|ca\b|chiffre|volume|quantite|ticket|panier|variation|ecart)/);if(sort){const m=/taux de marge/.test(sort[1])?'marginRate':/marge|rentabil/.test(sort[1])?'marginValue':/volume|quantite/.test(sort[1])?'units':/ticket/.test(sort[1])?'tickets':/panier/.test(sort[1])?'averageBasket':/variation|ecart/.test(sort[1])?'delta':'sales';metric.splice(0,metric.length,m,...metric.filter(x=>x!==m).slice(0,5))}
+ const direction=/flop|moins vendu|plus faible|baisse|chute|pire/.test(q)?'asc':previous?.direction||'desc';
+ const query={entity,operation:op,metrics:metric,limit:follow&&!/\b\d{1,3}\b/.test(q)?previous.limit:numberCount(q),offset:/les suivants|continue/.test(q)&&previous?Math.min(200,previous.offset+previous.limit):0,direction,filters,threshold,absolute:/plus fort.*variation|variation.*plus fort/.test(q)};
+ const queries=[query];if(/pourquoi|expliqu/.test(q)&&/promo/.test(q)&&/panier|client/.test(q))queries.push({...query,entity:'customers',operation:'retention',metrics:['tickets','averageBasket'],filters:{codes:[]}});
+ return validateQueryPlan({queries});
+}
+const dateValid=s=>{const d=new Date(s+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===s};
+const shift=(s,n)=>{const d=new Date(s+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)};
+export function requestedPeriod(question,input,{today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())}={}){
+ const q=normalize(question);let dates=String(question).match(/\b20\d{2}-\d{2}-\d{2}\b/g)||[];if(!dates.length){const numeric=[...String(question).matchAll(/\b(\d{1,2})[/.](\d{1,2})(?:[/.](20\d{2}))?\b/g)];dates=numeric.map(m=>(m[3]||today.slice(0,4))+'-'+m[2].padStart(2,'0')+'-'+m[1].padStart(2,'0'))}let start=input.start,end=input.end;
+ if(dates.length){if(dates.length>2||dates.some(d=>!dateValid(d)))return{clarification:'Précisez une période au format AAAA-MM-JJ, ou appliquez les deux fenêtres dans les filtres Analytics.'};[start,end]=[dates[0],dates[1]||dates[0]]}
+ else if(/avant[- ]hier/.test(q))start=end=shift(today,-2);else if(/\bhier\b/.test(q))start=end=shift(today,-1);else if(/aujourd hui/.test(q))start=end=today;
+ else if(/7 derniers jours/.test(q)){start=shift(today,-6);end=today}else if(/30 derniers jours/.test(q)){start=shift(today,-29);end=today}else if(/mois dernier|mois precedent/.test(q)){const previous=shift(today.slice(0,8)+'01',-1);start=previous.slice(0,8)+'01';end=previous}else if(/ce mois|mois en cours/.test(q)){start=today.slice(0,8)+'01';end=today}
+ else if(/\b\d{1,2}\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)\b|semaine derniere|semaine passee|en janvier|en fevrier|en mars|en avril|en mai|en juin|en juillet|en aout|en septembre|en octobre|en novembre|en decembre|lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche/.test(q))return{clarification:'Quelle date ou période exacte souhaitez-vous ? Utilisez les dates AAAA-MM-JJ ou les filtres Analytics pour éviter une interprétation de calendrier incorrecte.'};
+ if(!dateValid(start)||!dateValid(end)||start>end||end>today)return{clarification:'La période demandée doit contenir des dates valides, sans jour futur.'};
+ if((Date.parse(end)-Date.parse(start))/86400000>=31)return{clarification:'Choisissez une fenêtre de 31 jours maximum pour cette analyse.'};
+ if(/^(?!.*avant[- ]hier.*\bhier\b).*\bhier\b.*avant[- ]hier/.test(q)){start=end=shift(today,-1);return{changed:true,input:{...input,start,end,compareStart:shift(today,-2),compareEnd:shift(today,-2),slices:undefined}}}
+ if(start===input.start&&end===input.end)return{input,changed:false};const days=(Date.parse(end)-Date.parse(start))/86400000+1,compareEnd=shift(start,-1),compareStart=shift(compareEnd,-days+1);return{changed:true,input:{...input,start,end,compareStart,compareEnd,slices:undefined}};
+}

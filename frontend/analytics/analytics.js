@@ -1380,6 +1380,7 @@
   }
 
   window.RETAIL_INTELLIGENCE = {
+    applyAnalysisScope:target=>{const dates=[target.start,target.end,target.compareStart,target.compareEnd];if(dates.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x||''))||target.start>target.end||target.compareStart>target.compareEnd||target.compareEnd>=target.start)throw new Error('Période invalide');const ids=target.storeIds||[];if(!Array.isArray(ids)||ids.some(id=>!state.stores.some(s=>s.id===id)))throw new Error('Magasin hors périmètre');state.periodPreset='custom';state.comparisonMode='custom';state.periodStart=target.start;state.periodEnd=target.end;state.compareStart=target.compareStart;state.compareEnd=target.compareEnd;state.selectedStoreIds=[...new Set(ids)];state.section='sales';syncStoreSelectionState();hydrateStoreFilter();applySectionView();refreshForPeriod(false);},
     getState: () => state,
     getSelectedStores: () => selectedStores(),
     getStoreScopeKey: () => state.selectedStoreIds.length ? [...state.selectedStoreIds].sort().join(',') : 'ALL',
