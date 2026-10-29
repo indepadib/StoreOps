@@ -1,3 +1,4 @@
+import {prepareReceiptHistory,readReceiptHistory} from './analytics-receipt-history.mjs';
 import {prepareAnalyticsStock} from './dynamics-stock.mjs';
 import {readArticleReference} from './analytics-article-reference.mjs';
 import {db} from '../db.mjs';
@@ -13,7 +14,7 @@ export function intelligenceScope(user,requested,stores){
  const found=allowed.filter(s=>s.id===requested);if(!found.length)throw Object.assign(new Error('Magasin interdit ou inconnu.'),{status:403});return found;
 }
 export async function handleCustomerBiApi({req,url,user}){
- if(req.method!=='GET'||!['/api/analytics/customer-intelligence','/api/analytics/detention','/api/analytics/detention/prepare','/api/analytics/article-reference','/api/analytics/intelligence-scope','/api/analytics/customer-intelligence/prepare'].includes(url.pathname))return null;
+ if(req.method!=='GET'||!['/api/analytics/customer-intelligence','/api/analytics/detention','/api/analytics/detention/prepare','/api/analytics/detention/history','/api/analytics/detention/history/prepare','/api/analytics/article-reference','/api/analytics/intelligence-scope','/api/analytics/customer-intelligence/prepare'].includes(url.pathname))return null;
  const all=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all();let stores=intelligenceScope(user,url.searchParams.get('storeId'),all);
  const requestedIds=(url.searchParams.get('storeIds')||'').split(',').filter(Boolean);
  if(requestedIds.length){if(requestedIds.some(id=>!stores.some(s=>s.id===id)))return{status:403,data:{error:'Périmètre magasin interdit.'}};stores=stores.filter(s=>requestedIds.includes(s.id))}
@@ -30,6 +31,7 @@ export async function handleCustomerBiApi({req,url,user}){
   return{status:200,data:{status:'READY',storeId:stores[0].id,date,tickets:evidence.baskets.length}};
  }
  if(!stores.length&&!url.pathname.includes('customer-intelligence'))return{status:403,data:{error:'Aucun magasin accessible.'}};
+ if(url.pathname.startsWith('/api/analytics/detention/history')){if(stores.length!==1)return{status:400,data:{error:'Un magasin requis.'}};const kind=url.searchParams.get('kind')==='supply'?'supply':'store';return{status:200,data:url.pathname.endsWith('/prepare')?await prepareReceiptHistory(stores[0].id,{kind,cursor:Math.max(0,Math.floor(Number(url.searchParams.get('cursor'))||0)),snapshot:url.searchParams.get('snapshot')}):await readReceiptHistory(stores[0].id,kind)}}
  if(url.pathname==='/api/analytics/detention/prepare'){if(stores.length!==1)return{status:400,data:{error:'Un magasin requis.'}};const kind=url.searchParams.get('kind')==='supply'?'supply':'store';return{status:200,data:await prepareAnalyticsStock(stores[0].id,{kind,offset:Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)),snapshot:url.searchParams.get('snapshot'),force:url.searchParams.get('force')==='1'})}}
  if(url.pathname.endsWith('/article-reference'))return{status:200,data:await readArticleReference({offset:Math.max(0,Math.floor(Number(url.searchParams.get('offset'))||0)),limit:Math.max(1,Math.min(40,Math.floor(Number(url.searchParams.get('limit'))||40))),expectedSnapshot:url.searchParams.get('snapshot')})};
  if(url.pathname.endsWith('/detention')){
