@@ -13,8 +13,8 @@ for(const id of ['qa-A','qa-B'])db.prepare('INSERT OR IGNORE INTO stores(id,name
 const stores=[{id:'qa-A',name:'Magasin test'}],user={id:'qa-user',role:'store_manager',store_id:'qa-A'};
 const input={start:'2026-10-20',end:'2026-10-21',compareStart:'2026-10-18',compareEnd:'2026-10-19'};
 const part={coverage:{currentStoresReady:1,comparisonStoresReady:1},summary:{current:{sales:200,tickets:10,identifiedSales:100,identifiedTickets:6,marginValue:40,marginSalesBase:170},previous:{sales:160,tickets:8,identifiedSales:80}},products:[{key:'SKU',label:'Produit test',sales:200,previousSales:160}],stores:[{storeId:'qa-A',storeName:'Magasin test',sales:200,previousSales:160,tickets:10}],crm:{customerMergeRows:[{customerAccount:'PRIVATE_ACCOUNT',customerName:'PRIVATE_NAME'}]},margin:{status:'ESTIMATED',coveragePct:99},quality:{status:'OK'},generatedAt:'2026-10-22T10:00:00Z'};
-const cache=analyticsCacheKey('decision-v32',['qa-A',input.start,input.end,input.compareStart,input.compareEnd]);
-await writeAnalyticsCache(cache,'decision-v32',part,300);
+const cache=analyticsCacheKey('decision-v33',['qa-A',input.start,input.end,input.compareStart,input.compareEnd]);
+await writeAnalyticsCache(cache,'decision-v33',part,300);
 const f=await assistantFacts(stores,{...input,sales:999999});assert.equal(f.sales.current,200);assert.equal(f.sales.delta,40);assert.equal(f.sales.averageBasket,20);assert.equal(f.sales.identifiedCustomers,1);assert.ok(!JSON.stringify(f).includes('PRIVATE_'));
 const answer=await answerAnalytics('Quel CA ?',f);assert.equal(answer.engine,'CALCULATED');assert.match(answer.answer,/200 DH/);assert.match(answer.answer,/\[S1\]/);
 await assert.rejects(assistantFacts(stores,{...input,compareStart:'2026-08-01'}),{status:400});
@@ -23,8 +23,8 @@ const slice={storeIds:['qa-B'],period:{startDate:input.start,endDate:input.end},
 await assert.rejects(assistantFacts(stores,{...input,slices:[slice]}),{status:403});
 await assert.rejects(assistantFacts(stores,{...input,slices:[{...slice,storeIds:['qa-A','qa-A']}]}),{status:400});
 await assert.rejects(assistantFacts(stores,{...input,slices:[{...slice,storeIds:['qa-A'],period:{startDate:input.start,endDate:input.start}}]}),{status:409});
-await writeAnalyticsCache(cache,'decision-v32',{...part,coverage:{currentStoresReady:0,comparisonStoresReady:1}},300);await assert.rejects(assistantFacts(stores,input),{status:409});
-await writeAnalyticsCache(cache,'decision-v32',{...part,summary:{current:{sales:null,tickets:10},previous:part.summary.previous}},300);const unknown=await assistantFacts(stores,input);assert.equal(unknown.sales.delta,null);assert.equal(unknown.sales.averageBasket,null);
+await writeAnalyticsCache(cache,'decision-v33',{...part,coverage:{currentStoresReady:0,comparisonStoresReady:1}},300);await assert.rejects(assistantFacts(stores,input),{status:409});
+await writeAnalyticsCache(cache,'decision-v33',{...part,summary:{current:{sales:null,tickets:10},previous:part.summary.previous}},300);const unknown=await assistantFacts(stores,input);assert.equal(unknown.sales.delta,null);assert.equal(unknown.sales.averageBasket,null);
 const req=(method,value)=>({method,async *[Symbol.asyncIterator](){yield JSON.stringify(value)}});
 let r=await handleDecisionToolsApi({req:req('GET'),user,url:new URL('https://test/api/analytics/operational-summary?storeId=qa-B')});assert.equal(r.status,403);
 r=await handleDecisionToolsApi({req:req('GET'),user,url:new URL('https://test/api/analytics/pricing-context?storeId=qa-A&product=SKU&date=2026-02-31')});assert.equal(r.status,400);
@@ -42,7 +42,7 @@ console.log('PASS assistant server evidence, privacy, dates and scope; competito
 assert.equal(f.currency,'MAD');assert.equal(f.moneyUnit,'DH');assert.equal(f.salesBasis,'TTC');assert.equal(f.marginBasis,'HT');
 for(const text of ['CA : 200 € [S1]','CA : 200 EUR','200 euros','200 USD','200 dollars','$200','200 £','200 ¥'])assert.throws(()=>validateAnalyticsAnswer(text),{code:'INVALID_AI_CURRENCY'});assert.equal(validateAnalyticsAnswer('CA TTC : 200 DH [S1]'),'CA TTC : 200 DH [S1]');
 
-const rejectedAI=await answerAnalytics('Fixture devise invalide',f,{generate:async()=> 'CA : 200 € [S1]'});assert.equal(rejectedAI.engine,'CALCULATED');assert.equal(rejectedAI.aiValidationFailed,true);assert.ok(!rejectedAI.answer.includes('€'));assert.match(rejectedAI.answer,/200 DH/);
+const rejectedAI=await answerAnalytics('Fixture CA devise invalide',f,{generate:async()=> 'CA : 200 € [S1]'});assert.equal(rejectedAI.engine,'CALCULATED');assert.equal(rejectedAI.aiValidationFailed,true);assert.ok(!rejectedAI.answer.includes('€'));assert.match(rejectedAI.answer,/200 DH/);
 const validAI=await answerAnalytics('Fixture devise valide',f,{generate:async()=> JSON.stringify({topics:['SALES'],productIds:[],actions:['TRAFFIC']})});assert.equal(validAI.engine,'AI_GROUNDED');assert.equal(validAI.aiValidationFailed,false);
 
 assert.equal(f.margin.valueHT,40);assert.equal(f.margin.salesBaseHT,170);assert.equal(f.margin.accountingCertified,false);assert.equal(f.margin.estimated,true);assert.match(f.ticketDefinition,/pas un client unique/);assert.equal(validateAnalyticsAnswer('## Résultat\n**200 DH** [S1]'),'Résultat\n200 DH [S1]');const marginAnswer=await answerAnalytics('Fixture marge calculée',f);assert.match(marginAnswer.answer,/40 DH/);

@@ -1,0 +1,14 @@
+# Business detention and exact questions
+
+Ranking questions bypass provider calls and the generic three-product plan. The count (default10, maximum50), ordering, metric and supported store scope are deterministic. They use all products in the prepared decision evidence, not the30 biggest movements. Unknown measures and unsupported crosses request clarification instead of returning network totals. Units must be comparable. Categories and departments have their own rankings. No customer identifiers are included in facts.
+
+Detention has three business bases plus a supplementary common-reference comparison:
+- Warehouse history: distinct products received at least once, currently positive at that warehouse / historically received products. Shared warehouse counted once.
+- Store history: the same ratio using actual destination-store receipts, with department and origin filters.
+- Relative PGC: store-positive positions / PGC positions positive on the supply platform. Platform-zero positions excluded; unknown quantities or unclassified potential platform positions block the percentage.
+
+Origin is a business convention on the current primary vendor: Extenc International is import; other known vendors local; unresolved vendors unknown. It does not certify historical customs origin. Receipts use positive received quantities, or PO lines in definitive Received/Invoiced status with positive ordered quantity when the source does not expose received quantity. Pending orders alone, requested dates and shipped quantities do not establish receipt. Purchase and transfer lines are scoped by receiving warehouse, with header joins if required. Each bounded preparation request reads one page; stable order by document/line, snapshot and cursor checks, max100000 scanned rows, no truncation silently accepted. A failed or unmapped source blocks the percentage. Cached results24h. All accessible dates are read, but purged archives and completeness since opening are not certified by the connector. No Dynamics writes.
+
+Margin total validation thresholds remain unchanged. A separate measure on valued sales is allowed only with HT basis and unambiguous cost semantics, known covered base and plausible aggregate. It reports HT margin/base, cost coverage and unvalued TTC sales, and never substitutes for the total. Empty sales days do not poison the merged margin of selling days. Unknown costs on positive sales still block that total. Browser cachev35, decision cachev33; prepared raw sales caches preserved.
+
+Tests: analytics-business-views covers full-universe top10, store scope, ranking metrics, mixed units, receipt proofs, warehouse filters, pagination token, cache reuse, three detention bases, vendor convention,98% partial margin versus blocked total, and empty-day merging. Existing analytical, scope/privacy, period-race and UI contracts remain active.
