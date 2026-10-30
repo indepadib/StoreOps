@@ -9,6 +9,6 @@ export function renderQueryResult(container,result,{onSuggestion,onScope}={}){
  if(result.suggestedScope){const b=document.createElement('button');b.type='button';b.textContent='Charger la période et les magasins demandés';b.onclick=()=>onScope?.(result.suggestedScope,result.originalQuestion);container.appendChild(b)}
  return true;
 }
-export function applyQueryScope(target,question){
- window.RETAIL_INTELLIGENCE.applyAnalysisScope(target);const field=document.getElementById('analyticsAssistantQuestion');if(field)field.value=question||'';document.getElementById('assistantStatus').textContent='Périmètre demandé appliqué. Les ventes se chargent ; reposez ensuite la question. Aucun appel IA supplémentaire n’est lancé automatiquement.';
+export function applyQueryScope(target,question,restoreContext){
+ window.RETAIL_INTELLIGENCE.applyAnalysisScope(target);restoreContext?.();const field=document.getElementById('analyticsAssistantQuestion');if(field)field.value=question||'';document.getElementById('assistantStatus').textContent='Périmètre demandé appliqué. Les ventes se chargent ; reposez ensuite la question. Aucun appel IA supplémentaire n’est lancé automatiquement.';
 }
