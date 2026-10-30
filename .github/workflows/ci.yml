@@ -37,6 +37,7 @@ jobs:
           node backend/tests/basket-direction-report.mjs
           node backend/tests/analytics-analysis-axes.mjs
           node backend/tests/analytics-business-views.mjs
+          node backend/tests/analytics-detention-report.mjs
           node backend/tests/analytics-query-agent.mjs
           node backend/tests/analytics-decision-tools.mjs
           node backend/tests/article-impact-analysis.mjs
