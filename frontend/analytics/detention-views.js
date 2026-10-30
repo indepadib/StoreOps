@@ -56,7 +56,7 @@ $('detentionGlobalReport').onclick=async()=>{
    if(!current())throw Error('Périmètre modifié : rapport annulé.');histories.set(shop.id+'|'+kind,h);if(kind==='supply'&&warehouse)supplyHistories.set(warehouse,h);
   }
   if(!current())throw Error('Périmètre modifié : rapport annulé.');globalReport=detentionReport(structuredClone({stores:shops,rows,meta,histories:Object.fromEntries(histories),complete:stockComplete}));
-  saveGlobal(detentionHtml(globalReport),'text/html;charset=utf-8','html');$('detentionGlobalCsv').disabled=false;render();$('detentionHistoryStatus').textContent='Rapport téléchargé : synthèse, départements, import/local, actions et toutes les références. '+(globalReport.complete?'Trois visions calculées.':'Certaines sources ou bases sont incomplètes : réserves dans le rapport, taux concernés suspendus.')+' Ouvrir le fichier pour imprimer ou enregistrer en PDF. Aucun appel IA.';
+  saveGlobal(detentionHtml(globalReport),'text/html;charset=utf-8','html');$('detentionGlobalCsv').disabled=false;render();$('detentionHistoryStatus').textContent='Rapport téléchargé : synthèse globale, départements et articles filtrables ; écarts entrepôt présent / magasin absent et magasin présent / entrepôt absent. '+(globalReport.complete?'Trois visions calculées.':'Certaines sources ou bases sont incomplètes : réserves dans le rapport, taux concernés suspendus.')+' Ouvrir le fichier pour imprimer ou enregistrer en PDF. Aucun appel IA.';
  }catch(e){$('detentionHistoryStatus').textContent='Rapport non généré : '+e.message}
  finally{reportBusy=false;$('detentionGlobalReport').disabled=false;$('detentionHistoryLoad').disabled=false}
 };
