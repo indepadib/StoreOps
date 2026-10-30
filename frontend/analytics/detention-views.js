@@ -1,3 +1,4 @@
+import {mountDetentionReport} from './detention-report-ui.js';
 import {detentionReport,detentionHtml,detentionCsv} from './detention-report.js';
 import {origin,isPGC,relativeMetric,historicalMetric,filterDetentionRows} from './detention-metrics.js';
 const core=window.RETAIL_INTELLIGENCE,$=id=>document.getElementById(id),esc=core.escapeHtml;
@@ -37,10 +38,13 @@ $('detentionMetricExport').onclick=()=>{const cols=['scope','productNumber','pro
 document.addEventListener('retail-intelligence:period',()=>{if(scopeKey===scope())return;scopeKey=scope();generation++;rows=[];meta=[];histories.clear();stockComplete=false;$('detentionHistoryLoad').disabled=false;render()});render();
 
 let globalReport=null,reportBusy=false;
+const previewButton=document.createElement('button');previewButton.id='detentionOpenReport';previewButton.textContent='Ouvrir le rapport et ses filtres';previewButton.disabled=true;$('detentionGlobalReport').after(previewButton);previewButton.onclick=showGlobalReport;
+function showGlobalReport(){if(!globalReport)return;let dialog=$('detentionReportDialog');if(dialog)dialog.remove();dialog=document.createElement('dialog');dialog.id='detentionReportDialog';dialog.style.cssText='width:96vw;max-width:1600px;height:94vh;max-height:94vh;padding:12px;border:0;border-radius:14px;overflow:auto;background:#f3f6f8';const close=document.createElement('button');close.textContent='Fermer le rapport';close.style.cssText='position:sticky;top:0;z-index:9;float:right;padding:10px';close.onclick=()=>dialog.close();dialog.appendChild(close);const panel=document.createElement('div');panel.style.cssText='font:14px system-ui;color:#183343';const root=panel.attachShadow({mode:'open'});root.innerHTML=detentionHtml(globalReport).replace(/<script>([\s\S]*?)<\/script>/g,'');dialog.appendChild(panel);document.body.appendChild(dialog);mountDetentionReport(root);dialog.showModal();previewButton.disabled=false;}
+
 function saveGlobal(content,type,extension){const url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download='storeops-detention-globale-'+globalReport.generatedAt.slice(0,10)+'.'+extension;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000)}
 $('detentionGlobalCsv').onclick=()=>{if(globalReport)saveGlobal(detentionCsv(globalReport),'text/csv;charset=utf-8','csv')};
 $('detentionGlobalReport').onclick=async()=>{
- if(reportBusy)return;reportBusy=true;const scopeAt=scope(),ownGeneration=generation;const current=()=>scopeAt===scope()&&ownGeneration===generation;
+ if(reportBusy)return;reportBusy=true;previewButton.disabled=true;const scopeAt=scope(),ownGeneration=generation;const current=()=>scopeAt===scope()&&ownGeneration===generation;
  $('detentionGlobalReport').disabled=true;$('detentionHistoryLoad').disabled=true;$('detentionGlobalCsv').disabled=true;globalReport=null;
  try{
   $('detentionHistoryStatus').textContent='Rapport global : préparation des stocks et des trois visions, sans IA payante…';
@@ -56,9 +60,9 @@ $('detentionGlobalReport').onclick=async()=>{
    if(!current())throw Error('Périmètre modifié : rapport annulé.');histories.set(shop.id+'|'+kind,h);if(kind==='supply'&&warehouse)supplyHistories.set(warehouse,h);
   }
   if(!current())throw Error('Périmètre modifié : rapport annulé.');globalReport=detentionReport(structuredClone({stores:shops,rows,meta,histories:Object.fromEntries(histories),complete:stockComplete}));
-  saveGlobal(detentionHtml(globalReport),'text/html;charset=utf-8','html');$('detentionGlobalCsv').disabled=false;render();$('detentionHistoryStatus').textContent='Rapport téléchargé : synthèse globale, départements et articles filtrables ; écarts entrepôt présent / magasin absent et magasin présent / entrepôt absent. '+(globalReport.complete?'Trois visions calculées.':'Certaines sources ou bases sont incomplètes : réserves dans le rapport, taux concernés suspendus.')+' Ouvrir le fichier pour imprimer ou enregistrer en PDF. Aucun appel IA.';
+  showGlobalReport();saveGlobal(detentionHtml(globalReport),'text/html;charset=utf-8','html');$('detentionGlobalCsv').disabled=false;render();$('detentionHistoryStatus').textContent='Rapport téléchargé : synthèse globale, départements et articles filtrables ; écarts entrepôt présent / magasin absent et magasin présent / entrepôt absent. '+(globalReport.complete?'Trois visions calculées.':'Certaines sources ou bases sont incomplètes : réserves dans le rapport, taux concernés suspendus.')+' Ouvrir le fichier pour imprimer ou enregistrer en PDF. Aucun appel IA.';
  }catch(e){$('detentionHistoryStatus').textContent='Rapport non généré : '+e.message}
  finally{reportBusy=false;$('detentionGlobalReport').disabled=false;$('detentionHistoryLoad').disabled=false}
 };
-document.addEventListener('retail-intelligence:period',()=>{if(globalReport&&scopeAtReportChanged()){$('detentionGlobalCsv').disabled=true;globalReport=null}});
+document.addEventListener('retail-intelligence:period',()=>{if(globalReport&&scopeAtReportChanged()){$('detentionGlobalCsv').disabled=true;globalReport=null;previewButton.disabled=true;const dialog=$('detentionReportDialog');if(dialog)dialog.remove()}});
 function scopeAtReportChanged(){return globalReport.stores.join('|')!==core.getSelectedStores().map(s=>s.name).join('|')}
