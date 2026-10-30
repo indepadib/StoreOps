@@ -31,7 +31,7 @@ export async function readReceiptHistory(storeId,kind='store'){
 export async function prepareReceiptHistory(storeId,{kind='store',cursor=0,snapshot=null}={},deps={}){
  const read=deps.read||readAnalyticsCache,write=deps.write||writeAnalyticsCache,resolve=deps.resolve||mapping,get=deps.get||odataGet;
  const warehouse=deps.warehouse|| (kind==='supply'?supplyWarehouseForStore(storeId):storeOperationalSettings(storeId).storeWarehouseId);if(!warehouse)throw Object.assign(new Error('Dépôt non configuré.'),{status:422});
- const readyKey=key(kind,warehouse),ready=await read(readyKey);if(cursor===0&&!snapshot&&ready)return{...ready,products:undefined,nextCursor:null,cached:true};
+ const readyKey=key(kind,warehouse),ready=await read(readyKey);if(cursor===0&&!snapshot&&ready?.complete===true)return{...ready,products:undefined,nextCursor:null,cached:true};
  if(snapshot&&!/^[a-f0-9-]{36}$/.test(snapshot))throw Object.assign(new Error('Image historique invalide.'),{status:400});
  const prepKey=(token,page)=>analyticsCacheKey('receipt-prep-v2',[config.dynamics.dataAreaId,kind,warehouse,token,page]);let acc=snapshot?await read(prepKey(snapshot,cursor)):null;if(acc)acc=structuredClone(acc);
  if(!snapshot){if(cursor!==0)throw Object.assign(new Error('Relancer la préparation historique.'),{status:409});acc={snapshot:randomUUID(),startedAt:new Date().toISOString(),cursor:0,type:0,offset:0,products:{},sources:[],phase:'MAP',documentOffset:0,documents:[],batch:0,scanned:0,issues:[]}}
