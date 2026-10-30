@@ -40,4 +40,7 @@ assert.equal(aggregateValidatedMargin([{summary:{sales:120},margin:{costKind:'UN
 const source=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8'),start=source.indexOf('  function moneySum('),end=source.indexOf('  function mergeRankedRows('),ctx={};vm.createContext(ctx);vm.runInContext(source.slice(start,end)+';this.snapshot=sumSnapshot;',ctx);
 const snapshot=ctx.snapshot([{summary:{current:{sales:100,tickets:5,marginSalesBase:80,marginValue:20}}},{summary:{current:{sales:0,tickets:0,marginSalesBase:null,marginValue:null}}}],'current');assert.equal(snapshot.marginValue,20);assert.equal(snapshot.marginRate,25);
 const missing=ctx.snapshot([{summary:{current:{sales:100,tickets:5,marginSalesBase:80,marginValue:null}}}],'current');assert.equal(missing.marginValue,null);
+// Partial histories must be retryable immediately; complete histories above remain cached.
+for(const [key,value] of cache)if(value.status==='READY')cache.set(key,{...value,status:'PARTIAL',complete:false});
+const callsBeforeRetry=queries.length,retry=await prepareReceiptHistory('test',{},deps);assert.notEqual(retry.cached,true);assert.equal(retry.status,'PREPARING');assert.equal(queries.length,callsBeforeRetry+1);
 console.log('PASS exact top 10 from full universe, scoped rankings, receipt proof/pagination/cache, historical and PGC denominators, origins, partial margin and empty-day merge');
