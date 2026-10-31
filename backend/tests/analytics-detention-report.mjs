@@ -22,3 +22,36 @@ console.log('PASS detention global summary, department filtering, reciprocal ava
 const {groupDetentionReferences,detentionGap}=await import('../../frontend/analytics/detention-report-ui.js');assert.equal(groupDetentionReferences(r.inventory).length,3);assert.equal(groupDetentionReferences(r.inventory)[0].variants.length,2);assert.equal(detentionGap({stock:0,warehouse:2,expected:false}),'OUTSIDE');assert.equal(detentionGap({stock:-1,warehouse:2,expected:true}),'CHECK');
 // Two stores with a shared SKU count as one reference in the UI and export; store filters retain the right quantities.
 dom.reportData.textContent=JSON.stringify({inventory:r.inventory});for(const el of Object.values(dom)){el.value='';el.children=[]}mountDetentionReport();assert.equal(dom.positions.textContent,'3');assert.equal(dom.warehouseOnlyCount.textContent,'2');assert.equal(dom.storeComparison.children[1].children.length,2);dom.store.value='B';dom.store.change();assert.equal(dom.positions.textContent,'3');assert.equal(dom.warehouseOnlyCount.textContent,'0');
+
+// The Excel action must deliver a real multi-sheet OOXML package, not a renamed CSV.
+const {detentionXlsx,detentionSheets,detentionSummaryRows}=await import('../../frontend/analytics/detention-workbook.js');
+const sheets=detentionSheets(r),summary=sheets[0].rows;
+assert.equal(sheets.length,6);assert.equal(sheets[0].name,'Synthèse');
+assert.equal(summary.filter(x=>x[0]==='Entrepôt'&&x[2]==='Global').length,1);
+assert.equal(summary.filter(x=>x[0]==='Magasin'&&x[3]==='APLS').length,2);
+assert.equal(summary.filter(x=>x[0]==='Magasin'&&x[3]==='PGC').length,2);
+assert.equal(sheets.find(s=>s.name==='Détail magasins').rows.length,7);
+const relativeDetail=sheets.find(s=>s.name==='Détail relatif PGC').rows.slice(1);
+assert.equal(relativeDetail.length,4);assert.ok(relativeDetail.every(x=>x[2]==='PGC'&&x[13]>0));
+for(const scope of ['A','B']){const detail=relativeDetail.filter(x=>x[1]===scope),m=summary.find(x=>x[0]==='Relative PGC'&&x[1]===scope&&x[2]==='Global');assert.equal(m[4],detail.length);assert.equal(m[5],detail.reduce((n,x)=>n+x[12],0));assert.equal(m[8].value,m[5]/m[4]);}
+assert.equal(typeof detentionSheets(partial)[0].rows.find(x=>x[0]==='Magasin'&&x[1]==='A'&&x[2]==='Global')[8],'string');
+const bytes=detentionXlsx(r),dv=new DataView(bytes.buffer),files=new Map();let offset=0;
+while(dv.getUint32(offset,true)===0x04034b50){const size=dv.getUint32(offset+18,true),n=dv.getUint16(offset+26,true),extra=dv.getUint16(offset+28,true),start=offset+30+n+extra;files.set(new TextDecoder().decode(bytes.slice(offset+30,offset+30+n)),new TextDecoder().decode(bytes.slice(start,start+size)));offset=start+size;}
+assert.equal(dv.getUint32(offset,true),0x02014b50);assert.equal(files.size,11);
+assert.match(files.get('xl/workbook.xml'),/Détail relatif PGC/);assert.match(files.get('xl/worksheets/sheet1.xml'),/<f>F2\/E2<\/f>/);assert.match(files.get('xl/worksheets/sheet1.xml'),/autoFilter/);assert.match(files.get('xl/worksheets/sheet3.xml'),/state="frozen"/);
+assert.doesNotMatch(files.get('xl/worksheets/sheet4.xml'),/<script>/);assert.match(files.get('xl/worksheets/sheet4.xml'),/&lt;script&gt;/);
+const html=detentionHtml(r);assert.match(html,/id="businessSummary"/);assert.match(html,/id="businessArticles"/);assert.match(html,/Global et focus PGC \/ APLS/);
+assert.equal(detentionSummaryRows(r).find(x=>x.vision==='Relative PGC'&&x.scope==='B'&&x.axis==='Global').rate,1);
+console.log('PASS complete XLSX package: six sheets, shared warehouse once, PGC/APLS store rates, relative denominator and 1/0 detail, missing rates, formula caches and XML escaping');
+
+const {mountDetentionBusiness}=await import('../../frontend/analytics/detention-business-ui.js');
+const businessDom=Object.fromEntries(['reportData','businessScope','businessDepartment','businessVision','businessSearch','businessSummary','businessDepartments','businessArticles','businessCount','businessPrevious','businessNext'].map(id=>[id,new Element()]));
+businessDom.reportData.textContent=JSON.stringify({business:{summaries:detentionSummaryRows(r),details:(await import('../../frontend/analytics/detention-workbook.js')).detentionBusinessRows(r)}});
+mountDetentionBusiness({querySelector:s=>businessDom[s.slice(1)]});
+assert.ok(businessDom.businessSummary.children[1].children.length>5);
+businessDom.businessScope.value='B';businessDom.businessVision.value='Relative PGC';businessDom.businessScope.change();
+assert.equal(businessDom.businessArticles.children[1].children.length,2);
+assert.ok(businessDom.businessArticles.children[1].children.every(tr=>tr.children[2].textContent==='PGC'&&tr.children[12].textContent===1));
+businessDom.businessDepartment.value='APLS';businessDom.businessDepartment.change();assert.equal(businessDom.businessArticles.children[1].children.length,0);
+console.log('PASS visible business synthesis and detailed scope, vision and department filters');
+
