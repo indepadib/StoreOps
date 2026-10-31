@@ -88,3 +88,8 @@ console.log('PASS composed requests and filtered category totals over every matc
 const thresholdDiagnosis=renderQueryAnswer(parseQuery('Pourquoi les produits CA > 150 baissent ?'),evidence);assert.doesNotMatch(thresholdDiagnosis.answer,/Jus orange/);assert.match(thresholdDiagnosis.answer,/Lait frais/);
 const unitDiagnosis=renderQueryAnswer(parseQuery('Pourquoi les volumes produits baissent ?'),evidence);assert.doesNotMatch(unitDiagnosis.answer,/Diagnostic des articles sélectionnés/);assert.match(unitDiagnosis.answer,/Quantité/);
 console.log('PASS diagnostics preserve explicit thresholds and requested non-sales measures');
+
+const missingStockCatalog=await queryStock(stores,{...input,question:'Détention PGC'},parseQuery('Détention PGC'),{...stockDeps,catalogReader:async()=>({items:[],complete:false})});assert.equal(missingStockCatalog.engine,'QUERY_NEEDS_DATA');assert.match(missingStockCatalog.answer,/référentiel/);assert.doesNotMatch(missingStockCatalog.answer,/0 %/);
+const partialStockCatalog=await queryStock(stores,{...input,question:'Détention PGC'},parseQuery('Détention PGC'),{...stockDeps,catalogReader:async()=>({items:stockCatalog.slice(0,1),complete:false})});assert.equal(partialStockCatalog.sections[0].rows[0][4],'Non disponible');assert.match(partialStockCatalog.answer,/taux restent suspendus/);
+const partialRelative=await queryStock(stores,{...input,question:'Détention relative PGC'},parseQuery('Détention relative PGC'),{...stockDeps,catalogReader:async()=>({items:stockCatalog.slice(0,1),complete:false})});assert.equal(partialRelative.sections[0].rows[0][4],'Non disponible');
+console.log('PASS missing classifications never produce a filtered zero or a partial historical/relative detention percentage');
