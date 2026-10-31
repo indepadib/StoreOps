@@ -1,0 +1,15 @@
+export function mountDetentionBusiness(root=document){
+ const $=id=>root.querySelector('#'+id),data=JSON.parse($('reportData').textContent);if(!data.business)return;
+ const {summaries,details}=data.business,n=v=>v==null?'Non disponible':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v);let page=0;
+ function options(id,values){for(const v of [...new Set(values)].sort()){const o=document.createElement('option');o.value=v;o.textContent=v;$(id).appendChild(o)}}
+ options('businessScope',summaries.map(r=>r.scope));options('businessDepartment',details.map(r=>r[2]));
+ function table(id,heads,rows){const t=$(id);t.replaceChildren();const head=document.createElement('thead'),tr=document.createElement('tr');for(const v of heads){const c=document.createElement('th');c.textContent=v;tr.appendChild(c)}head.appendChild(tr);t.appendChild(head);const body=document.createElement('tbody');for(const row of rows){const tr=document.createElement('tr');for(const v of row){const c=document.createElement('td');c.textContent=v??'';tr.appendChild(c)}body.appendChild(tr)}t.appendChild(body)}
+ function render(){const scope=$('businessScope').value,department=$('businessDepartment').value,kind=$('businessVision').value;
+  const chosen=summaries.filter(r=>(!scope||r.scope===scope)&&(!kind||r.vision===kind)),head=['Vision','Périmètre','Département / origine','Base références','Détenues','Absentes','Inconnues','Détention'],cells=r=>[r.vision,r.scope,r.group,n(r.base),n(r.held),n(r.missing),n(r.unknown),r.rate==null?'Non calculable':n(r.rate*100)+' %'];
+  table('businessSummary',head,chosen.filter(r=>department?r.axis==='Département'&&r.group===department:r.axis==='Global'||r.axis==='Département'&&['PGC','APLS'].includes(r.group.toUpperCase())||r.vision==='Entrepôt'&&r.axis==='Origine').map(cells));
+  table('businessDepartments',head,chosen.filter(r=>r.axis==='Département'&&(!department||r.group===department)).map(cells));
+  const search=$('businessSearch').value.toLowerCase(),list=details.filter(r=>(!scope||r[1]===scope)&&(!kind||r[0]===kind)&&(!department||r[2]===department)&&(!search||r.slice(2,10).join(' ').toLowerCase().includes(search)));page=Math.max(0,Math.min(page,Math.ceil(list.length/100)-1));
+  table('businessArticles',['Vision','Périmètre','Département','Rayon','Famille','UB','Code','Article','Fournisseur','Origine','Stock actuel','Unité','Détenue (1/0)','Stock plateforme','Première réception connue','Preuve de présence','Sources'],list.slice(page*100,(page+1)*100));$('businessCount').textContent=n(list.length)+' lignes de base métier · page '+(page+1)+' / '+Math.max(1,Math.ceil(list.length/100));$('businessPrevious').disabled=page===0;$('businessNext').disabled=(page+1)*100>=list.length;
+ }
+ for(const id of ['businessScope','businessDepartment','businessVision','businessSearch'])$(id).addEventListener(id==='businessSearch'?'input':'change',()=>{page=0;render()});$('businessPrevious').onclick=()=>{page--;render()};$('businessNext').onclick=()=>{page++;render()};render();
+}
