@@ -84,3 +84,7 @@ const pgcTotal=renderQueryAnswer(parseQuery('Quel est le CA PGC ?'),evidence);as
 const largeProducts=Array.from({length:50},(_,i)=>({...evidence.table.products[0],article:'X'+i,sales:10,previousSales:8,delta:2}));
 const completeTotal=executeQuery(parseQuery('CA PGC').queries[0],{...evidence,table:{...evidence.table,products:largeProducts}});assert.match(completeTotal.headline,/500 DH/);assert.match(completeTotal.headline,/100 DH par rapport/);
 console.log('PASS composed requests and filtered category totals over every matching article, beyond displayed ranking limits');
+
+const thresholdDiagnosis=renderQueryAnswer(parseQuery('Pourquoi les produits CA > 150 baissent ?'),evidence);assert.doesNotMatch(thresholdDiagnosis.answer,/Jus orange/);assert.match(thresholdDiagnosis.answer,/Lait frais/);
+const unitDiagnosis=renderQueryAnswer(parseQuery('Pourquoi les volumes produits baissent ?'),evidence);assert.doesNotMatch(unitDiagnosis.answer,/Diagnostic des articles sélectionnés/);assert.match(unitDiagnosis.answer,/Quantité/);
+console.log('PASS diagnostics preserve explicit thresholds and requested non-sales measures');
