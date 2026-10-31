@@ -52,3 +52,35 @@ const {queryStock}=await import('../services/analytics-query-stock.mjs');let reg
 answer=await answerBusinessQuestion(stores,{...input,question:'Question opaque sans indicateur'}, {...deps,planner:async()=>{throw Error('timeout')}});assert.equal(answer.reason,'PLANNER_UNAVAILABLE');assert.doesNotMatch(answer.answer,/400 DH/);
 const {applyQueryScope}=await import('../../frontend/analytics/assistant-query-ui.js');let applied=0;globalThis.window={RETAIL_INTELLIGENCE:{applyAnalysisScope:()=>{applied++}}};const dom={analyticsAssistantQuestion:{value:''},assistantStatus:{textContent:''}};globalThis.document={getElementById:id=>dom[id]};let contextRestored=false;applyQueryScope({...input,storeIds:['trefle']},'CA hier',()=>{assert.equal(applied,1);contextRestored=true});assert.equal(contextRestored,true);assert.equal(applied,1);assert.equal(dom.analyticsAssistantQuestion.value,'CA hier');
 console.log('PASS broad query matrix, filters and comparisons, distinct-basket safety, follow-ups, dates, schema rejection, cheap deterministic routing, one-call cached planner, scope preparation and atomic UI');
+
+// Natural business wording must preserve the requested measure and subset.
+for(const question of ['Quels sont mes best sellers ?', 'Quels produits rapportent le plus ?', 'Mes 5 produits qui rapportent le moins']){const p=parseQuery(question);assert.equal(p.queries[0].entity,'products',question);assert.equal(p.queries[0].operation,'rank',question);}
+assert.equal(parseQuery('Mes 5 produits qui rapportent le moins').queries[0].direction,'asc');
+assert.equal(parseQuery('Pourquoi le PGC baisse ?').queries[0].entity,'products');
+assert.equal(parseQuery('Pourquoi le PGC baisse ?').queries[0].operation,'drivers');
+assert.equal(parseQuery('Comment va le PGC ?').queries[0].filters.category,'PGC');
+assert.equal(parseQuery('Et APLS ?', {previousPlan:parseQuery('Top 10 produits PGC')}).queries[0].filters.category,'APLS');
+const week=requestedPeriod('CA la semaine dernière',input,clock).input;assert.equal(week.start,'2026-10-19');assert.equal(week.end,'2026-10-25');assert.equal(week.compareStart,'2026-10-12');assert.equal(week.compareEnd,'2026-10-18');
+assert.equal(requestedPeriod('CA cette semaine',input,clock).input.start,'2026-10-26');
+const diagnosis=renderQueryAnswer(parseQuery('Pourquoi le PGC baisse ?'),evidence);
+assert.match(diagnosis.sections[0].headline,/recul de 100 DH/);assert.match(diagnosis.sections[0].headline,/-50 %/);assert.match(diagnosis.answer,/HS-000001/);assert.doesNotMatch(diagnosis.answer,/Lait frais/);assert.ok(diagnosis.sections[0].actions.length>0);
+const diagnosticRows=diagnosis.sections[0].rows;assert.deepEqual(diagnosticRows[0],['CA TTC','100 DH','200 DH','-100 DH']);
+assert.match(ranked.sections[0].headline,/400 DH/);assert.match(ranked.answer,/arrive en tête/);
+const missingDiagnosis=executeQuery(parseQuery('Pourquoi le PGC baisse ?').queries[0],{...evidence,table:{...evidence.table,products:evidence.table.products.map(r=>({...r,previousSales:null,delta:null}))}});assert.match(missingDiagnosis.headline,/incomplète/);assert.equal(missingDiagnosis.rows[0][3],'Non mesuré');
+// PGC is a department filter. It is never an implicit request for relative detention.
+const stockCatalog=[...catalog,{...catalog[0],productNumber:'HS-000003',productName:'PGC sans plateforme'}],u={rows:[{productNumber:'HS-000001',storeAvailable:1,warehouseAvailable:1},{productNumber:'HS-000003',storeAvailable:1,warehouseAvailable:0}],stockComplete:true,supplyComplete:true,referenceComplete:true,supplyWarehouseId:'W',stockReadAt:'date',warehouseReadAt:'date'};
+const kinds=[],stockDeps={read:async()=>u,catalogReader:async()=>({items:stockCatalog,complete:true}),historyReader:async(id,kind)=>{kinds.push(kind);return{complete:true,products:[{productNumber:'HS-000001'},{productNumber:'HS-000003'}],coverage:'Historique accessible'}}};
+const historicalPGC=await queryStock(stores,{...input,question:'Détention magasin PGC'},parseQuery('Détention magasin PGC'),stockDeps);
+assert.deepEqual(kinds,['store','store']);assert.equal(historicalPGC.sections[0].rows[0][2],'2');assert.match(historicalPGC.answer,/Réceptions historiques magasin/);assert.doesNotMatch(historicalPGC.answer,/Plateforme positive uniquement/);
+const relativePGC=await queryStock(stores,{...input,question:'Détention relative PGC'},parseQuery('Détention relative PGC'),stockDeps);assert.equal(relativePGC.sections[0].rows[0][2],'1');
+const stockList=await queryStock(stores,{...input,question:'Liste des stocks'},parseQuery('Liste des stocks'),stockDeps);assert.ok(stockList.answer.includes('Sources et limites'));assert.equal(stockList.sections[0].rows.length,2);
+const noStock=await queryStock(stores,{...input,question:'Stocks'},parseQuery('Stocks'),{...stockDeps,read:async()=>null});assert.match(noStock.answer,/image de stock non préparée/);
+console.log('PASS stock answers without crash, historical PGC vs relative bases, department-specific diagnosis with reconciled contributions, natural rankings, week calendars and missing-data honesty');
+
+const compound=parseQuery('Top 10 produits ; puis top 5 fournisseurs');assert.equal(compound.queries.length,2);assert.equal(compound.queries[0].entity,'products');assert.equal(compound.queries[1].entity,'suppliers');assert.equal(compound.queries[1].limit,5);
+assert.equal(parseQuery('Compare les magasins par CA et panier').queries.length,1);
+assert.equal(parseQuery('Top 10 articles et top 5 fournisseurs').queries.length,2);
+const pgcTotal=renderQueryAnswer(parseQuery('Quel est le CA PGC ?'),evidence);assert.equal(pgcTotal.sections[0].title,'Total des articles filtrés');assert.match(pgcTotal.sections[0].headline,/100 DH/);assert.doesNotMatch(pgcTotal.sections[0].headline,/400 DH/);
+const largeProducts=Array.from({length:50},(_,i)=>({...evidence.table.products[0],article:'X'+i,sales:10,previousSales:8,delta:2}));
+const completeTotal=executeQuery(parseQuery('CA PGC').queries[0],{...evidence,table:{...evidence.table,products:largeProducts}});assert.match(completeTotal.headline,/500 DH/);assert.match(completeTotal.headline,/100 DH par rapport/);
+console.log('PASS composed requests and filtered category totals over every matching article, beyond displayed ranking limits');
