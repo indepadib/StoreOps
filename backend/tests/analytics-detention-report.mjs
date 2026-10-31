@@ -35,8 +35,8 @@ const relativeDetail=sheets.find(s=>s.name==='Détail relatif PGC').rows.slice(1
 assert.equal(relativeDetail.length,4);assert.ok(relativeDetail.every(x=>x[2]==='PGC'&&x[13]>0));
 for(const scope of ['A','B']){const detail=relativeDetail.filter(x=>x[1]===scope),m=summary.find(x=>x[0]==='Relative PGC'&&x[1]===scope&&x[2]==='Global');assert.equal(m[4],detail.length);assert.equal(m[5],detail.reduce((n,x)=>n+x[12],0));assert.equal(m[8].value,m[5]/m[4]);}
 assert.equal(typeof detentionSheets(partial)[0].rows.find(x=>x[0]==='Magasin'&&x[1]==='A'&&x[2]==='Global')[8],'string');
-const bytes=detentionXlsx(r),dv=new DataView(bytes.buffer),files=new Map();let offset=0;
-while(dv.getUint32(offset,true)===0x04034b50){const size=dv.getUint32(offset+18,true),n=dv.getUint16(offset+26,true),extra=dv.getUint16(offset+28,true),start=offset+30+n+extra;files.set(new TextDecoder().decode(bytes.slice(offset+30,offset+30+n)),new TextDecoder().decode(bytes.slice(start,start+size)));offset=start+size;}
+const bytes=await detentionXlsx(r),dv=new DataView(bytes.buffer),files=new Map();let offset=0;
+while(dv.getUint32(offset,true)===0x04034b50){const size=dv.getUint32(offset+18,true),n=dv.getUint16(offset+26,true),extra=dv.getUint16(offset+28,true),start=offset+30+n+extra;files.set(new TextDecoder().decode(bytes.slice(offset+30,offset+30+n)),new TextDecoder().decode(dv.getUint16(offset+8,true)===8?(await import('node:zlib')).inflateRawSync(bytes.slice(start,start+size)):bytes.slice(start,start+size)));offset=start+size;}
 assert.equal(dv.getUint32(offset,true),0x02014b50);assert.equal(files.size,11);
 assert.match(files.get('xl/workbook.xml'),/Détail relatif PGC/);assert.match(files.get('xl/worksheets/sheet1.xml'),/<f>F2\/E2<\/f>/);assert.match(files.get('xl/worksheets/sheet1.xml'),/autoFilter/);assert.match(files.get('xl/worksheets/sheet3.xml'),/state="frozen"/);
 assert.doesNotMatch(files.get('xl/worksheets/sheet4.xml'),/<script>/);assert.match(files.get('xl/worksheets/sheet4.xml'),/&lt;script&gt;/);
@@ -54,4 +54,3 @@ assert.equal(businessDom.businessArticles.children[1].children.length,2);
 assert.ok(businessDom.businessArticles.children[1].children.every(tr=>tr.children[2].textContent==='PGC'&&tr.children[12].textContent===1));
 businessDom.businessDepartment.value='APLS';businessDom.businessDepartment.change();assert.equal(businessDom.businessArticles.children[1].children.length,0);
 console.log('PASS visible business synthesis and detailed scope, vision and department filters');
-
