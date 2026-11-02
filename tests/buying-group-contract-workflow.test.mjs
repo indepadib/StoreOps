@@ -10,6 +10,7 @@ const file=name=>readFileSync(path.join(base,name),'utf8');
 const migration=file('netlify/database/migrations/20261102150000_hs_contract_workflow.sql');
 const api=file('backend/services/buying-group-api.mjs');
 const frontend=file('frontend/js/pages/buying-group-workflows.js');
+const aiBackend=file('backend/services/buying-group-contract-workflow.mjs');
 const cockpit=file('frontend/js/pages/buying-group.js');
 const userA={id:'director-A'},userB={id:'director-B'};
 const contractId='11111111-1111-4111-8111-111111111111';
@@ -144,4 +145,11 @@ test('AI schema requires financial, clause and evidence fields',()=>{
  assert.ok(contractReadSchema.required.includes('risks'));
  assert.ok(contractReadSchema.properties.clauses.items.properties.quote);
  assert.ok(contractReadSchema.properties.clauses.items.properties.page);
+});
+
+test('Current Claude Sonnet 5.5 call avoids unsupported forced tool mode and custom temperature',()=>{
+ assert.match(aiBackend,/tool_choice:\{type:'auto'\}/);
+ assert.doesNotMatch(aiBackend,/tool_choice:\{type:'tool'/);
+ assert.doesNotMatch(aiBackend,/max_tokens:3500,temperature/);
+ assert.match(aiBackend,/NETLIFY_AI_GATEWAY_KEY/);
 });
