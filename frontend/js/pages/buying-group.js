@@ -8,7 +8,7 @@ const tabs=[
   {id:'overview',label:'Vue Groupe'},
   {id:'suppliers',label:'Fournisseurs'},
   {id:'contracts',label:'Contrats'},
-  {id:'rebates',label:'RFA contractuelles'},
+  {id:'rebates',label:'Marges arrière'},
   {id:'purchases',label:'Journal d’achats'},
   {id:'reconcile',label:'Rapprochement RFA'},
   {id:'opportunities',label:'Opportunités'},
