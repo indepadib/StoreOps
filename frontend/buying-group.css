@@ -309,3 +309,8 @@
 @media(max-width:1180px){#bgWorkflow .hsp-workflow-grid,#bgWorkflow .hsp-process-grid{grid-template-columns:1fr}#bgWorkflow .hsp-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:660px){#bgWorkflow .hsp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#bgWorkflow .hsp-progress-item small{font-size:9px}#bgWorkflow .hsp-progress-number{width:25px;height:25px}#bgWorkflow .hsp-progress-item:before{top:12px}#bgWorkflow .hsp-doc{flex-direction:column;align-items:stretch}#bgWorkflow .hsp-details-grid,#bgWorkflow .hsp-read-stats{grid-template-columns:1fr}#bgWorkflow .hsp-contract-head{padding:21px}#bgWorkflow .hsp-panel{padding:18px}#bgWorkflow .hsp-process-contract{flex-wrap:wrap}}
 @media(max-width:400px){#bgWorkflow .hsp-stats{grid-template-columns:1fr}#bgWorkflow .hsp-progress{gap:1px}#bgWorkflow .hsp-tier{grid-template-columns:1fr 1fr auto}#bgWorkflow .hsp-process-contract{align-items:flex-start}}
+
+#bgWorkflow .hsp-manual-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:10px 0}
+#bgWorkflow .hsp-manual-heading strong{font-size:12px;color:#345e42}
+#bgWorkflow .hsp-manual-task{padding:14px;margin-bottom:12px;display:flex;flex-direction:column;gap:12px;background:#f4f9f0;border:1px solid #dce9d5;border-radius:12px}
+#bgWorkflow .hsp-manual-task>button{align-self:flex-start}
