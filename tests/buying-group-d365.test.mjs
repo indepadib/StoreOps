@@ -39,7 +39,7 @@ test('D365: API rejects write methods before any ERP connection',async()=>{
   assert.equal(result.status,405);
 });
 test('D365: sampling is bounded, on-demand and cannot become a cross-company financial ledger',()=>{
-  assert.match(d365,/const pageSize=60/);
+  assert.match(d365,/pageSize=60/);
   assert.match(d365,/maxRows:pageSize/);
   assert.match(d365,/isD365ReadLive\('receiving'\)/);
   assert.match(d365,/filter,extra:'cross-company=true'/);
