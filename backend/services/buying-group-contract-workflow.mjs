@@ -177,6 +177,13 @@ function validatedReview(body,existing){
     dueDate:validDate(o?.dueDate)?o.dueDate:null,owner:clean(o?.owner,120),
     evidenceQuote:clean(o?.quote,450),evidencePage:clean(o?.page,40)
   })).filter(o=>o.title.length>=3);
+  // A reviewed expiry always generates a follow-up before its term, even when the AI missed it.
+  if(!tasks.some(t=>t.kind==='RENEWAL'||t.kind==='REVIEW')){
+    const milestone=new Date(end+'T12:00:00Z');milestone.setUTCDate(milestone.getUTCDate()-60);
+    tasks.push({title:'Réévaluer les conditions / renouvellement : '+title,kind:'RENEWAL',
+      dueDate:milestone.toISOString().slice(0,10),owner:'Direction Achats',
+      evidenceQuote:'Échéance du contrat : '+end,evidencePage:''});
+  }
   return{title,start,end,rebateMode,rebateBase,tiers:cleanTiers,tasks,reviewNotes:clean(body.reviewNotes,2500)};
 }
 async function review(req,db,user,id){
