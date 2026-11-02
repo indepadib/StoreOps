@@ -122,3 +122,8 @@ let failurePosts=0;const degraded=await requestAssistant({...input,question:'CA'
 console.log('PASS multi-store basket preparation uses the authorized ALL scope with exact selected IDs, and failed sources degrade without endless retries');
 
 const routeCold=await answerBusinessQuestion(stores,{...input,question:"C'est quoi le problème sur le magasin ?",autoPrepare:true},{...deps,read:async()=>null});assert.equal(routeCold.status,'ASSISTANT_PREPARATION_REQUIRED');assert.ok(routeCold.tasks.some(t=>t.kind==='stock'));assert.ok(routeCold.tasks.some(t=>t.kind==='baskets'));
+
+assert.equal(diagnostic.queryContext.diagnostic,true);assert.deepEqual(diagnostic.queryContext.period,input);
+let continuedPeriod;await answerBusinessQuestion(stores,{...input,question:'Et à Trèfle ?',followUp:{plan:parseQuery('Top articles'),period:{...input,start:'2026-10-23',end:'2026-10-23',compareStart:'2026-10-22',compareEnd:'2026-10-22'}}},{...deps,factsBuilder:async(s,p)=>{continuedPeriod=p;return{...facts,period:p}}});assert.equal(continuedPeriod.start,'2026-10-23');assert.equal(continuedPeriod.compareStart,'2026-10-22');
+const continuedDiagnostic=await answerBusinessQuestion(stores,{...input,question:'Et à Trèfle ?',followUp:diagnostic.queryContext},{...deps,read:async()=>null});assert.equal(continuedDiagnostic.status,'ASSISTANT_PREPARATION_REQUIRED');assert.ok(continuedDiagnostic.tasks.filter(t=>t.storeId).every(t=>t.storeId==='trefle'));
+console.log('PASS follow-ups retain the verified period and diagnostic intent instead of reviving an unrelated earlier ranking');
