@@ -1,11 +1,12 @@
+import {marginEvidence} from '../../frontend/analytics/performance-evidence.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
-const source=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8');
+const source=readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8').replace(/^import[^;]+;\s*/,'');
 const nodes=new Map(['#executiveSalesValue','#executiveComparisonValue'].map(k=>[k,{textContent:'',innerHTML:''}]));
 const listeners=new Map(),requests=[],published=[],saved=[];
 const scope={tenant:'franprix',stores:[{id:'val-fleuri'},{id:'trefle'}],selectedStoreIds:['val-fleuri','trefle'],section:'overview',periodStart:'2026-10-21',periodEnd:'2026-10-22',compareStart:'2026-10-19',compareEnd:'2026-10-20'};
-const context={console,AbortController,URLSearchParams,Map,Set,Date,Intl,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail}},setTimeout:()=>0,clearTimeout(){},localStorage:{getItem:()=>null,setItem:(key,value)=>saved.push({key,value})},document:{readyState:'complete',querySelector:key=>nodes.get(key)||null,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners.set(key,fn),dispatchEvent:event=>published.push(event)},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,money:String,number:String,percent:String,api:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))}}};
+const context={marginEvidence,console,AbortController,URLSearchParams,Map,Set,Date,Intl,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail}},setTimeout:()=>0,clearTimeout(){},localStorage:{getItem:()=>null,setItem:(key,value)=>saved.push({key,value})},document:{readyState:'complete',querySelector:key=>nodes.get(key)||null,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners.set(key,fn),dispatchEvent:event=>published.push(event)},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,money:String,number:String,percent:String,api:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))}}};
 vm.runInNewContext(source,context);
 assert.equal(requests.length,1);
 scope.periodEnd='2026-10-21';scope.compareStart=scope.compareEnd='2026-10-20';
