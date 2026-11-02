@@ -18,8 +18,8 @@ const shortcuts=file('frontend/director-workspaces.css');
 const moduleSource=file('frontend/js/pages/buying-group.js');
 const css=file('frontend/buying-group.css');
 const stripped=moduleSource.replace(/^import\s+.+?;\s*$/gm,'').replace(/export\s+function\s+/g,'function ');
-const factory=new Function('api','app','currentStore','isDirector','document','buyingSnapshot','loadBuyingManagement','renderBuyingManagement',stripped+';return{simulateValues,renderBuyingGroup};');
-const runtime=(api,app,currentStore,isDirector,document)=>factory(api,app,currentStore,isDirector,document,()=>({suppliers:0,contracts:{active:0,drafts:0},documents:0}),async()=>{},async()=>{});
+const factory=new Function('api','app','currentStore','isDirector','document','buyingSnapshot','loadBuyingManagement','renderBuyingManagement','purchaseSnapshot','loadPurchaseEvidence','renderPurchaseEvidence',stripped+';return{simulateValues,renderBuyingGroup};');
+const runtime=(api,app,currentStore,isDirector,document)=>factory(api,app,currentStore,isDirector,document,()=>({suppliers:0,contracts:{active:0,drafts:0},documents:0}),async()=>{},async()=>{},()=>({total:{line_count:0}}),async()=>{},async()=>{});
 
 test('Buying Group is a standalone route, not a StoreOps navigation page',()=>{
   assert.doesNotMatch(main,/id="buyingGroupNav"|id="buyingGroupPage"/);
