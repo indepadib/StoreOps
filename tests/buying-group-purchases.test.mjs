@@ -93,6 +93,7 @@ test('API: idempotent reimport skips an identical invoice without creating new e
 });
 test('API: reconciles a declared group contract against imported net amounts only',async()=>{
   const db={pool:{query:async(sql)=>{
+    if(String(sql).includes('FROM hs_buying.contracts WHERE id<>'))return{rows:[{count:1}]};
     if(String(sql).includes('FROM hs_buying.contracts WHERE id'))return{rows:[{
       id:contractId,title:'Accord Groupe test',supplier_id:supplierId,scope:'GROUP',
       entity_code:'GROUP',status:'ACTIVE',effective_from:'2026-01-01',effective_to:'2026-12-31',
@@ -101,7 +102,6 @@ test('API: reconciles a declared group contract against imported net amounts onl
     if(String(sql).includes('FROM hs_buying.purchase_entries WHERE'))return{rows:[{
       line_count:3,amount_cents:'120000000',entities:['FRANPRIX','VENEZIA'],sources:['D365_EXPORT']
     }]};
-    if(String(sql).includes('FROM hs_buying.contracts WHERE id<>'))return{rows:[{count:1}]};
     throw Error('Unexpected query: '+sql);
   }}};
   const response=await serveBuyingPurchases(new Request('https://test.local/api/buying-group/contracts/'+contractId+'/reconcile'),db,{id:'director'});
@@ -122,7 +122,7 @@ test('Database: proper uniqueness, batch lineage and legal entity scope',()=>{
   assert.match(router,/serveBuyingPurchases\(req,db,user\)/);
 });
 test('UI: contains import preview, duplicates notice, legal-company field and rebate warning',()=>{
-  for(const token of ['dataAreaId','D365_EXPORT','MANUAL_CSV','state.preview','sourceKind','reconciliation','overlapRisk','certified'])assert.ok(management.includes(token),token);
+  for(const token of ['dataAreaId','D365_EXPORT','MANUAL_CSV','state.preview','sourceKind','reconciliation','overlapRisk','non certifié'])assert.ok(management.includes(token),token);
   assert.match(cockpit,/id:'purchases'/);
   assert.match(cockpit,/id:'reconcile'/);
 });
