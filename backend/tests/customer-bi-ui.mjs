@@ -13,7 +13,10 @@ await vm.runInNewContext('(async()=>{'+source.replace(/^import[^\n]+\n/gm,'')+'}
 await nodes.get('bi-filters').events.submit({preventDefault(){}});assert.equal(prepared,2,'each day is prepared separately before the comparison');assert.match(nodes.get('bi-status').textContent,/Analyse disponible/);assert.ok(nodes.get('bi-kpis').innerHTML.includes('Tickets'));
 await nodes.get('bi-loadStock').events.click();assert.equal(pages,2);assert.match(nodes.get('bi-stockSummary').innerHTML,/75 %/);assert.match(nodes.get('bi-stockSummary').innerHTML,/50 %/);assert.equal(nodes.get('bi-loadStock').disabled,false);
 scope.periodEnd='2026-10-22';listeners.get('retail-intelligence:period')();assert.equal(nodes.get('bi-kpis').innerHTML,'','changing shared dates hides old totals');
+assert.equal(pages,2,'changing sales dates preserves the current stock snapshot');
 scope.section='detention';listeners.get('retail-intelligence:section')();assert.equal(nodes.get('bi-detention').hidden,false);assert.equal(nodes.get('bi-global').hidden,true);assert.equal(nodes.get('biRun').hidden,true);
 await nodes.get('bi-filters').events.submit({preventDefault(){}});assert.equal(prepared,2,'cached BI refresh must not prepare the same days again');
 assert.match(html,/data-section="reference"/);assert.match(html,/data-section="detention"/);assert.match(readFileSync(new URL('../../frontend/analytics/intelligence.html',import.meta.url),'utf8'),/section=sales/);
 console.log('PASS embedded BI, shared periods, daily preparation, stock pagination, snapshot continuity, detention denominator and stale-date invalidation');
+
+await new Promise(resolve=>setTimeout(resolve,5));assert.equal(pages,2,'opening detention reuses already prepared stocks without another click or read');
