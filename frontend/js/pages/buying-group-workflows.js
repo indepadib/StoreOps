@@ -107,6 +107,7 @@ function reviewPanel(contract){
  input('taskOwner-'+i,'Responsable (texte libre)','text',o.owner||'')+'</div>'+
  '<p class="hsm-note">Preuve : '+h(o.quote||'à vérifier')+' · page '+h(o.page||'—')+'</p></div>').join(''):
  '<p class="hsm-note">Aucune obligation identifiée automatiquement. Une vérification manuelle reste indispensable.</p>')+
+ '<div class="hsp-manual-heading"><strong>Ajouter des obligations ou tâches non détectées</strong><button id="hspAddTask" class="hsm-quiet" type="button">+ Ajouter une action</button></div><div id="hspManualTasks"></div>'+ 
  '<label class="hsm-field"><span>Notes de revue et réserves</span><textarea name="reviewNotes" maxlength="2500" rows="3" placeholder="Clauses manquantes, exclusions, conditions de facturation…"></textarea></label>'+
  '<label class="hsp-consent"><input type="checkbox" name="confirmSourceRead" required> J’ai lu la pièce originale, contrôlé les champs et confirmé les clauses qui seront utilisées dans la Centrale d’achat.</label>'+
  '<button type="submit" class="hsm-primary">Valider la revue des conditions</button></form></section>';
@@ -173,6 +174,7 @@ async function act(root,tab,navigate,action,url,body={}){
  if(state.busy)return;state.busy=true;root.querySelectorAll('button').forEach(b=>{if(b.id&&b.id.startsWith('hsp'))b.disabled=true});
  try{
   const result=await api(url,{method:'POST',body,noRetry:true});
+  state.error='';
   state.alert=action==='analyze'?'Analyse créée. Contrôle humain obligatoire avant soumission.':
     action==='review'?'Revue validée. Le contrat peut être soumis à approbation.':
     action==='submit'?'Dossier envoyé à un autre approbateur habilité.':
@@ -234,6 +236,15 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
   state.error='';await act(root,tab,navigate,'analyze','/api/buying-group/contracts/'+state.contractId+'/analyze',
     {documentId:state.selectedDocument,consent:true});
  });
+ root.querySelector('#hspAddTask')?.addEventListener('click',()=>{
+  const host=root.querySelector('#hspManualTasks');if(!host||host.children.length>=24)return;
+  const node=document.createElement('div');node.className='hsp-manual-task';
+  node.innerHTML=input('manualTitle','Action / obligation','text','','required maxlength="240" placeholder="Ex : Réclamer l’avoir RFA du T4"')+
+   '<div class="hsm-form-grid"><label class="hsm-field"><span>Catégorie</span><select name="manualKind">'+
+   selectOptions([['RECONCILIATION','RFA / rapprochement'],['RENEWAL','Renouvellement'],['NEGOTIATION','Négociation'],['PAYMENT','Paiement'],['DOCUMENT','Justificatif'],['REVIEW','Revue'],['OTHER','Autre']],'RECONCILIATION')+'</select></label>'+input('manualDue','Date limite','date')+'</div>'+input('manualOwner','Responsable','text','','maxlength="120"')+
+   '<button type="button" class="hsm-quiet" data-hsp-remove-task>Supprimer cette action</button>';
+  host.appendChild(node);node.querySelector('[data-hsp-remove-task]')?.addEventListener('click',()=>node.remove());
+ });
  root.querySelector('#hspAddTier')?.addEventListener('click',()=>{
   const host=root.querySelector('#hspTiers');if(!host||host.children.length>=12)return;
   const node=document.createElement('div');node.innerHTML=tierRow({threshold:0,rateBps:0});
@@ -252,6 +263,12 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
     if(!form.querySelector('[data-hsp-obligation="'+i+'"]')?.checked)return[];
     return [{...item,dueDate:fields.get('taskDue-'+i)||null,owner:fields.get('taskOwner-'+i)||''}];
   });
+  for(const node of form.querySelectorAll('.hsp-manual-task')){
+    const title=node.querySelector('[name="manualTitle"]')?.value?.trim();if(!title)continue;
+    obligations.push({title,kind:node.querySelector('[name="manualKind"]')?.value||'OTHER',
+      dueDate:node.querySelector('[name="manualDue"]')?.value||null,
+      owner:node.querySelector('[name="manualOwner"]')?.value||'',quote:'Saisie par l’utilisateur — vérifier la source originale',page:''});
+  }
   const payload={title:fields.get('title'),effectiveFrom:fields.get('effectiveFrom'),effectiveTo:fields.get('effectiveTo'),
    rebateBase:fields.get('rebateBase'),rebateMode:fields.get('rebateMode'),rebateTiers:tiers,
    obligations,analysisId:source?.id||null,reviewNotes:fields.get('reviewNotes')||'',confirmSourceRead:fields.get('confirmSourceRead')==='on'};
