@@ -133,11 +133,11 @@ async function reconcile(db,id,url){
 export async function serveBuyingPurchases(req,db,user){
   const url=new URL(req.url),p=url.pathname,m=req.method;
   try{
-    if(p==='/api/buying-group/purchases'&&m==='GET')return purchases(db);
-    if(p==='/api/buying-group/purchases/summary'&&m==='GET')return summary(db);
-    if(p==='/api/buying-group/purchases/import'&&m==='POST')return insertBatch(req,db,user);
+    if(p==='/api/buying-group/purchases'&&m==='GET')return await purchases(db);
+    if(p==='/api/buying-group/purchases/summary'&&m==='GET')return await summary(db);
+    if(p==='/api/buying-group/purchases/import'&&m==='POST')return await insertBatch(req,db,user);
     const found=p.match(/^\/api\/buying-group\/contracts\/([^/]+)\/reconcile$/);
-    if(found&&m==='GET')return reconcile(db,found[1],url);
+    if(found&&m==='GET')return await reconcile(db,found[1],url);
     return bad('Route achats indisponible.',404);
   }catch(error){
     if(error?.status&&error.status<500)return bad(error.message,error.status);
