@@ -1,13 +1,17 @@
 import { api, isShowcase } from '../api.js';
 import { app, currentStore, isDirector } from '../state.js';
+import {renderBuyingManagement,loadBuyingManagement,buyingSnapshot} from './buying-group-management.js';
 
 const PLATFORM_URL='https://hs-buying-group-os.vercel.app';
 const tabs=[
   {id:'overview',label:'Vue Groupe'},
-  {id:'opportunities',label:'Opportunités'},
-  {id:'simulation',label:'Simulateur'},
+  {id:'suppliers',label:'Fournisseurs'},
   {id:'contracts',label:'Contrats'},
-  {id:'dynamics',label:'Dynamics 365'}
+  {id:'rebates',label:'Marges arrière'},
+  {id:'opportunities',label:'Opportunités'},
+  {id:'simulation',label:'Mutualisation'},
+  {id:'dynamics',label:'Dynamics 365'},
+  {id:'audit',label:'Historique'}
 ];
 const state={
   tab:'overview',
@@ -28,15 +32,16 @@ function header(){
   '<div class="bg-hero-chips">'+badge('Pilote StoreOps','light')+badge('Accès Direction','light')+badge('Lecture seule D365','light')+'</div></div>'+
   '<div class="bg-hero-side"><span>CONTEXTE DE CONNEXION</span><strong>'+e(app.user?.name||'Direction')+'</strong>'+
   '<small>'+e(store?.name||'Magasin non sélectionné')+' · '+e(app.authMode||'—')+'</small><div class="bg-hero-side-line"></div>'+
-  '<small>Données Groupe consolidées : non connectées</small></div></div></div>';
+  '<small>Contrats H&S persistants · consolidations D365 non connectées</small></div></div></div>';
 }
 function overview(){
-  return '<div class="bg-section-title"><div><span class="bg-eyebrow">PILOTER</span><h3>La centrale en un regard</h3></div><span class="bg-subnote">Structure prête · indicateurs consolidés à connecter</span></div>'+
+  const live=buyingSnapshot();
+  return '<div class="bg-section-title"><div><span class="bg-eyebrow">PILOTER</span><h3>La centrale en un regard</h3></div><span class="bg-subnote">'+(live?'Données H&S persistantes · Groupe D365 à connecter':'Chargement des indicateurs…')+'</span></div>'+
   '<div class="bg-kpi-grid">'+
-  metric('Fournisseurs Groupe','—','Référentiel à connecter','↗')+
-  metric('Contrats actifs','—','Extraction IA à intégrer','◇')+
-  metric('Marges arrière','—','Acquis / facturé / encaissé','↗')+
-  metric('Économies réalisées','—','À rapprocher des factures','✓')+
+  metric('Fournisseurs Groupe',live?.suppliers??'—','Enregistrés dans H&S · PostgreSQL','↗')+
+  metric('Contrats actifs',live?.contracts?.active??'—','Brouillons : '+(live?.contracts?.drafts??'—'),'◇')+
+  metric('Pièces contractuelles',live?.documents??'—','PDF et DOCX versionnés','↗')+
+  metric('RFA encaissées','—','À rapprocher des factures D365','✓')+
   '</div><div class="bg-workspace">'+
   '<div class="bg-panel bg-priority"><span class="bg-eyebrow">LES PROCHAINES DÉCISIONS</span><h3>De la donnée à l’action</h3>'+
   '<button class="bg-action-row" data-bg-tab="contracts"><span class="bg-action-icon">01</span><span><strong>Structurer les accords fournisseurs</strong><small>Contrats Groupe, annexes enseignes, RFA et échéances</small></span><span>↗</span></button>'+
@@ -129,7 +134,7 @@ function renderActive(){
  if(active==='overview')return overview();
  if(active==='opportunities')return opportunities();
  if(active==='simulation')return simulation();
- if(active==='contracts')return contracts();
+ if(['suppliers','contracts','rebates','audit'].includes(active))return '<section id="bgManagement" aria-live="polite"></section>';
  return dynamics();
 }
 function bind(root){
@@ -167,4 +172,7 @@ export function renderBuyingGroup(){
    '<span class="bg-environment">PILOTE · 0 DONNÉE FINANCIÈRE CRÉÉE</span></div>'+
    '<div class="bg-content">'+renderActive()+'</div></div>';
  bind(root);
+ const host=root.querySelector('#bgManagement');
+ if(host)void renderBuyingManagement(state.tab,host,renderBuyingGroup);
+ else if(state.tab==='overview'&&!buyingSnapshot())void loadBuyingManagement().then(()=>renderBuyingGroup()).catch(()=>{});
 }

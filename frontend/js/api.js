@@ -114,3 +114,24 @@ export function api(path,options={}){
  }throw new Error('Préparation du stock trop longue. Réessayer dans quelques instants.');})();
  operationalReads.set(key,task);return task.finally(()=>{if(operationalReads.get(key)===task)operationalReads.delete(key)});
 }
+
+// Authenticated private file transport for independent H&S modules.
+// Do not place the token in URLs, download links, or public assets.
+export async function apiPrivateFile(path,{method='GET',file=null}={}){
+  if(isShowcase())throw Error('Les fichiers privés nécessitent une connexion StoreOps réelle.');
+  const headers=applyAuth({});
+  if(file){
+    headers['content-type']=file.type;
+    headers['x-file-name']=encodeURIComponent(file.name);
+  }
+  let r;
+  try{r=await fetch(apiUrl(path),{method,headers,body:file||undefined,cache:'no-store'});}
+  catch{throw Error('Connexion au stockage des contrats indisponible.');}
+  if(!r.ok){
+    let msg='Échec du transfert privé ('+r.status+').';
+    try{const data=await r.json();msg=data.error||msg;}catch{}
+    const error=new Error(msg);error.status=r.status;throw error;
+  }
+  if(method==='GET')return r.blob();
+  return r.json();
+}
