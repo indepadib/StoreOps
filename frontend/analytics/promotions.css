@@ -62,3 +62,15 @@
 .promotion-offer-table-wrap{max-height:360px;overflow:auto;border:1px solid #eef1f4;border-radius:14px}
 @media(max-width:1100px){.promotion-global-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:620px){.promotion-global-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.promotion-offer-overview{padding:12px}}
+/* Keep the comparative result table inside the viewport; offer detail may scroll. */
+#promotionObserved .observed-table-wrap{max-height:none;overflow:visible}
+#promotionObserved .promotion-table{min-width:0;width:100%;table-layout:fixed}
+#promotionObserved .promotion-table th,#promotionObserved .promotion-table td{text-align:right;white-space:normal;overflow-wrap:anywhere;font-size:12px;padding:13px 10px;line-height:1.5}
+#promotionObserved .promotion-table th{font-size:11px;text-transform:none;letter-spacing:0}
+#promotionObserved .promotion-table th:first-child,#promotionObserved .promotion-table td:first-child{text-align:left;width:27%;font-weight:650}
+#promotionObserved h3{font-size:24px;line-height:1.25;margin:8px 0}
+#promotionObserved .category-subtitle{font-size:13px;line-height:1.6}
+#promotionObserved .promo-risk-note{font-size:12px;line-height:1.65;margin-top:18px}
+body[data-analytics-section=promotions] #decisionStudio{display:none}
+.promotion-kpi small,.promotion-global-kpi small{font-size:11px;letter-spacing:.02em}.promotion-kpi span,.promotion-global-kpi span{font-size:11px;line-height:1.5}.promotion-table th{font-size:11px}.promotion-table td{font-size:12px}.promo-risk-note{font-size:12px;line-height:1.6}
+@media(max-width:650px){#promotionObserved .promotion-table thead{display:none}#promotionObserved .promotion-table,#promotionObserved .promotion-table tbody,#promotionObserved .promotion-table tr,#promotionObserved .promotion-table td{display:block;width:auto}#promotionObserved .promotion-table tr{padding:10px;border-bottom:1px solid #dce5ec}#promotionObserved .promotion-table td{display:flex;justify-content:space-between;gap:14px;text-align:right;border:0;padding:5px 0}#promotionObserved .promotion-table td:first-child{width:auto;font-weight:750;text-align:left;display:block}#promotionObserved .promotion-table td:not(:first-child)::before{content:attr(data-label);text-align:left;color:#53677a;font-weight:500}#promotionObserved h3{font-size:22px}.promotion-offer-overview{padding:14px}}
