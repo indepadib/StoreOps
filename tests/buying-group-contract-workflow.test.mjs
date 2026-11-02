@@ -81,8 +81,10 @@ test('Human validation enforces source read and verifies dates and RFA tier orde
    rebateTiers:[{threshold:'0',rateBps:100},{threshold:'500000',rateBps:350}],
    obligations:[{title:'Renégocier les prix',kind:'NEGOTIATION',dueDate:'2027-11-01',quote:'préavis de 2 mois'}]
  },previous);
- assert.equal(v.tiers.length,2);assert.equal(v.tasks.length,1);
+ assert.equal(v.tiers.length,2);assert.equal(v.tasks.length,2);
  assert.equal(v.tasks[0].kind,'NEGOTIATION');
+ assert.equal(v.tasks[1].kind,'RENEWAL');
+ assert.equal(v.tasks[1].dueDate,'2027-11-01');
  assert.throws(()=>workflowValidation.validatedReview({
    confirmSourceRead:true,rebateTiers:[{threshold:'500000',rateBps:500},{threshold:'100',rateBps:600}]
  },previous),/Paliers/);
