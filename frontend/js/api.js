@@ -121,7 +121,9 @@ export async function apiPrivateFile(path,{method='GET',file=null}={}){
   if(isShowcase())throw Error('Les fichiers privés nécessitent une connexion StoreOps réelle.');
   const headers=applyAuth({});
   if(file){
-    headers['content-type']=file.type;
+    if(file.size>5*1024*1024){const e=new Error('Le contrat dépasse 5 Mo. Compresse le PDF avant import.');e.status=413;throw e;}
+    const ext=String(file.name||'').toLowerCase();
+    headers['content-type']=file.type|| (ext.endsWith('.pdf')?'application/pdf':ext.endsWith('.docx')?'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'application/octet-stream');
     headers['x-file-name']=encodeURIComponent(file.name);
   }
   let r;
