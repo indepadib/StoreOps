@@ -35,7 +35,7 @@ export function dailyComparison(current,previous,scope){
 }
 const escapeMetric=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const metricNumber=(v,digits=2)=>new Intl.NumberFormat('fr-FR',{maximumFractionDigits:digits}).format(v);
-function metricValue(value,unit,digits){return finite(value)==null?'À compléter':metricNumber(Number(value),digits)+(unit==='money'?' DH':unit==='percent'?' %':'');}
+function metricValue(value,unit,digits){return finite(value)==null?'À compléter':new Intl.NumberFormat('fr-FR',{minimumFractionDigits:unit==='money'?2:0,maximumFractionDigits:digits}).format(Number(value))+(unit==='money'?' DH':unit==='percent'?' %':'');}
 // One hierarchy for every comparative KPI: value, reference, change, then daily pace.
 export function performanceCard({label,value,previous=null,unit='number',digits=2,daily=false,scope={},changeMode='percent',note='',positiveGood=false,estimated=false}){
   const a=finite(value),b=finite(previous),delta=evolution(a,b),dailyValue=dailyComparison(a,b,scope),points=a!=null&&b!=null?a-b:null;

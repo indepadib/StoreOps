@@ -24,3 +24,6 @@
 @media(max-width:1050px){.performance-grid,#briefKpis,#decisionSalesKpis{grid-template-columns:repeat(2,minmax(0,1fr))}.brief-grid{grid-template-columns:1fr}.performance-card{padding:17px}}
 @media(max-width:600px){.performance-grid,#briefKpis,#decisionSalesKpis{grid-template-columns:1fr}.performance-card .metric-value{font-size:29px}.brief-kpis,.brief-grid{padding-left:12px;padding-right:12px}.brief-panel-6 ul{grid-template-columns:1fr}.brief-head{padding:18px}.brief-tools{flex-wrap:wrap}.brief-head h1{font-size:25px}}
 @media print{#briefKpis{grid-template-columns:repeat(6,minmax(0,1fr));gap:5px}.performance-card{padding:7px;box-shadow:none;border-radius:7px}.performance-card .metric-title{font-size:8px;min-height:0}.performance-card .metric-value{font-size:16px;margin:5px 0}.metric-evolution{font-size:9px;padding:2px;gap:2px}.metric-evolution span,.performance-card .metric-reference,.performance-card .metric-note{font-size:7px;margin:4px 0}.metric-daily{padding-top:4px;margin-top:4px}.metric-daily strong{font-size:10px}.metric-daily span,.metric-daily p,.metric-daily small{font-size:7px;margin:2px 0}.metric-comparison-bars{display:none}}
+
+/* The legacy visual layer pins top:84px with !important; static flow removes its offset. */
+@media screen{body .filterbar{position:static!important;top:auto!important}.performance-card .metric-title{min-height:36px}}
