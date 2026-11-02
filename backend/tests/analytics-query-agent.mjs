@@ -93,3 +93,7 @@ const missingStockCatalog=await queryStock(stores,{...input,question:'Détention
 const partialStockCatalog=await queryStock(stores,{...input,question:'Détention PGC'},parseQuery('Détention PGC'),{...stockDeps,catalogReader:async()=>({items:stockCatalog.slice(0,1),complete:false})});assert.equal(partialStockCatalog.sections[0].rows[0][4],'Non disponible');assert.match(partialStockCatalog.answer,/taux restent suspendus/);
 const partialRelative=await queryStock(stores,{...input,question:'Détention relative PGC'},parseQuery('Détention relative PGC'),{...stockDeps,catalogReader:async()=>({items:stockCatalog.slice(0,1),complete:false})});assert.equal(partialRelative.sections[0].rows[0][4],'Non disponible');
 console.log('PASS missing classifications never produce a filtered zero or a partial historical/relative detention percentage');
+
+for(const question of ['Les acheteurs de HS-006590 reviennent-ils ?', 'A-t-on perdu des clients sur le jus orange ?', 'Les clients de « lait frais » ne reviennent plus ?', 'Les habitués de cet article rachètent-ils ?'])assert.equal(articleInvestigationRequired({question}),true,question);
+for(const question of ['Les clients reviennent-ils ?', 'Quel est le top articles ?', 'Quel impact des promotions sur le panier ?'])assert.equal(articleInvestigationRequired({question,productNumber:'HS-006590'}),false,question);
+console.log('PASS article-specific buyer questions open the investigation while global questions ignore stale article context');
