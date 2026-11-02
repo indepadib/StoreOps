@@ -38,3 +38,6 @@
 .loss-source-heading p,.loss-storeops p{font-size:12px;line-height:1.6;color:#526b7d}.loss-source-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.loss-source-status p{font-size:11px;line-height:1.5;padding:10px;margin:0;background:#f5f8fa;border:1px solid #dce5ec;border-radius:9px;overflow-wrap:anywhere}.loss-storeops{border-top:1px solid #dce5ec;padding-top:14px;margin-top:16px}.loss-storeops summary{font-size:13px;font-weight:700;cursor:pointer}@media(max-width:650px){.loss-source-status{grid-template-columns:1fr}}
 
 @media(max-width:600px){.performance-card--money .metric-value{font-size:18px;overflow-wrap:normal}}
+
+/* Detention has its dedicated window; Stock starts with the ERP inventory report. */
+body[data-analytics-section="inventory"] #decisionStudio{display:none}
