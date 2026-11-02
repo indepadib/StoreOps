@@ -1,3 +1,4 @@
+import {promotionEvidence,matchesEvidence} from './performance-evidence.js';
 (() => {
   const $=(sel,root=document)=>root.querySelector(sel);
   const $$=(sel,root=document)=>[...root.querySelectorAll(sel)];
@@ -183,15 +184,24 @@
 
   function renderMeasurement(){
     const api=core(),host=$('#promotionMeasurement');if(!api||!host)return;
-    const a=aggregate();
-    host.innerHTML=`<div class="measurement-list">
-      <div class="measurement-row"><span>Offres / mécanique / prix</span><strong>Disponible</strong></div>
-      <div class="measurement-row"><span>Disponibilité stock</span><strong>${a.out+a.low?'Signalée':'Disponible / N/A'}</strong></div>
-      <div class="measurement-row unavailable"><span>CA réellement remisé</span><strong>N/A</strong></div>
-      <div class="measurement-row unavailable"><span>Uplift incrémental</span><strong>N/A</strong></div>
-      <div class="measurement-row unavailable"><span>ROI promo</span><strong>N/A</strong></div>
-    </div>
-    <div class="promo-risk-note">Les trois dernières métriques nécessitent le rapprochement des Discount Transactions avec les ventes. Elles ne sont pas estimées à partir du simple fait qu'un SKU soit sous promotion.</div>`;
+    const scope=api.getState(),data=window.RETAIL_DECISION_INTELLIGENCE?.getData?.(),valid=matchesEvidence(data,scope,api.getSelectedStores?.()||scope.stores),m=promotionEvidence(valid?data:null);
+    let observed=$('#promotionObserved');if(!observed){observed=document.createElement('div');observed.id='promotionObserved';observed.className='promotion-offer-overview';$('#promotionKpis')?.before(observed)}
+    const money=v=>v==null?'À compléter':api.money(v),num=v=>v==null?'À compléter':api.number(v),pct=v=>v==null?'Base de comparaison absente':api.percent(v),points=v=>v==null?'À compléter':api.number(v)+' points';
+    const rows=[
+      ['CA avec remise périodique',money(m.current.promotionSales),money(m.previous.promotionSales),pct(m.sales.pct),money(m.sales.delta)],
+      ['Poids du CA remisé',m.currentShare==null?'À compléter':api.percent(m.currentShare),m.previousShare==null?'À compléter':api.percent(m.previousShare),points(m.shareDelta),'Écart en points'],
+      ['Tickets avec remise périodique',num(m.current.promotionTickets),num(m.previous.promotionTickets),pct(m.tickets.pct),num(m.tickets.delta)],
+      ['Pénétration tickets',m.currentTicketShare==null?'À compléter':api.percent(m.currentTicketShare),m.previousTicketShare==null?'À compléter':api.percent(m.previousTicketShare),points(m.ticketShareDelta),'Écart en points'],
+      ['Remises toutes natures',money(m.current.discountAmount),money(m.previous.discountAmount),pct(m.discounts.pct),money(m.discounts.delta)]
+    ];
+    observed.innerHTML=`<div class="subsection-heading"><div><span class="eyebrow">RÉSULTATS OBSERVÉS SUR TICKETS</span><h3>Ventes remisées : évolution et pénétration</h3><p class="category-subtitle">${api.escapeHtml(scope.periodStart)} → ${api.escapeHtml(scope.periodEnd)} · comparaison ${api.escapeHtml(scope.compareStart)} → ${api.escapeHtml(scope.compareEnd)} · ${api.escapeHtml(api.getStoreScopeLabel?.()||'Magasins sélectionnés')}</p></div></div><div class="promotion-global-kpis">${[
+      ['CA remisé TTC',money(m.current.promotionSales),'Évolution : '+pct(m.sales.pct)],
+      ['Poids dans le CA',m.currentShare==null?'À compléter':api.percent(m.currentShare),'Écart : '+points(m.shareDelta)],
+      ['Tickets remisés',num(m.current.promotionTickets),'Évolution : '+pct(m.tickets.pct)],
+      ['Pénétration tickets',m.currentTicketShare==null?'À compléter':api.percent(m.currentTicketShare),'Écart : '+points(m.ticketShareDelta)],
+      ['Remises enregistrées',money(m.current.discountAmount),'Toutes natures · évolution '+pct(m.discounts.pct)]
+    ].map(([label,value,note])=>`<div class="promotion-global-kpi"><small>${api.escapeHtml(label)}</small><strong>${api.escapeHtml(value)}</strong><span>${api.escapeHtml(note)}</span></div>`).join('')}</div><div class="promotion-table-wrap"><table class="promotion-table"><thead><tr>${['Indicateur','Période','Comparaison','Évolution','Écart absolu'].map(x=>`<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>'<tr>'+row.map(x=>`<td>${api.escapeHtml(x)}</td>`).join('')+'</tr>').join('')}</tbody></table></div><p class="promo-risk-note">${valid?'Chiffres issus des remises périodiques enregistrées sur les lignes vendues. Les remises toutes natures sont présentées séparément.':'Lecture automatique des ventes en cours ; aucun résultat de l’ancienne période n’est repris.'} Variation observée ≠ uplift causal. Les tickets concernés ne donnent pas le panier complet ni une attribution par offre. ROI : financement fournisseur, coût et contrefactuel à rapprocher.</p>`;
+    host.innerHTML=`<div class="measurement-list"><div class="measurement-row"><span>CA réellement remisé</span><strong>${api.escapeHtml(money(m.current.promotionSales))}</strong></div><div class="measurement-row"><span>Évolution observée</span><strong>${api.escapeHtml(pct(m.sales.pct))}</strong></div><div class="measurement-row"><span>Pénétration tickets</span><strong>${api.escapeHtml(m.currentTicketShare==null?'À compléter':api.percent(m.currentTicketShare))}</strong></div></div><div class="promo-risk-note">Uplift causal et ROI à établir avec une base témoin et les coûts ; la liste des offres ci-contre décrit leur exécution au dernier jour sélectionné.</div>`;
   }
 
   function renderRisk(){
@@ -213,11 +223,12 @@
       state.view=btn.dataset.promoView||'ALL';renderTable();
     }));
     $('#promotionSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderTable()});
-    const loadIfVisible=()=>{if(core()?.getState?.()?.section==='promotions')load(false)};
+    const loadIfVisible=()=>{if(core()?.getState?.()?.section==='promotions'){renderMeasurement();load(false)}};
+    document.addEventListener('retail-intelligence:decision',()=>{if(core()?.getState?.()?.section==='promotions')renderMeasurement()});
     document.addEventListener('retail-intelligence:data',loadIfVisible);
     document.addEventListener('retail-intelligence:period',loadIfVisible);
     document.addEventListener('retail-intelligence:section',loadIfVisible);
-    const existing=core()?.getState?.();if(existing?.section==='promotions')load(false);
+    const existing=core()?.getState?.();if(existing?.section==='promotions'){renderMeasurement();load(false);}
   }
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind,{once:true});else bind();
