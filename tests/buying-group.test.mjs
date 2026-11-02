@@ -72,7 +72,7 @@ test('Director pilot render does not call Dynamics automatically',()=>{
     ()=>({name:'Val-Fleuri'}),()=>true,{querySelector:selector=>selector==='#buyingGroupContent'?node:null});
   instance.renderBuyingGroup();
   assert.equal(calls,0);
-  assert.match(node.innerHTML,/Lire & valider un contrat/);
+  assert.match(node.innerHTML,/Lire &amp; valider un contrat/);
 });
 
 test('Illustrative Lesieur savings remain correct and non-persistent',()=>{
