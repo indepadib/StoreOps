@@ -6,6 +6,7 @@ const entities=[['GROUP','Groupe H&S'],['FRANPRIX','Franprix'],['VENEZIA','Venez
 const data={overview:null,suppliers:[],contracts:[],audit:[],loaded:false,error:'',busy:false,lastUpdated:null,sim:null};
 let loadPromise=null;
 export function buyingSnapshot(){return data.loaded?data.overview:null;}
+export function buyingManagementContext(){return {suppliers:data.suppliers,contracts:data.contracts,loaded:data.loaded};}
 export async function loadBuyingManagement({force=false}={}){
   if(loadPromise)return loadPromise;
   if(data.loaded&&!force)return;
