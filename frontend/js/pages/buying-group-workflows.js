@@ -41,7 +41,7 @@ function checklist(current){
  return '<div class="hsp-progress">'+stages.map(([id,label],i)=>'<div class="hsp-progress-item '+(i<=index?'is-done':'')+' '+(id===current?'is-current':'')+'"><div class="hsp-progress-number">'+(i+1)+'</div><small>'+h(label.slice(3))+'</small></div>').join('')+'</div>';
 }
 function intro(contract){
- if(!contract)return '<div class="hsp-empty"><h3>Commencer un dossier d’achat</h3><p>Crée d’abord un fournisseur puis un contrat brouillon. Ensuite dépose le PDF : la lecture, la vérification, la validation et le suivi des échéances sont regroupés dans ce parcours.</p><button data-go-contracts class="hsm-primary">Créer un fournisseur ou un contrat</button></div>';
+ if(!contract)return '<div class="hsp-empty"><h3>Tu peux commencer par le document</h3><p>Importe directement ton PDF ou DOCX ci-dessus : aucun fournisseur, aucune date et aucun contrat brouillon ne sont nécessaires pour déposer le fichier. Tu pourras créer le dossier ensuite.</p><button data-go-contracts class="hsm-quiet">Ou créer un contrat manuellement</button></div>';
  return '<div class="hsp-contract-head"><div><span class="bg-eyebrow">DOSSIER CONTRACTUEL · '+h(contract.entity_code)+'</span><h3>'+h(contract.title)+'</h3><p>'+h(contract.supplier_name)+' · '+moment(contract.effective_from)+' — '+moment(contract.effective_to)+'</p></div>'+
  statusBadge(state.workflow?.stage||contract.workflow_stage||'DRAFT')+'</div>';
 }
@@ -199,7 +199,9 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
    if(!state.contractId&&contracts().length)state.contractId=contracts()[0].id;
    if(state.contractId&&selected())await loadContract(state.contractId);
    if(tab==='process')state.process=await api('/api/buying-group/process',{noRetry:true});
-  }catch(error){root.innerHTML='<div class="hsm-error">'+h(error.message)+' <button class="hsm-primary" id="hspRetry">Réessayer</button></div>';
+  }catch(error){root.innerHTML='<div id="hsiIntakeHost" aria-label="Importer un contrat directement"></div><div class="hsm-error">Les dossiers existants sont momentanément indisponibles : '+h(error.message)+' <button class="hsm-primary" id="hspRetry">Réessayer</button></div>';
+   const inbox=root.querySelector('#hsiIntakeHost');
+   if(inbox)void renderContractIntake(inbox,async id=>{state.contractId=id;await loadBuyingManagement({force:true});await renderWorkflow(tab,root,navigate)});
    root.querySelector('#hspRetry')?.addEventListener('click',()=>renderWorkflow(tab,root,navigate));return;}
  }
  if(!root.isConnected)return;
