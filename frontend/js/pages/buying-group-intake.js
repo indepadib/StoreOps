@@ -186,7 +186,7 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
       const created=await api('/api/buying-group/intakes/'+encodeURIComponent(item.id)+'/register',
         {method:'POST',body:payload,noRetry:true});
       state.message='Dossier contractuel créé et document classé. Vérifie maintenant les clauses et les actions.';
-      state.selectedId=null;state.loaded=false;
+      state.selectedId=null;state.loaded=false;state.busy=false;
       await onRegistered?.(created.item.contractId);
     }catch(error){state.error=error.message;await renderContractIntake(root,onRegistered)}
     finally{state.busy=false}
