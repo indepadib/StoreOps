@@ -116,7 +116,7 @@ function filePanel(contract,files=[]){
   '<button data-hsm-download="'+q(f.id)+'" data-file-name="'+q(f.file_name)+'">Télécharger</button></div>').join(''):
   '<p class="hsm-note">Pas encore de document contractuel.</p>')+'</div>'+
   '<label class="hsm-upload">+ Ajouter un PDF / DOCX (5 Mo maximum)<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-hsm-upload="'+q(contract.id)+'"></label>'+
-  '<p class="hsm-note">Accès privé côté serveur et versions immuables. Le stockage actuel est dans PostgreSQL ; l’extraction IA n’est pas encore activée.</p>';
+  '<p class="hsm-note">Accès privé côté serveur et versions immuables. Les fichiers sont dans PostgreSQL. Avant de charger des contrats confidentiels, faire valider la résidence des données, la conservation et les exigences de sécurité H&S. Extraction IA non activée.</p>';
 }
 async function fileOperations(root,contractId,refresh){
   const panel=root.querySelector('#hsmFilesPanel'),contract=data.contracts.find(c=>c.id===contractId);
