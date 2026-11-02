@@ -6,7 +6,7 @@ const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>'
 const currency=n=>new Intl.NumberFormat('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0)+' MAD';
 const cents=n=>currency(Number(n||0)/100);
 const entities=[['FRANPRIX','Franprix'],['VENEZIA','Venezia Ice'],['FLORMAR','Flormar'],['DAHAB','Dahab'],['INTERSPORT','Intersport'],['PRIMOR','Primor'],['BEAUTY_FOR_YOU','Beauty For You']];
-const state={loaded:false,items:[],batches:[],summary:null,error:'',preview:null,feedback:'',reconciliation:null,contractId:'',busy:false,sourceKind:'MANUAL_CSV',entityCode:'FRANPRIX',supplierId:''};
+const state={loaded:false,items:[],batches:[],summary:null,error:'',preview:null,feedback:'',reconciliation:null,contractId:'',busy:false,sourceKind:'MANUAL_CSV',entityCode:'FRANPRIX',supplierId:'',dataAreaId:''};
 let inFlight=null;
 const opts=(pairs,selected)=>pairs.map(([v,t])=>'<option value="'+escape(v)+'" '+(v===selected?'selected':'')+'>'+escape(t)+'</option>').join('');
 function title(hint,heading,side=''){return '<div class="bg-section-title"><div><span class="bg-eyebrow">'+hint+'</span><h3>'+heading+'</h3></div><span class="bg-subnote">'+escape(side)+'</span></div>';}
@@ -40,8 +40,8 @@ function importPanel(){
   '<div class="hsm-form-grid"><label class="hsm-field"><span>Enseigne</span><select name="entityCode">'+opts(entities,state.entityCode)+'</select></label>'+
   '<label class="hsm-field"><span>Fournisseur</span><select name="supplierId">'+opts(suppliers.map(s=>[s.id,s.name]),state.supplierId)+'</select></label></div>'+
   '<div class="hsm-form-grid"><label class="hsm-field"><span>Type de source</span><select name="sourceKind">'+opts([['MANUAL_CSV','CSV / données non vérifiées'],['D365_EXPORT','Export Dynamics 365 (déclaratif)']],state.sourceKind)+'</select></label>'+
-  numberInput('dataAreaId','Société D365 (dataAreaId)','text','maxlength="20" placeholder="Obligatoire pour export D365"')+'</div>'+
-  '<div class="hsm-upload hsm-purchase-upload"><label>Choisir le fichier CSV (200 lignes maximum)<input type="file" name="file" accept=".csv,text/csv" required></label></div>'+
+  numberInput('dataAreaId','Société D365 (dataAreaId)','text','maxlength="20" value="'+escape(state.dataAreaId)+'" placeholder="Obligatoire pour export D365"')+'</div>'+
+  '<div class="hsm-upload hsm-purchase-upload"><label>Choisir le fichier CSV (200 lignes maximum)<input type="file" name="file" accept=".csv,text/csv" '+(state.preview?'':'required')+'></label></div>'+
   '<button class="hsm-quiet" id="hsTemplate" type="button">Télécharger un modèle CSV</button>'+
   '<p class="hsm-note">Une ligne par facture ou par ligne identifiée. Champs requis : reference, date AAAA-MM-JJ, montant_ht. Les avoirs sont négatifs. Pour un export Dynamics, le compte fournisseur doit être préalablement associé à l’enseigne et la société dataAreaId renseignée.</p>'+
   (state.preview?'<div class="hsm-preview"><strong>'+state.preview.length+' lignes prêtes à importer</strong><small>Total net déclaré : '+currency(amount)+' · Vérifier références, unités et avoirs avant validation.</small>'+
@@ -101,13 +101,14 @@ export async function renderPurchaseEvidence(tab,root){
   root.querySelector('#hsTemplate')?.addEventListener('click',template);
   form?.querySelector('[name="file"]')?.addEventListener('change',async event=>{
     const file=event.target.files?.[0];if(!file)return;
-    try{state.preview=parsePurchaseCSV(await file.text());state.feedback='';await renderPurchaseEvidence(tab,root)}
+    try{const f=new FormData(form);state.entityCode=String(f.get('entityCode')||'FRANPRIX');state.supplierId=String(f.get('supplierId')||'');state.sourceKind=String(f.get('sourceKind')||'MANUAL_CSV');state.dataAreaId=String(f.get('dataAreaId')||'');state.preview=parsePurchaseCSV(await file.text());state.feedback='';await renderPurchaseEvidence(tab,root)}
     catch(error){state.preview=null;alert(error.message)}
   });
   // Retain business selection between preview and submission.
   form?.querySelector('[name="entityCode"]')?.addEventListener('change',e=>{state.entityCode=e.target.value});
   form?.querySelector('[name="sourceKind"]')?.addEventListener('change',e=>{state.sourceKind=e.target.value});
   form?.querySelector('[name="supplierId"]')?.addEventListener('change',e=>{state.supplierId=e.target.value});
+  form?.querySelector('[name="dataAreaId"]')?.addEventListener('input',e=>{state.dataAreaId=e.target.value});
   form?.addEventListener('submit',async event=>{
     event.preventDefault();if(!state.preview?.length||state.busy)return;
     const fields=new FormData(form);
