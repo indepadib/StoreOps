@@ -20,6 +20,7 @@ const state={
   tab:'overview',
   diagnostics:null,diagnosticsError:null,diagnosticsLoading:false,
   purchaseOrders:null,purchaseOrdersError:null,purchaseOrdersLoading:false,
+  configuredCompanyPo:null,configuredCompanyPoLoading:false,configuredCompanyPoError:null,
   purchaseOrdersStore:null,
   inputs:{franprixQty:12000,veneziaQty:3500,franprixPrice:22.5,veneziaPrice:24,groupPrice:21}
 };
@@ -114,6 +115,18 @@ function contracts(){
  ['Déposer le document dans un stockage privé','Extraire les valeurs et preuves par page','Rattacher à un fournisseur Groupe et à une entité','Vérifier et approuver les clauses financières','Versionner les avenants, échéances et approbations'].map((x,i)=>'<div class="bg-checkline"><span>'+String(i+1).padStart(2,'0')+'</span><strong>'+e(x)+'</strong></div>').join('')+
  '<p class="bg-hint">Le stockage et l’IA contractuelle ne sont pas encore reliés à ce module StoreOps.</p></div></div>';
 }
+
+function groupCompanyPo(){
+ const data=state.configuredCompanyPo,records=Array.isArray(data?.items)?data.items:[];
+ return '<section class="bg-panel bg-company-po"><div class="bg-section-title"><div><span class="bg-eyebrow">COMMANDES FOURNISSEURS · ODATA DIRECT</span><h3>Société Dynamics configurée</h3></div>'+badge('Lecture seule','success')+'</div>'+
+ '<p class="bg-hint">Échantillon plafonné à 60 commandes fournisseurs de la société autorisée dans StoreOps. Filtre légal dataAreaId appliqué côté serveur. Les PO ne sont ni des factures, ni des RFA encaissées.</p>'+
+ (state.configuredCompanyPoError?'<p class="bg-inline-error">'+e(state.configuredCompanyPoError)+'</p>':'')+
+ (data?'<p class="bg-po-company-meta"><strong>'+e(data.status)+'</strong> · Société : '+e(data.company||'Non configurée')+' · '+n(records.length)+' PO</p>':'')+
+ (data?.nextAction?'<p class="bg-hint">'+e(data.nextAction)+'</p>':'')+
+ '<button class="bg-btn bg-btn-outline" data-bg-group-po '+(state.configuredCompanyPoLoading?'disabled':'')+'>'+(state.configuredCompanyPoLoading?'Lecture D365 en cours…':'Lire les PO de la société configurée')+'</button>'+
+ (records.length?'<div class="bg-table bg-company-po-list">'+records.map(r=>'<div class="bg-po-row"><span><strong>'+e(r.purchaseOrderNumber)+'</strong><small>'+e(r.supplierName||'Fournisseur inconnu')+' · '+e(r.supplierAccount||'Compte non renseigné')+'</small><small>'+e(r.warehouse||'Entrepôt non renseigné')+' · '+e(r.dataAreaId||'—')+'</small></span><span>'+e(r.status||'—')+'<small>'+e(r.creationDate||r.deliveryDate||'—')+'</small></span></div>').join('')+'</div>':'')+
+ '<p class="bg-hint">Lecture uniquement : aucun achat n’est importé, aucune commande n’est modifiée. Les autres enseignes doivent être autorisées et mappées séparément.</p></section>';
+}
 function dynamics(){
  const d=state.diagnostics,po=state.purchaseOrders,store=currentStore();
  const summary=d?(d.connected?'Connexion D365 : connecteur répond':'Connexion non confirmée'):(state.diagnosticsError?'Diagnostic indisponible':'Diagnostic non exécuté');
@@ -130,6 +143,7 @@ function dynamics(){
  (po?'<div class="bg-micro-kpis"><span><strong>'+n(po.length)+'</strong> PO récupérés</span><span><strong>'+n(suppliers.length)+'</strong> fournisseurs identifiés</span></div>':'')+
  (state.purchaseOrdersError?'<p class="bg-inline-error">'+e(state.purchaseOrdersError)+'</p>':'')+
  '<button class="bg-btn bg-btn-outline" data-bg-po '+(state.purchaseOrdersLoading?'disabled':'')+'>'+(state.purchaseOrdersLoading?'Chargement…':'Lire les PO disponibles')+'</button></section></div>'+
+ groupCompanyPo()+
  (rows.length?'<div class="bg-panel bg-po-list"><div class="bg-section-title"><div><span class="bg-eyebrow">RÉCEPTION PO · MAGASIN UNIQUEMENT</span><h3>Derniers documents retournés</h3></div></div><div class="bg-table">'+rows.map(r=>'<div class="bg-po-row"><span>'+e(r.vendor||r.source_origin||'Fournisseur non identifié')+'<small>'+e(r.source_vendor_account||'Compte non renseigné')+'</small></span><strong>'+e(r.reference||r.document_number||r.id||'—')+'</strong></div>').join('')+'</div></div>':'')+
  '<p class="bg-hint">Un écran métier dédié utilisera ensuite un adaptateur serveur D365, des entités juridiques autorisées et un rapprochement des données. Aucune mutation ERP n’est effectuée ici.</p>';
 }
@@ -157,6 +171,12 @@ function bind(root){
    catch(error){state.diagnostics=null;state.diagnosticsError=error?.message||'Diagnostic non disponible'}
    finally{state.diagnosticsLoading=false;renderBuyingGroup()}
  });
+ root.querySelector('[data-bg-group-po]')?.addEventListener('click',async()=>{
+  state.configuredCompanyPoLoading=true;state.configuredCompanyPoError=null;renderBuyingGroup();
+  try{state.configuredCompanyPo=await api('/api/buying-group/dynamics/po-sample',{noRetry:true});}
+  catch(error){state.configuredCompanyPo=null;state.configuredCompanyPoError=error?.message||'Lecture Dynamics indisponible';}
+  finally{state.configuredCompanyPoLoading=false;renderBuyingGroup();}
+ });
  root.querySelector('[data-bg-po]')?.addEventListener('click',async()=>{
    if(!app.storeId){state.purchaseOrdersError='Sélectionne un magasin';renderBuyingGroup();return}
    state.purchaseOrdersLoading=true;state.purchaseOrdersError=null;renderBuyingGroup();
@@ -174,7 +194,7 @@ export function renderBuyingGroup(){
  if(state.purchaseOrdersStore&&state.purchaseOrdersStore!==app.storeId){state.purchaseOrders=null;state.purchaseOrdersStore=null}
  root.innerHTML='<div class="bg-app">'+header()+
    '<div class="bg-toolbar"><div class="bg-tabs" role="navigation" aria-label="Espaces Centrale d’achat">'+tabs.map(t=>'<button data-bg-tab="'+t.id+'" class="'+(t.id===state.tab?'active':'')+'" '+(t.id===state.tab?'aria-current="page"':'')+'>'+e(t.label)+'</button>').join('')+'</div>'+
-   '<span class="bg-environment">PILOTE · 0 DONNÉE FINANCIÈRE CRÉÉE</span></div>'+
+   '<span class="bg-environment">DONNÉES D’ACHATS IMPORTÉES · AUCUNE ÉCRITURE ERP</span></div>'+
    '<div class="bg-content">'+renderActive()+'</div></div>';
  bind(root);
  const host=root.querySelector('#bgManagement');

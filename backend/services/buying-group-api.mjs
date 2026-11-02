@@ -204,6 +204,10 @@ async function auditLog(db){
 export async function serveBuyingGroup(req,db,user){
   const path=new URL(req.url).pathname,method=req.method;
   try{
+    if(path==='/api/buying-group/dynamics/po-sample'){
+      const {serveBuyingD365}=await import('./buying-group-d365.mjs');
+      return await serveBuyingD365(req);
+    }
     if(path.startsWith('/api/buying-group/purchases')||/^\/api\/buying-group\/contracts\/[^/]+\/reconcile$/.test(path)){
       const {serveBuyingPurchases}=await import('./buying-group-purchases.mjs');
       return await serveBuyingPurchases(req,db,user);
