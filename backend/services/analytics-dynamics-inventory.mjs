@@ -23,6 +23,31 @@ async function discover(domain,deps){
  for(const entity of [...new Set(candidates)].slice(0,3))try{const r=await deps.probe(entity,{top:1,filter:deps.company,extra:'cross-company=true'});if(!r.ok||!r.rows?.length){errors.push('Aucune ligne témoin accessible pour '+entity);continue}const mapping=inventoryMapping(r.rows[0],entity,domain);await deps.write(k,'inventory-journal-schema-v1',mapping,86400);return mapping}catch(e){errors.push(e.code||'SCHEMA_NOT_READABLE')}
  const message=candidates.length?'Journal identifié, mais dépôt/date/champs non lisibles ou accès refusé.':'Aucune collection publique de journal '+domains[domain]+' trouvée dans les métadonnées Dynamics.';await deps.write(k,'inventory-journal-schema-v1',{unavailable:true,message,details:errors},120);throw Object.assign(new Error(message),{code:'DYNAMICS_INVENTORY_NOT_EXPOSED',details:errors});
 }
+async function enrichJournalHeaders(rows,io){
+ if(!rows.length)return{rows,available:false};
+ const key=analyticsCacheKey('inventory-journal-header-v1',[config.dynamics.baseUrl,io.company]);
+ try{
+  let mapping=await io.read(key);
+  if(!mapping){
+   const catalog=await io.list('InventoryJournalHeader');
+   const entities=catalog.map(r=>Object.fromEntries(Object.entries(r).map(([k,v])=>[k.toLowerCase(),v]))).map(r=>clean(r.publiccollectionname||r.entitysetname)).filter(n=>/invent.*journal.*header/i.test(n)&&/^[A-Za-z0-9_]+$/.test(n));
+   for(const entity of [...new Set(entities)].slice(0,2)){
+    const sample=(await io.probe(entity,{top:1,filter:io.company,extra:'cross-company=true'})).rows?.[0];if(!sample)continue;
+    const journal=pick(sample,'JournalBatchNumber','JournalNumber','InventoryJournalNumber','JournalId');if(!journal)continue;
+    mapping={entity,journal,posted:pick(sample,'IsPosted','Posted','JournalStatus'),name:pick(sample,'InventoryJournalNameId','JournalNameId','JournalName'),label:pick(sample,'Description','JournalDescription','Name'),reason:pick(sample,'ReasonCode','InventoryReasonCodeId','ReasonCodeId')};break;
+   }
+   mapping ||= {unavailable:true};await io.write(key,'inventory-journal-header-v1',mapping,mapping.unavailable?120:86400);
+  }
+  if(mapping.unavailable)return{rows,available:false};
+  const ids=[...new Set(rows.map(r=>r.journal))].slice(0,40),headers=new Map();
+  for(let i=0;i<ids.length;i+=20){
+   const wanted=ids.slice(i,i+20),filter=[io.company,'('+wanted.map(id=>`${mapping.journal} eq '${escape(id)}'`).join(' or ')+')'].filter(Boolean).join(' and ');
+   const data=await io.get(mapping.entity,{filter,select:[...new Set([mapping.journal,mapping.posted,mapping.name,mapping.label,mapping.reason].filter(Boolean))].join(','),extra:'cross-company=true',pageSize:500,maxRows:1000});
+   for(const h of data.value||[])if(wanted.includes(clean(h[mapping.journal])))headers.set(clean(h[mapping.journal]),h);
+  }
+  return{available:true,entity:mapping.entity,rows:rows.map(r=>{const h=headers.get(r.journal);if(!h)return r;const raw=mapping.posted?clean(h[mapping.posted]).toUpperCase():'';return{...r,journalName:mapping.name?clean(h[mapping.name]):null,journalLabel:mapping.label?clean(h[mapping.label]):null,reason:r.reason||(mapping.reason?clean(h[mapping.reason]):null),posted:r.posted!=null?r.posted:/^(YES|TRUE|1|POSTED)$/.test(raw)?true:/^(NO|FALSE|0|DRAFT|NOTPOSTED)$/.test(raw)?false:null}})};
+ }catch{return{rows,available:false};}
+}
 export async function readDynamicsInventory(stores,input,deps={}){
  const domain=clean(input.domain),start=clean(input.start),end=clean(input.end),valid=d=>/^\d{4}-\d{2}-\d{2}$/.test(d)&&Number.isFinite(Date.parse(d+'T12:00:00Z'))&&new Date(d+'T12:00:00Z').toISOString().slice(0,10)===d;
  if(!domains[domain]||!valid(start)||!valid(end)||start>end||(Date.parse(end)-Date.parse(start))/86400000>365)throw Object.assign(new Error('Type de journal et période valides requis (366 jours maximum).'),{status:400});
@@ -33,11 +58,11 @@ export async function readDynamicsInventory(stores,input,deps={}){
  if(!deps.list&&config.dynamics.mode!=='live')return{...result,status:'UNAVAILABLE',message:'Connexion Dynamics réelle requise.'};
  const area=deps.dataAreaId||config.dynamics.dataAreaId;if(!area)return{...result,status:'UNMAPPED',message:'Société Dynamics non configurée ; lecture interdite sans périmètre prouvé.'};const company=area?`${config.dynamics.dataAreaField} eq '${escape(area)}'`:'';
  const io={list:deps.list||listDataEntities,probe:deps.probe||probeDataEntity,get:deps.get||odataGetAll,read:deps.read||readAnalyticsCache,write:deps.write||writeAnalyticsCache,company};
- const key=analyticsCacheKey('inventory-journal-report-v1',[config.dynamics.baseUrl,area,domain,store.id,warehouse,start,end]),cached=await io.read(key);if(cached&&input.force!=='1')return{...cached,storeId:store.id,storeName:store.name,cached:true};
+ const key=analyticsCacheKey('inventory-journal-report-v2',[config.dynamics.baseUrl,area,domain,store.id,warehouse,start,end]),cached=await io.read(key);if(cached&&input.force!=='1')return{...cached,storeId:store.id,storeName:store.name,cached:true};
  try{const m=deps.mapping||await discover(domain,io),from=start+(m.dateTime?'T00:00:00Z':''),until=new Date(end+'T12:00:00Z');until.setUTCDate(until.getUTCDate()+1);const next=until.toISOString().slice(0,10)+(m.dateTime?'T00:00:00Z':'');
  const filter=[company,`${m.warehouse} eq '${escape(warehouse)}'`,`${m.date} ge ${from}`,`${m.date} lt ${next}`].filter(Boolean).join(' and '),fields=[...new Set(Object.entries(m).filter(([k,v])=>!['entity','domain','dateTime'].includes(k)&&v).map(([,v])=>v))];
  const payload=await io.get(m.entity,{filter,select:fields.join(','),extra:'cross-company=true'+(m.line?`&$orderby=${m.journal},${m.line}`:''),pageSize:500,maxRows:5000});
- const rows=(payload.value||[]).filter(r=>clean(r[m.warehouse])===clean(warehouse)&&clean(r[m.date]).slice(0,10)>=start&&clean(r[m.date]).slice(0,10)<=end).map(r=>inventoryJournalRow(r,m,store));
- const response={...result,status:payload.truncated?'PARTIAL':'READY',complete:!payload.truncated,entity:m.entity,rows,message:payload.truncated?'Lecture limitée à 5 000 lignes ; réduire la période.':rows.length?'Journaux lus dans Dynamics.':'Aucun journal dans Dynamics sur ce dépôt et cette période.',fields:{posted:!!m.posted,reason:!!m.reason,cost:!!m.cost,unit:!!m.unit,counted:!!m.counted,theoretical:!!m.theoretical}};await io.write(key,'inventory-journal-report-v1',response,300);return response;
+ const rawRows=(payload.value||[]).filter(r=>clean(r[m.warehouse])===clean(warehouse)&&clean(r[m.date]).slice(0,10)>=start&&clean(r[m.date]).slice(0,10)<=end).map(r=>inventoryJournalRow(r,m,store)),headers=await enrichJournalHeaders(rawRows,io),rows=headers.rows;
+ const response={...result,status:payload.truncated?'PARTIAL':'READY',complete:!payload.truncated,entity:m.entity,headerSource:headers.entity||null,rows,message:payload.truncated?'Lecture limitée à 5 000 lignes ; réduire la période.':rows.length?'Journaux lus dans Dynamics.':'Aucun journal dans Dynamics sur ce dépôt et cette période.',fields:{posted:!!m.posted,reason:!!m.reason,cost:!!m.cost,unit:!!m.unit,counted:!!m.counted,theoretical:!!m.theoretical}};await io.write(key,'inventory-journal-report-v2',response,300);return response;
  }catch(e){const response={...result,status:'UNAVAILABLE',code:e.code||'DYNAMICS_INVENTORY_READ_FAILED',message:e.code==='DYNAMICS_INVENTORY_NOT_EXPOSED'?e.message:'Lecture des journaux Dynamics indisponible : accès ou structure à vérifier.',details:e.details||[]};await io.write(key,'inventory-journal-report-v1',response,120);return response;}
 }
