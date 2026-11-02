@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 
 // Private H&S procurement backend. The caller must authenticate via StoreOps first.
 const VALID_ENTITIES=new Set(['GROUP','FRANPRIX','VENEZIA','FLORMAR','DAHAB','INTERSPORT','PRIMOR','BEAUTY_FOR_YOU']);
-const ID=/^[0-9a-f]{8}-[0-9a-f-]{27}$/i;
+const ID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const respond=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});
 const fail=(msg,status=400)=>respond({error:msg},status);
 const string=(x,n=240)=>String(x??'').trim().slice(0,n);
@@ -179,7 +179,7 @@ async function download(db,id){
 }
 async function activate(db,user,id){
   const record=await tx(db,async c=>{
-    const res=await c.query('SELECT status,effective_to FROM hs_buying.contracts WHERE id=$1 FOR UPDATE',[id]);
+    const res=await c.query('SELECT status,effective_to::text AS effective_to FROM hs_buying.contracts WHERE id=$1 FOR UPDATE',[id]);
     if(!res.rows.length)throw Object.assign(Error('Contrat introuvable.'),{status:404});
     if(res.rows[0].status!=='DRAFT')throw Object.assign(Error('Seul un brouillon peut être validé.'),{status:409});
     if(String(res.rows[0].effective_to).slice(0,10)<new Date().toISOString().slice(0,10))throw Object.assign(Error('Contrat expiré.'),{status:422});
