@@ -67,7 +67,9 @@ function renderStock(){
  const labels={HELD:'Détenu',EXPECTED_NOT_HELD:'Attendu, non détenu',NOT_HELD:'Non détenu',NEGATIVE:'Stock négatif',UNKNOWN:'Inconnu'};
  $('stockRows').innerHTML=`<p class="muted">${rows.length} lignes correspondent aux filtres ; affichage des ${Math.min(800,rows.length)} premières. Export disponible pour la sélection filtrée.</p>`+table(['Priorité','Magasin','Article','Rayon','Attendu','Disponible magasin','Disponible entrepôt','Unité de stock','État'],rows.slice(0,800).map(r=>[esc(stockPriority(r).label),esc(r.storeName),esc(r.productName||r.productNumber)+`<small>${esc(r.productNumber)}</small>`,esc(categoryNode(r)?.label||'Non classé')+(r.hierarchyStatus==='PARTIAL'?'<small>Classement partiel</small>':''),r.expected==null?'Inconnu':r.expected?'Oui':'Non',number(r.storeAvailable)+`<small>${esc(r.warehouseId||'')}</small>`,number(r.warehouseAvailable)+`<small>${esc(r.supplyWarehouseId||'')}</small>`,esc(r.unit||'Inconnue'),esc(labels[r.state])]));
 }
-async function loadStock(){
+let stockFlight=null,stockFlightKey='';
+function loadStock(){const currentKey=JSON.stringify([selectedIds().sort(),window.RETAIL_INTELLIGENCE.getState().tenant]);if(stockFlight&&stockFlightKey===currentKey)return stockFlight;stockFlightKey=currentKey;const job=performStock().finally(()=>{if(stockFlight===job)stockFlight=null});stockFlight=job;return job}
+async function performStock(){
  const generation=++state.stockGeneration,stores=state.stores.filter(s=>selectedIds().includes(s.id));state.stockRows=[];state.stockMeta=[];state.stockComplete=false;$('loadStock').disabled=true;
  try{for(const store of stores){
  for(const kind of ['store','supply']){let offset=0,snapshot=null;do{if(generation!==state.stockGeneration)return;const q=new URLSearchParams({storeId:store.id,kind,offset:String(offset)});if(snapshot)q.set('snapshot',snapshot);const page=await api('/api/analytics/detention/prepare?'+q,{noRetry:true});if(generation!==state.stockGeneration)return;snapshot=page.snapshot;offset=page.nextOffset;$('stockStatus').textContent=`Préparation ${store.name} · ${kind==='store'?'magasin':'entrepôt'} : ${page.rows} lignes`; }while(offset!=null)}
@@ -77,7 +79,7 @@ function csv(name,headers,rows){const cell=v=>{const text=String(v??''),safe=typ
 document.querySelectorAll('#biWorkspace [data-tab]').forEach(b=>b.addEventListener('click',()=>activate(b.dataset.tab)));
 document.addEventListener('click',e=>{const b=e.target.closest('#biWorkspace [data-product]');if(b){$('articleCode').value=b.dataset.product;activate('article');renderArticle()}});
 for(const id of ['start','end','beforeStart','beforeEnd'])$(id).addEventListener('change',()=>{state.controller?.abort();state.generation++;state.report=null;for(const target of ['kpis','signals','products','affinities','articleContent'])$(target).innerHTML='';$('period').textContent='Période modifiée : lancer une nouvelle analyse.';$('status').textContent='Les anciens chiffres sont masqués pour éviter de mélanger les périodes.'});
-window.RETAIL_DETENTION_STOCK={load:loadStock};
+window.RETAIL_DETENTION_STOCK={load:loadStock,ensure:async storeId=>{if(!selectedIds().includes(storeId))return null;if(!state.stockComplete)await loadStock();return state.stockComplete}};
  $('filters').addEventListener('submit',loadReport);$('search').addEventListener('input',renderReport);$('articleForm').addEventListener('submit',e=>{e.preventDefault();renderArticle()});$('loadStock').addEventListener('click',loadStock);
 $('stockLevel').addEventListener('change',()=>{stockCategories();renderStock()});
 for(const id of ['stockSearch','stockCategory','stockState','stockCodes','stockSupplier','stockPriority'])$(id).addEventListener(['stockSearch','stockCodes'].includes(id)?'input':'change',renderStock);
@@ -86,11 +88,12 @@ $('export').addEventListener('click',()=>{if(!state.report)return;csv('storeops-
 $('exportStock').addEventListener('click',()=>csv('storeops-detention.csv',['Priorité','Magasin','Article','Libellé','Rayon','Attendu','Stock magasin','Stock entrepôt','Unité','État','Dépôt magasin','Entrepôt appro','Fournisseur compte','Fournisseur nom','Mode approvisionnement','Lecture complète','Date lecture stock magasin','Date lecture stock entrepôt'],filteredStock().map(r=>[stockPriority(r).label,r.storeName,r.productNumber,r.productName,r.hierarchy?.rayon?.label,r.expected,r.storeAvailable,r.warehouseAvailable,r.unit,r.state,r.warehouseId,r.supplyWarehouseId,r.primaryVendorAccount,r.vendorName,r.supplyMode,state.stockComplete,r.stockReadAt,r.warehouseReadAt])));
 
 function selectedIds(){return window.RETAIL_INTELLIGENCE.getSelectedStores().map(s=>s.id)}
-let scopeKey='';
+let scopeKey='',stockSelectionKey='';
 function sync(){
  const main=window.RETAIL_INTELLIGENCE.getState(),key=JSON.stringify([selectedIds(),main.periodStart,main.periodEnd,main.compareStart,main.compareEnd,main.tenant]);
- if(scopeKey!==key){scopeKey=key;for(const [id,value] of [['start',main.periodStart],['end',main.periodEnd],['beforeStart',main.compareStart],['beforeEnd',main.compareEnd]]){$(id).value=value;$(id).dispatchEvent(new Event('change'))}state.stockGeneration++;state.stockRows=[];state.stockMeta=[];state.stockComplete=false;$('loadStock').disabled=false;$('stockStatus').textContent='Lire les stocks pour ce périmètre.';renderStock()}
- const detention=main.section==='detention';activate(detention?'detention':'global');$('biTabs').hidden=detention;$('biRun').hidden=detention;$('period').hidden=detention;$('status').hidden=detention;$('biNotes').hidden=detention;
+ if(scopeKey!==key){scopeKey=key;for(const [id,value] of [['start',main.periodStart],['end',main.periodEnd],['beforeStart',main.compareStart],['beforeEnd',main.compareEnd]]){$(id).value=value;$(id).dispatchEvent(new Event('change'))}}
+ const stockSelection=JSON.stringify([selectedIds().sort(),main.tenant]);if(stockSelectionKey!==stockSelection){stockSelectionKey=stockSelection;state.stockGeneration++;state.stockRows=[];state.stockMeta=[];state.stockComplete=false;$('loadStock').disabled=false;$('stockStatus').textContent='Lire les stocks pour ce périmètre.';renderStock()}
+ const detention=main.section==='detention';if(detention&&selectedIds().length&&!state.stockComplete&&!$('loadStock').disabled)loadStock();activate(detention?'detention':'global');$('biTabs').hidden=detention;$('biRun').hidden=detention;$('period').hidden=detention;$('status').hidden=detention;$('biNotes').hidden=detention;
  if(!detention)$('period').textContent=`Période commune Analytics : ${main.periodStart} → ${main.periodEnd} · comparaison : ${main.compareStart} → ${main.compareEnd}`;
 }
 $('biRun').addEventListener('click',loadReport);
