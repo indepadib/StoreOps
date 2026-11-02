@@ -1,4 +1,4 @@
-import {marginEvidence} from './performance-evidence.js';
+import {marginEvidence,performanceCard} from './performance-evidence.js';
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
@@ -483,7 +483,14 @@ import {marginEvidence} from './performance-evidence.js';
       [rateLabel,displayRate==null?'N/A':(estimated?'~ ':'')+api.percent(displayRate),margin.partial?'<span class="metric-na">non comparable au total</span>':estimated?'<span class="metric-na">estimation</span>':s.marginRateDelta==null?'<span class="metric-na">N/A</span>':signed(api,s.marginRateDelta),margin.partial?'taux du CA HT valorisé':estimated?'pas une marge comptable historique':'écart en points'],
       ['CA fidélisé',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'<span class="metric-na">N/A</span>':api.money(cur.identifiedSales,true),'poids du CA identifié']
     ];
-    $('#decisionSalesKpis').innerHTML=cards.map(([l,v,delta,sub])=>`<div class="decision-kpi"><small>${l}</small><strong>${v}</strong><span>${delta} · ${sub}</span></div>`).join('');
+    $('#decisionSalesKpis').innerHTML=[
+      {label:'Chiffre d’affaires TTC',value:cur.sales,previous:prev.sales,unit:'money',daily:true,positiveGood:true},
+      {label:'Tickets',value:cur.tickets,previous:prev.tickets,daily:true,positiveGood:true},
+      {label:'Panier moyen',value:cur.averageBasket,previous:prev.averageBasket,unit:'money',positiveGood:true,note:'Moyenne par ticket, pas par jour'},
+      {label:marginLabel,value:displayMargin,previous:margin.partial?null:prev.marginValue,unit:'money',estimated,changeMode:margin.partial?'none':'percent',note:'Coût couvert '+api.percent(marginCoverage,2)+(margin.partial?' · partielle, non extrapolée':'')},
+      {label:rateLabel,value:displayRate,previous:margin.partial?null:prev.marginRate,unit:'percent',estimated,changeMode:margin.partial?'none':'points',note:margin.partial?'Taux du CA HT valorisé uniquement':'Écart de taux en points'},
+      {label:'Poids du CA identifié',value:cur.identifiedSalesShare,previous:prev.identifiedSalesShare,unit:'percent',changeMode:'points',note:cur.identifiedSales==null?'Identification à compléter':api.money(cur.identifiedSales)+' de CA identifié'}
+    ].map(k=>performanceCard({...k,scope:sectionState()})).join('');
     renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive'); renderHourlyIntelligence();
   }
 
