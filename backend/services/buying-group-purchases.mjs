@@ -73,7 +73,7 @@ async function insertBatch(req,db,user){
       const old=byKey.get(key(row));
       if(!old){fresh.push(row);continue;}
       const same=old.document_date===row.documentDate&&String(old.amount_cents)===row.amountCents&&
-        str(old.erp_vendor_account,75)===row.vendorAccount&&str(old.data_area_id,20)===(dataArea||'');
+        str(old.erp_vendor_account,75)===row.vendorAccount&&str(old.data_area_id,20)===(dataArea||'')&&old.source_kind===source;
       if(!same)throw Object.assign(Error('Une référence déjà importée présente des valeurs différentes : '+row.reference+' / '+row.line+'. Corriger la source avant réimport.'),{status:409});
       skipped++;
     }
