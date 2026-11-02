@@ -7,6 +7,8 @@ on:
       - "frontend/js/pages/buying-group-management.js"
       - "frontend/js/api.js"
       - "backend/services/buying-group-api.mjs"
+      - "backend/services/buying-group-d365.mjs"
+      - "tests/buying-group-d365.test.mjs"
       - "netlify/functions/api.mts"
       - "netlify/database/migrations/**"
       - "frontend/buying-group.css"
@@ -29,6 +31,8 @@ on:
       - "frontend/js/pages/buying-group-management.js"
       - "frontend/js/api.js"
       - "backend/services/buying-group-api.mjs"
+      - "backend/services/buying-group-d365.mjs"
+      - "tests/buying-group-d365.test.mjs"
       - "netlify/functions/api.mts"
       - "netlify/database/migrations/**"
       - "frontend/buying-group.css"
@@ -67,8 +71,9 @@ jobs:
           node --check frontend/js/pages/buying-group-csv.js
           node --check backend/services/buying-group-purchases.mjs
           node --check backend/services/buying-group-api.mjs
+          node --check backend/services/buying-group-d365.mjs
           node --check frontend/js/api.js
           node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
-        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs
+        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs
