@@ -281,6 +281,22 @@ function errorResponse(error:unknown){
 export default async(request:Request)=>{
   const stateless=statelessHealth(request);if(stateless)return stateless;
   const database=getDatabase();
+  // H&S Buying Group writes directly to its isolated Postgres schema; no StoreOps SQLite snapshot mutation.
+  if(new URL(request.url).pathname.startsWith('/api/buying-group/')){
+    try{
+      const mode=String(envValue('AUTH_MODE')||'entra').toLowerCase();
+      if(mode==='demo')return Response.json({error:'Connexion professionnelle requise.'},{status:403});
+      const runtime=await syncReadRuntime(database);
+      await loadRuntime();
+      const auth=await authenticatedUser(request,runtime);
+      if(auth.response)return auth.response;
+      const user:any=auth.user;
+      if(!user||!(user.role==='ops_director'||user.permissions_profile==='platform_admin'||user.id==='u-admin'))
+        return Response.json({error:'Réservé à la Direction et aux administrateurs.'},{status:403,headers:{'Cache-Control':'no-store'}});
+      const {serveBuyingGroup}=await import('../../backend/services/buying-group-api.mjs');
+      return await serveBuyingGroup(request,database,user);
+    }catch(error){console.error('Buying Group auth/bootstrap failed',error);return errorResponse(error)}
+  }
   const analyticalRead=request.method==='POST'&&new URL(request.url).pathname==='/api/analytics/assistant';
   try{return (READ_METHODS.has(request.method)||analyticalRead)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
