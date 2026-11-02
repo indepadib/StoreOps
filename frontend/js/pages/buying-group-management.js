@@ -53,8 +53,8 @@ function rowContract(c){
   return '<article class="hsm-contract"><div class="hsm-contract-main"><div class="hsm-contract-eyebrow">'+q(c.scope)+' · '+q(c.entity_code)+' · '+q(c.status)+'</div>'+
   '<strong>'+q(c.title)+'</strong><small>'+q(c.supplier_name||'—')+' · '+q(String(c.effective_from||'').slice(0,10))+' — '+q(exp)+'</small>'+
   '<div class="hsm-contract-fine">'+q(c.rebate_mode)+' · '+(c.rebate_tiers?.length||0)+' palier(s) · '+q(c.documents_count||0)+' document(s)</div></div>'+
-  '<div class="hsm-contract-actions"><button type="button" data-hsm-files="'+q(c.id)+'">Pièces</button>'+
-  (c.status==='DRAFT'?'<button type="button" data-hsm-approve="'+q(c.id)+'">Activer</button>':'')+
+  '<div class="hsm-contract-actions"><button type="button" data-hsm-workflow="'+q(c.id)+'">Lire / Processus</button><button type="button" data-hsm-files="'+q(c.id)+'">Pièces</button>'+
+  (c.status==='DRAFT'&&c.workflow_stage==='APPROVED'?'<button type="button" data-hsm-approve="'+q(c.id)+'">Activer après approbation</button>':'')+
   '</div></article>';
 }
 function contractForm(){
@@ -117,7 +117,7 @@ function filePanel(contract,files=[]){
   '<button data-hsm-download="'+q(f.id)+'" data-file-name="'+q(f.file_name)+'">Télécharger</button></div>').join(''):
   '<p class="hsm-note">Pas encore de document contractuel.</p>')+'</div>'+
   '<label class="hsm-upload">+ Ajouter un PDF / DOCX (5 Mo maximum)<input type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" data-hsm-upload="'+q(contract.id)+'"></label>'+
-  '<p class="hsm-note">Accès privé côté serveur et versions immuables. Les fichiers sont dans PostgreSQL. Avant de charger des contrats confidentiels, faire valider la résidence des données, la conservation et les exigences de sécurité H&S. Extraction IA non activée.</p>';
+  '<p class="hsm-note">Accès privé côté serveur et versions immuables. Les fichiers sont dans PostgreSQL. Avant de charger des contrats confidentiels, faire valider la résidence des données, la conservation et les exigences de sécurité H&S. Lecture IA : ouvrez « Lire / Processus » puis autorisez explicitement l’analyse PDF après validation de la politique H&S.</p>';
 }
 async function fileOperations(root,contractId,refresh){
   const panel=root.querySelector('#hsmFilesPanel'),contract=data.contracts.find(c=>c.id===contractId);
@@ -203,6 +203,10 @@ export async function renderBuyingManagement(tab,root,rerender){
     host.appendChild(row);row.querySelector('button').onclick=()=>row.remove();
   });
   root.querySelectorAll('[data-hsm-files]').forEach(btn=>btn.addEventListener('click',()=>fileOperations(root,btn.dataset.hsmFiles,refresh)));
+  root.querySelectorAll('[data-hsm-workflow]').forEach(btn=>btn.addEventListener('click',()=>{
+    sessionStorage.setItem('hs_buying_contract_focus',btn.dataset.hsmWorkflow);
+    document.querySelector('[data-bg-tab="workflow"]')?.click();
+  }));
   root.querySelectorAll('[data-hsm-approve]').forEach(btn=>btn.addEventListener('click',async()=>{
     if(!confirm('Activer cet accord après vérification des conditions et de la pièce signée ?'))return;
     btn.disabled=true;
