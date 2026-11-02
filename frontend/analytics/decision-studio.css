@@ -27,3 +27,14 @@
 
 /* The legacy visual layer pins top:84px with !important; static flow removes its offset. */
 @media screen{body .filterbar{position:static!important;top:auto!important}.performance-card .metric-title{min-height:36px}}
+
+/* Compact reading density; margin rate remains primary, its amount stays in the note. */
+@media screen{.performance-grid,#briefKpis,#decisionSalesKpis{gap:10px}.performance-card{padding:13px 14px;border-radius:12px}.performance-card .metric-title{font-size:11px;min-height:30px;line-height:1.35}.performance-card .metric-value{font-size:23px;margin:6px 0}.performance-card--margin .metric-value{font-size:29px;color:#134d5c}.metric-evolution{font-size:13px;padding:4px 6px;gap:3px 7px}.metric-evolution span{font-size:10px}.performance-card .metric-reference{font-size:11px;margin:7px 0}.metric-comparison-bars{display:none}.metric-daily{padding-top:8px;margin-top:8px}.metric-daily strong{font-size:15px}.metric-daily span,.metric-daily p{font-size:11px}.metric-daily small{font-size:10px}.performance-card .metric-note{font-size:11px;line-height:1.45;margin-top:8px}.brief-kpis{padding:12px 14px 0}.brief-grid{padding:12px 14px;gap:10px}.brief-panel{padding:13px}.brief-panel h2{font-size:13px}.brief-panel li{font-size:12px;line-height:1.5}.brief-head{padding:15px 18px}.brief-head h1{font-size:22px}.studio-cards{gap:10px}.studio-card{padding:12px}.studio-card strong{font-size:23px}.decision-studio{padding:16px}}
+@media(min-width:1200px){.performance-grid,#briefKpis,#decisionSalesKpis{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(min-width:1750px){#briefKpis,#decisionSalesKpis{grid-template-columns:repeat(6,minmax(0,1fr))}}
+@media(max-width:600px){.performance-grid,#briefKpis,#decisionSalesKpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.performance-card{padding:11px;grid-column:auto}.performance-card .metric-value{font-size:21px;overflow-wrap:anywhere}.performance-card--margin .metric-value{font-size:27px}.performance-card .metric-title{min-height:30px}.metric-daily>div{display:block}.metric-daily strong{display:block;margin-top:3px}.metric-evolution{font-size:12px}.metric-evolution span{display:block}.metric-daily p{line-height:1.5}} 
+@media(max-width:370px){.performance-grid,#briefKpis,#decisionSalesKpis{grid-template-columns:1fr}}
+
+.loss-source-heading p,.loss-storeops p{font-size:12px;line-height:1.6;color:#526b7d}.loss-source-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.loss-source-status p{font-size:11px;line-height:1.5;padding:10px;margin:0;background:#f5f8fa;border:1px solid #dce5ec;border-radius:9px;overflow-wrap:anywhere}.loss-storeops{border-top:1px solid #dce5ec;padding-top:14px;margin-top:16px}.loss-storeops summary{font-size:13px;font-weight:700;cursor:pointer}@media(max-width:650px){.loss-source-status{grid-template-columns:1fr}}
+
+@media(max-width:600px){.performance-card--money .metric-value{font-size:18px;overflow-wrap:normal}}

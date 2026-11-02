@@ -487,8 +487,8 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       {label:'Chiffre d’affaires TTC',value:cur.sales,previous:prev.sales,unit:'money',daily:true,positiveGood:true},
       {label:'Tickets',value:cur.tickets,previous:prev.tickets,daily:true,positiveGood:true},
       {label:'Panier moyen',value:cur.averageBasket,previous:prev.averageBasket,unit:'money',positiveGood:true,note:'Moyenne par ticket, pas par jour'},
-      {label:marginLabel,value:displayMargin,previous:margin.partial?null:prev.marginValue,unit:'money',estimated,changeMode:margin.partial?'none':'percent',note:'Coût couvert '+api.percent(marginCoverage,2)+(margin.partial?' · partielle, non extrapolée':'')},
-      {label:rateLabel,value:displayRate,previous:margin.partial?null:prev.marginRate,unit:'percent',estimated,changeMode:margin.partial?'none':'points',note:margin.partial?'Taux du CA HT valorisé uniquement':'Écart de taux en points'},
+      {label:rateLabel,value:displayRate,previous:margin.partial?null:prev.marginRate,unit:'percent',estimated,emphasis:true,changeMode:margin.partial?'none':'points',note:'Montant HT : '+(displayMargin==null?'À compléter':api.money(displayMargin))+' · coût couvert '+api.percent(marginCoverage,2)+(margin.partial?' · partiel, non extrapolé':'')},
+      {label:'CA remisé TTC',value:cur.promotionSales,previous:prev.promotionSales,unit:'money',daily:true,note:'Lignes avec remise périodique enregistrée'},
       {label:'Poids du CA identifié',value:cur.identifiedSalesShare,previous:prev.identifiedSalesShare,unit:'percent',changeMode:'points',note:cur.identifiedSales==null?'Identification à compléter':api.money(cur.identifiedSales)+' de CA identifié'}
     ].map(k=>performanceCard({...k,scope:sectionState()})).join('');
     renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive'); renderHourlyIntelligence();

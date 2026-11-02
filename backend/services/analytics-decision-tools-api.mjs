@@ -1,3 +1,4 @@
+import {readDynamicsInventory} from './analytics-dynamics-inventory.mjs';
 import {answerBusinessQuestion,articleInvestigationRequired} from './analytics-query-agent.mjs';
 import {lossInventoryReport} from './analytics-loss-inventory.mjs';
 import {basketDirectionReport} from './analytics-basket-direction.mjs';
@@ -17,7 +18,7 @@ export async function handleDecisionToolsApi({req,url,user}){
  if(url.pathname.endsWith('/competitor-prices'))return{status:req.method==='POST'?201:200,data:await competitorObservations(stores,input,user,req.method)};
  if(req.method==='GET'&&url.pathname.endsWith('/capabilities'))return{status:200,data:{aiAvailable:!!process.env.ANTHROPIC_API_KEY,calculatedAnswers:true}};
  if(req.method==='GET'&&url.pathname.endsWith('/pricing-context')){if(stores.length!==1||!day(input.date)||!/^[A-Za-z0-9_.-]{1,64}$/.test(input.product||''))return{status:400,data:{error:'Un magasin, un article et une date valides sont requis.'}};return{status:200,data:await articlePricingContext(stores[0].id,input.product,input.date,{force:input.force==='1'})}}
- if(req.method==='GET'&&url.pathname.endsWith('/loss-inventory'))return{status:200,data:lossInventoryReport(stores,input)};
+ if(req.method==='GET'&&url.pathname.endsWith('/loss-inventory'))return{status:200,data:input.source==='dynamics'?await readDynamicsInventory(stores,input):lossInventoryReport(stores,input)};
  if(req.method==='GET'&&url.pathname.endsWith('/operational-summary'))return{status:200,data:await operationalSummary(stores)};
  if(req.method==='POST'&&url.pathname.endsWith('/assistant')){const question=String(input.question||'').trim();if(!question||question.length>1200)return{status:400,data:{error:'Question requise, 1 200 caractères maximum.'}};const key=user.id||user.email||user.store_id||user.role,t=Date.now(),rate=limits.get(key)||{at:t,count:0};if(t-rate.at>60000){rate.at=t;rate.count=0}if(++rate.count>10)return{status:429,data:{error:'Patientez quelques secondes avant une nouvelle question.'}};limits.set(key,rate);if(input.analysisMode==='BASKET_REPORT')return basketDirectionReport(stores,{...input,question});if(articleInvestigationRequired({...input,question}))return articleInvestigation(stores,allowed,{...input,question});return{status:200,data:await answerBusinessQuestion(stores,{...input,question},{allowedStores:allowed})}}
  return{status:405,data:{error:'Méthode non autorisée.'}};
