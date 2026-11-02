@@ -18,3 +18,5 @@ const inventory=await operationalAnswer([{id:'A'}],{question:'Analyse inventaire
 const root=new URL('../../frontend/',import.meta.url);for(const [file,href] of [['index.html','/favicon-storeops.svg'],['analytics/index.html','/analytics/favicon.svg']])assert.ok(readFileSync(new URL(file,root),'utf8').includes('href="'+href+'"'));
 const code=readFileSync(new URL('../../frontend/analytics/workspace-bi.js',import.meta.url),'utf8');assert.match(code,/filteredStock\(\)\.map/);assert.match(code,/filteredProducts\(\)\.map/);
 console.log('PASS multi-axis filters, stock triage, missing valuations, loss scope, targeted assistant, filtered exports and favicons');
+
+await import('./analytics-inventory-dynamics.mjs');
