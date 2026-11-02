@@ -30,9 +30,10 @@ test('PDF and DOCX are supported from file signature, even when browser MIME is 
   assert.match(apiTransport,/application\/vnd\.openxmlformats-officedocument\.wordprocessingml\.document/);
 });
 test('Direct upload requires no supplier, contract ID or effective dates',async()=>{
-  const statements=[];
-  const fake={query:async(sql)=>{
+  const statements=[],actions=[];
+  const fake={query:async(sql,params)=>{
     statements.push(String(sql));
+    if(String(sql).includes('INSERT INTO hs_buying.audit_events'))actions.push(params[1]);
     if(String(sql).includes('FROM hs_buying.contract_intakes WHERE created_by=$1 AND sha256'))return{rows:[]};
     if(String(sql).includes('count(*)::int'))return{rows:[{count:0}]};
     if(String(sql).includes('INSERT INTO hs_buying.contract_intakes'))return{rows:[{
@@ -46,7 +47,7 @@ test('Direct upload requires no supplier, contract ID or effective dates',async(
   assert.equal(response.status,201);
   assert.equal((await response.json()).item.id,intakeId);
   assert.ok(statements.includes('COMMIT'));
-  assert.ok(statements.some(s=>s.includes('CONTRACT_INTAKE_UPLOADED')));
+  assert.ok(actions.includes('CONTRACT_INTAKE_UPLOADED'));
   assert.ok(!statements.some(s=>s.includes('INSERT INTO hs_buying.contracts')));
 });
 test('Upload rejects files greater than 5MB and invalid signatures before DB access',async()=>{
@@ -86,10 +87,11 @@ test('Contract registration refuses missing dates but does not block initial upl
   assert.throws(()=>validate({...base,scope:'LOCAL'}),/cohérente/);
 });
 test('Final registration creates a supplier, draft, document and workflow in one transaction',async()=>{
-  const sqls=[];
+  const sqls=[],actions=[];
   const db={pool:{connect:async()=>({
-    query:async(sql)=>{
+    query:async(sql,params)=>{
       sqls.push(String(sql));
+      if(String(sql).includes('INSERT INTO hs_buying.audit_events'))actions.push(params[1]);
       if(String(sql).startsWith('SELECT * FROM hs_buying.contract_intakes'))return{rows:[{
         id:intakeId,status:'UPLOADED',file_name:'Contrat.pdf',content_type:'application/pdf',
         byte_size:pdf.length,sha256:hash,file_bytes:pdf,created_by:'director-test'
@@ -112,8 +114,10 @@ test('Final registration creates a supplier, draft, document and workflow in one
   assert.equal(body.item.contractId,contractId);
   for(const fragment of ['INSERT INTO hs_buying.suppliers','INSERT INTO hs_buying.contracts',
     'INSERT INTO hs_buying.contract_documents','INSERT INTO hs_buying.contract_workflows',
-    "file_bytes=NULL",'CONTRACT_INTAKE_REGISTERED','COMMIT'])
+    "file_bytes=NULL",'COMMIT'])
     assert.ok(sqls.some(s=>s.includes(fragment)),fragment);
+  assert.ok(actions.includes('CONTRACT_INTAKE_REGISTERED'));
+  assert.ok(actions.includes('CONTRACT_CREATED_FROM_IMPORT'));
 });
 test('Import and registration use the existing server-side Director authorization',()=>{
   assert.match(router,/serveContractIntakes\(req,db,user\)/);
