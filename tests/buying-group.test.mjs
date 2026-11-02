@@ -18,8 +18,8 @@ const shortcuts=file('frontend/director-workspaces.css');
 const moduleSource=file('frontend/js/pages/buying-group.js');
 const css=file('frontend/buying-group.css');
 const stripped=moduleSource.replace(/^import\s+.+?;\s*$/gm,'').replace(/export\s+function\s+/g,'function ');
-const factory=new Function('api','app','currentStore','isDirector','document','buyingSnapshot','loadBuyingManagement','renderBuyingManagement','purchaseSnapshot','loadPurchaseEvidence','renderPurchaseEvidence',stripped+';return{simulateValues,renderBuyingGroup};');
-const runtime=(api,app,currentStore,isDirector,document)=>factory(api,app,currentStore,isDirector,document,()=>({suppliers:0,contracts:{active:0,drafts:0},documents:0}),async()=>{},async()=>{},()=>({total:{line_count:0}}),async()=>{},async()=>{});
+const factory=new Function('api','app','currentStore','isDirector','document','buyingSnapshot','loadBuyingManagement','renderBuyingManagement','purchaseSnapshot','loadPurchaseEvidence','renderPurchaseEvidence','renderWorkflow',stripped+';return{simulateValues,renderBuyingGroup};');
+const runtime=(api,app,currentStore,isDirector,document)=>factory(api,app,currentStore,isDirector,document,()=>({suppliers:0,contracts:{active:0,drafts:0},documents:0}),async()=>{},async()=>{},()=>({total:{line_count:0}}),async()=>{},async()=>{},async()=>{});
 
 test('Buying Group is a standalone route, not a StoreOps navigation page',()=>{
   assert.doesNotMatch(main,/id="buyingGroupNav"|id="buyingGroupPage"/);
@@ -72,7 +72,7 @@ test('Director pilot render does not call Dynamics automatically',()=>{
     ()=>({name:'Val-Fleuri'}),()=>true,{querySelector:selector=>selector==='#buyingGroupContent'?node:null});
   instance.renderBuyingGroup();
   assert.equal(calls,0);
-  assert.match(node.innerHTML,/Une force d’achat/);
+  assert.match(node.innerHTML,/Lire &amp; valider un contrat/);
 });
 
 test('Illustrative Lesieur savings remain correct and non-persistent',()=>{
@@ -93,7 +93,7 @@ test('Canonical ES modules share one StoreOps auth state instance (regression fo
   assert.match(standaloneEntry,/from '\/js\/state\.js'/);
   assert.match(standaloneEntry,/from '\/js\/auth\.js'/);
   assert.match(standaloneEntry,/from '\/js\/pages\/buying-group\.js'/);
-  assert.match(standaloneShell,/\/centrale-achat\/entry\.js\?v=5/);
+  assert.match(standaloneShell,/\/centrale-achat\/entry\.js\?v=6/);
   assert.match(netlifyConfig,/for = "\/centrale-achat\/\*"/);
 });
 

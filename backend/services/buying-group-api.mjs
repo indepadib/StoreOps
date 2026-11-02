@@ -103,7 +103,7 @@ async function getSuppliers(db){
   return respond({items:rows,live:true,source:'H&S PostgreSQL'});
 }
 async function getContracts(db){
-  const {rows}=await db.pool.query("SELECT c.id,c.title,c.scope,c.entity_code,c.status,c.effective_from,c.effective_to,c.rebate_mode,c.rebate_base,c.rebate_tiers,c.parent_contract_id,c.payment_terms_days,c.notes,c.supplier_id,c.approved_by,c.approved_at,s.name supplier_name,(SELECT count(*)::int FROM hs_buying.contract_documents d WHERE d.contract_id=c.id) documents_count FROM hs_buying.contracts c JOIN hs_buying.suppliers s ON s.id=c.supplier_id ORDER BY c.created_at DESC LIMIT 500");
+  const {rows}=await db.pool.query("SELECT c.id,c.title,c.scope,c.entity_code,c.status,c.effective_from,c.effective_to,c.rebate_mode,c.rebate_base,c.rebate_tiers,c.parent_contract_id,c.payment_terms_days,c.notes,c.supplier_id,c.approved_by,c.approved_at,COALESCE(w.stage,CASE WHEN c.status='ACTIVE' THEN 'ACTIVE' ELSE 'DRAFT' END) workflow_stage,s.name supplier_name,(SELECT count(*)::int FROM hs_buying.contract_documents d WHERE d.contract_id=c.id) documents_count FROM hs_buying.contracts c JOIN hs_buying.suppliers s ON s.id=c.supplier_id LEFT JOIN hs_buying.contract_workflows w ON w.contract_id=c.id ORDER BY c.created_at DESC LIMIT 500");
   return respond({items:rows,live:true,source:'H&S PostgreSQL'});
 }
 async function overview(db){
@@ -133,6 +133,7 @@ async function addContract(req,db,user){
       if(!p.rows.length||d.scope!=='LOCAL')throw Object.assign(Error('Accord Groupe parent invalide.'),{status:422});
     }
     const res=await c.query('INSERT INTO hs_buying.contracts(supplier_id,title,scope,entity_code,parent_contract_id,effective_from,effective_to,rebate_base,rebate_mode,rebate_tiers,payment_terms_days,notes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13) RETURNING id,title,status,scope,entity_code,created_at',[d.supplierId,d.title,d.scope,d.entityCode,d.parent,d.from,d.to,d.base,d.mode,JSON.stringify(d.tiers),d.payment,d.notes||null,user.id]);
+    await c.query("INSERT INTO hs_buying.contract_workflows(contract_id,stage,updated_by) VALUES($1,'DRAFT',$2)",[res.rows[0].id,user.id]);
     await log(c,user,'CONTRACT_CREATED','contract',res.rows[0].id,{scope:d.scope,entity:d.entityCode});
     return res.rows[0];
   });return respond({item:record},201);
@@ -184,9 +185,13 @@ async function activate(db,user,id){
     if(res.rows[0].status!=='DRAFT')throw Object.assign(Error('Seul un brouillon peut être validé.'),{status:409});
     if(String(res.rows[0].effective_to).slice(0,10)<new Date().toISOString().slice(0,10))throw Object.assign(Error('Contrat expiré.'),{status:422});
     const doc=await c.query('SELECT count(*)::int n FROM hs_buying.contract_documents WHERE contract_id=$1',[id]);
-    if(!doc.rows[0].n)throw Object.assign(Error('Joindre une pièce contractuelle avant validation.'),{status:422});
-    const updated=await c.query("UPDATE hs_buying.contracts SET status='ACTIVE',approved_by=$2,approved_at=now(),updated_at=now() WHERE id=$1 RETURNING id,status,approved_at",[id,user.id]);
-    await log(c,user,'CONTRACT_ACTIVATED','contract',id,{documents:doc.rows[0].n});return updated.rows[0];
+    if(!doc.rows[0].n)throw Object.assign(Error('Joindre une pièce contractuelle avant activation.'),{status:422});
+    const check=await c.query("SELECT stage,approved_by FROM hs_buying.contract_workflows WHERE contract_id=$1 FOR UPDATE",[id]);
+    if(check.rows[0]?.stage!=='APPROVED'||!check.rows[0]?.approved_by)
+      throw Object.assign(Error('Contrat non approuvé : lecture, revue, soumission et validation indépendante obligatoires.'),{status:409});
+    const updated=await c.query("UPDATE hs_buying.contracts SET status='ACTIVE',approved_by=$2,approved_at=now(),updated_at=now() WHERE id=$1 RETURNING id,status,approved_at",[id,check.rows[0].approved_by]);
+    await c.query("UPDATE hs_buying.contract_workflows SET stage='ACTIVE',updated_at=now(),updated_by=$2 WHERE contract_id=$1",[id,user.id]);
+    await log(c,user,'CONTRACT_ACTIVATED','contract',id,{documents:doc.rows[0].n,approvedBy:check.rows[0].approved_by});return updated.rows[0];
   });return respond({item:record});
 }
 async function simulate(req,db){
@@ -204,6 +209,10 @@ async function auditLog(db){
 export async function serveBuyingGroup(req,db,user){
   const path=new URL(req.url).pathname,method=req.method;
   try{
+    if(path==='/api/buying-group/ai/status'||path==='/api/buying-group/process'||path.startsWith('/api/buying-group/obligations/')||/^\/api\/buying-group\/contracts\/[^/]+\/(readings|analyze|review|submit|approve|reject|obligations)$/.test(path)){
+      const {serveContractWorkflow}=await import('./buying-group-contract-workflow.mjs');
+      return await serveContractWorkflow(req,db,user);
+    }
     if(path==='/api/buying-group/dynamics/po-sample'){
       const {serveBuyingD365}=await import('./buying-group-d365.mjs');
       return await serveBuyingD365(req);

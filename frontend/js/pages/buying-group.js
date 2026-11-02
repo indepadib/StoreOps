@@ -2,22 +2,23 @@ import { api, isShowcase } from '../api.js';
 import { app, currentStore, isDirector } from '../state.js';
 import {renderBuyingManagement,loadBuyingManagement,buyingSnapshot} from './buying-group-management.js';
 import {renderPurchaseEvidence,loadPurchaseEvidence,purchaseSnapshot} from './buying-group-purchases.js';
+import {renderWorkflow} from './buying-group-workflows.js';
 
 const PLATFORM_URL='https://hs-buying-group-os.vercel.app';
 const tabs=[
+  {id:'workflow',label:'Lire & valider un contrat'},
+  {id:'process',label:'Processus & actions'},
   {id:'overview',label:'Vue Groupe'},
   {id:'suppliers',label:'Fournisseurs'},
   {id:'contracts',label:'Contrats'},
   {id:'rebates',label:'Marges arrière'},
   {id:'purchases',label:'Journal d’achats'},
   {id:'reconcile',label:'Rapprochement RFA'},
-  {id:'opportunities',label:'Opportunités'},
-  {id:'simulation',label:'Mutualisation'},
   {id:'dynamics',label:'Dynamics 365'},
   {id:'audit',label:'Historique'}
 ];
 const state={
-  tab:'overview',
+  tab:'workflow',
   diagnostics:null,diagnosticsError:null,diagnosticsLoading:false,
   purchaseOrders:null,purchaseOrdersError:null,purchaseOrdersLoading:false,
   configuredCompanyPo:null,configuredCompanyPoLoading:false,configuredCompanyPoError:null,
@@ -32,7 +33,7 @@ const badge=(name,kind='neutral')=>'<span class="bg-badge '+kind+'">'+e(name)+'<
 function header(){
   const store=currentStore();
   return '<div class="bg-hero"><div class="bg-hero-glow"></div><div class="bg-overline">H&S · BUYING GROUP OS <span> / </span> PROCUREMENT INTELLIGENCE</div>'+
-  '<div class="bg-hero-layout"><div><h2>Un Groupe.<br><em>Une force d’achat.</em></h2><p>Contrats, fournisseurs, synergies et intelligence financière. Le futur système de pilotage de la centrale d’achat H&S.</p>'+
+  '<div class="bg-hero-layout"><div><h2>Vos contrats.<br><em>Des décisions suivies.</em></h2><p>Déposer, lire, vérifier, approuver et suivre les accords fournisseurs Groupe — des actions concrètes, avec leurs preuves.</p>'+
   '<div class="bg-hero-chips">'+badge('Pilote StoreOps','light')+badge('Accès Direction','light')+badge('Lecture seule D365','light')+'</div></div>'+
   '<div class="bg-hero-side"><span>CONTEXTE DE CONNEXION</span><strong>'+e(app.user?.name||'Direction')+'</strong>'+
   '<small>'+e(store?.name||'Magasin non sélectionné')+' · '+e(app.authMode||'—')+'</small><div class="bg-hero-side-line"></div>'+
@@ -50,14 +51,14 @@ function overview(){
   '</div><div class="bg-workspace">'+
   '<div class="bg-panel bg-priority"><span class="bg-eyebrow">LES PROCHAINES DÉCISIONS</span><h3>De la donnée à l’action</h3>'+
   '<button class="bg-action-row" data-bg-tab="contracts"><span class="bg-action-icon">01</span><span><strong>Structurer les accords fournisseurs</strong><small>Contrats Groupe, annexes enseignes, RFA et échéances</small></span><span>↗</span></button>'+
-  '<button class="bg-action-row" data-bg-tab="opportunities"><span class="bg-action-icon">02</span><span><strong>Identifier les fournisseurs communs</strong><small>Préparer la mutualisation Franprix / Venezia et les autres enseignes</small></span><span>↗</span></button>'+
-  '<button class="bg-action-row" data-bg-tab="dynamics"><span class="bg-action-icon">03</span><span><strong>Qualifier les flux Dynamics existants</strong><small>Tester les diagnostics et PO disponibles dans StoreOps</small></span><span>↗</span></button>'+
+  '<button class="bg-action-row" data-bg-tab="workflow"><span class="bg-action-icon">02</span><span><strong>Lire et valider un contrat</strong><small>Extraction PDF, preuves, revue, approbation indépendante</small></span><span>↗</span></button>'+
+  '<button class="bg-action-row" data-bg-tab="process"><span class="bg-action-icon">03</span><span><strong>Exécuter les obligations et échéances</strong><small>Approbations en attente, échéances proches, tâches en retard</small></span><span>↗</span></button>'+
   '</div><div class="bg-panel bg-strategy"><span class="bg-eyebrow">ARCHITECTURE</span><h3>Autonome dès sa conception.</h3>'+
   '<p>Nous réutilisons la session et les API StoreOps, mais conservons le futur référentiel contrats et les règles financières dans un domaine métier séparé.</p>'+
   '<div class="bg-progress-step"><i>01</i><span>Connexion et navigation StoreOps</span>'+badge('Pilote','success')+'</div>'+
-  '<div class="bg-progress-step"><i>02</i><span>Lecture D365 par entité juridique</span>'+badge('À qualifier')+'</div>'+
-  '<div class="bg-progress-step"><i>03</i><span>Base contrats et stockage privé</span>'+badge('À connecter')+'</div>'+
-  '<div class="bg-progress-step"><i>04</i><span>Migration vers domaine dédié</span>'+badge('Prévue')+'</div>'+
+  '<div class="bg-progress-step"><i>02</i><span>Lecture D365 société configurée</span>'+badge('À vérifier')+'</div>'+
+  '<div class="bg-progress-step"><i>03</i><span>Base contrats et stockage privé</span>'+badge('En service','success')+'</div>'+
+  '<div class="bg-progress-step"><i>04</i><span>Lecture et workflow contractuels</span>'+badge('Avec validation humaine')+'</div>'+
   '</div></div>';
 }
 function metric(label,value,detail,mark){
@@ -154,6 +155,7 @@ function renderActive(){
  if(active==='simulation')return simulation();
  if(['suppliers','contracts','rebates','audit'].includes(active))return '<section id="bgManagement" aria-live="polite"></section>';
  if(['purchases','reconcile'].includes(active))return '<section id="bgPurchases" aria-live="polite"></section>';
+ if(['workflow','process'].includes(active))return '<section id="bgWorkflow" aria-live="polite"></section>';
  return dynamics();
 }
 function bind(root){
@@ -201,6 +203,8 @@ export function renderBuyingGroup(){
  if(host)void renderBuyingManagement(state.tab,host,renderBuyingGroup);
  const purchaseHost=root.querySelector('#bgPurchases');
  if(purchaseHost)void renderPurchaseEvidence(state.tab,purchaseHost);
+ const workflowHost=root.querySelector('#bgWorkflow');
+ if(workflowHost)void renderWorkflow(state.tab,workflowHost,(next)=>{state.tab=next;renderBuyingGroup()});
  if(state.tab==='overview'&&(!buyingSnapshot()||!purchaseSnapshot()))void Promise.allSettled([loadBuyingManagement(),loadPurchaseEvidence()]).then(()=>{
    if(state.tab==='overview')renderBuyingGroup();
  });

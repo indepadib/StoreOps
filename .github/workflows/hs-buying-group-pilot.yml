@@ -8,6 +8,9 @@ on:
       - "frontend/js/api.js"
       - "backend/services/buying-group-api.mjs"
       - "backend/services/buying-group-d365.mjs"
+      - "backend/services/buying-group-contract-workflow.mjs"
+      - "frontend/js/pages/buying-group-workflows.js"
+      - "tests/buying-group-contract-workflow.test.mjs"
       - "tests/buying-group-d365.test.mjs"
       - "netlify/functions/api.mts"
       - "netlify/database/migrations/**"
@@ -32,6 +35,9 @@ on:
       - "frontend/js/api.js"
       - "backend/services/buying-group-api.mjs"
       - "backend/services/buying-group-d365.mjs"
+      - "backend/services/buying-group-contract-workflow.mjs"
+      - "frontend/js/pages/buying-group-workflows.js"
+      - "tests/buying-group-contract-workflow.test.mjs"
       - "tests/buying-group-d365.test.mjs"
       - "netlify/functions/api.mts"
       - "netlify/database/migrations/**"
@@ -72,8 +78,11 @@ jobs:
           node --check backend/services/buying-group-purchases.mjs
           node --check backend/services/buying-group-api.mjs
           node --check backend/services/buying-group-d365.mjs
+          node --check backend/services/buying-group-contract-workflow.mjs
+          node --check frontend/js/pages/buying-group-workflows.js
+          node --check tests/buying-group-contract-workflow.test.mjs
           node --check frontend/js/api.js
           node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
-        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs
+        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs tests/buying-group-contract-workflow.test.mjs
