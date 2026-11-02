@@ -204,6 +204,10 @@ async function auditLog(db){
 export async function serveBuyingGroup(req,db,user){
   const path=new URL(req.url).pathname,method=req.method;
   try{
+    if(path.startsWith('/api/buying-group/purchases')||/^\/api\/buying-group\/contracts\/[^/]+\/reconcile$/.test(path)){
+      const {serveBuyingPurchases}=await import('./buying-group-purchases.mjs');
+      return await serveBuyingPurchases(req,db,user);
+    }
     if(path==='/api/buying-group/overview'&&method==='GET')return overview(db);
     if(path==='/api/buying-group/suppliers'&&method==='GET')return getSuppliers(db);
     if(path==='/api/buying-group/suppliers'&&method==='POST')return addSupplier(req,db,user);
