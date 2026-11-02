@@ -2,9 +2,12 @@ import { api, isShowcase } from '../api.js';
 import { app, currentStore, isDirector } from '../state.js';
 import {renderBuyingManagement,loadBuyingManagement,buyingSnapshot} from './buying-group-management.js';
 import {renderPurchaseEvidence,loadPurchaseEvidence,purchaseSnapshot} from './buying-group-purchases.js';
+import {renderWorkflow} from './buying-group-workflows.js';
 
 const PLATFORM_URL='https://hs-buying-group-os.vercel.app';
 const tabs=[
+  {id:'workflow',label:'Lire & valider un contrat'},
+  {id:'process',label:'Processus & actions'},
   {id:'overview',label:'Vue Groupe'},
   {id:'suppliers',label:'Fournisseurs'},
   {id:'contracts',label:'Contrats'},
@@ -17,7 +20,7 @@ const tabs=[
   {id:'audit',label:'Historique'}
 ];
 const state={
-  tab:'overview',
+  tab:'workflow',
   diagnostics:null,diagnosticsError:null,diagnosticsLoading:false,
   purchaseOrders:null,purchaseOrdersError:null,purchaseOrdersLoading:false,
   configuredCompanyPo:null,configuredCompanyPoLoading:false,configuredCompanyPoError:null,
@@ -154,6 +157,7 @@ function renderActive(){
  if(active==='simulation')return simulation();
  if(['suppliers','contracts','rebates','audit'].includes(active))return '<section id="bgManagement" aria-live="polite"></section>';
  if(['purchases','reconcile'].includes(active))return '<section id="bgPurchases" aria-live="polite"></section>';
+ if(['workflow','process'].includes(active))return '<section id="bgWorkflow" aria-live="polite"></section>';
  return dynamics();
 }
 function bind(root){
@@ -201,6 +205,8 @@ export function renderBuyingGroup(){
  if(host)void renderBuyingManagement(state.tab,host,renderBuyingGroup);
  const purchaseHost=root.querySelector('#bgPurchases');
  if(purchaseHost)void renderPurchaseEvidence(state.tab,purchaseHost);
+ const workflowHost=root.querySelector('#bgWorkflow');
+ if(workflowHost)void renderWorkflow(state.tab,workflowHost,(next)=>{state.tab=next;renderBuyingGroup()});
  if(state.tab==='overview'&&(!buyingSnapshot()||!purchaseSnapshot()))void Promise.allSettled([loadBuyingManagement(),loadPurchaseEvidence()]).then(()=>{
    if(state.tab==='overview')renderBuyingGroup();
  });
