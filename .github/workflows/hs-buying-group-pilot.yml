@@ -4,6 +4,11 @@ on:
   pull_request:
     paths:
       - "frontend/js/pages/buying-group.js"
+      - "frontend/js/pages/buying-group-management.js"
+      - "frontend/js/api.js"
+      - "backend/services/buying-group-api.mjs"
+      - "netlify/functions/api.mts"
+      - "netlify/database/migrations/**"
       - "frontend/buying-group.css"
       - "frontend/index.html"
       - "frontend/director-workspaces.css"
@@ -12,11 +17,17 @@ on:
       - "frontend/js/auth.js"
       - "frontend/js/app.js"
       - "tests/buying-group.test.mjs"
+      - "tests/buying-group-operations.test.mjs"
       - ".github/workflows/hs-buying-group-pilot.yml"
   push:
     branches: [main]
     paths:
       - "frontend/js/pages/buying-group.js"
+      - "frontend/js/pages/buying-group-management.js"
+      - "frontend/js/api.js"
+      - "backend/services/buying-group-api.mjs"
+      - "netlify/functions/api.mts"
+      - "netlify/database/migrations/**"
       - "frontend/buying-group.css"
       - "frontend/index.html"
       - "frontend/director-workspaces.css"
@@ -25,6 +36,7 @@ on:
       - "frontend/js/auth.js"
       - "frontend/js/app.js"
       - "tests/buying-group.test.mjs"
+      - "tests/buying-group-operations.test.mjs"
       - ".github/workflows/hs-buying-group-pilot.yml"
 
 permissions:
@@ -44,7 +56,10 @@ jobs:
         run: |
           node --check frontend/js/app.js
           node --check frontend/js/pages/buying-group.js
+          node --check frontend/js/pages/buying-group-management.js
+          node --check backend/services/buying-group-api.mjs
+          node --check frontend/js/api.js
           node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
-        run: node --test tests/buying-group.test.mjs
+        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs
