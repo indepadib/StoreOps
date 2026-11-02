@@ -17,7 +17,7 @@ async function load(force=false){
   if(state.loaded&&!force)return;
   fetchInProgress=Promise.all([
     api('/api/buying-group/intakes',{noRetry:true}),
-    api('/api/buying-group/ai/status',{noRetry:true})
+    api('/api/buying-group/ai/status',{noRetry:true}).catch(()=>({enabled:false}))
   ]).then(([incoming,ai])=>{
     state.items=incoming.items||[];state.ai=ai||{enabled:false};
     state.loaded=true;state.error='';
@@ -141,8 +141,8 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
       const uploaded=await apiPrivateFile('/api/buying-group/intakes',{method:'POST',file});
       state.selectedId=uploaded.item.id;
       state.message=uploaded.item.reused?'Ce document figurait déjà dans la boîte de réception.':'Contrat importé avec succès. Tu peux désormais le lire ou compléter sa fiche.';
-      await renderContractIntake(root,onRegistered,{force:true});
-    }catch(error){state.error=error.message;await renderContractIntake(root,onRegistered)}
+      state.busy=false;await renderContractIntake(root,onRegistered,{force:true});
+    }catch(error){state.busy=false;state.error=error.message;await renderContractIntake(root,onRegistered)}
     finally{state.busy=false}
   };
   root.querySelector('#hsiUpload')?.addEventListener('change',e=>upload(e.target.files?.[0]));
@@ -167,8 +167,8 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
       await api('/api/buying-group/intakes/'+encodeURIComponent(item.id)+'/analyze',
         {method:'POST',body:{consent:true},noRetry:true});
       state.message='Lecture IA terminée. Contrôle chaque clause dans le document original avant d’enregistrer le dossier.';
-      await renderContractIntake(root,onRegistered,{force:true});
-    }catch(error){state.error=error.message;await renderContractIntake(root,onRegistered)}
+      state.busy=false;await renderContractIntake(root,onRegistered,{force:true});
+    }catch(error){state.busy=false;state.error=error.message;await renderContractIntake(root,onRegistered)}
     finally{state.busy=false}
   });
   root.querySelector('#hsiRegister')?.addEventListener('submit',async e=>{
