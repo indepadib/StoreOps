@@ -89,11 +89,11 @@ export async function handleAnalyticsApi({ req, url, user }){
     const products=(url.searchParams.get('products')||'').split(',').map(clean).filter(Boolean);
     if(!products.length)return{status:400,data:{error:'products requis.'}};
     if(products.length>240)return{status:400,data:{error:'240 articles maximum par requête.'}};
-    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v10',sorted);
+    const sorted=[...new Set(products)].sort(),cacheKey=analyticsCacheKey('catalog-v11',sorted);
     const cached=await readAnalyticsCache(cacheKey);
     if(cached)return{status:200,data:{...cached,cache:{status:'PERSISTENT_HIT'}}};
     const data=await readAnalyticsCatalog(sorted);
-    await writeAnalyticsCache(cacheKey,'catalog-v10',data,7*24*3600);
+    await writeAnalyticsCache(cacheKey,'catalog-v11',data,7*24*3600);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
   }
 

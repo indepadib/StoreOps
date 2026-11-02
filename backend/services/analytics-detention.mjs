@@ -45,9 +45,9 @@ export async function readDetentionPage(store,{offset=0,limit=120,expectedSnapsh
   await writeAnalyticsCache(key,'detention-universe-v3',universe,900);
  }
  if(expectedSnapshot&&expectedSnapshot!==universe.checkedAt)throw Object.assign(new Error('Image stock renouvelée pendant la lecture. Relancer pour éviter de mélanger deux images.'),{status:409,code:'STOCK_SNAPSHOT_CHANGED'});
- const page=universe.rows.slice(offset,offset+limit),catalogKey=analyticsCacheKey('catalog-v10',page.map(x=>x.productNumber).sort());
+ const page=universe.rows.slice(offset,offset+limit),catalogKey=analyticsCacheKey('catalog-v11',page.map(x=>x.productNumber).sort());
  let catalog=page.length?await readAnalyticsCache(catalogKey):{items:[]};
- if(!catalog&&page.length){catalog=await readAnalyticsCatalog(page.map(x=>x.productNumber));await writeAnalyticsCache(catalogKey,'catalog-v10',catalog,86400)}
+ if(!catalog&&page.length){catalog=await readAnalyticsCatalog(page.map(x=>x.productNumber));await writeAnalyticsCache(catalogKey,'catalog-v11',catalog,86400)}
  const refs=new Map((catalog?.items||[]).map(x=>[x.productNumber,x]));
  return{...universe,rows:page.map(x=>({...x,storeName:store.name,productName:refs.get(x.productNumber)?.productName||null,hierarchy:refs.get(x.productNumber)?.hierarchy||{},hierarchyStatus:refs.get(x.productNumber)?.hierarchyStatus||'MISSING',unit:refs.get(x.productNumber)?.inventoryUnit||null,primaryVendorAccount:refs.get(x.productNumber)?.primaryVendorAccount||null,vendorName:refs.get(x.productNumber)?.vendorName||null,supplyMode:refs.get(x.productNumber)?.supplyMode||null})),total:universe.rows.length,offset,limit,nextOffset:offset+page.length<universe.rows.length?offset+page.length:null,snapshotOnly:true,note:'Stock actuel, pas un historique. Tous les articles du référentiel commun sont attendus dans chaque magasin ; détention = articles attendus avec stock positif / total des articles du référentiel. Lecture incomplète = taux indisponible. Quantités en unité de stock, non additionnables entre articles.'};
 }

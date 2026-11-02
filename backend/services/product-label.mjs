@@ -11,7 +11,7 @@ export function usableProductName(value, productNumber = '') {
 export function resolveProductLabel(row = {}, {configuredField = '', fallback = '', productNumber = ''} = {}) {
   const sku = productNumber || row.ProductNumber || row.ItemNumber || '';
   const keys = Object.keys(row);
-  for (const candidate of [configuredField, 'ProductName', 'ProductDescription', 'Description']) {
+  for (const candidate of ['ProductName', 'ProductDescription', configuredField, 'Description']) {
     if (!candidate || /^(product)?searchname$/i.test(candidate)) continue;
     const field = keys.find(key => key.toLowerCase() === candidate.toLowerCase());
     if (field && usableProductName(row[field], sku)) return {name: clean(row[field]), field, quality: 'DISPLAY_NAME'};

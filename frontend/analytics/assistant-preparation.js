@@ -1,12 +1,14 @@
-import {requestInvestigation} from './assistant-investigation.js?v=3';
+import {requestInvestigation} from './assistant-investigation.js?v=4';
 const date=x=>/^\d{4}-\d{2}-\d{2}$/.test(x||''),id=x=>typeof x==='string'&&x.length>0&&x.length<=100;
 export async function requestAssistant(input,options){
  const {api,signal,isCurrent,onProgress}=options,check=()=>{if(signal.aborted||!isCurrent())throw new DOMException('Périmètre modifié','AbortError')};let body={...input,autoPrepare:true},attempted=new Set(),failures=[];
  const get=(path,params)=>{check();return api(path+'?'+new URLSearchParams(params),{noRetry:true,signal})};
  const periods=t=>{if(![t.start,t.end,t.compareStart,t.compareEnd].every(date))throw Error('Période de préparation invalide.');return{start:t.start,end:t.end,compareStart:t.compareStart,compareEnd:t.compareEnd}};
  async function paged(path,base,{cursor='offset',next='nextOffset',snapshotField='snapshot',first={}}={}){let page=0,snapshot=null;for(let n=0;n<500;n++){check();const r=await get(path,{...base,...(page===0?first:{}),[cursor]:String(page),...(snapshot?{snapshot}:{})});page=r[next];snapshot=r[snapshotField]||snapshot;if(page==null)return r;}throw Error('Préparation trop volumineuse : réduire le périmètre.');}
- async function prepare(t){if(!['sales','stock','history','baskets'].includes(t.kind))throw Error('Source de préparation non reconnue.');if(t.kind!=='baskets'&&!id(t.storeId))throw Error('Magasin de préparation invalide.');
-  onProgress(({sales:'Lecture des ventes et promotions',stock:'Lecture des stocks et départements',history:'Lecture des réceptions historiques',baskets:'Lecture des paniers et du retour des clients'})[t.kind]+'…');
+ async function prepare(t){if(!['sales','stock','history','baskets','pricing','suppliers'].includes(t.kind))throw Error('Source de préparation non reconnue.');if(!['baskets','suppliers'].includes(t.kind)&&!id(t.storeId))throw Error('Magasin de préparation invalide.');
+  onProgress(({sales:'Lecture des ventes et promotions',stock:'Lecture des stocks et départements',history:'Lecture des réceptions historiques',baskets:'Lecture des paniers et du retour des clients',pricing:'Vérification des tarifs, accords et promotions',suppliers:'Lecture des commandes et de la couverture fournisseur'})[t.kind]+'…');
+  if(t.kind==='pricing'){if(!/^[A-Za-z0-9_.-]{1,64}$/.test(t.productNumber||'')||!date(t.date))throw Error('Contexte de prix invalide.');return get('/api/analytics/pricing-context',{storeId:t.storeId,product:t.productNumber,date:t.date});}
+  if(t.kind==='suppliers'){if(!Array.isArray(t.storeIds)||!t.storeIds.length||t.storeIds.length>20||!t.storeIds.every(id)||!date(t.date))throw Error('Périmètre fournisseur invalide.');return get('/api/analytics/suppliers',{storeIds:t.storeIds.join(','),date:t.date});}
   if(t.kind==='sales')return get('/api/analytics/decision',{storeId:t.storeId,...periods(t)});
   if(t.kind==='history'){if(!['store','supply'].includes(t.historyKind))throw Error('Historique invalide.');return paged('/api/analytics/detention/history/prepare',{storeId:t.storeId,kind:t.historyKind},{cursor:'cursor',next:'nextCursor'});}
   if(t.kind==='stock'){const ensured=await options.ensureStock?.(t.storeId);if(ensured===true)return;if(ensured===false)throw Error('Lecture stock incomplète.');for(const kind of ['store','supply'])await paged('/api/analytics/detention/prepare',{storeId:t.storeId,kind});return paged('/api/analytics/detention',{storeId:t.storeId,limit:'240'},{next:'nextOffset',snapshotField:'checkedAt',first:{force:'1'}});}
