@@ -1,6 +1,7 @@
 import {api,apiPrivateFile} from '../api.js';
 import {app} from '../state.js';
 import {buyingManagementContext,loadBuyingManagement} from './buying-group-management.js';
+import {renderContractIntake} from './buying-group-intake.js';
 
 const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
@@ -209,11 +210,17 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
   root.innerHTML=section('Lecture et validation des contrats','Processus complet · de la pièce au suivi des obligations')+
     (state.alert?'<div class="hsp-banner">'+h(state.alert)+'</div>':'')+
     (state.error?'<div class="hsm-error">'+h(state.error)+'</div>':'')+
+    '<div id="hsiIntakeHost" aria-label="Importer un contrat directement"></div>'+ 
     '<div class="hsp-selector"><label class="hsm-field"><span>Choisir le dossier à traiter</span><select id="hspContractSelect">'+selectOptions(contracts().map(c=>[c.id,c.supplier_name+' — '+c.title]),state.contractId)+'</select></label>'+
     '<button data-go-contracts class="hsm-quiet">+ Nouveau contrat</button></div>'+
     intro(contract)+(contract?checklist(stage)+'<div class="hsp-workflow-grid">'+filesPanel()+extractionPanel()+'</div>'+
     '<div class="hsp-workflow-grid">'+reviewPanel(contract)+approvalPanel()+'</div>':'');
  }
+ const inbox=root.querySelector('#hsiIntakeHost');
+ if(inbox)void renderContractIntake(inbox,async newContractId=>{
+   state.contractId=newContractId;state.alert='Document importé et classé dans le nouveau contrat.';
+   await reload(tab,root,navigate);
+ });
  const nav=()=>navigate?.('contracts');
  root.querySelectorAll('[data-go-contracts]').forEach(b=>b.addEventListener('click',nav));
  root.querySelector('#hspContractSelect')?.addEventListener('change',async e=>{
