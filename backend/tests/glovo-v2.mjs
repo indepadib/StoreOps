@@ -20,11 +20,13 @@ assert.equal((await v.receiveGlovoWebhook({req:req({job_id:'missing',platform_ve
 assert.equal((await v.receiveGlovoWebhook({req:req({job_id:'job-1',platform_vendor_id:'51530',status:'COMPLETED',download_url:'https://reports.example.com/job.csv'})})).status,200);
 assert.equal(v.glovoJob('val-fleuri','job-1').status,'COMPLETED');
 assert.equal(v.glovoJob('val-fleuri','job-1').downloadUrl,undefined);
+assert.equal(v.glovoJob('val-fleuri','job-1').reportHost,'reports.example.com');
+assert.equal(v.glovoJobs('val-fleuri')[0].reportHost,'reports.example.com');
 assert.doesNotThrow(()=>v.assertNoGlovoJobInFlight('val-fleuri'));
 await v.receiveGlovoWebhook({req:req({job_id:'job-1',platform_vendor_id:'51530',status:'IN_PROGRESS'})});
 assert.equal(v.glovoJob('val-fleuri','job-1').status,'COMPLETED');
 let calls=0;
-await assert.rejects(()=>v.downloadGlovoReport('val-fleuri','job-1',{token:'secret',fetchImpl:()=>{calls++}}));assert.equal(calls,0);
+await assert.rejects(()=>v.downloadGlovoReport('val-fleuri','job-1',{token:'secret',fetchImpl:()=>{calls++}}),e=>e.code==='GLOVO_REPORT_HOST_FORBIDDEN'&&e.details.reportHost==='reports.example.com');assert.equal(calls,0);
 process.env.GLOVO_REPORT_ALLOWED_HOSTS='reports.example.com';
 const report=await v.downloadGlovoReport('val-fleuri','job-1',{token:'oauth-test',fetchImpl:async(url,init)=>{assert.equal(init.redirect,'error');assert.equal(init.headers.authorization,'Bearer oauth-test');return new Response('sku,status\nA,OK')}});
 assert.match(report.content,/A,OK/);assert.equal(v.glovoJob('val-fleuri','job-1').reportStatus,'DOWNLOADED');
@@ -58,3 +60,6 @@ const {readGlovoCatalogSkus}=await import('../services/glovo-availability.mjs');
 let pagesRead=0;const remoteSkus=await readGlovoCatalogSkus({apiBaseUrl:'https://glovo.partner.deliveryhero.io',chainId:'c',vendorId:'v'},{token:'test',fetchImpl:async()=>{pagesRead++;return new Response(JSON.stringify({total_pages:2,products:[{sku:pagesRead===1?'A':'B'}]}))}});assert.equal(pagesRead,2);assert.deepEqual([...remoteSkus],['A','B']);
 await assert.rejects(()=>readGlovoCatalogSkus({apiBaseUrl:'https://glovo.partner.deliveryhero.io',chainId:'c',vendorId:'v'},{token:'test',fetchImpl:async()=>new Response(JSON.stringify({total_pages:101,products:[]}))}),e=>e.code==='GLOVO_CATALOG_INCOMPLETE');
 console.log('Glovo v2: remote catalog pagination and incomplete-read blocking OK');
+
+v.saveGlovoJob({jobId:'signed-job',storeId:'test-private',vendorId:'51530',status:'COMPLETED',downloadUrl:'https://reports.example.com/private.csv?signature=do-not-leak'});
+assert.equal(v.glovoJob('test-private','signed-job').reportHost,'reports.example.com');assert.equal(JSON.stringify(v.glovoJobs('test-private')).includes('do-not-leak'),false);assert.equal(JSON.stringify(v.glovoJobs('test-private')).includes('private.csv'),false);
