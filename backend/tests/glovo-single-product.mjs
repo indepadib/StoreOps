@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import {Readable} from 'node:stream';
+process.env.STOREOPS_DB=':memory:';
+Object.assign(process.env,{GLOVO_CHAIN_ID:'test-chain',GLOVO_VENDOR_IDS_JSON:JSON.stringify({'val-fleuri':'51530',trefle:'not-test'}),GLOVO_CATALOG_BEARER_TOKEN:'dummy-token',GLOVO_WEBHOOK_TOKEN:'dummy-webhook',GLOVO_TEST_PUSH_ENABLED:'1',GLOVO_PUSH_ENABLED:'0',GLOVO_PRICE_SYNC_ENABLED:'1'});
+delete process.env.GLOVO_CLIENT_ID;delete process.env.GLOVO_CLIENT_SECRET;delete process.env.GLOVO_PRICE_BASIS;
+const {pushGlovoTestProduct,pushGlovoAvailability,glovoIntegrationConfig}=await import('../services/glovo-availability.mjs');
+const {glovoJob,receiveGlovoWebhook}=await import('../services/glovo-v2.mjs');
+const sku='HS-001191',other='HS-001192';let putCount=0,readCount=0,sequence=0,captured;
+const snapshot={status:'READY',items:[{sku,active:true,price:99,quantity:40},{sku:other,active:false,price:55}],catalog:{allowedSkus:2},diagnostics:{catalogMatchedStockRows:2}};
+const options={readAvailability:async()=>structuredClone(snapshot),fetchImpl:async(url,init)=>{
+ if(init.method==='GET'){readCount++;return new Response(JSON.stringify({total_pages:1,products:[{sku},{sku:other}]}))}
+ assert.equal(init.method,'PUT');putCount++;captured=JSON.parse(init.body);return new Response(JSON.stringify({job_id:'single-'+(++sequence),job_status:'QUEUED'}),{status:202});
+}};
+assert.equal(glovoIntegrationConfig('val-fleuri').testPushEnabled,true);assert.equal(glovoIntegrationConfig('val-fleuri').ready,false);
+await assert.rejects(()=>pushGlovoAvailability('val-fleuri',options),e=>e.code==='GLOVO_PUSH_DISABLED');assert.equal(putCount,0);
+for(const invalid of ['',other+', '+sku,[sku,other],{sku},'unknown'])await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku:invalid,expectedActive:true}),e=>e.code==='GLOVO_TEST_SKU_INVALID');
+await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku}),e=>e.code==='GLOVO_TEST_PREVIEW_REQUIRED');
+await assert.rejects(()=>pushGlovoTestProduct('trefle',{...options,sku,expectedActive:true}),e=>e.code==='GLOVO_TEST_DISABLED');
+process.env.GLOVO_TEST_PUSH_ENABLED='0';await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:true}),e=>e.code==='GLOVO_TEST_DISABLED');process.env.GLOVO_TEST_PUSH_ENABLED='1';
+await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:false}),e=>e.code==='GLOVO_TEST_PREVIEW_CHANGED');
+await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:true,readAvailability:async()=>({...snapshot,status:'PREPARING'})}),e=>e.code==='GLOVO_AVAILABILITY_PARTIAL');
+await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:true,fetchImpl:async()=>new Response(JSON.stringify({total_pages:1,products:[{sku:other}]}))}),e=>e.code==='GLOVO_TEST_SKU_NOT_IN_CATALOG');assert.equal(putCount,0);
+const result=await pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:true});
+assert.equal(result.sentProducts,1);assert.equal(result.scope,'TEST_ONE_PRODUCT');assert.equal(result.testedSku,sku);assert.equal(result.pricesSent,false);assert.equal(result.privacyMode,'AVAILABILITY_ONLY');
+assert.deepEqual(captured,{products:[{sku,active:true}]});assert.equal(putCount,1);assert.equal(snapshot.items.length,2,'source list is unchanged');
+const saved=glovoJob('val-fleuri',result.jobId);assert.equal(saved.testedSku,sku);assert.equal(saved.testedActive,true);assert.equal(saved.sentProducts,1);assert.equal(saved.pricesSent,false);
+await assert.rejects(()=>pushGlovoTestProduct('val-fleuri',{...options,sku,expectedActive:true}),e=>e.code==='GLOVO_JOB_IN_FLIGHT');assert.equal(putCount,1);
+const callback=Object.assign(Readable.from([Buffer.from(JSON.stringify({job_id:result.jobId,platform_vendor_id:'51530',status:'COMPLETED',download_url:'https://reports.example.com/test.csv'}))]),{method:'POST',headers:{authorization:'Bearer dummy-webhook'}});
+assert.equal((await receiveGlovoWebhook({req:callback})).status,200);assert.equal(glovoJob('val-fleuri',result.jobId).status,'COMPLETED');
+const inactive=await pushGlovoTestProduct('val-fleuri',{...options,sku:other,expectedActive:false});assert.deepEqual(captured,{products:[{sku:other,active:false}]});assert.equal(inactive.sentProducts,1);
+const {handleStoreGrowthApi}=await import('../services/store-growth-api.mjs');
+const url=new URL('https://storeops.test/api/stores/val-fleuri/channels/glovo/test-product');
+await assert.rejects(()=>handleStoreGrowthApi({req:{method:'POST'},url,user:{role:'employee',store_id:'val-fleuri'}}),e=>e.status===403);
+await assert.rejects(()=>handleStoreGrowthApi({req:{method:'POST'},url,user:{role:'store_manager',store_id:'trefle'}}),e=>e.status===403);
+const invalidRequest=Object.assign(Readable.from([Buffer.from(JSON.stringify({sku:[sku,other],expectedActive:true,products:[{sku,price:1}]}))]),{method:'POST'});
+await assert.rejects(()=>handleStoreGrowthApi({req:invalidRequest,url,user:{role:'store_manager',store_id:'val-fleuri'}}),e=>e.code==='GLOVO_TEST_SKU_INVALID');
+console.log('Glovo single product: one SKU only, current availability, no price/quantity, test vendor, independent bulk lock, permissions, jobs and webhook OK');

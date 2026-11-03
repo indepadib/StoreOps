@@ -25,7 +25,7 @@ function authConfig(){
 }
 export function glovoIntegrationConfig(storeId){
  const chainId=clean(process.env.GLOVO_CHAIN_ID),vendorId=clean(vendorMap()[storeId]),auth=authConfig(),credentialsReady=!!(chainId&&vendorId&&auth.credentialsConfigured),pushEnabled=truthy(process.env.GLOVO_PUSH_ENABLED);
- return{chainId:chainId||null,vendorId:vendorId||null,apiBaseUrl:apiBase(),authMode:auth.mode,tokenConfigured:auth.credentialsConfigured,tokenEndpointConfigured:auth.tokenEndpointConfigured,credentialsReady,pushEnabled,ready:credentialsReady&&pushEnabled,priceSyncEnabled:truthy(process.env.GLOVO_PRICE_SYNC_ENABLED),webhookConfigured:!!clean(process.env.GLOVO_WEBHOOK_TOKEN),webhookPath:'/api/partners/glovo/catalog/webhook',testVendorId:'51530',partnerPullConfigured:!!clean(process.env.GLOVO_READ_API_KEY),partnerEndpoint:`/api/partners/glovo/stores/${encodeURIComponent(storeId)}/availability`};
+ return{chainId:chainId||null,vendorId:vendorId||null,apiBaseUrl:apiBase(),authMode:auth.mode,tokenConfigured:auth.credentialsConfigured,tokenEndpointConfigured:auth.tokenEndpointConfigured,credentialsReady,pushEnabled,ready:credentialsReady&&pushEnabled,testPushEnabled:truthy(process.env.GLOVO_TEST_PUSH_ENABLED)&&vendorId==='51530',priceSyncEnabled:truthy(process.env.GLOVO_PRICE_SYNC_ENABLED),webhookConfigured:!!clean(process.env.GLOVO_WEBHOOK_TOKEN),webhookPath:'/api/partners/glovo/catalog/webhook',testVendorId:'51530',partnerPullConfigured:!!clean(process.env.GLOVO_READ_API_KEY),partnerEndpoint:`/api/partners/glovo/stores/${encodeURIComponent(storeId)}/availability`};
 }
 function catalogUrl(cfg){return `${cfg.apiBaseUrl.replace(/\/$/,'')}/v2/chains/${encodeURIComponent(cfg.chainId)}/vendors/${encodeURIComponent(cfg.vendorId)}/catalog`}
 function timeoutSignal(){return typeof AbortSignal?.timeout==='function'?AbortSignal.timeout(requestTimeoutMs()):undefined}
@@ -91,29 +91,38 @@ export async function readGlovoCatalogSkus(cfg,{token,fetchImpl=fetch}={}){
  return skus;
 }
 
-async function pushGlovoAvailabilityInternal(storeId,{businessDate=localDay(),fetchImpl=fetch,readAvailability=buildGlovoAvailability}={}){
+async function pushGlovoAvailabilityInternal(storeId,{businessDate=localDay(),fetchImpl=fetch,readAvailability=buildGlovoAvailability,testSku=null,expectedActive=null}={}){
+ const isTest=testSku!==null;
  const snapshot=await readAvailability(storeId,{businessDate,force:true}),cfg=glovoIntegrationConfig(storeId);
  if(snapshot.status!=='READY')throw Object.assign(new Error('Disponibilité Glovo non envoyée : snapshot stock incomplet.'),{status:409,code:'GLOVO_AVAILABILITY_PARTIAL'});
  if(!cfg.credentialsReady)throw Object.assign(new Error('Intégration Glovo à configurer : chain, vendor et authentification requis.'),{status:409,code:'GLOVO_CONFIG_REQUIRED',details:{chainId:cfg.chainId,vendorId:cfg.vendorId,authMode:cfg.authMode}});
- if(!cfg.pushEnabled)throw Object.assign(new Error('Push Glovo verrouillé. Tester la connexion puis activer GLOVO_PUSH_ENABLED=1.'),{status:409,code:'GLOVO_PUSH_DISABLED'});
+ if(isTest&&(!cfg.testPushEnabled||cfg.vendorId!=='51530'))throw Object.assign(new Error('Test produit fermé : seul le magasin test Glovo 51530 est autorisé.'),{status:409,code:'GLOVO_TEST_DISABLED'});
+ if(!isTest&&!cfg.pushEnabled)throw Object.assign(new Error('Push Glovo verrouillé. Tester la connexion puis activer GLOVO_PUSH_ENABLED=1.'),{status:409,code:'GLOVO_PUSH_DISABLED'});
  if(snapshot.catalog?.allowedSkus&&Number(snapshot.diagnostics?.catalogMatchedStockRows||0)===0)throw Object.assign(new Error('Push Glovo bloqué : aucun SKU du catalogue Glovo ne correspond au snapshot stock du magasin.'),{status:409,code:'GLOVO_STOCK_MAPPING_EMPTY'});
  if(!cfg.webhookConfigured)throw Object.assign(new Error('Configurer le token du webhook Glovo avant tout envoi.'),{status:409,code:'GLOVO_WEBHOOK_REQUIRED'});
  if(businessDate!==new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()))throw Object.assign(new Error('Seule la date du jour peut être synchronisée.'),{status:409});
+ if(isTest){
+  const matches=snapshot.items.filter(x=>x.sku===testSku);
+  if(matches.length!==1)throw Object.assign(new Error('Le SKU sélectionné ne correspond pas à un produit unique du stock préparé.'),{status:409,code:'GLOVO_TEST_SKU_MISSING'});
+  if(matches[0].active!==expectedActive)throw Object.assign(new Error('La disponibilité a changé. Actualiser et vérifier le produit avant de relancer le test.'),{status:409,code:'GLOVO_TEST_PREVIEW_CHANGED'});
+  snapshot.items=[{sku:testSku,active:matches[0].active}];
+ }
  assertNoGlovoJobInFlight(storeId);
  const token=await resolveGlovoBearerToken({fetchImpl}),remoteSkus=await readGlovoCatalogSkus(cfg,{token,fetchImpl}),requestedProducts=snapshot.items.length;
  snapshot.items=snapshot.items.filter(x=>remoteSkus.has(x.sku));
+ if(!snapshot.items.length&&isTest)throw Object.assign(new Error('Ce SKU est absent du catalogue Glovo de ce magasin. Choisir un produit déjà chargé chez Glovo.'),{status:409,code:'GLOVO_TEST_SKU_NOT_IN_CATALOG'});
  if(!snapshot.items.length)throw Object.assign(new Error('Aucun SKU autorisé présent dans le catalogue Glovo ; charger l’assortiment avant synchronisation.'),{status:409,code:'GLOVO_CATALOG_MAPPING_EMPTY'});
- if(cfg.priceSyncEnabled){if(process.env.GLOVO_PRICE_BASIS!=='TTC_PER_SALES_UNIT')throw Object.assign(new Error('Base tarifaire TTC non confirmée.'),{status:409,code:'GLOVO_PRICE_BASIS_REQUIRED'});const prices=glovoPreparedPrices(storeId,businessDate);for(const item of snapshot.items){const row=prices.get(item.sku);if(!row||row.status!=='READY')throw Object.assign(new Error('Préparer tous les prix valides avant la synchronisation prix.'),{status:409,code:'GLOVO_PRICES_INCOMPLETE'});item.price=row.price}}
+ if(!isTest&&cfg.priceSyncEnabled){if(process.env.GLOVO_PRICE_BASIS!=='TTC_PER_SALES_UNIT')throw Object.assign(new Error('Base tarifaire TTC non confirmée.'),{status:409,code:'GLOVO_PRICE_BASIS_REQUIRED'});const prices=glovoPreparedPrices(storeId,businessDate);for(const item of snapshot.items){const row=prices.get(item.sku);if(!row||row.status!=='READY')throw Object.assign(new Error('Préparer tous les prix valides avant la synchronisation prix.'),{status:409,code:'GLOVO_PRICES_INCOMPLETE'});item.price=row.price}}
  assertNoGlovoJobInFlight(storeId);
  const url=catalogUrl(cfg),payload=glovoCatalogPayload(snapshot),dispatchId='dispatch-'+randomUUID(),submittedAt=new Date().toISOString();
- const dispatch={jobId:dispatchId,storeId,vendorId:cfg.vendorId,status:'SUBMITTING',sentProducts:payload.products.length,pricesSent:cfg.priceSyncEnabled,excludedProducts:requestedProducts-payload.products.length,submittedAt};saveGlovoJob(dispatch);
+ const dispatch={jobId:dispatchId,storeId,vendorId:cfg.vendorId,status:'SUBMITTING',sentProducts:payload.products.length,pricesSent:!isTest&&cfg.priceSyncEnabled,scope:isTest?'TEST_ONE_PRODUCT':'CATALOG',testedSku:isTest?testSku:null,testedActive:isTest?expectedActive:null,excludedProducts:requestedProducts-payload.products.length,submittedAt};saveGlovoJob(dispatch);
  let res,data;
  try{res=await fetchWithTimeout(fetchImpl,url,{method:'PUT',headers:{'content-type':'application/json','authorization':'Bearer '+token},body:JSON.stringify(payload)});data=await safeJson(res)}catch{saveGlovoJob({...dispatch,status:'UNKNOWN'});throw Object.assign(new Error('Résultat de l’envoi Glovo inconnu. Vérifier auprès de Glovo avant toute relance.'),{status:502,code:'GLOVO_SUBMISSION_UNKNOWN'})}
  if(!res.ok){saveGlovoJob({...dispatch,status:res.status>=500?'UNKNOWN':'FAILED',httpStatus:res.status});throw Object.assign(new Error(`Glovo a refusé la synchronisation (${res.status}).`),{status:502,code:'GLOVO_PUSH_FAILED',details:{httpStatus:res.status}})}
  if(res.status!==202||!clean(data?.job_id)){saveGlovoJob({...dispatch,status:'UNKNOWN'});throw Object.assign(new Error('Réponse Glovo sans job accepté identifiable.'),{status:502,code:'GLOVO_JOB_MISSING'})}
  saveGlovoJob({...dispatch,status:'SUBMITTED',remoteJobId:data.job_id});
  saveGlovoJob({...dispatch,jobId:data.job_id,status:'QUEUED'});
- return{status:'QUEUED',storeId,excludedProducts:requestedProducts-payload.products.length,pricesSent:cfg.priceSyncEnabled,submittedAt:new Date().toISOString(),privacyMode:cfg.priceSyncEnabled?'AVAILABILITY_AND_PRICE':'AVAILABILITY_ONLY',sentProducts:payload.products.length,jobId:data?.job_id||null,jobStatus:data?.job_status||'QUEUED',authMode:cfg.authMode,rawQuantityExposed:false}
+ return{status:'QUEUED',storeId,excludedProducts:requestedProducts-payload.products.length,scope:isTest?'TEST_ONE_PRODUCT':'CATALOG',testedSku:isTest?testSku:null,testedActive:isTest?expectedActive:null,pricesSent:!isTest&&cfg.priceSyncEnabled,submittedAt:new Date().toISOString(),privacyMode:!isTest&&cfg.priceSyncEnabled?'AVAILABILITY_AND_PRICE':'AVAILABILITY_ONLY',sentProducts:payload.products.length,jobId:data?.job_id||null,jobStatus:data?.job_status||'QUEUED',authMode:cfg.authMode,rawQuantityExposed:false}
 }
 
 export async function handleGlovoPartnerApi({req,url}){
@@ -130,3 +139,11 @@ export async function handleGlovoPartnerApi({req,url}){
 
 const pushInflight=new Set();
 export async function pushGlovoAvailability(storeId,options={}){if(pushInflight.has(storeId))throw Object.assign(new Error('Synchronisation Glovo déjà en cours.'),{status:409});pushInflight.add(storeId);try{return await pushGlovoAvailabilityInternal(storeId,options)}finally{pushInflight.delete(storeId)}}
+
+export async function pushGlovoTestProduct(storeId,{sku,expectedActive,...options}={}){
+ if(typeof sku!=='string'||!GLOVO_SKUS.has(sku.trim()))throw Object.assign(new Error('Sélectionner un seul SKU de l’assortiment Glovo autorisé.'),{status:400,code:'GLOVO_TEST_SKU_INVALID'});
+ if(typeof expectedActive!=='boolean')throw Object.assign(new Error('Confirmer la disponibilité affichée du produit avant le test.'),{status:400,code:'GLOVO_TEST_PREVIEW_REQUIRED'});
+ const cfg=glovoIntegrationConfig(storeId);
+ if(!cfg.testPushEnabled||cfg.vendorId!=='51530')throw Object.assign(new Error('Le test produit est réservé au magasin Glovo test 51530.'),{status:409,code:'GLOVO_TEST_DISABLED'});
+ return pushGlovoAvailability(storeId,{...options,testSku:sku.trim(),expectedActive});
+}

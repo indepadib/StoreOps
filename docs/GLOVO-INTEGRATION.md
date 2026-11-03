@@ -1,3 +1,17 @@
+# Premier essai sur un seul produit - 3 novembre 2026
+
+Dans Val Fleuri > Opérations > Vendre & anti-gaspi > Glovo disponibilité : attendre le stock READY, choisir le SKU, vérifier la disponibilité affichée et cocher la confirmation, puis cliquer « Tester ce produit ». Le stock est relu avant l’envoi. Si sa disponibilité a changé, une nouvelle confirmation est requise.
+
+Le serveur n’autorise ce parcours que pour le vendor test **51530**, avec `GLOVO_TEST_PUSH_ENABLED=1`, des accès valides et un token webhook. `GLOVO_PUSH_ENABLED` reste le verrou indépendant du catalogue complet. Le test ne transmet que `{sku, active}` pour un seul SKU autorisé et présent dans le catalogue distant ; aucun prix ou quantité n’est envoyé, même si le mode prix global est actif. Aucun autre magasin Glovo ne peut utiliser ce mode test.
+
+Route de gestion authentifiée : `POST /api/stores/{storeId}/channels/glovo/test-product`, corps `{sku, expectedActive}`. Le vendor, le prix et la disponibilité ne sont pas choisis librement par le client. Les droits magasin et de gestion sont contrôlés avant lecture du corps. Les protections contre jobs en cours, résultats inconnus et notifications non authentifiées sont partagées avec la synchronisation normale.
+
+L’historique conserve le SKU et la disponibilité testés. L’écran suit le job pendant deux minutes puis propose une actualisation manuelle. COMPLETED indique que le traitement est terminé : consulter le rapport pour confirmer le résultat du produit.
+
+Tests : `node backend/tests/glovo-single-product.mjs` et les contrats Glovo existants.
+
+---
+
 # Glovo 2.0 - complément du 27 octobre 2026
 
 Cette section remplace les anciennes indications plus bas lorsqu’elles divergent.

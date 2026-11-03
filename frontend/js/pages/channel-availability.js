@@ -2,7 +2,7 @@ import {api} from '../api.js';
 import {app} from '../state.js';
 import {$,esc,toast} from '../ui.js';
 
-let data=null,lastResult=null,filter='ALL',query='';
+let data=null,lastResult=null,filter='ALL',query='',testSku='',testConfirmed=false,testBusy=false,jobWatch=0;
 const n=v=>v==null?'—':Number(v).toLocaleString('fr-FR',{maximumFractionDigits:0});
 const pct=v=>v==null?'—':(Number(v)*100).toLocaleString('fr-FR',{maximumFractionDigits:1})+'%';
 const authLabel=v=>v==='CLIENT_CREDENTIALS'?'Client ID / Secret':v==='STATIC_BEARER'?'Bearer manuel':'Non configurée';
@@ -10,7 +10,7 @@ const authLabel=v=>v==='CLIENT_CREDENTIALS'?'Client ID / Secret':v==='STATIC_BEA
 function ensureStyles(){
  if(document.querySelector('#glovoOpsStyles'))return;
  const s=document.createElement('style');s.id='glovoOpsStyles';s.textContent=`
- .glovo-readiness{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.glovo-readiness>div{border:1px solid var(--line);background:#fff;border-radius:14px;padding:11px}.glovo-readiness span{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:850}.glovo-readiness strong{display:block;font-size:13px;margin-top:4px}.glovo-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.glovo-actions .btn{min-height:42px}.glovo-filterbar{display:grid;grid-template-columns:1fr auto;gap:8px;margin:14px 0}.glovo-filterbar input{width:100%;min-height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:#fff}.glovo-filters{display:flex;gap:6px}.glovo-filters button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 10px;font-weight:800;font-size:11px}.glovo-filters button.active{background:#231b1f;color:#fff;border-color:#231b1f}.glovo-result{border:1px solid #cae8d3;background:#f5fbf7;border-radius:14px;padding:11px 12px;margin:10px 0}.glovo-result strong{display:block}.glovo-result small{display:block;color:var(--muted);margin-top:3px}.channel-row b.on{color:#087b41}.channel-row b.off{color:#a3163c}.glovo-warning{border:1px solid #f0d6a5;background:#fff9ef;border-radius:14px;padding:11px 12px;margin:10px 0}.glovo-warning strong,.glovo-warning span{display:block}.glovo-warning span{font-size:11px;color:var(--muted);margin-top:3px}
+ .glovo-readiness{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}.glovo-readiness>div{border:1px solid var(--line);background:#fff;border-radius:14px;padding:11px}.glovo-readiness span{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:850}.glovo-readiness strong{display:block;font-size:13px;margin-top:4px}.glovo-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.glovo-actions .btn{min-height:42px}.glovo-one-product{display:grid;gap:10px;width:100%;margin-top:12px}.glovo-one-product select{width:100%;max-width:620px;min-height:44px;border:1px solid var(--line);border-radius:12px;padding:10px;background:#fff}.glovo-one-product label{display:flex;gap:8px;align-items:center}.glovo-one-product input{min-width:20px;min-height:20px}.glovo-filterbar{display:grid;grid-template-columns:1fr auto;gap:8px;margin:14px 0}.glovo-filterbar input{width:100%;min-height:44px;border:1px solid var(--line);border-radius:12px;padding:0 12px;background:#fff}.glovo-filters{display:flex;gap:6px}.glovo-filters button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 10px;font-weight:800;font-size:11px}.glovo-filters button.active{background:#231b1f;color:#fff;border-color:#231b1f}.glovo-result{border:1px solid #cae8d3;background:#f5fbf7;border-radius:14px;padding:11px 12px;margin:10px 0}.glovo-result strong{display:block}.glovo-result small{display:block;color:var(--muted);margin-top:3px}.channel-row b.on{color:#087b41}.channel-row b.off{color:#a3163c}.glovo-warning{border:1px solid #f0d6a5;background:#fff9ef;border-radius:14px;padding:11px 12px;margin:10px 0}.glovo-warning strong,.glovo-warning span{display:block}.glovo-warning span{font-size:11px;color:var(--muted);margin-top:3px}
  @media(max-width:760px){.glovo-readiness{grid-template-columns:1fr 1fr}.glovo-filterbar{grid-template-columns:1fr}.glovo-filters{overflow:auto}}
  `;document.head.appendChild(s);
 }
@@ -26,6 +26,7 @@ function renderList(){
 }
 function draw(){
  ensureStyles();const host=$('#channelAvailabilityContent');if(!host||!data)return;
+ const selectedTest=(data.items||[]).find(x=>x.sku===testSku),testAllowed=data.status==='READY'&&data.integration?.testPushEnabled&&data.integration?.credentialsReady&&data.integration?.webhookConfigured;
  const s=data.summary||{},cfg=data.integration||{},catalog=data.catalog||{},d=data.diagnostics||{},mappingOk=Number(d.catalogMatchedStockRows||0)>0;
  host.innerHTML=`<div class="growth-shell">
   <div class="manager-hub-head"><span class="manager-eyebrow">CANAL E-COMMERCE · GLOVO</span><h2>Catalogue Glovo 2.0 : disponibilité et prix.</h2><p>StoreOps lit Dynamics, applique le catalogue autorisé et transmet <strong>SKU + disponibilité</strong>, avec les prix lorsque leur base TTC est validée.</p></div>
@@ -39,6 +40,13 @@ function draw(){
   </div>
   ${!mappingOk&&data.status==='READY'?'<div class="glovo-warning"><strong>Synchronisation bloquée par sécurité</strong><span>Aucun SKU du catalogue Glovo ne correspond au snapshot stock. Vérifier le mapping article avant tout push.</span></div>':''}
   <section class="channel-card"><div><span class="manager-eyebrow">CONNEXION GLOVO · SANS ÉCRITURE</span><strong>${cfg.credentialsReady?'Paramètres suffisants pour tester':'Configuration à compléter'}</strong><p>${cfg.credentialsReady?'StoreOps peut interroger le Catalog API pour vérifier Chain ID, Vendor ID et authentification sans modifier le catalogue.':'Renseigner Chain ID, Vendor ID et l’authentification Glovo côté serveur / Netlify.'}</p><small>Chain : ${esc(cfg.chainId||'—')} · API : ${esc(cfg.apiBaseUrl||'—')}</small><div class="glovo-actions"><button id="verifyGlovo" class="btn soft" ${cfg.credentialsReady?'':'disabled'}>Tester la connexion</button></div></div><span class="pill">${cfg.credentialsReady?'À tester':'Incomplet'}</span></section>
+  <section class="channel-card"><div><span class="manager-eyebrow">PREMIER ESSAI · UN SEUL PRODUIT</span><strong>Tester une disponibilité sur le magasin Glovo 51530</strong><p>Choisis un SKU déjà présent chez Glovo. Le test envoie uniquement sa disponibilité actuelle, sans prix ni quantité. Le résultat sera suivi dans « Résultats Glovo ».</p>
+   ${!cfg.testPushEnabled?'<p class="glovo-warning">Le test produit n’est pas activé sur ce magasin.</p>':''}
+   <div class="glovo-one-product"><label for="glovoTestSku">Produit à tester</label><select id="glovoTestSku" ${testAllowed&&!testBusy?'':'disabled'}><option value="">Choisir un SKU…</option>${(data.items||[]).map(x=>`<option value="${esc(x.sku)}" ${x.sku===testSku?'selected':''}>${esc(x.sku)}${x.name?` · ${esc(x.name)}`:''} · ${x.active?'Disponible':'Indisponible'}</option>`).join('')}</select>
+   <div id="glovoTestPreview">${selectedTest?`<strong>${esc(selectedTest.sku)} → ${selectedTest.active?'Disponible':'Indisponible'}</strong><small>Magasin Glovo : 51530 · un seul produit</small>`:'Sélectionne le produit pour voir la disponibilité qui sera envoyée.'}</div>
+   <label><input id="glovoTestConfirm" type="checkbox" ${testConfirmed?'checked':''} ${testAllowed&&selectedTest&&!testBusy?'':'disabled'}>Je confirme l’envoi de cette disponibilité pour ce seul produit au magasin test 51530.</label>
+   <div class="glovo-actions"><button id="testGlovoProduct" class="btn brand" ${testAllowed&&selectedTest&&testConfirmed&&!testBusy?'':'disabled'}>${testBusy?'Vérification et envoi…':'Tester ce produit'}</button></div></div>
+  </div><span class="pill">1 SKU · disponibilité</span></section>
   <section class="channel-card"><div><span class="manager-eyebrow">MISE À JOUR DU CATALOGUE</span><strong>${cfg.ready?'Push activé':'Push verrouillé'}</strong><p>${cfg.ready?'Le bouton envoie le catalogue autorisé en mise à jour asynchrone.':'Après validation du test/sandbox, activer GLOVO_PUSH_ENABLED=1. Tant que ce flag reste à 0, aucun push Glovo n’est possible.'}</p><div class="glovo-actions"><button id="syncGlovo" class="btn brand" ${cfg.ready&&cfg.webhookConfigured&&mappingOk?'':'disabled'}>Synchroniser le catalogue</button></div></div><span class="pill">${cfg.pushEnabled?'Activé':'Sécurité ON'}</span></section>
   <section class="channel-card"><div><span class="manager-eyebrow">API STOREOPS OPTIONNELLE · LECTURE SEULE</span><strong>${cfg.partnerPullConfigured?'Endpoint sécurisé prêt':'Endpoint fermé'}</strong><p>À utiliser uniquement si Glovo ou un middleware souhaite venir lire la disponibilité depuis StoreOps. Ce flux reste séparé du Partner API/Catalog officiel.</p><small>${esc(cfg.partnerEndpoint||'')}</small></div><span class="pill">${cfg.partnerPullConfigured?'Bearer requis':'Désactivé'}</span></section>
   <section class="channel-card"><div><span class="manager-eyebrow">PRIX ET ASSORTIMENT</span><strong>${cfg.priceSyncEnabled?'Synchronisation des prix activée':'Disponibilité seule activée'}</strong><p>Préparer les prix standards TTC avant leur envoi. Les prix manquants ou les unités non reconnues bloquent le mode prix. L’export signale les images, EAN et catégories à compléter pour Glovo.</p><div class="glovo-actions"><button id="prepareGlovoPrices" class="btn soft">Préparer les prix</button><button id="exportGlovoAssortment" class="btn soft">Exporter l’assortiment</button></div></div></section>
@@ -48,6 +56,9 @@ function draw(){
   <div class="row" style="margin:4px 0 8px"><strong>Catalogue magasin</strong><span class="small muted" id="glovoListCount"></span></div><div class="channel-list" id="glovoList"></div>
   <div class="growth-trust">Buffer interne : ${d.safetyBuffer??0} · entrepôt magasin : ${esc(d.warehouseId||'—')} · quantité brute exposée : non.</div>
  </div>`;
+ $('#glovoTestSku')?.addEventListener('change',e=>{testSku=e.target.value||'';testConfirmed=false;draw()});
+ $('#glovoTestConfirm')?.addEventListener('change',e=>{testConfirmed=!!e.target.checked;const button=$('#testGlovoProduct');if(button)button.disabled=!(testAllowed&&selectedTest&&testConfirmed&&!testBusy)});
+ $('#testGlovoProduct')?.addEventListener('click',testProduct);
  $('#prepareGlovoPrices')?.addEventListener('click',preparePrices);
  $('#exportGlovoAssortment')?.addEventListener('click',exportAssortment);
  $('#refreshGlovoJobs')?.addEventListener('click',renderJobs);
@@ -86,7 +97,7 @@ async function exportAssortment(){
 }
 async function renderJobs(){
  const store=app.storeId,host=$('#glovoJobs');if(!host)return;
- try{const r=await api(glovoPath()+'/jobs');if(store!==app.storeId||!host.isConnected)return;host.innerHTML=r.items.length?r.items.map(x=>`<div class="glovo-result"><strong>${esc(x.status)} · ${n(x.sentProducts)} produits</strong><small>${esc(x.jobId)} · ${esc(x.updatedAt||x.submittedAt||'')} · rapport ${esc(x.reportStatus||'EN ATTENTE')}</small>${x.reportStatus==='AVAILABLE'||x.reportStatus==='DOWNLOADED'?`<button class="btn soft" data-glovo-report="${esc(x.jobId)}">Télécharger le rapport</button>`:''}</div>`).join(''):'<p>Aucune mise à jour envoyée.</p>';
+ try{const r=await api(glovoPath()+'/jobs');if(store!==app.storeId||!host.isConnected)return;host.innerHTML=r.items.length?r.items.map(x=>`<div class="glovo-result"><strong>${esc(x.status)} · ${x.scope==='TEST_ONE_PRODUCT'?`Test ${esc(x.testedSku||'')} · ${x.testedActive?'Disponible':'Indisponible'}`:`${n(x.sentProducts)} produits`}</strong><small>${esc(x.jobId)} · ${esc(x.updatedAt||x.submittedAt||'')} · rapport ${esc(x.reportStatus||'EN ATTENTE')}</small>${x.reportStatus==='AVAILABLE'||x.reportStatus==='DOWNLOADED'?`<button class="btn soft" data-glovo-report="${esc(x.jobId)}">Télécharger le rapport</button>`:''}</div>`).join(''):'<p>Aucune mise à jour envoyée.</p>';
  host.querySelectorAll('[data-glovo-report]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{const report=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/jobs/${encodeURIComponent(b.dataset.glovoReport)}/report`,{method:'POST'});downloadGlovoFile('glovo-rapport.txt',report.content,'text/plain;charset=utf-8');toast(report.interpretation)}catch(e){toast(e.message)}finally{b.disabled=false}}));
  }catch(e){host.textContent=e.message}
 }
@@ -95,3 +106,34 @@ window.addEventListener?.('storeops-stock-progress',event=>{
  if(event.detail?.path!==`/api/stores/${app.storeId}/channels/glovo`)return;
  const host=$('#channelAvailabilityContent');if(host?.querySelector('.growth-loading'))host.querySelector('.growth-loading').textContent=`Chargement du stock Dynamics… ${event.detail.progress?.rowsRead||0} lignes lues`;
 });
+
+async function testProduct(){
+ const b=$('#testGlovoProduct'),selected=(data?.items||[]).find(x=>x.sku===testSku);
+ if(testBusy||!b||b.disabled||!selected||!testConfirmed)return;
+ const store=app.storeId,sku=selected.sku,expectedActive=selected.active,watch=++jobWatch;testBusy=true;draw();
+ try{
+  const fresh=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo?force=1`);
+  if(app.storeId!==store)return;
+  data=fresh;const current=(fresh.items||[]).find(x=>x.sku===sku);
+  if(fresh.status!=='READY'||!current)throw new Error('Le stock complet de ce produit n’est pas disponible. Aucun test envoyé.');
+  if(current.active!==expectedActive){testConfirmed=false;throw new Error('La disponibilité a changé. Vérifie la nouvelle valeur et confirme à nouveau.');}
+  const result=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/test-product`,{method:'POST',body:{sku,expectedActive}});
+  if(app.storeId!==store)return;
+  testConfirmed=false;lastResult={title:'Test produit envoyé · en attente du résultat Glovo',detail:`${sku} → ${expectedActive?'Disponible':'Indisponible'} · magasin 51530 · job ${result.jobId}`};toast('Un seul produit envoyé. Attente de la notification Glovo.');
+  void watchTestJob(store,result.jobId,watch);
+ }catch(e){if(app.storeId===store){lastResult={title:'Test produit non envoyé',detail:e.message};toast(e.message)}}
+ finally{testBusy=false;if(app.storeId===store)draw()}
+}
+async function watchTestJob(store,jobId,watch){
+ for(let attempt=0;attempt<40;attempt++){
+  await new Promise(resolve=>setTimeout(resolve,3000));
+  if(watch!==jobWatch||app.storeId!==store||app.page!=='channelAvailability')return;
+  try{const job=await api(`/api/stores/${encodeURIComponent(store)}/channels/glovo/jobs/${encodeURIComponent(jobId)}`);
+   if(['COMPLETED','FAILED'].includes(job.status)){
+    lastResult={title:job.status==='COMPLETED'?'Traitement Glovo terminé · vérifier le rapport':'Glovo a signalé un échec du test',detail:`${job.testedSku||''} · job ${jobId} · ${job.status}. Le rapport détaille le résultat par produit.`};draw();return;
+   }
+   await renderJobs();
+  }catch{return}
+ }
+ if(watch===jobWatch&&app.storeId===store){lastResult={title:'Résultat Glovo encore en attente',detail:'Utilise « Actualiser les résultats » pour relire la notification et le rapport. Ne renvoie pas le test tant que le job est en cours.'};draw()}
+}
