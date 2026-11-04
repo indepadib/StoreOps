@@ -24,7 +24,7 @@ export function normalizeFinding(raw){
   const list=(v,n)=>Array.isArray(v)?v.slice(0,n):[];
   const asEvidence=r=>({title:clean(r?.title,180),details:clean(r?.details,1000),
     quote:clean(r?.quote,450),page:clean(r?.page,30)});
-  const tiers=list(raw.rebateTiers,limits.rebateTiers).map(x=>({threshold:clean(x?.threshold,32),rateBps:Number(x?.rateBps),quote:clean(x?.quote,350),page:clean(x?.page,30)}))
+  const tiers=list(raw.rebateTiers,limits.rebateTiers).filter(x=>x?.rateBps!==null&&x?.rateBps!==undefined&&String(x.rateBps).trim()!=='').map(x=>({threshold:clean(x?.threshold,32),rateBps:Number(x?.rateBps),quote:clean(x?.quote,350),page:clean(x?.page,30)}))
     .filter(t=>isNumeric(t.threshold)&&Number.isSafeInteger(t.rateBps)&&t.rateBps>=0&&t.rateBps<=10000);
   return {
     summary:clean(raw.summary,2400),
@@ -43,7 +43,8 @@ export function normalizeFinding(raw){
       dueDate:validDate(o?.dueDate)?o.dueDate:null,owner:clean(o?.owner,120),
       quote:clean(o?.quote,450),page:clean(o?.page,30)})).filter(x=>x.title),
     risks:list(raw.risks,limits.risks).map(r=>({...asEvidence(r),severity:['LOW','MEDIUM','HIGH'].includes(r?.severity)?r.severity:'MEDIUM'})).filter(x=>x.title),
-    missing:list(raw.missing,20).map(x=>clean(x,180)).filter(Boolean),
+    missing:list(raw.missing,40).map(x=>clean(x,180)).filter(Boolean),
+    readingOverflow:Object.fromEntries(Object.entries(limits).filter(([k,n])=>Array.isArray(raw[k])&&raw[k].length>n).map(([k,n])=>[k,raw[k].length-n])),
     guidance:noAutoUpdate
   };
 }
