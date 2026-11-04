@@ -56,6 +56,10 @@ function classify(clauses,risks,obligations,references){
 export function consolidateReadings(commercial,operational){
   if(!commercial||!operational)throw Error('Les deux lectures spécialisées sont requises.');
   const conflicts=[],qualityIssues=[];
+  for(const [pass,reading] of [['Finance',commercial],['Juridique/Opérations',operational]]){
+    for(const [kind,dropped] of Object.entries(reading.readingOverflow||{}))
+      qualityIssues.push(pass+' : '+dropped+' élément(s) '+kind+' non restitués par limite de résultat');
+  }
   const fields=['supplierName','title','startDate','endDate','currency','paymentTermsDays','rebateMode','rebateBase'];
   const combined={...commercial};
   for(const field of fields)combined[field]=choose(commercial[field],operational[field],field,conflicts);
@@ -69,6 +73,7 @@ export function consolidateReadings(commercial,operational){
     if(merged[k].dropped)qualityIssues.push(k+': '+merged[k].dropped+' éléments au-delà de la limite de restitution');
     combined[k]=merged[k].items;
   }
+  delete combined.readingOverflow;
   combined.missing=uniqueBy([...list(commercial.missing),...list(operational.missing)]
     .map(x=>txt(x,220)).filter(Boolean),normalizeKey,50).items;
   const tiersByThreshold=new Map();
