@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
 import {consolidateReadings,readingTopics} from '../backend/services/buying-group-reading-quality.mjs';
-import {analyzePdf} from '../backend/services/buying-group-contract-workflow.mjs';
+import {analyzePdf,normalizeFinding} from '../backend/services/buying-group-contract-workflow.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const file=p=>readFileSync(path.join(root,p),'utf8');
@@ -109,4 +109,22 @@ test('Core evidence reading topics cover buying contracts across departments',()
  for(const topic of ['pricing','rebates','payments','logistics','penalties','exclusivity','annexes']){
    assert.ok(readingTopics.some(x=>x.id===topic),topic);
  }
+});
+
+test('Unknown RFA rate must never be converted to false 0% rebate',()=>{
+ const result=normalizeFinding(input({rebateTiers:[
+   {threshold:'0',rateBps:null,quote:'pourcentage illisible',page:'3'},
+   {threshold:'100000',rateBps:450,quote:'4,5 %',page:'6'}
+ ]}));
+ assert.equal(result.rebateTiers.length,1);
+ assert.equal(result.rebateTiers[0].rateBps,450);
+});
+test('Output list overflow is shown in warnings rather than falsely declared exhaustive',()=>{
+ const large=input({clauses:Array.from({length:72},(_,i)=>({
+   title:'Article '+i,quote:'preuve clause '+i,page:String(i+1),details:'clauses distinctes'
+ }))});
+ const result=normalizeFinding(large);
+ assert.equal(result.readingOverflow.clauses,2);
+ const combined=consolidateReadings(result,input());
+ assert.ok(combined.quality.warnings.some(x=>x.includes('non restitués')));
 });
