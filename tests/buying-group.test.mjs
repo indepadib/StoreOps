@@ -93,7 +93,7 @@ test('Canonical ES modules share one StoreOps auth state instance (regression fo
   assert.match(standaloneEntry,/from '\/js\/state\.js'/);
   assert.match(standaloneEntry,/from '\/js\/auth\.js'/);
   assert.match(standaloneEntry,/from '\/js\/pages\/buying-group\.js'/);
-  assert.match(standaloneShell,/\/centrale-achat\/entry\.js\?v=7/);
+  assert.match(standaloneShell,/\/centrale-achat\/entry\.js\?v=8/);
   assert.match(netlifyConfig,/for = "\/centrale-achat\/\*"/);
 });
 
