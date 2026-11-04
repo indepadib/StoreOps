@@ -2,6 +2,7 @@ import {api,apiPrivateFile} from '../api.js';
 import {app} from '../state.js';
 import {buyingManagementContext,loadBuyingManagement} from './buying-group-management.js';
 import {renderContractIntake} from './buying-group-intake.js';
+import {renderDetailedReading} from './buying-group-reading-view.js';
 
 const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
@@ -62,7 +63,7 @@ function extractionPanel(){
  '<p class="hsm-note">Document sélectionné : '+h(document?.file_name||'—')+'. '+h(state.ai?.notice||'')+'</p>'+
  (state.ai?.enabled&&document?.content_type==='application/pdf'
  ?'<label class="hsp-consent"><input id="hspConsent" type="checkbox"> J’autorise expressément la transmission de ce PDF au prestataire IA pour lecture, après vérification de la politique H&S.</label>'+
- '<button class="hsm-primary" id="hspAnalyze" '+(state.busy?'disabled':'')+'>'+((latest?.document_id===document.id)?'Lecture déjà réalisée sur ce document':'Analyser le PDF avec l’IA')+'</button>':
+ '<button class="hsm-primary" id="hspAnalyze" '+(state.busy?'disabled':'')+'>'+((state.readings.some(r=>r.document_id===document.id))?'Relire le PDF en profondeur (2 analyses)':'Analyser le PDF en profondeur (2 analyses)')+'</button>':
  '<div class="hsp-notice">Lecture automatique '+(state.ai?.enabled?'limitée aux PDF. Convertir le DOCX en PDF.':'non configurée côté serveur. La saisie et la revue manuelles restent disponibles.')+'</div>'))+
  (findings?'<div class="hsp-findings">'+
  '<div class="hsp-summary"><div><span class="bg-eyebrow">SYNTHÈSE PROPOSÉE · NON VALIDÉE</span><h4>'+h(findings.title||'Contrat analysé')+'</h4><p>'+h(findings.summary||'Aucune synthèse identifiée.')+'</p></div></div>'+
@@ -70,12 +71,7 @@ function extractionPanel(){
  '<div><small>Validité détectée</small><strong>'+moment(findings.startDate)+' → '+moment(findings.endDate)+'</strong></div>'+
  '<div><small>Paliers RFA</small><strong>'+h(findings.rebateTiers?.length||0)+'</strong></div>'+
  '<div><small>Risques signalés</small><strong>'+h(findings.risks?.length||0)+'</strong></div></div>'+
- '<div class="hsp-details-grid"><section><h4>Conditions et clauses</h4>'+
- (findings.clauses?.length?findings.clauses.map(x=>evidenceCard(x)).join(''):'<p class="hsm-note">Aucune clause détaillée identifiée.</p>')+
- '</section><section><h4>Vigilances et éléments manquants</h4>'+
- (findings.risks?.length?findings.risks.map(x=>evidenceCard(x,'risk')).join(''):'<p class="hsm-note">Aucun risque détecté automatiquement (cela ne signifie pas absence de risque).</p>')+
- (findings.missing?.length?'<div class="hsp-notice"><strong>À vérifier :</strong> '+findings.missing.map(x=>h(x)).join(' · ')+'</div>':'')+
- '</section></div></div>':'')+
+ renderDetailedReading(findings,h)+'</div>':'')+
  '<p class="hsm-note">Aucune donnée extraite n’est appliquée sans validation humaine de la pièce source et des clauses pertinentes.</p></section>';
 }
 function evidenceCard(x,kind=''){
@@ -243,7 +239,8 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
  root.querySelector('#hspAnalyze')?.addEventListener('click',async()=>{
   if(!root.querySelector('#hspConsent')?.checked){state.error='Autorisation explicite requise avant l’envoi du document PDF à l’IA.';await renderWorkflow(tab,root,navigate,{skipFetch:true});return}
   state.error='';await act(root,tab,navigate,'analyze','/api/buying-group/contracts/'+state.contractId+'/analyze',
-    {documentId:state.selectedDocument,consent:true});
+    {documentId:state.selectedDocument,consent:true,
+     reanalyze:state.readings.some(x=>x.document_id===state.selectedDocument)});
  });
  root.querySelector('#hspAddTask')?.addEventListener('click',()=>{
   const host=root.querySelector('#hspManualTasks');if(!host||host.children.length>=24)return;
