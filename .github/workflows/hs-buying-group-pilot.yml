@@ -9,6 +9,9 @@ on:
       - "backend/services/buying-group-api.mjs"
       - "backend/services/buying-group-d365.mjs"
       - "backend/services/buying-group-contract-workflow.mjs"
+      - "backend/services/buying-group-reading-quality.mjs"
+      - "frontend/js/pages/buying-group-reading-view.js"
+      - "tests/buying-group-deep-reading.test.mjs"
       - "frontend/js/pages/buying-group-workflows.js"
       - "frontend/js/pages/buying-group-intake.js"
       - "backend/services/buying-group-contract-intake.mjs"
@@ -39,6 +42,9 @@ on:
       - "backend/services/buying-group-api.mjs"
       - "backend/services/buying-group-d365.mjs"
       - "backend/services/buying-group-contract-workflow.mjs"
+      - "backend/services/buying-group-reading-quality.mjs"
+      - "frontend/js/pages/buying-group-reading-view.js"
+      - "tests/buying-group-deep-reading.test.mjs"
       - "frontend/js/pages/buying-group-workflows.js"
       - "frontend/js/pages/buying-group-intake.js"
       - "backend/services/buying-group-contract-intake.mjs"
@@ -85,6 +91,9 @@ jobs:
           node --check backend/services/buying-group-api.mjs
           node --check backend/services/buying-group-d365.mjs
           node --check backend/services/buying-group-contract-workflow.mjs
+          node --check backend/services/buying-group-reading-quality.mjs
+          node --check frontend/js/pages/buying-group-reading-view.js
+          node --check tests/buying-group-deep-reading.test.mjs
           node --check frontend/js/pages/buying-group-workflows.js
           node --check frontend/js/pages/buying-group-intake.js
           node --check backend/services/buying-group-contract-intake.mjs
@@ -94,4 +103,4 @@ jobs:
           node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
-        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs tests/buying-group-contract-workflow.test.mjs tests/buying-group-direct-import.test.mjs
+        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs tests/buying-group-contract-workflow.test.mjs tests/buying-group-direct-import.test.mjs tests/buying-group-deep-reading.test.mjs
