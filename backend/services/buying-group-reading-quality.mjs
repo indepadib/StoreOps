@@ -27,7 +27,7 @@ const evidenceKey=r=>normalizeKey(r.quote||'')?
   'q:'+normalizeKey(r.quote)+'|'+normalizeKey(r.page):
   't:'+normalizeKey(r.title)+'|'+normalizeKey(r.details)+'|'+normalizeKey(r.page);
 const obligationKey=r=>normalizeKey(r.title)+'|'+txt(r.dueDate||'');
-const tierKey=r=>txt(r.threshold)+'|'+txt(r.rateBps);
+const tierKey=r=>String(Number(r.threshold))+'|'+txt(r.rateBps);
 const clauseList=x=>list(x).filter(r=>r&&typeof r==='object');
 function choose(a,b,name,conflicts){
   const v=a??null,w=b??null;
@@ -74,11 +74,12 @@ export function consolidateReadings(commercial,operational){
     combined[k]=merged[k].items;
   }
   delete combined.readingOverflow;
+  combined.rebateTiers.sort((a,b)=>Number(a.threshold)-Number(b.threshold));
   combined.missing=uniqueBy([...list(commercial.missing),...list(operational.missing)]
     .map(x=>txt(x,220)).filter(Boolean),normalizeKey,50).items;
   const tiersByThreshold=new Map();
   for(const t of combined.rebateTiers){
-    const key=txt(t.threshold);
+    const key=String(Number(t.threshold));
     if(tiersByThreshold.has(key)&&tiersByThreshold.get(key)!==t.rateBps)
       conflicts.push({field:'rebateTiers',commercial:key+' / '+tiersByThreshold.get(key)+' bps',
         operational:key+' / '+t.rateBps+' bps',note:'Taux divergents pour un seuil identique : ne pas valider sans vérifier le PDF.'});
