@@ -151,7 +151,7 @@ async function readDocument(req,db,user,id){
   if(doc.content_type!=='application/pdf')return refuse('Lecture IA disponible pour PDF uniquement. Convertir les DOCX en PDF.',422,'PDF_REQUIRED');
   if(doc.status!=='DRAFT')return refuse('Analyse autorisée uniquement sur un contrat brouillon.',409);
   const existing=await db.pool.query('SELECT id,status FROM hs_buying.contract_analyses WHERE document_id=$1 AND source_sha256=$2',[documentId,doc.sha256]);
-  if(existing.rows.length)return refuse('Ce PDF a déjà été analysé. Ouvrez sa fiche de lecture plutôt que de multiplier les appels IA.',409,'ALREADY_ANALYZED');
+  if(existing.rows.length&&data.reanalyze!==true)return refuse('Ce PDF possède déjà une lecture. Confirme une nouvelle lecture approfondie pour comparer les résultats.',409,'ALREADY_ANALYZED');
   // AI request happens outside a DB transaction to avoid locking suppliers or docs during an external request.
   const parsed=await analyzePdf(Buffer.from(doc.file_bytes),{model:ai.model});
   const result=await tx(db,async c=>{
@@ -159,14 +159,16 @@ async function readDocument(req,db,user,id){
     const stage=await getStage(c,id,true);
     if(stage.stage==='PENDING_APPROVAL'||stage.stage==='APPROVED'||stage.stage==='ACTIVE')
       throw errorWith('Une analyse ne peut pas écraser un dossier soumis ou approuvé.',409);
-    await c.query("UPDATE hs_buying.contract_analyses SET status='SUPERSEDED' WHERE contract_id=$1 AND status='TO_REVIEW'",[id]);
+    await c.query("UPDATE hs_buying.contract_analyses SET status='SUPERSEDED' WHERE contract_id=$1 AND status IN ('TO_REVIEW','REVIEWED')",[id]);
     const sha=createHash('sha256').update(doc.file_bytes).digest('hex');
     if(sha!==doc.sha256)throw errorWith('La pièce a changé : empreinte de sécurité incohérente.',409);
     const inserted=await c.query("INSERT INTO hs_buying.contract_analyses(contract_id,document_id,source_sha256,model,findings,consent_by,requested_by) VALUES($1,$2,$3,$4,$5::jsonb,$6,$7) RETURNING id,status,created_at",
       [id,documentId,sha,ai.model,JSON.stringify(parsed),user.id,user.id]);
     await c.query("UPDATE hs_buying.contract_workflows SET stage='EXTRACTED',analysis_id=$2,submitted_by=NULL,submitted_at=NULL,approved_by=NULL,approved_at=NULL,updated_by=$3,updated_at=now() WHERE contract_id=$1",
       [id,inserted.rows[0].id,user.id]);
-    await audit(c,user,'CONTRACT_ANALYZED','contract',id,{documentId,analysisId:inserted.rows[0].id,model:ai.model,provider:ai.provider,sourceSha256:sha});
+    await audit(c,user,existing.rows.length?'CONTRACT_REANALYZED':'CONTRACT_ANALYZED','contract',id,
+      {documentId,analysisId:inserted.rows[0].id,model:ai.model,provider:ai.provider,sourceSha256:sha,
+       readingPasses:parsed.quality?.passCount||1,previousReviewInvalidated:existing.rows.length>0});
     return inserted.rows[0];
   });
   return response({analysis:{...result,findings:parsed},provider:ai.provider,reviewRequired:true,autoApplied:false},201);
