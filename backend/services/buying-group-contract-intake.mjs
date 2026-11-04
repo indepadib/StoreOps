@@ -108,23 +108,35 @@ async function analyze(req,db,user,id){
   if(body?.consent!==true)return reject('Autorisation explicite indispensable avant transmission au prestataire IA.',422,'CONSENT_REQUIRED');
   const status=workflowValidation.configAI();
   if(!status.enabled)return reject('Service IA indisponible. Le contrat peut être enregistré et contrôlé manuellement.',503,'AI_NOT_CONFIGURED');
-  const res=await db.pool.query('SELECT id,status,content_type,file_bytes,sha256 FROM hs_buying.contract_intakes WHERE id=$1',[id]);
+  const res=await db.pool.query('SELECT id,status,content_type,file_bytes,sha256,ai_analysis,ai_model,analyzed_at,analyzed_by,created_by FROM hs_buying.contract_intakes WHERE id=$1',[id]);
   if(!res.rows.length)return reject('Import introuvable.',404);
   const entry=res.rows[0];
   if(entry.status==='REGISTERED')return reject('Document déjà enregistré comme contrat.',409);
-  if(entry.status==='ANALYZED')return reject('Lecture déjà enregistrée. Vérifie les champs avant validation.',409);
+  if(entry.status==='ANALYZED'&&body.reanalyze!==true)return reject('Lecture déjà disponible. Confirme une nouvelle lecture pour comparer.',409);
   if(entry.content_type!=='application/pdf')return reject('Lecture IA disponible pour les PDF uniquement.',422);
   const bytes=Buffer.from(entry.file_bytes),digest=createHash('sha256').update(bytes).digest('hex');
   if(digest!==entry.sha256)return reject('Intégrité du document non vérifiée.',409);
   const findings=await analyzePdf(bytes,{model:status.model});
   await transact(db,async c=>{
-    const check=await c.query('SELECT status,sha256 FROM hs_buying.contract_intakes WHERE id=$1 FOR UPDATE',[id]);
-    if(check.rows[0]?.status!=='UPLOADED'||check.rows[0]?.sha256!==digest)throw err('Document modifié pendant l’analyse.',409);
+    const check=await c.query('SELECT status,sha256,ai_analysis,ai_model,analyzed_by,created_by,analyzed_at FROM hs_buying.contract_intakes WHERE id=$1 FOR UPDATE',[id]);
+    if(!['UPLOADED','ANALYZED'].includes(check.rows[0]?.status)||check.rows[0]?.sha256!==digest)throw err('Document modifié pendant l’analyse.',409);
+    const previous=check.rows[0];
+    if(entry.status==='ANALYZED'&&String(previous.analyzed_at)!==String(entry.analyzed_at))
+      throw err('Une autre lecture a déjà modifié ce document. Recharge la fiche avant de recommencer.',409);
+    // For old intakes analyzed before versioning, archive the previous reading first.
+    if(previous.ai_analysis){
+      const history=await c.query('SELECT count(*)::int AS count FROM hs_buying.contract_intake_analysis_runs WHERE intake_id=$1',[id]);
+      if(history.rows[0].count===0)await c.query('INSERT INTO hs_buying.contract_intake_analysis_runs(intake_id,source_sha256,model,findings,requested_by) VALUES($1,$2,$3,$4::jsonb,$5)',
+        [id,digest,previous.ai_model||'legacy',JSON.stringify(previous.ai_analysis),previous.analyzed_by||previous.created_by]);
+    }
+    await c.query('INSERT INTO hs_buying.contract_intake_analysis_runs(intake_id,source_sha256,model,findings,requested_by) VALUES($1,$2,$3,$4::jsonb,$5)',
+      [id,digest,status.model,JSON.stringify(findings),user.id]);
     await c.query("UPDATE hs_buying.contract_intakes SET status='ANALYZED',ai_analysis=$2::jsonb,ai_model=$3,analyzed_by=$4,analyzed_at=now() WHERE id=$1",
       [id,JSON.stringify(findings),status.model,user.id]);
-    await audit(c,user,'CONTRACT_INTAKE_ANALYZED','contract_intake',id,{model:status.model,sha256:digest});
+    await audit(c,user,entry.status==='ANALYZED'?'CONTRACT_INTAKE_REANALYZED':'CONTRACT_INTAKE_ANALYZED',
+      'contract_intake',id,{model:status.model,sha256:digest,readingPasses:findings.quality?.passCount||1});
   });
-  return reply({item:{status:'ANALYZED',findings},autoApplied:false});
+  return reply({item:{status:'ANALYZED',findings},autoApplied:false,reviewRequired:true});
 }
 async function register(req,db,user,id){
   const raw=await req.text();

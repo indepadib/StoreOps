@@ -53,7 +53,7 @@ test('Contract reader sends PDF to an injected model only and stores evidence-by
 });
 test('Contract reader refuses a non-PDF and malformed AI reply',async()=>{
  await assert.rejects(()=>analyzePdf(Buffer.from('NOTPDF'),{callModel:async()=>({})}),/PDF invalide/);
- await assert.rejects(()=>analyzePdf(signedPdf,{callModel:async()=>({content:[{type:'text',text:'{}'}]})}),/extraction structurée/);
+ await assert.rejects(()=>analyzePdf(signedPdf,{callModel:async()=>({content:[{type:'text',text:'{}'}]})}),/données structurées complètes/);
 });
 test('Reading cannot send a contract to the model without explicit consent',async()=>{
  let contacted=0;

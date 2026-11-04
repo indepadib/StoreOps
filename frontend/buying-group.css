@@ -383,3 +383,43 @@
 #hsiIntakeHost .hsp-consent input{margin-top:3px;min-width:15px;accent-color:#2c7e43}
 @media(max-width:1010px){#hsiIntakeHost .hsi-inbox-layout{grid-template-columns:1fr}}
 @media(max-width:600px){#hsiIntakeHost .hsi-import{padding:19px}#hsiIntakeHost .hsi-import-mark{display:none}#hsiIntakeHost .hsm-form-grid,#hsiIntakeHost .hsi-kpis{grid-template-columns:1fr}}
+
+
+/* H&S Reading v2 — evidence-based contract clauses, financial tables and gaps. */
+.hqr{display:flex;flex-direction:column;gap:15px;margin-top:17px;color:#355b43}
+.hqr-section,.hqr-quality,.hqr-more{padding:16px;background:#fbfdf9;border:1px solid #dfeade;border-radius:13px}
+.hqr-subtitle{display:flex;justify-content:space-between;align-items:center;gap:9px;flex-wrap:wrap;font-weight:830;font-size:13px;color:#224e36;margin-bottom:12px}
+.hqr-subtitle span{font-size:10px;color:#936b39;background:#fff1dd;border:1px solid #f0dfc5;padding:6px 9px;border-radius:99px}
+.hqr-note,.hqr-warning,.hqr-footnote{font-size:11px;line-height:1.65;color:#728877;margin:9px 0}
+.hqr-warning{padding:12px 14px;color:#815d2c;background:#fff7e8;border:1px solid #eeddbb;border-radius:9px}
+.hqr-footnote{padding:10px;border-top:1px solid #e3ebdd}
+.hqr-coverage{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:14px 0 5px}
+.hqr-topic{display:flex;justify-content:space-between;align-items:center;gap:9px;padding:11px 12px;border-radius:9px;background:#f8fbf5;border:1px solid #e1eade}
+.hqr-topic>span{font-size:10px;font-weight:740;color:#526f58;line-height:1.35}
+.hqr-topic>strong{font-size:9px;flex-shrink:0;border-radius:100px;padding:5px 8px;background:#fff1de;color:#855e2b}
+.hqr-topic.hqr-mentioned>strong{background:#e5f3e0;color:#3d6e49}
+.hqr-conflict{background:#fff0ea;border:1px solid #f4d2c4;border-radius:10px;padding:15px;color:#985039;font-size:12px;line-height:1.65}
+.hqr-conflict>strong{display:block;font-size:13px;margin-bottom:7px}
+.hqr-conflict>div{margin-top:7px}
+.hqr-financial{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:12px}
+.hqr-financial>div{border:1px solid #e2edda;background:#f3faf0;padding:12px;border-radius:10px;display:flex;flex-direction:column;gap:8px}
+.hqr-financial small{font-size:10px;color:#738d78}
+.hqr-financial strong{font-size:11px;word-wrap:break-word;color:#2c5d3f}
+.hqr-table-wrap{overflow-x:auto;border:1px solid #e0e9dc;border-radius:11px}
+.hqr-table{border-collapse:collapse;width:100%;min-width:380px;background:white}
+.hqr-table th{text-align:left;text-transform:uppercase;font-size:10px;letter-spacing:.06em;color:#7b9681;background:#f5faf2}
+.hqr-table td,.hqr-table th{padding:12px;border-bottom:1px solid #e8eee5;vertical-align:top}
+.hqr-table td{font-size:12px;color:#345c42;line-height:1.55}
+.hqr-source{margin:8px 0;padding:10px;background:#f3f7f1;border-left:3px solid #bad3b2;border-radius:7px;font-size:11px;line-height:1.6;color:#627969}
+.hqr-source span{display:block;font-size:10px;color:#8ca193;margin-top:5px}
+.hqr-source>strong{font-size:10px;color:#9b6538}
+.hqr-entry{padding:13px 0;border-bottom:1px solid #e5eee1}
+.hqr-entry:last-child{border-bottom:0}
+.hqr-entry>strong{font-size:12px;line-height:1.5;display:block;color:#27573c}
+.hqr-entry>small{display:block;margin:5px 0;font-size:10px;color:#7d9483;line-height:1.5}
+.hqr-entry>p{font-size:11px;line-height:1.65;color:#6c856f;margin:6px 0}
+.hqr-more{display:block}
+.hqr-more summary{font-size:12px;font-weight:850;color:#285740;cursor:pointer}
+.hqr-more ul{padding-left:23px;margin:12px 0}
+.hqr-more li{font-size:11px;line-height:1.65;color:#776b51;margin:5px 0}
+@media(max-width:650px){.hqr-coverage,.hqr-financial{grid-template-columns:1fr}.hqr-topic{align-items:flex-start;flex-wrap:wrap}.hqr-section,.hqr-quality,.hqr-more{padding:12px}}

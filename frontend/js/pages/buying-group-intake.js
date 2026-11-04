@@ -1,5 +1,6 @@
 import {api,apiPrivateFile} from '../api.js';
 import {buyingManagementContext} from './buying-group-management.js';
+import {renderDetailedReading} from './buying-group-reading-view.js';
 
 // Upload comes first. Registration is independent and optional until the operator
 // has reviewed the supplier, legal entity and effective dates.
@@ -52,17 +53,12 @@ function intakeList(){
 function findingsPanel(row){
   const analysis=row.ai_analysis;
   if(!analysis)return '';
-  const evidence=(v)=>'<div class="hsi-evidence"><strong>'+esc(v.title||'Clause')+'</strong>'+
-    '<p>'+esc(v.details||'')+'</p>'+ (v.quote?'<small>Preuve : « '+esc(v.quote)+' » · Page '+esc(v.page||'?')+'</small>':'')+'</div>';
-  return '<section class="hsi-findings"><div class="hsm-heading"><h4>Lecture IA proposée</h4><span class="hsm-soft">À vérifier</span></div>'+
-    '<p>'+esc(analysis.summary||'Aucune synthèse fournie.')+'</p>'+
-    '<div class="hsi-kpis"><div><small>Fournisseur</small><strong>'+esc(analysis.supplierName||'Non trouvé')+'</strong></div>'+
-    '<div><small>Échéance</small><strong>'+esc(analysis.endDate||'Non trouvée')+'</strong></div>'+
-    '<div><small>Conditions RFA</small><strong>'+esc((analysis.rebateTiers||[]).length)+' palier(s)</strong></div></div>'+
-    ((analysis.clauses||[]).length?'<h5>Clauses détectées</h5>'+(analysis.clauses||[]).slice(0,10).map(evidence).join(''):'')+
-    ((analysis.risks||[]).length?'<h5>Risques</h5>'+(analysis.risks||[]).slice(0,8).map(evidence).join(''):'')+
-    ((analysis.missing||[]).length?'<p class="hsi-warning">Points à confirmer : '+esc(analysis.missing.join(' · '))+'</p>':'')+
-    '<p class="hsi-warning">Aucune condition extraite ne sera appliquée ni approuvée automatiquement. Vérifie les passages dans le document original.</p></section>';
+  return '<section class="hsi-findings"><div class="hsm-heading"><h4>Lecture contractuelle détaillée</h4><span class="hsm-soft">Proposition IA non certifiée</span></div>'+
+    '<p>'+esc(analysis.summary||'Pas de synthèse disponible.')+'</p>'+
+    '<div class="hsi-kpis"><div><small>Fournisseur</small><strong>'+esc(analysis.supplierName||'À confirmer')+'</strong></div>'+
+    '<div><small>Fin du contrat</small><strong>'+esc(analysis.endDate||'À confirmer')+'</strong></div>'+
+    '<div><small>Clauses relevées</small><strong>'+esc((analysis.clauses||[]).length)+'</strong></div></div>'+
+    renderDetailedReading(analysis,esc)+'</section>';
 }
 function currentPanel(){
   const item=active();if(!item)return '';
@@ -74,10 +70,10 @@ function currentPanel(){
   '<div class="hsi-current-file"><strong>'+esc(item.file_name)+'</strong>'+
   '<button id="hsiView" class="hsm-quiet">Ouvrir l’original</button></div>'+
   '<div id="hsiViewer" hidden class="hsi-viewer"></div>'+
-  (item.content_type==='application/pdf'&&item.status==='UPLOADED'?
+  (item.content_type==='application/pdf'&&['UPLOADED','ANALYZED'].includes(item.status)?
    (state.ai?.enabled?'<div class="hsi-ai"><p>Tu peux demander une lecture IA du PDF pour préremplir la fiche, après autorisation explicite de transmission.</p>'+
     '<label class="hsp-consent"><input type="checkbox" id="hsiConsent"> J’autorise la transmission de ce document à Anthropic via le service IA autorisé par H&S.</label>'+
-    '<button type="button" id="hsiAnalyze" class="hsm-quiet">Lire le contrat avec l’IA</button></div>':
+    '<button type="button" id="hsiAnalyze" class="hsm-quiet">'+(item.status==='ANALYZED'?'Relire en profondeur (2 analyses)':'Analyser en profondeur (2 analyses)')+'</button></div>':
     '<p class="hsi-warning">La lecture IA n’est pas configurée sur ce service. Tu peux tout de même enregistrer le contrat et examiner ses clauses manuellement.</p>')
    :item.content_type!=='application/pdf'?'<p class="hsi-warning">DOCX importé. La lecture IA nécessite un PDF ; le document peut être enregistré sans IA.</p>':'')+
   findingsPanel(item)+
@@ -165,8 +161,8 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
     if(state.busy)return;state.busy=true;state.error='';state.message='';
     try{
       await api('/api/buying-group/intakes/'+encodeURIComponent(item.id)+'/analyze',
-        {method:'POST',body:{consent:true},noRetry:true});
-      state.message='Lecture IA terminée. Contrôle chaque clause dans le document original avant d’enregistrer le dossier.';
+        {method:'POST',body:{consent:true,reanalyze:item.status==='ANALYZED'},noRetry:true});
+      state.message='Deux lectures spécialisées terminées. Vérifie les preuves, divergences et conditions RFA avant d’enregistrer le dossier.';
       state.busy=false;await renderContractIntake(root,onRegistered,{force:true});
     }catch(error){state.busy=false;state.error=error.message;await renderContractIntake(root,onRegistered)}
     finally{state.busy=false}
