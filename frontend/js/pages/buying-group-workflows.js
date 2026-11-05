@@ -2,13 +2,14 @@ import {api,apiPrivateFile} from '../api.js';
 import {app} from '../state.js';
 import {buyingManagementContext,loadBuyingManagement} from './buying-group-management.js';
 import {renderContractIntake} from './buying-group-intake.js';
+import {mountContractReadingProgress} from './buying-group-reading-queue.js';
 import {renderDetailedReading} from './buying-group-reading-view.js';
 
 const h=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt=n=>new Intl.NumberFormat('fr-MA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(n)||0);
 const moment=s=>s?String(s).slice(0,10):'Non précisée';
 const stages=[['DRAFT','1. Brouillon'],['EXTRACTED','2. Lecture IA'],['REVIEWED','3. Revue'],['PENDING_APPROVAL','4. Approbation'],['APPROVED','5. Validé'],['ACTIVE','6. Actif']];
-const state={contractId:null,files:[],readings:[],workflow:null,ai:null,process:null,loading:false,busy:false,alert:'',error:'',previewUrl:null,selectedDocument:null};
+const state={contractId:null,files:[],readings:[],workflow:null,ai:null,process:null,loading:false,busy:false,alert:'',error:'',previewUrl:null,selectedDocument:null,readJobId:null};
 export function chooseWorkflowContract(id){state.contractId=String(id);sessionStorage.setItem('hs_buying_contract_focus',state.contractId)}
 const contracts=()=>buyingManagementContext().contracts||[];
 const selected=()=>contracts().find(x=>x.id===state.contractId)||null;
@@ -59,6 +60,7 @@ function filesPanel(){
 function extractionPanel(){
  const document=state.files.find(x=>x.id===state.selectedDocument),latest=state.readings.find(r=>r.status!=='SUPERSEDED')||state.readings[0],findings=latest?.findings;
  return '<section class="bg-panel hsp-panel"><div class="hsm-heading"><h4>02 · Lecture et extraction des clauses</h4><span class="hsm-soft">'+(findings?'Lecture disponible':'À analyser')+'</span></div>'+
+ '<div id="hspReadingProgress" aria-live="polite"></div>'+ 
  (!state.files.length?'<div class="hsp-empty">Dépose une pièce pour lancer l’analyse.</div>':
  '<p class="hsm-note">Document sélectionné : '+h(document?.file_name||'—')+'. '+h(state.ai?.notice||'')+'</p>'+
  (state.ai?.enabled&&document?.content_type==='application/pdf'
@@ -172,6 +174,11 @@ async function act(root,tab,navigate,action,url,body={}){
  try{
   const result=await api(url,{method:'POST',body,noRetry:true});
   state.error='';
+  if(action==='analyze'&&result.jobId){
+    state.readJobId=result.jobId;state.alert='Lecture lancée sur le serveur. Résultats et progression visibles ici, sans quitter la Centrale.';
+    await renderWorkflow(tab,root,navigate,{skipFetch:true});
+    return result;
+  }
   state.alert=action==='analyze'?'Analyse créée. Contrôle humain obligatoire avant soumission.':
     action==='review'?'Revue validée. Le contrat peut être soumis à approbation.':
     action==='submit'?'Dossier envoyé à un autre approbateur habilité.':
@@ -219,6 +226,15 @@ export async function renderWorkflow(tab,root,navigate,{skipFetch=false}={}){
    state.contractId=newContractId;state.alert='Document importé et classé dans le nouveau contrat.';
    await reload(tab,root,navigate);
  });
+ if(tab==='workflow'&&state.selectedDocument){
+   mountContractReadingProgress(root.querySelector('#hspReadingProgress'),{
+     targetType:'DOCUMENT',targetId:state.selectedDocument,expectedJobId:state.readJobId,
+     onComplete:async()=>{
+       state.readJobId=null;state.alert='Lecture approfondie terminée. Vérifie chaque clause avant validation.';
+       await reload(tab,root,navigate);
+     }
+   });
+ }
  const nav=()=>navigate?.('contracts');
  root.querySelectorAll('[data-go-contracts]').forEach(b=>b.addEventListener('click',nav));
  root.querySelector('#hspContractSelect')?.addEventListener('change',async e=>{
