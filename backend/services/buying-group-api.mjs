@@ -209,6 +209,17 @@ async function auditLog(db){
 export async function serveBuyingGroup(req,db,user){
   const path=new URL(req.url).pathname,method=req.method;
   try{
+    const intakeAnalysis=path.match(/^\/api\/buying-group\/intakes\/([0-9a-f-]+)\/analyze$/i);
+    const contractAnalysis=path.match(/^\/api\/buying-group\/contracts\/([0-9a-f-]+)\/analyze$/i);
+    if(method==='POST'&&(intakeAnalysis||contractAnalysis)){
+      const {startReadJob}=await import('./buying-group-reading-jobs.mjs');
+      return await startReadJob(req,db,user,intakeAnalysis?'INTAKE':'DOCUMENT',
+        intakeAnalysis?intakeAnalysis[1]:contractAnalysis[1]);
+    }
+    if(method==='GET'&&path.startsWith('/api/buying-group/reading-jobs/')){
+      const {serveReadJobStatus}=await import('./buying-group-reading-jobs.mjs');
+      return await serveReadJobStatus(req,db,user);
+    }
     if(path==='/api/buying-group/intakes'||path.startsWith('/api/buying-group/intakes/')){
       const {serveContractIntakes}=await import('./buying-group-contract-intake.mjs');
       return await serveContractIntakes(req,db,user);

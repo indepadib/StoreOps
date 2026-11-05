@@ -423,3 +423,17 @@
 .hqr-more ul{padding-left:23px;margin:12px 0}
 .hqr-more li{font-size:11px;line-height:1.65;color:#776b51;margin:5px 0}
 @media(max-width:650px){.hqr-coverage,.hqr-financial{grid-template-columns:1fr}.hqr-topic{align-items:flex-start;flex-wrap:wrap}.hqr-section,.hqr-quality,.hqr-more{padding:12px}}
+
+
+/* Async contract reading: no external navigation, durable job status. */
+.hsq-progress,.hsq-complete,.hsq-error,.hsq-wait{display:flex;align-items:flex-start;gap:13px;border-radius:13px;padding:15px;margin:13px 0;border:1px solid #d8e6d2;background:#f1f8ec;font-size:12px;color:#486b4f}
+.hsq-progress strong,.hsq-complete strong,.hsq-error strong{font-size:12px;color:#28583a}
+.hsq-progress p,.hsq-complete p,.hsq-error p{margin:5px 0 0;line-height:1.6;font-size:11px;color:#6d856f}
+.hsq-spinner{margin-top:2px;width:18px;height:18px;border-radius:50%;border:3px solid #c6dfbb;border-top-color:#3e8752;animation:hsq-rotation 1.1s linear infinite;flex-shrink:0}
+.hsq-complete{background:#e8f6e2;border-color:#c6e5b8}
+.hsq-error{background:#fff0e9;border-color:#f1d2c1}
+.hsq-error strong{color:#9e493c}
+.hsq-error p,.hsq-error small{display:block;color:#8f695e}
+.hsq-wait{color:#8d693b;background:#fff9eb;border-color:#eee0c4;line-height:1.6}
+@keyframes hsq-rotation{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.hsq-spinner{animation:none;border-color:#3e8752}}

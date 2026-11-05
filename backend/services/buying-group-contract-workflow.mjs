@@ -84,7 +84,9 @@ export async function analyzePdf(bytes,{model=configAI().model,callModel}={}){
   let client;
   if(!callModel){
     const {default:Anthropic}=await import('@anthropic-ai/sdk');
-    client=new Anthropic({timeout:44000,maxRetries:0});
+    // PDF extraction runs only in a Netlify background worker (15-minute ceiling).
+    // A 44-second provider timeout was too short for complex contracts.
+    client=new Anthropic({timeout:150000,maxRetries:1});
   }
   async function perform(pass){
     const messages=[{role:'user',content:[
