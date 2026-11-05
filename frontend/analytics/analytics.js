@@ -305,7 +305,7 @@
       state.pulses = [];
       const scope = storeScopeLabel();
       if ($('#scopeLabel')) $('#scopeLabel').textContent = state.section==='reference'?'Référentiel société':scope;
-      const snapshotLabel=state.section==='reference'?'Référentiel articles · Dynamics':state.section==='detention'?'Stock actuel':state.section==='inventory'?`Stock au ${formatDate(state.periodEnd)}`:state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
+      const snapshotLabel=state.section==='reference'?'Référentiel articles · Dynamics':state.section==='detention'?'Stock actuel':state.section==='inventory'?'Journaux Dynamics sur la période':state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
       setFreshness('live', snapshotSections.has(state.section)?snapshotLabel:'Analyse période');
       document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force, snapshotDate: state.periodEnd } }));
       state.loading = false;
@@ -436,6 +436,7 @@
       },
       reference: {eyebrow:'RÉFÉRENTIEL ARTICLES',title:'Une source commune pour les équipes',subtitle:'Informations article et prix traçables, exportables dans un format commun.'},
       detention: {eyebrow:'DÉTENTION',title:'Présence des articles en magasin et entrepôt',subtitle:'Stock actuel par article et catégorie ; les quantités inconnues restent identifiées.'},
+      suppliers: {eyebrow:'FOURNISSEURS',title:'Ventes, disponibilité et service fournisseur',subtitle:'Comparer les ventes et les commandes ouvertes ; qualifier le service sur les lignes réellement contrôlées.'},
       crm: {
         eyebrow: 'CLIENTS & CRM',
         title: 'Qui sont mes clients ?',
@@ -444,7 +445,7 @@
       inventory: {
         eyebrow: 'STOCK',
         title: 'Disponibilité & risque commercial',
-        subtitle: `Photo de stock au ${formatDate(state.periodEnd)} uniquement : ruptures, couverture et risque commercial. La période sélectionnée n'est pas additionnée au stock.`
+        subtitle: 'Journaux Dynamics sur les dates choisies. La disponibilité utilise la dernière image de stock, datée séparément ; elle ne reconstitue pas un stock historique.'
       },
       loyalty: {
         eyebrow: 'FIDÉLITÉ',
