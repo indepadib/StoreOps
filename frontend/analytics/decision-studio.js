@@ -96,15 +96,102 @@ function renderCustomerAbsence(report){
  <p>Les achats historiques donnent le poids de ces clients. Le motif de leur absence reste à vérifier.</p>`;
 }
 
+const cohortSegments={OVERDUE:'Habitués en retard',REGULAR:'Habitués dans leur rythme',TWO_DAYS:'Deux jours de visite',ONE_DAY:'Un seul jour de visite'};
+const cohortHeaders=['Référence anonyme','Profil','Jours de visite','Tickets','CA avant','Panier moyen','Dernière visite','Dernier magasin','Magasins fréquentés','Intervalle médian (j)','Tickets remisés','Articles les plus fréquents','Articles habituels en hausse'];
+function cohortCells(row){
+ const names=new Map(stores().map(s=>[s.id,s.name]));
+ const labels=ids=>ids.map(id=>names.get(id)||id).join(' / ');
+ return [row.reference,cohortSegments[row.segment],row.days,row.tickets,row.sales,row.basket,row.lastDate,
+  labels(row.lastStores),labels(row.stores),row.gap,row.promoTickets,
+  row.topArticles.map(([sku,count])=>productLabel({productNumber:sku})+' ['+sku+'] × '+count).join(' / '),
+  row.priceSignals.join(' / ')];
+}
+function renderCohortRows(panel){
+ const rows=state.baskets?.summary?.nonreturn?.rows||[];
+ const segment=panel.querySelector('[data-cohort-segment]').value;
+ const store=panel.querySelector('[data-cohort-store]').value;
+ const sku=panel.querySelector('[data-cohort-article]').value.trim().toUpperCase();
+ const selected=rows.filter(row=>(!segment||row.segment===segment)&&(!store||row.lastStores.includes(store))&&
+  (!sku||row.topArticles.some(([id])=>id===sku)||row.priceSignals.includes(sku)));
+ const pages=Math.max(1,Math.ceil(selected.length/50)),page=Math.max(1,Math.min(pages,Number(panel.dataset.page)||1));
+ panel.dataset.page=page;
+ panel.querySelector('[data-cohort-page]').textContent=number(selected.length)+' profils · page '+page+' / '+pages;
+ panel.querySelector('[data-cohort-prev]').disabled=page===1;
+ panel.querySelector('[data-cohort-next]').disabled=page===pages;
+ panel.querySelector('[data-cohort-rows]').innerHTML=table(cohortHeaders,selected.slice((page-1)*50,page*50).map(row=>
+  cohortCells(row).map((value,i)=>esc(value==null?'—':i===4||i===5?money(value):value))));
+}
+document.addEventListener('toggle',e=>{
+ const panel=e.target;
+ if(panel.matches?.('[data-cohort-panel]')&&panel.open)renderCohortRows(panel);
+},true);
+document.addEventListener('input',e=>{
+ const panel=e.target.closest('[data-cohort-panel]');
+ if(!panel)return;
+ panel.dataset.page=1;
+ renderCohortRows(panel);
+});
+document.addEventListener('click',e=>{
+ const panel=e.target.closest('[data-cohort-panel]');
+ if(!panel)return;
+ if(e.target.closest('[data-cohort-prev],[data-cohort-next]')){
+  panel.dataset.page=(Number(panel.dataset.page)||1)+(e.target.closest('[data-cohort-prev]')?-1:1);
+  renderCohortRows(panel);
+ }
+ if(e.target.closest('[data-cohort-export]')){
+  const report=state.baskets,rows=report?.summary?.nonreturn?.rows;
+  if(!rows)return;
+  const cell=value=>{
+   const text=String(value??'');
+   return '"'+((typeof value==='string'&&/^[\s]*[=+@-]/.test(text)?"'":'')+text).replaceAll('"','""')+'"';
+  };
+  const csv=[cohortHeaders,...rows.map(cohortCells)].map(row=>row.map(cell).join(';')).join('\r\n');
+  const url=URL.createObjectURL(new Blob(['\uFEFF',csv],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');
+  link.href=url;
+  link.download='StoreOps-clients-non-revus-'+report.period.start+'-'+report.period.end+'.csv';
+  link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+ }
+});
+function renderNonreturn(report){
+ const c=report.summary.nonreturn;
+ if(!c)return '<button type="button" data-crm-proof>Décomposer les clients non revus</button><p role="status" id="crmProofStatus"></p>';
+ const reference=report.comparison,period=report.period;
+ const dates=reference&&period?`${reference.start} → ${reference.end} · suivi ${period.start} → ${period.end} (${period.days} jours)`:'Périodes affichées';
+ const segments=Object.keys(cohortSegments).map(key=>{
+  const row=c.segments.find(s=>s.segment===key);
+  return [esc(cohortSegments[key]),number(row?.customers??0),pct(row?.share??(c.customers?0:null)),number(row?.tickets??0),money(row?.sales??0)];
+ });
+ const articles=c.articles.filter(p=>p.priceChangePct!=null).slice(0,20);
+ return `<h3>Décomposition des clients non revus</h3>
+ <p>${esc(dates)} · ${esc((report.stores||[]).map(s=>s.name||s.id).join(' + '))}</p>
+ ${report.status==='PARTIAL'||report.quality?.currentDayIncomplete||report.excludedStores?.length?'<p>Couverture partielle. Le décompte peut évoluer selon les tickets et les magasins disponibles.</p>':''}
+ <div class="studio-cards">${card('Clients non revus',number(c.customers),pct(c.share)+' des clients identifiés de la référence')}${card('Achats avant',money(c.sales),number(c.tickets)+' tickets historiques')}${card('Panier avant',money(c.basket),'Clients revenus avant : '+money(c.returningBasket))}${card('Tickets par client avant',number(c.ticketsPerCustomer),'Clients revenus avant : '+number(c.returningTicketsPerCustomer))}</div>
+ ${table(['Rythme avant et délai depuis la dernière visite','Clients','Part des non-revus','Tickets avant','CA avant'],segments)}
+ <p>Le retard est mesuré à la fin du suivi. Il dépasse 1,5 fois l’intervalle médian entre visites, estimé sur au moins trois jours de visite distincts.</p>
+ <details><summary>Prix, promotions et disponibilité</summary>
+ <p>${esc(number(c.priceCustomers))} clients achetaient régulièrement au moins un article dont le prix TTC réalisé a augmenté d’au moins 10 %. ${esc(number(c.promoCustomers))} avaient eu au moins un ticket avec remise périodique avant. Les deux groupes peuvent se recouper.</p>
+ ${table(['Article habituel','Non-revus','Revenus','Part non revue','Prix avant','Prix après','Variation','Enquête'],articles.map(p=>[esc(productLabel(p)),number(p.customers),number(p.returned),pct(p.nonreturnShare),money(p.previousPrice),money(p.currentPrice),pct(p.priceChangePct),`<button type="button" data-assistant-question="${esc('Quel est l’impact prix, panier et retour client pour '+p.productNumber+' sur les périodes affichées ?')}">Analyser</button>`]))}
+ <p>Article habituel : présent dans au moins deux tickets et dans au moins la moitié des tickets du client avant. Prix moyen sur le périmètre affiché, à unité identique et avec au moins cinq tickets par fenêtre. Les prix réalisés incluent l’effet des remises et du mix. Ces rapprochements orientent l’enquête. Les ruptures historiques et les motifs individuels restent indéterminés.</p></details>
+ <details data-cohort-panel><summary>Consulter les ${esc(number(c.customers))} profils et exporter la liste</summary>
+ <p>Références anonymes propres à ce rapport. Les cinq articles les plus fréquents résument le panier de chaque client.</p>
+ <label>Profil <select data-cohort-segment><option value="">Tous</option>${Object.entries(cohortSegments).map(([key,label])=>`<option value="${key}">${esc(label)}</option>`).join('')}</select></label>
+ <label>Dernier magasin <select data-cohort-store><option value="">Tous</option>${stores().map(s=>`<option value="${esc(s.id)}">${esc(s.name)}</option>`).join('')}</select></label>
+ <label>Code article <input type="search" data-cohort-article placeholder="HS-006590"></label>
+ <button type="button" data-cohort-export>Exporter tous les profils (CSV)</button>
+ <div><button type="button" data-cohort-prev>Précédent</button> <span data-cohort-page role="status"></span> <button type="button" data-cohort-next>Suivant</button></div>
+ <div data-cohort-rows></div></details>`;
+}
 function customerDecision(){
  const b=state.baskets,r=b?.summary?.customerReturn;if(!r)return '<p>Comparer les mêmes clients sur les deux périodes pour distinguer visites et panier.</p><button type="button" data-crm-proof>Calculer le retour des clients</button><p role="status" id="crmProofStatus"></p>';
  const offers=b.summary.customerOffers,offerDetails=offers?.items?.length?table(['Offre Dynamics','Tickets avant','Tickets après','Clients identifiés après','Anciens exposés non revus'],offers.items.slice(0,8).map(o=>[esc(o.code),number(o.beforeTickets),number(o.afterTickets),number(o.afterClients),number(o.beforeNotObserved)])):'<p>Aucun identifiant d’offre exploitable sur les tickets de ce périmètre. Les remises observées ne peuvent pas être ventilées par offre.</p>';
  const comparable=b.status==='READY'&&r.returning>0&&Date.parse(b.period?.end)-Date.parse(b.period?.start)===Date.parse(b.comparison?.end)-Date.parse(b.comparison?.start);const drivers=comparable?[['visites',r.visitEffect],['panier',r.basketEffect]].filter(x=>x[1]!=null).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1])):[],lead=drivers[0];const message=!comparable?'Comparaison à interpréter avec prudence : couverture, durée ou période en cours.':!lead||Math.abs(lead[1])<.01?'Les achats des clients revenus sont stables sur cette comparaison.':`Le principal mouvement chez les mêmes clients revenus vient ${lead[0]==='visites'?'des visites':'du panier'} (${money(lead[1])}). ${lead[1]<0?'Examiner ce recul en premier.':'Chercher dans quels magasins et catégories ce progrès se confirme.'}`;
- return `${renderCustomerAbsence(b)}${renderCustomerSalesBridge(b)}<details><summary>Retour, visites et panier des clients identifiés</summary><h3>Ce qui change chez les mêmes clients</h3><p>${esc(message+(comparable&&b.quality?.comparable!==true?' Lecture provisoire : journée en cours.':''))}</p><div class="studio-cards">${card('Retour observé',pct(r.returnRate),number(r.returning)+' revus sur '+number(r.previous)+' précédents')}${card('Non revus',number(r.notObserved),'Sur ces dates et magasins ; pas un départ définitif')}${card('Visites des mêmes clients',number(r.afterTickets),number(r.beforeTickets)+' avant · '+money(r.visitEffect)+' d’effet visites')}${card('Panier des mêmes clients',money(r.afterBasket),money(r.beforeBasket)+' avant · '+money(r.basketEffect)+' d’effet panier')}</div><p class="studio-note">${esc(number(r.newlyObserved)+' nouveaux observés sur ces fenêtres, sans conclure à un recrutement. Tickets identifiés : '+pct(b.summary.previousIdentifiedTicketCoveragePct)+' → '+pct(b.summary.identifiedTicketCoveragePct)+'. Aucun seuil de bon retour n’est présumé.')}</p><p><strong>Variation du CA des clients identifiés : ${esc(money(r.identifiedSalesDelta))}</strong> · mêmes clients revenus ${esc(money(r.afterSales-r.beforeSales))} · nouveaux observés ${esc(money(r.newlyObservedSales))} · CA avant des non-revus ${esc(money(r.notObservedSales))}.</p><details><summary>Offres repérées sur les tickets</summary>${offerDetails}<p>${esc(pct(offers?.coveragePct))} des tickets remises périodiques avec un code offre observé. Un ticket peut relever de plusieurs offres. Le code ne prouve ni attribution de la variation du CA ni rentabilité de l’offre.</p></details></details>`;
+ return `${renderNonreturn(b)}${renderCustomerAbsence(b)}${renderCustomerSalesBridge(b)}<details><summary>Retour, visites et panier des clients identifiés</summary><h3>Ce qui change chez les mêmes clients</h3><p>${esc(message+(comparable&&b.quality?.comparable!==true?' Lecture provisoire : journée en cours.':''))}</p><div class="studio-cards">${card('Retour observé',pct(r.returnRate),number(r.returning)+' revus sur '+number(r.previous)+' précédents')}${card('Non revus',number(r.notObserved),'Sur ces dates et magasins ; pas un départ définitif')}${card('Visites des mêmes clients',number(r.afterTickets),number(r.beforeTickets)+' avant · '+money(r.visitEffect)+' d’effet visites')}${card('Panier des mêmes clients',money(r.afterBasket),money(r.beforeBasket)+' avant · '+money(r.basketEffect)+' d’effet panier')}</div><p class="studio-note">${esc(number(r.newlyObserved)+' nouveaux observés sur ces fenêtres, sans conclure à un recrutement. Tickets identifiés : '+pct(b.summary.previousIdentifiedTicketCoveragePct)+' → '+pct(b.summary.identifiedTicketCoveragePct)+'. Aucun seuil de bon retour n’est présumé.')}</p><p><strong>Variation du CA des clients identifiés : ${esc(money(r.identifiedSalesDelta))}</strong> · mêmes clients revenus ${esc(money(r.afterSales-r.beforeSales))} · nouveaux observés ${esc(money(r.newlyObservedSales))} · CA avant des non-revus ${esc(money(r.notObservedSales))}.</p><details><summary>Offres repérées sur les tickets</summary>${offerDetails}<p>${esc(pct(offers?.coveragePct))} des tickets remises périodiques avec un code offre observé. Un ticket peut relever de plusieurs offres. Le code ne prouve ni attribution de la variation du CA ni rentabilité de l’offre.</p></details></details>`;
 }
 let crmReadKey='',crmRun=0;
 async function loadCrmProof(prepare=false){
- const s=scope(),ids=stores().map(x=>x.id),wanted=key();if(!ids.length||(!prepare&&crmReadKey===wanted)||state.baskets?.summary?.customerReturn)return;crmReadKey=wanted;const run=++crmRun,active=()=>run===crmRun&&key()===wanted&&['crm','loyalty'].includes(scope().section),params=new URLSearchParams({storeId:ids.length===1?ids[0]:'ALL',storeIds:ids.join(','),start:s.periodStart,end:s.periodEnd,compareStart:s.compareStart,compareEnd:s.compareEnd,preparedOnly:'1'}),path='/api/analytics/customer-intelligence?'+params,progress=x=>{const node=$('crmProofStatus');if(active()&&node)node.textContent=x};
+ const s=scope(),ids=stores().map(x=>x.id),wanted=key();if(!ids.length||(!prepare&&crmReadKey===wanted)||state.baskets?.summary?.nonreturn)return;crmReadKey=wanted;const run=++crmRun,active=()=>run===crmRun&&key()===wanted&&['crm','loyalty'].includes(scope().section),params=new URLSearchParams({storeId:ids.length===1?ids[0]:'ALL',storeIds:ids.join(','),start:s.periodStart,end:s.periodEnd,compareStart:s.compareStart,compareEnd:s.compareEnd,preparedOnly:'1',nonreturn:'1'}),path='/api/analytics/customer-intelligence?'+params,progress=x=>{const node=$('crmProofStatus');if(active()&&node)node.textContent=x};
  try{progress('Lecture des preuves préparées…');let r=await core.api(path,{noRetry:true});if(!active())return;if(r.status==='PREPARATION_REQUIRED'){if(!prepare){progress('Calcul disponible à la demande pour les dates affichées.');return}let done=0;const tasks=r.tasks||[];for(const task of tasks){if(!active())return;if(!ids.includes(task.storeId)||!/^\d{4}-\d{2}-\d{2}$/.test(task.date))throw Error('Journée hors périmètre.');await core.api('/api/analytics/customer-intelligence/prepare?'+new URLSearchParams({storeId:task.storeId,date:task.date}),{noRetry:true});progress(`Tickets préparés : ${++done}/${tasks.length}`);}r=await core.api(path,{noRetry:true});}if(!active())return;if(!r.summary?.customerReturn){progress('Preuves de retour non disponibles sur ce périmètre.');return;}document.dispatchEvent(new CustomEvent('retail-intelligence:baskets',{detail:{report:r}}));}catch(e){progress('Lecture indisponible : '+e.message);}
 }
 function renderStudio(){
@@ -173,7 +260,7 @@ function matchesScope(d){return d?.period?.startDate===scope().periodStart&&d?.p
 function changed(){const next=key();if(state.key!==next){state.key=next;assistantQueryContext=null;pricingSnapshot=null;competitorGeneration++;state.assistantController?.abort();state.data=null;state.baskets=null;state.proof=null;state.suppliers=null;if(stockKey()!==state.stockKey){state.scopeGeneration++;state.stockDetail=null;state.stock=null;state.stockLoading=false;state.stockController?.abort();$('studioStockRefresh').disabled=false;$('briefRefreshStock').disabled=false;}state.pricingController?.abort();state.pricingGeneration++;$('pricingContextCards').innerHTML='';$('pricingContextDetails').innerHTML='';$('pricingContextStatus').textContent='Vérifier le contexte tarifaire sélectionné.';}syncPricingStores();const loaded=window.RETAIL_DECISION_INTELLIGENCE?.getData?.();if(matchesScope(loaded))state.data=loaded;render();}
 document.addEventListener('retail-intelligence:decision',e=>{if(!matchesScope(e.detail.data))return;state.data=e.detail.data;state.key=key();render();if(['overview','network','inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='overview'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
 document.addEventListener('retail-intelligence:catalog',e=>{for(const r of e.detail.items||[])state.catalog.set(r.productNumber,r);render()});
-document.addEventListener('retail-intelligence:baskets',e=>{const r=e.detail.report;if(r?.period?.start!==scope().periodStart||r?.period?.end!==scope().periodEnd||r?.comparison?.start!==scope().compareStart||r?.comparison?.end!==scope().compareEnd||JSON.stringify((r.stores||[]).map(s=>s.id).sort())!==JSON.stringify(stores().map(s=>s.id).sort()))return;state.baskets=r;render()});
+document.addEventListener('retail-intelligence:baskets',e=>{const r=e.detail.report;if(r?.period?.start!==scope().periodStart||r?.period?.end!==scope().periodEnd||r?.comparison?.start!==scope().compareStart||r?.comparison?.end!==scope().compareEnd||JSON.stringify((r.stores||[]).map(s=>s.id).sort())!==JSON.stringify(stores().map(s=>s.id).sort()))return;if(!state.baskets?.summary?.nonreturn||r.summary?.nonreturn)state.baskets=r;render()});
 document.addEventListener('retail-intelligence:stock',e=>{const ids=new Set(stores().map(s=>s.id));if((e.detail.rows||[]).some(r=>!ids.has(r.storeId)))return;state.stockDetail=e.detail;render();loadStockBrief().catch(()=>{});});
 for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:data'])document.addEventListener(event,()=>{changed();if(['crm','loyalty'].includes(scope().section))loadCrmProof();if(['inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='suppliers'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
 document.addEventListener('click',e=>{const proof=e.target.closest('[data-crm-proof]');if(proof){proof.disabled=true;loadCrmProof(true).finally(()=>{proof.disabled=false});}const b=e.target.closest('[data-studio-section]');if(b)core.navigate(b.dataset.studioSection)});
