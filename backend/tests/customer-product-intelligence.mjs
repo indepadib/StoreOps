@@ -51,3 +51,12 @@ const bridge=report.summary.customerSalesBridge;
 assert.equal(Math.round(bridge.drivers.reduce((total,driver)=>total+driver.amount,0)*100),Math.round(bridge.delta*100));
 assert.equal(Math.round(bridge.stores.reduce((total,store)=>total+store.delta,0)*100),Math.round(bridge.delta*100));
 assert.equal(bridge.drivers.find(driver=>driver.kind==='notObserved').amount,-report.summary.customerReturn.notObservedSales);
+
+const visit=(id,date,sku='P')=>({key:id+date,customerToken:id,date,storeId:'trefle',items:[{productNumber:sku,sales:10,units:1,unit:'PC'}]});
+const cadenceBefore={baskets:['2026-10-01','2026-10-03','2026-10-05'].flatMap(date=>[visit('late',date),visit('returned',date)]).concat(visit('single','2026-10-05'))};
+const cadenceAfter={baskets:[visit('returned','2026-10-08')]};
+const cadenceReport=compareBasketEvidence(cadenceAfter,cadenceBefore,{currentEndDate:'2026-10-10'}).summary.customerAbsence;
+assert.deepEqual([cadenceReport.eligible,cadenceReport.overdue,cadenceReport.returned,cadenceReport.previousOverdueSales],[2,1,1,30]);
+assert.equal(cadenceReport.stores[0].overdue,1);
+assert.deepEqual(cadenceReport.candidates,[]);
+assert.equal(compareBasketEvidence(cadenceAfter,cadenceBefore,{comparable:false}).summary.customerAbsence,null);
