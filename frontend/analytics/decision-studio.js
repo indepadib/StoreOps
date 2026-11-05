@@ -49,6 +49,19 @@ function renderCustomerSalesBridge(report){
   esc(storesById.get(store.storeId)||store.storeId),esc(money(store.previousSales)),esc(money(store.currentSales)),
   esc(signed(store.delta)),esc(signed(store.identifiedDelta)),esc(signed(store.unidentifiedDelta))
  ]);
+ const detailRows=bridge.stores.filter(store=>store.previousTickets!=null).map(store=>[
+  esc(storesById.get(store.storeId)||store.storeId),
+  esc(number(store.previousTickets)+' → '+number(store.currentTickets)),
+  esc(money(store.previousBasket)+' → '+money(store.currentBasket)),
+  esc(signed(store.trafficEffect)),esc(signed(store.basketEffect)),
+  esc(pct(store.previousIdentification)+' → '+pct(store.currentIdentification))
+ ]);
+ const declineDetails=bridge.stores.filter(store=>store.declines?.length).map(store=>`
+ <h4>${esc(storesById.get(store.storeId)||store.storeId)} · principaux articles en recul</h4>
+ ${table(['Article','CA avant','CA après','Écart','Détail'],store.declines.map(product=>[
+  esc(productLabel({productNumber:product.productNumber})),esc(money(product.previousSales)),esc(money(product.currentSales)),esc(signed(product.delta)),
+  `<button type="button" data-assistant-question="${esc('Quel est l’impact prix, panier et retour client pour '+product.productNumber+' à '+(storesById.get(store.storeId)||store.storeId)+' sur les périodes affichées ?')}">Enquêter sur l’article</button>`
+ ]))}`).join('');
  return `<h3>Comment le CA des tickets a changé</h3>
  <p><strong>${esc(money(bridge.previousSales))} → ${esc(money(bridge.currentSales))} · ${esc(signed(bridge.delta))}</strong></p>
  <p>${esc(report.quality?.comparable===true&&report.status==='READY'?'Les lignes décomposent la variation du CA observé sur les tickets.':'Comparaison provisoire ou partielle. Vérifier les dates et la couverture des tickets.')}</p>
@@ -57,7 +70,10 @@ function renderCustomerSalesBridge(report){
  <button type="button" data-assistant-question="Décompose le CA par type de clientèle">Expliquer cet écart avec l’agent</button>
   ${table(['Ce qui change','Contribution à l’écart de CA'],rows)}
  <details><summary>Où le CA a bougé par magasin</summary>
- ${table(['Magasin','CA avant','CA après','Écart total','Écart identifié','Écart sans identification'],storeRows)}</details>`;
+ ${table(['Magasin','CA avant','CA après','Écart total','Écart identifié','Écart sans identification'],storeRows)}
+ ${detailRows.length?table(['Magasin','Tickets avant → après','Panier avant → après','Effet tickets','Effet panier','Tickets identifiés avant → après'],detailRows):''}
+ ${declineDetails}
+ <p>Tickets et panier décomposent le même écart. Les écarts par article sont une lecture complémentaire du CA.</p></details>`;
 }
 
 function renderCustomerAbsence(report){
