@@ -4,7 +4,7 @@ import {preparedCatalog} from './analytics-query-evidence.mjs';
 import {readReceiptHistory} from './analytics-receipt-history.mjs';
 import {queryStock} from './analytics-query-stock.mjs';
 import {missingDiagnosticSources,preparationResponse,salesPreparation,taskFailed} from './analytics-assistant-preparation.mjs';
-export function storeDiagnosisRequired(question){const q=normalize(question);return /diagnostic|diagnostiqu|probleme|dysfonction|qu est ce qui (?:ne va|se passe)|comment (?:va|se porte)|bilan|sante/.test(q)&&/magasin|reseau|activite|tout|global/.test(q);}
+export function storeDiagnosisRequired(question){const q=normalize(question);return /diagnostic|diagnostiqu|probleme|dysfonction|qu est ce qui (?:ne va|se passe)|comment (?:va|se porte)|bilan|sante|pourquoi|expliqu/.test(q)&&/magasin|reseau|activite|tout|global|\bca\b|vente|ticket|panier|marge|promo/.test(q);}
 const number=v=>v==null?'Non mesuré':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(v),money=v=>v==null?'Non mesuré':number(v)+' DH',known=v=>v!=null&&Number.isFinite(v);
 const query=(entity,operation,metrics,extra={})=>validateQueryPlan({queries:[{entity,operation,metrics,limit:5,...extra}]}).queries[0];
 export async function diagnoseStore(stores,input,{factsBuilder,evidenceBuilder,read,stockAnswer=queryStock,catalogReader=preparedCatalog,historyReader=readReceiptHistory}={}){

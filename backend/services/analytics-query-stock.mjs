@@ -1,3 +1,4 @@
+import {inventoryAnswer} from './analytics-inventory-answer.mjs';
 import {normalize} from './analytics-query-plan.mjs';
 import {preparedCatalog} from './analytics-query-evidence.mjs';
 import {selectRows} from './analytics-query-executor.mjs';
@@ -10,6 +11,7 @@ export async function queryStock(stores,input,plan,{read=readAnalyticsCache,cata
  const q=plan.queries[0],text=normalize(input.question),lines=[],sections=[];
  if(/demarque|inventaire/.test(text)){
   if(q.filters.category||q.filters.supplier||q.filters.origin||q.filters.text||q.filters.unit)return{answer:'Les registres de démarque et inventaire ne disposent pas encore de ce croisement fiable avec le référentiel. Précisez une liste de codes articles, ou demandez le total des registres du magasin. Aucun filtre n’est ignoré.',engine:'QUERY_CLARIFICATION',providerDataSent:false,sources:[]};
+  if(!/storeops/i.test(text))return inventoryAnswer(stores,input,plan,{read});
   const r=lossReader(stores,input),codes=q.filters.codes,losses=r.losses.filter(r=>!codes.length||codes.includes(r.product_number)),inventory=r.lines.filter(r=>!codes.length||codes.includes(r.product_number)),s=summarizeLossInventory(losses,r.sessions,inventory);
   if(!r.available.losses||!r.available.inventory)return{answer:'Un registre StoreOps de démarque ou inventaire est indisponible. Aucun zéro ni montant de substitution n’est produit.',engine:'QUERY_CLARIFICATION',providerDataSent:false,sources:[]};
   return{answer:`Démarque et inventaire StoreOps · ${input.start} → ${input.end}.\n\n${n(s.losses)} déclarations actives ; valeur de vente connue ${n(s.valuedRetail)} DH ; ${n(s.unknownRetail)} lignes sans valeur. ${n(s.lines)} lignes de comptage ; ${n(s.recount)} recomptages à traiter.\n\n${r.basis}`,engine:'QUERY_GROUNDED',providerDataSent:false,queryPlan:plan,sources:[{id:'S4',name:'Registres StoreOps'}]};
