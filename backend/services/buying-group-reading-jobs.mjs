@@ -52,12 +52,12 @@ async function dispatchBackground(req,payload){
   return response.status===202;
  }finally{clearTimeout(stop)}
 }
-export async function startReadJob(req,db,user,type,id,{dispatch=dispatchBackground}={}){
+export async function startReadJob(req,db,user,type,id,{dispatch=dispatchBackground,aiAvailable}={}){
  if(req.method!=='POST'||!UUID.test(id))return failure('Requête de lecture invalide.',400);
  const body=await req.json().catch(()=>null);
  if(!body||body.consent!==true)return failure('Accord explicite requis avant transmission au prestataire IA.',422,'AI_CONSENT_REQUIRED');
  const {workflowValidation}=await import('./buying-group-contract-workflow.mjs');
- if(!workflowValidation.configAI().enabled)return failure('Lecture IA indisponible sur le serveur. La revue manuelle reste possible.',503,'AI_NOT_CONFIGURED');
+ if(!(aiAvailable??workflowValidation.configAI().enabled))return failure('Lecture IA indisponible sur le serveur. La revue manuelle reste possible.',503,'AI_NOT_CONFIGURED');
  await markStale(db);
  const check=await preflight(db,type,id,body);
  if(check.error)return failure(check.error,check.status);
@@ -113,7 +113,7 @@ export async function serveReadJobStatus(req,db,user){
  }
  return json({job:rows.rows.length?publicJob(rows.rows[0]):null});
 }
-export async function runReadJob(db,{jobId,token}){
+export async function runReadJob(db,{jobId,token},{execute=null}={}){
  if(!UUID.test(jobId||'')||!/^[a-f0-9]{64}$/i.test(token||''))return{code:'BAD_JOB_TOKEN'};
  const res=await db.pool.query("UPDATE hs_buying.contract_read_jobs "+
    "SET status='RUNNING',started_at=now(),updated_at=now() "+
@@ -123,8 +123,13 @@ export async function runReadJob(db,{jobId,token}){
  if(!res.rows.length)return{code:'NOT_CLAIMABLE'};
  const job=res.rows[0],user={id:job.requested_by};
  try{
+  const source=job.target_type==='INTAKE'?
+    await db.pool.query('SELECT sha256 FROM hs_buying.contract_intakes WHERE id=$1',[job.target_id]):
+    await db.pool.query('SELECT sha256 FROM hs_buying.contract_documents WHERE id=$1 AND contract_id=$2',[job.target_id,job.contract_id]);
+  if(source.rows[0]?.sha256!==job.source_sha256)throw Object.assign(Error('La pièce a changé depuis la mise en file. Relancez une lecture.'),{code:'DOCUMENT_CHANGED'});
   let response;
-  if(job.target_type==='INTAKE'){
+  if(execute)response=await execute(job,db,user);
+  else if(job.target_type==='INTAKE'){
    const {serveContractIntakes}=await import('./buying-group-contract-intake.mjs');
    response=await serveContractIntakes(new Request('https://storeops.ma/api/buying-group/intakes/'+job.target_id+'/analyze',{
     method:'POST',headers:{'content-type':'application/json'},
