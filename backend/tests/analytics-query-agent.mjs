@@ -132,3 +132,17 @@ for(const [question,expectedDate] of [['Et à Trèfle ?','2026-10-23'],['Et à T
 console.log('PASS cold follow-up preparation retains its exact warmed sales slices across store and explicit date changes, with no repeated question');
 
 await import('./analytics-section-audit.mjs');
+
+const customerSalesPlan=parseQuery('Décompose le CA par type de clientèle');
+assert.equal(customerSalesPlan.queries[0].operation,'customerSales');
+assert.equal(parseQuery('Explique le CA par clientèle à Trèfle').queries[0].filters.store,'Trèfle');
+const customerSalesResult=executeQuery(customerSalesPlan.queries[0],{
+ stores, facts, table:{}, baskets:{status:'READY',quality:{comparable:true},summary:{
+  customerSalesBridge:{previousSales:400,currentSales:420,delta:20,
+   drivers:[{kind:'unidentified',amount:-30},{kind:'returningVisits',amount:50}],
+   stores:[{storeId:'trefle',delta:20,identifiedDelta:50,unidentifiedDelta:-30}]}
+ }}
+});
+assert.deepEqual(customerSalesResult.rows,[['Tickets sans client identifié','-30 DH'],['Visites des clients revenus','50 DH']]);
+assert.match(customerSalesResult.lines[0],/Trèfle.*50 DH.*-30 DH/);
+assert.equal(executeQuery(customerSalesPlan.queries[0],evidence).needs,'baskets');
