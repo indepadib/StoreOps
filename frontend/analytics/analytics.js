@@ -986,6 +986,7 @@
     const current = state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
     const compare = state.compareStart === state.compareEnd ? formatDate(state.compareEnd) : `${formatDate(state.compareStart)} → ${formatDate(state.compareEnd)}`;
     $('#periodSummary').textContent = `Période : ${current} · comparaison : ${compare}`;
+    if ($('#dateLabel')) $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':state.section==='detention'?'Image de stock actuelle':current;
   }
 
   async function refreshForPeriod(force = false) {
