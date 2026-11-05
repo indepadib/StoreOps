@@ -1,7 +1,7 @@
 export const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[’']/g,' ').replace(/[^a-z0-9_.,%<>!= -]+/g,' ').replace(/\s+/g,' ').trim();
 export const entities=['network','products','stores','department','rayon','family','suppliers','cashiers','days','hours','baskets','customers','stock'];
 export const metrics=['sales','previousSales','delta','changePct','sharePct','tickets','previousTickets','averageBasket','units','marginValue','marginRate','identifiedTicketRate','identifiedSalesShare','promotionSales','promotionTickets','discountAmount','penetrationPct','realizedUnitPrice','repurchasePct'];
-export const operations=['summary','count','rank','list','compare','drivers','concentration','affinity','pricing','retention','actions'];
+export const operations=['summary','count','rank','list','compare','drivers','concentration','affinity','pricing','retention','customerSales','actions'];
 const own=(x,k)=>Object.hasOwn(x,k),obj=x=>x&&typeof x==='object'&&!Array.isArray(x);
 export function validateQueryPlan(value){
  if(!obj(value)||Object.keys(value).some(k=>!['queries','clarification'].includes(k))||!Array.isArray(value.queries)||value.queries.length>4)throw Error('INVALID_QUERY_PLAN');
@@ -48,6 +48,9 @@ export function parseQuery(question,{previousPlan=null}={}){
  if(/comment va|comment se porte|qu est ce qui se passe|diagnostic/.test(q)&&entity!=='stock')op='drivers';
  if(op==='drivers'&&!/stock|rupture|detention|reappro|inventaire|demarque/.test(q))entity=/article|produit/.test(q)||filters.category||filters.supplier||filters.origin||filters.unit||filters.codes.length||filters.text?'products':/magasin/.test(q)?'stores':'network';
  if(/qu[ei] faire|action|prioris|recommand/.test(q)&&/stock|rupture|detention|reappro|inventaire|demarque/.test(q)){entity='stock';op='actions'}
+ if(/\b(?:ca|chiffre d affaires)\b/.test(q)&&/clientele|types? de clients?|tickets? sans (?:client |identification)|clients? identifies? et non identifies?/.test(q)&&!filters.codes.length&&!filters.category&&!filters.supplier&&!filters.origin&&!filters.unit&&!filters.text){
+  entity='customers';op='customerSales';
+ }
  const recognized=follow||codes.length||quote||/\bca\b|chiffre|vente|activite|article|produit|reference|magasin|reseau|rayon|famille|categorie|departement|fournisseur|caissier|panier|ticket|client|fidel|crm|marge|rentab|cout|promo|remis|stock|rupture|detention|reappro|entrepot|inventaire|demarque|pareto|concentr|affinit|prix|tarif|synthese|resume|bilan|probleme|diagnosti|dysfonction|sante|recrut|identif|\bpgc\b|\bapls\b|\bfleg\b|best.?seller|rapportent? le plus|rapportent? le moins/.test(q);
  if(!recognized)return null;
  let threshold=previous?.threshold||null;const thresholdMatch=q.match(/(ca|ventes?|marge|tickets?|volume|quantite)\s*(>=|<=|>|<|=|superieur a|inferieur a|plus de|moins de)\s*(-?\d+(?: \d{3})*(?:[.,]\d+)?)/);if(thresholdMatch)threshold={metric:/marge/.test(thresholdMatch[1])?requested.includes('marginRate')?'marginRate':'marginValue':/ticket/.test(thresholdMatch[1])?'tickets':/volume|quantite/.test(thresholdMatch[1])?'units':'sales',operator:{'>':'gt','>=':'gte','<':'lt','<=':'lte','=':'eq','superieur a':'gt','inferieur a':'lt','plus de':'gt','moins de':'lt'}[thresholdMatch[2]],value:Number(thresholdMatch[3].replaceAll(' ','').replace(',','.'))};

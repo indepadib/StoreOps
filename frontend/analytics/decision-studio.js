@@ -41,6 +41,10 @@ function renderCustomerSalesBridge(report){
  const signed=value=>(value>0?'+':'')+money(value);
  const storesById=new Map(stores().map(store=>[store.id,store.name]));
  const rows=bridge.drivers.map(driver=>[esc(labels[driver.kind]),esc(signed(driver.amount))]);
+ const firstStore=bridge.stores[0];
+ const storeLabel=firstStore&&(storesById.get(firstStore.storeId)||firstStore.storeId);
+ const firstDriver=bridge.drivers.filter(driver=>driver.kind!=='rounding').sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount))[0];
+ const canInterpret=report.status==='READY'&&report.quality?.comparable===true;
  const storeRows=bridge.stores.map(store=>[
   esc(storesById.get(store.storeId)||store.storeId),esc(money(store.previousSales)),esc(money(store.currentSales)),
   esc(signed(store.delta)),esc(signed(store.identifiedDelta)),esc(signed(store.unidentifiedDelta))
@@ -48,7 +52,10 @@ function renderCustomerSalesBridge(report){
  return `<h3>Comment le CA des tickets a changé</h3>
  <p><strong>${esc(money(bridge.previousSales))} → ${esc(money(bridge.currentSales))} · ${esc(signed(bridge.delta))}</strong></p>
  <p>${esc(report.quality?.comparable===true&&report.status==='READY'?'Les lignes décomposent la variation du CA observé sur les tickets.':'Comparaison provisoire ou partielle. Vérifier les dates et la couverture des tickets.')}</p>
- ${table(['Ce qui change','Contribution à l’écart de CA'],rows)}
+ ${canInterpret&&firstStore?.delta?`<p><strong>Premier magasin à examiner</strong> · ${esc(storeLabel)} (${esc(signed(firstStore.delta))}).</p>`:''}
+ ${canInterpret&&firstDriver?.amount?`<p><strong>Plus grand mouvement en DH</strong> · ${esc(labels[firstDriver.kind])} (${esc(signed(firstDriver.amount))}).</p>`:''}
+ <button type="button" data-assistant-question="Décompose le CA par type de clientèle">Expliquer cet écart avec l’agent</button>
+  ${table(['Ce qui change','Contribution à l’écart de CA'],rows)}
  <details><summary>Où le CA a bougé par magasin</summary>
  ${table(['Magasin','CA avant','CA après','Écart total','Écart identifié','Écart sans identification'],storeRows)}</details>`;
 }
