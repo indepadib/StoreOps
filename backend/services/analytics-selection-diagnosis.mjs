@@ -16,7 +16,7 @@ async function windowEvidence(stores,start,end,read){
 }
 export async function diagnoseSelection(e,q,stores,input,{read}){
  const rows=selectRows(e.table.products||[],q.filters),base=executeQuery({...q,metrics:['sales','delta']},e),scope=q.filters.category||q.filters.supplier||q.filters.origin||(q.filters.codes||[]).join(', '),sections=[base],sources=[...(e.facts.sources||[])];
- if(!rows.length)return{engine:'QUERY_GROUNDED',sections,answer:base.headline,providerDataSent:false,sources};
+ if(!rows.length){const unavailable=!e.catalogComplete&&Boolean(q.filters.category||q.filters.supplier||q.filters.origin);if(unavailable)return{engine:'QUERY_NEEDS_DATA',sections:[{title:'Référentiel incomplet',lines:['Le classement ou le fournisseur manque pour ce périmètre. Impossible de conclure qu’il ne contient aucun article ou aucune vente.']}],answer:'La sélection ne peut pas être identifiée tant que le référentiel est incomplet.',providerDataSent:false,sources,incomplete:true};return{engine:'QUERY_GROUNDED',sections,answer:base.headline,providerDataSent:false,sources};}
  let reconciliationMismatch=false;const [current,previous]=await Promise.all([windowEvidence(stores,input.start,input.end,read),windowEvidence(stores,input.compareStart,input.compareEnd,read)]);
  if((!current||!previous)&&input.autoPrepare&&!taskFailed(input,'baskets'))return preparationResponse([{kind:'baskets',storeIds:stores.map(s=>s.id),start:input.start,end:input.end,compareStart:input.compareStart,compareEnd:input.compareEnd}],input);
  if(current&&previous){
