@@ -2,7 +2,7 @@ import {createHash,randomBytes} from 'node:crypto';
 
 // Browser -> authenticated H&S API -> queued DB job -> signed background worker.
 // No PDF bytes, browser tokens, or third-party URLs are exposed to the browser.
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const sha=x=>createHash('sha256').update(x).digest('hex');
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'private,no-store','X-Content-Type-Options':'nosniff'}});
 const failure=(message,status=400,code='INVALID_REQUEST')=>json({error:message,code},status);
