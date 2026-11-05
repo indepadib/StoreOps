@@ -37,6 +37,50 @@ export function customerOfferEvidence(previous,current,currentCustomers){
  return{discountedTickets,linkedTickets,coveragePct:rate(linkedTickets,discountedTickets),items};
 }
 
+function customerAbsenceEvidence(habits, previousEvidence, previous) {
+ const storeByClient = new Map();
+ for(const basket of previousEvidence.baskets || []) {
+  if(!basket.customerToken) continue;
+  const last = storeByClient.get(basket.customerToken);
+  if(!last || basket.date > last.date) {
+   storeByClient.set(basket.customerToken, {date:basket.date, stores:new Set([basket.storeId])});
+  } else if(basket.date === last.date) {
+   last.stores.add(basket.storeId);
+  }
+ }
+ const stores = new Map(), products = new Map();
+ let eligible = 0, overdue = 0, returned = 0, previousOverdueSales = 0;
+ for(const [id, habit] of habits.previous) {
+  if(new Set(habit.dates).size < 3 || !(habit.gap > 0)) continue;
+  const cameBack = habits.current.has(id);
+  eligible++;
+  if(cameBack) returned++;
+  if(habit.overdue) {
+   overdue++;
+   previousOverdueSales += previous.customers.get(id)?.sales || 0;
+  }
+  const lastStores = storeByClient.get(id)?.stores;
+  const storeId = lastStores?.size === 1 ? [...lastStores][0] : null;
+  const store = stores.get(storeId) || {storeId, eligible:0, overdue:0};
+  store.eligible++;
+  if(habit.overdue) store.overdue++;
+  stores.set(storeId, store);
+  if(!cameBack && !habit.overdue) continue;
+  for(const [productNumber, count] of habit.articles) {
+   if(count < 2 || count / habit.visits < .5) continue;
+   const product = products.get(productNumber) || {productNumber, overdue:0, returned:0};
+   product[cameBack?'returned':'overdue']++;
+   products.set(productNumber, product);
+  }
+ }
+ const candidates = eligible && overdue >= 5 && returned >= 5 ? [...products.values()]
+  .filter(product => product.overdue >= 3 && product.overdue / overdue > product.returned / returned)
+  .map(product => ({...product, overdueShare:rate(product.overdue,overdue), returnedShare:rate(product.returned,returned)}))
+  .sort((a,b) => (b.overdueShare-b.returnedShare)-(a.overdueShare-a.returnedShare) || b.overdue-a.overdue)
+  .slice(0,5) : [];
+ return {eligible, overdue, returned, previousOverdueSales:round(previousOverdueSales), stores:[...stores.values()].sort((a,b)=>b.overdue-a.overdue), candidates};
+}
+
 function customerSalesBridge(previous, current, returning) {
  const identifiedSales = data => [...data.customers.values()].reduce((sum, customer) => sum + customer.sales, 0);
  const previousUnidentified = previous.sales - identifiedSales(previous);
@@ -115,5 +159,5 @@ export function compareBasketEvidence(currentEvidence,previousEvidence,{catalog=
  }
  const pairs=[...cur.pairs.values()].filter(p=>p.tickets>=3).map(p=>({...p,supportPct:rate(p.tickets,cur.tickets),lift:round(p.tickets*cur.tickets/(cur.products.get(p.productA).tickets*cur.products.get(p.productB).tickets))})).sort((a,b)=>b.tickets-a.tickets).slice(0,100);
  const customerReturn = customerReturnEvidence(prev.customers,cur.customers);
- return{status:currentEvidence.rejectedIdentity||previousEvidence.rejectedIdentity?'PARTIAL':'READY',summary:{customerReturn,customerSalesBridge:customerSalesBridge(prev,cur,customerReturn),customerOffers:customerOfferEvidence(previousEvidence,currentEvidence,cur.customers),sales:round(cur.sales),promotionSales:round(cur.promotionSales),previousPromotionSales:round(prev.promotionSales),promotionTickets:cur.promotionTickets,previousPromotionTickets:prev.promotionTickets,promotionSalesSharePct:rate(cur.promotionSales,cur.sales),discountAmount:round(cur.discountAmount),previousSales:round(prev.sales),tickets:cur.tickets,previousTickets:prev.tickets,averageBasket:cur.tickets?round(cur.sales/cur.tickets):null,previousAverageBasket:prev.tickets?round(prev.sales/prev.tickets):null,identifiedTicketCoveragePct:rate(cur.identifiedTickets,cur.tickets),previousIdentifiedTicketCoveragePct:rate(prev.identifiedTickets,prev.tickets),identifiedCustomers:cur.customers.size,previousIdentifiedCustomers:prev.customers.size,previousCustomersNotObserved:[...prev.customers.keys()].filter(id=>!cur.customers.has(id)).length},signals:products.filter(p=>p.signal!=='MONITOR').sort((a,b)=>Math.abs(b.current.sales-b.previous.sales)-Math.abs(a.current.sales-a.previous.sales)),products:products.map(p=>({...p,regularCustomerHabit:habitCohort(previousEvidence,currentEvidence,p.productNumber,habitIndex),interpretation:pricingInterpretation(p)})).sort((a,b)=>b.current.sales-a.current.sales),affinities:pairs,quality:{comparable,minimumTickets,oversizedAffinityBaskets:cur.oversizedAffinityBaskets,rejectedIdentityRows:(currentEvidence.rejectedIdentity||0)+(previousEvidence.rejectedIdentity||0),causalClaim:false,priceBasis:'Prix TTC réalisé moyen : promotions et mix compris, pas le tarif catalogue.',limitations:['Association observée, pas une causalité prouvée.','Vérifier promotions, ruptures, saisonnalité et durée des fenêtres.','Analyse de retour client limitée aux tickets identifiés et au périmètre consulté.','Le CA antérieur des clients non revus ne doit pas être additionné entre articles.']}};
+ return{status:currentEvidence.rejectedIdentity||previousEvidence.rejectedIdentity?'PARTIAL':'READY',summary:{customerReturn,customerAbsence:comparable&&!currentEvidence.rejectedIdentity&&!previousEvidence.rejectedIdentity?customerAbsenceEvidence(habitIndex,previousEvidence,prev):null,customerSalesBridge:customerSalesBridge(prev,cur,customerReturn),customerOffers:customerOfferEvidence(previousEvidence,currentEvidence,cur.customers),sales:round(cur.sales),promotionSales:round(cur.promotionSales),previousPromotionSales:round(prev.promotionSales),promotionTickets:cur.promotionTickets,previousPromotionTickets:prev.promotionTickets,promotionSalesSharePct:rate(cur.promotionSales,cur.sales),discountAmount:round(cur.discountAmount),previousSales:round(prev.sales),tickets:cur.tickets,previousTickets:prev.tickets,averageBasket:cur.tickets?round(cur.sales/cur.tickets):null,previousAverageBasket:prev.tickets?round(prev.sales/prev.tickets):null,identifiedTicketCoveragePct:rate(cur.identifiedTickets,cur.tickets),previousIdentifiedTicketCoveragePct:rate(prev.identifiedTickets,prev.tickets),identifiedCustomers:cur.customers.size,previousIdentifiedCustomers:prev.customers.size,previousCustomersNotObserved:[...prev.customers.keys()].filter(id=>!cur.customers.has(id)).length},signals:products.filter(p=>p.signal!=='MONITOR').sort((a,b)=>Math.abs(b.current.sales-b.previous.sales)-Math.abs(a.current.sales-a.previous.sales)),products:products.map(p=>({...p,regularCustomerHabit:habitCohort(previousEvidence,currentEvidence,p.productNumber,habitIndex),interpretation:pricingInterpretation(p)})).sort((a,b)=>b.current.sales-a.current.sales),affinities:pairs,quality:{comparable,minimumTickets,oversizedAffinityBaskets:cur.oversizedAffinityBaskets,rejectedIdentityRows:(currentEvidence.rejectedIdentity||0)+(previousEvidence.rejectedIdentity||0),causalClaim:false,priceBasis:'Prix TTC réalisé moyen : promotions et mix compris, pas le tarif catalogue.',limitations:['Association observée, pas une causalité prouvée.','Vérifier promotions, ruptures, saisonnalité et durée des fenêtres.','Analyse de retour client limitée aux tickets identifiés et au périmètre consulté.','Le CA antérieur des clients non revus ne doit pas être additionné entre articles.']}};
 }
