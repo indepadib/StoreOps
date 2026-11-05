@@ -46,3 +46,8 @@ console.log('PASS price/volume arithmetic, basket halo, cross-store cohorts, no 
 
 const fractional=compareBasketEvidence(evidence([{...row('a','now','F',10.01),qty:33}]),evidence([{...row('a','before','F',100),qty:30}]));
 const effects=fractional.products[0].priceVolumeDecomposition;assert.equal(effects.salesDelta,-89.99);assert.equal(Math.round((effects.priceEffect+effects.volumeEffect)*100)/100,effects.salesDelta,'rounded price and volume effects must reconcile to the cent');
+
+const bridge=report.summary.customerSalesBridge;
+assert.equal(Math.round(bridge.drivers.reduce((total,driver)=>total+driver.amount,0)*100),Math.round(bridge.delta*100));
+assert.equal(Math.round(bridge.stores.reduce((total,store)=>total+store.delta,0)*100),Math.round(bridge.delta*100));
+assert.equal(bridge.drivers.find(driver=>driver.kind==='notObserved').amount,-report.summary.customerReturn.notObservedSales);
