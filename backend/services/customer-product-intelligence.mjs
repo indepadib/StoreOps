@@ -101,12 +101,28 @@ function customerSalesBridge(previous, current, returning) {
   delta,
   drivers,
   stores: [...new Set([...previous.storeSales.keys(), ...current.storeSales.keys()])].map(storeId => {
-   const before = previous.storeSales.get(storeId) || {sales:0, identifiedSales:0};
-   const after = current.storeSales.get(storeId) || {sales:0, identifiedSales:0};
+   const before = previous.storeSales.get(storeId) || {sales:0, identifiedSales:0, tickets:0, identifiedTickets:0};
+   const after = current.storeSales.get(storeId) || {sales:0, identifiedSales:0, tickets:0, identifiedTickets:0};
    const delta = after.sales - before.sales;
    const identifiedDelta = after.identifiedSales - before.identifiedSales;
+   const previousBasket = before.tickets ? before.sales / before.tickets : null;
+   const currentBasket = after.tickets ? after.sales / after.tickets : null;
+   const trafficEffect = previousBasket!=null && currentBasket!=null ? round((after.tickets-before.tickets)*previousBasket) : null;
+   const basketEffect = trafficEffect==null ? null : round(round(delta)-trafficEffect);
+   const productChanges = [];
+   for(const productNumber of new Set([...previous.products.keys(),...current.products.keys()])){
+    const priorProduct = previous.products.get(productNumber)?.stores.get(storeId);
+    const currentProduct = current.products.get(productNumber)?.stores.get(storeId);
+    if(!priorProduct && !currentProduct) continue;
+    const previousSales = round(priorProduct?.sales || 0), currentSales = round(currentProduct?.sales || 0);
+    productChanges.push({productNumber, previousSales, currentSales, delta:round(currentSales-previousSales)});
+   }
+   const declines = productChanges.filter(product=>product.delta<0).sort((a,b)=>a.delta-b.delta).slice(0,5);
    return {storeId, previousSales:round(before.sales), currentSales:round(after.sales), delta:round(delta),
-    identifiedDelta:round(identifiedDelta), unidentifiedDelta:round(delta-identifiedDelta)};
+    identifiedDelta:round(identifiedDelta), unidentifiedDelta:round(delta-identifiedDelta),
+    previousTickets:before.tickets, currentTickets:after.tickets, previousBasket:round(previousBasket), currentBasket:round(currentBasket),
+    previousIdentification:rate(before.identifiedTickets,before.tickets), currentIdentification:rate(after.identifiedTickets,after.tickets),
+    trafficEffect,basketEffect,declines};
   }).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta))
  };
 }
@@ -116,9 +132,13 @@ function summarize(evidence){
  for(const b of evidence.baskets||[]){
   if(seen.has(b.key))continue;seen.add(b.key);tickets++;
   const total=b.items.reduce((n,x)=>n+x.sales,0);sales+=total;
-  const store = storeSales.get(b.storeId) || {sales:0, identifiedSales:0};
+  const store = storeSales.get(b.storeId) || {sales:0, identifiedSales:0, tickets:0, identifiedTickets:0};
   store.sales += total;
-  if(b.customerToken) store.identifiedSales += total;
+  store.tickets++;
+  if(b.customerToken){
+   store.identifiedSales += total;
+   store.identifiedTickets++;
+  }
   storeSales.set(b.storeId, store);
   const promoted=b.items.filter(i=>i.periodicDiscountAmount>0);if(promoted.length)promotionTickets++;promotionSales+=promoted.reduce((n,i)=>n+(i.promotionSales||0),0);discountAmount+=b.items.reduce((n,i)=>n+(i.discountAmount||0),0);
   if(b.customerToken){identifiedTickets++;const c=customers.get(b.customerToken)||{sales:0,tickets:0,products:new Set()};c.sales+=total;c.tickets++;for(const i of b.items)c.products.add(i.productNumber);customers.set(b.customerToken,c)}

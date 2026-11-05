@@ -54,6 +54,12 @@ function customerSalesAnswer(e){
  const storeNames=new Map(e.stores.map(store=>[store.id,store.name]));
  const leadingStore=bridge.stores[0];
  const lines=bridge.stores.map(store=>`${storeNames.get(store.storeId)||store.storeId} · écart total ${money(store.delta)} · identifié ${money(store.identifiedDelta)} · sans identification ${money(store.unidentifiedDelta)}.`);
+ for(const store of bridge.stores){
+  if(store.previousTickets==null)continue;
+  const label=storeNames.get(store.storeId)||store.storeId;
+  lines.push(`${label} · tickets ${n(store.previousTickets)} → ${n(store.currentTickets)} · panier ${money(store.previousBasket)} → ${money(store.currentBasket)} · effet tickets ${money(store.trafficEffect)} · effet panier ${money(store.basketEffect)} · tickets identifiés ${pct(store.previousIdentification)} → ${pct(store.currentIdentification)}.`);
+  if(store.declines?.length)lines.push(`${label} · principaux articles en recul : ${store.declines.map(product=>product.productNumber+' '+money(product.delta)).join(', ')}.`);
+ }
  if(e.baskets.status!=='READY'||e.baskets.quality?.comparable!==true)lines.unshift('Comparaison provisoire ou partielle. Vérifier la couverture et les dates des tickets.');
  return {title:'Variation du CA par clientèle',headline:`${money(bridge.previousSales)} → ${money(bridge.currentSales)} · écart ${money(bridge.delta)}`,
   columns:['Contribution','Écart'],rows:bridge.drivers.map(driver=>[labels[driver.kind],money(driver.amount)]),lines,

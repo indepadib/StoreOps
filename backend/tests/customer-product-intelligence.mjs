@@ -60,3 +60,11 @@ assert.deepEqual([cadenceReport.eligible,cadenceReport.overdue,cadenceReport.ret
 assert.equal(cadenceReport.stores[0].overdue,1);
 assert.deepEqual(cadenceReport.candidates,[]);
 assert.equal(compareBasketEvidence(cadenceAfter,cadenceBefore,{comparable:false}).summary.customerAbsence,null);
+
+for(const store of bridge.stores){
+ if(store.previousTickets&&store.currentTickets)assert.equal(Math.round((store.trafficEffect+store.basketEffect)*100),Math.round(store.delta*100));
+ assert.ok(store.declines.every(product=>product.delta<0));
+}
+const oneStoreBridge=compareBasketEvidence({baskets:[visit('x','2026-10-08','Q')]},{baskets:[visit('a','2026-10-01'),visit('b','2026-10-02')]}).summary.customerSalesBridge.stores[0];
+assert.deepEqual([oneStoreBridge.previousTickets,oneStoreBridge.currentTickets,oneStoreBridge.trafficEffect,oneStoreBridge.basketEffect],[2,1,-10,0]);
+assert.deepEqual(oneStoreBridge.declines,[{productNumber:'P',previousSales:20,currentSales:0,delta:-20}]);
