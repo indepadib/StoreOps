@@ -37,11 +37,46 @@ export function customerOfferEvidence(previous,current,currentCustomers){
  return{discountedTickets,linkedTickets,coveragePct:rate(linkedTickets,discountedTickets),items};
 }
 
+function customerSalesBridge(previous, current, returning) {
+ const identifiedSales = data => [...data.customers.values()].reduce((sum, customer) => sum + customer.sales, 0);
+ const previousUnidentified = previous.sales - identifiedSales(previous);
+ const currentUnidentified = current.sales - identifiedSales(current);
+ const delta = round(current.sales - previous.sales);
+ const drivers = [
+  {kind:'returningVisits', amount:returning.visitEffect ?? 0},
+  {kind:'returningBasket', amount:returning.basketEffect ?? 0},
+  {kind:'newlyObserved', amount:returning.newlyObservedSales},
+  {kind:'notObserved', amount:-returning.notObservedSales},
+  {kind:'unidentified', amount:round(currentUnidentified - previousUnidentified)}
+ ];
+ const rounding = round(delta - drivers.reduce((sum, driver) => sum + driver.amount, 0));
+ if(rounding) drivers.push({kind:'rounding', amount:rounding});
+ return {
+  previousSales: round(previous.sales),
+  currentSales: round(current.sales),
+  delta,
+  drivers,
+  stores: [...new Set([...previous.storeSales.keys(), ...current.storeSales.keys()])].map(storeId => {
+   const before = previous.storeSales.get(storeId) || {sales:0, identifiedSales:0};
+   const after = current.storeSales.get(storeId) || {sales:0, identifiedSales:0};
+   const delta = after.sales - before.sales;
+   const identifiedDelta = after.identifiedSales - before.identifiedSales;
+   return {storeId, previousSales:round(before.sales), currentSales:round(after.sales), delta:round(delta),
+    identifiedDelta:round(identifiedDelta), unidentifiedDelta:round(delta-identifiedDelta)};
+  }).sort((a,b) => Math.abs(b.delta) - Math.abs(a.delta))
+ };
+}
+
 function summarize(evidence){
- const products=new Map(),customers=new Map(),pairs=new Map(),seen=new Set();let sales=0,tickets=0,identifiedTickets=0,oversizedAffinityBaskets=0,promotionSales=0,promotionTickets=0,discountAmount=0;
+ const products=new Map(),customers=new Map(),pairs=new Map(),seen=new Set(),storeSales=new Map();let sales=0,tickets=0,identifiedTickets=0,oversizedAffinityBaskets=0,promotionSales=0,promotionTickets=0,discountAmount=0;
  for(const b of evidence.baskets||[]){
   if(seen.has(b.key))continue;seen.add(b.key);tickets++;
-  const total=b.items.reduce((n,x)=>n+x.sales,0);sales+=total;const promoted=b.items.filter(i=>i.periodicDiscountAmount>0);if(promoted.length)promotionTickets++;promotionSales+=promoted.reduce((n,i)=>n+(i.promotionSales||0),0);discountAmount+=b.items.reduce((n,i)=>n+(i.discountAmount||0),0);
+  const total=b.items.reduce((n,x)=>n+x.sales,0);sales+=total;
+  const store = storeSales.get(b.storeId) || {sales:0, identifiedSales:0};
+  store.sales += total;
+  if(b.customerToken) store.identifiedSales += total;
+  storeSales.set(b.storeId, store);
+  const promoted=b.items.filter(i=>i.periodicDiscountAmount>0);if(promoted.length)promotionTickets++;promotionSales+=promoted.reduce((n,i)=>n+(i.promotionSales||0),0);discountAmount+=b.items.reduce((n,i)=>n+(i.discountAmount||0),0);
   if(b.customerToken){identifiedTickets++;const c=customers.get(b.customerToken)||{sales:0,tickets:0,products:new Set()};c.sales+=total;c.tickets++;for(const i of b.items)c.products.add(i.productNumber);customers.set(b.customerToken,c)}
   const basketProducts=new Set(b.items.map(i=>i.productNumber));
   for(const sku of basketProducts){
@@ -57,7 +92,7 @@ function summarize(evidence){
   // No arbitrary top-N product cut: all items of each basket contribute.
   for(let i=0;i<ids.length;i++)for(let j=i+1;j<ids.length;j++){const key=JSON.stringify([ids[i],ids[j]]),p=pairs.get(key)||{productA:ids[i],productB:ids[j],tickets:0};p.tickets++;pairs.set(key,p)}
  }
- return{products,customers,pairs,sales,tickets,identifiedTickets,oversizedAffinityBaskets,promotionSales,promotionTickets,discountAmount};
+ return{products,customers,pairs,storeSales,sales,tickets,identifiedTickets,oversizedAffinityBaskets,promotionSales,promotionTickets,discountAmount};
 }
 function measures(p,total){
  if(!p)return{sales:0,promotionSales:0,promotionSalesSharePct:null,discountAmount:0,tickets:0,penetrationPct:0,averageBasket:null,attachedBasketValue:null,unit:null,units:null,realizedUnitPrice:null};
@@ -79,5 +114,6 @@ export function compareBasketEvidence(currentEvidence,previousEvidence,{catalog=
   products.push({productNumber:sku,productName:catalog.get(sku)?.productName||null,current,previous,salesChangePct:change(current.sales,previous.sales),priceChangePct,volumeChangePct:sameUnit?change(current.units,previous.units):null,penetrationDeltaPoints:round(current.penetrationPct-previous.penetrationPct),basketChangePct:change(current.averageBasket,previous.averageBasket),priceVolumeDecomposition,quality:reliable?'SUFFICIENT_SAMPLE':'LIMITED_SAMPLE',signal:reliable&&priceChangePct>=10&&current.tickets<previous.tickets?'PRICE_UP_DEMAND_DOWN':reliable&&priceChangePct>=10?'PRICE_UP_MONITOR':reliable&&priceChangePct<=-10&&current.tickets>previous.tickets?'PRICE_DOWN_DEMAND_UP':reliable&&priceChangePct<=-10?'PRICE_DOWN_MONITOR':'MONITOR',cohort:{previousIdentifiedBuyers:buyers.size,repurchasedArticle:repeated.length,returnedWithoutArticle:stoppedButReturned.length,notObservedAgain:notObserved.length,repurchasePct:rate(repeated.length,buyers.size),notObservedPreviousSales:round(notObserved.reduce((n,id)=>n+(prev.customers.get(id)?.sales||0),0)),interpretation:'Non revu dans la période et le périmètre sélectionnés ; ne prouve pas une perte de client.'},alternatives:[...alternatives.values()].sort((a,b)=>Number(b.sameFamily)-Number(a.sameFamily)||b.customers-a.customers).slice(0,10),daily,stores});
  }
  const pairs=[...cur.pairs.values()].filter(p=>p.tickets>=3).map(p=>({...p,supportPct:rate(p.tickets,cur.tickets),lift:round(p.tickets*cur.tickets/(cur.products.get(p.productA).tickets*cur.products.get(p.productB).tickets))})).sort((a,b)=>b.tickets-a.tickets).slice(0,100);
- return{status:currentEvidence.rejectedIdentity||previousEvidence.rejectedIdentity?'PARTIAL':'READY',summary:{customerReturn:customerReturnEvidence(prev.customers,cur.customers),customerOffers:customerOfferEvidence(previousEvidence,currentEvidence,cur.customers),sales:round(cur.sales),promotionSales:round(cur.promotionSales),previousPromotionSales:round(prev.promotionSales),promotionTickets:cur.promotionTickets,previousPromotionTickets:prev.promotionTickets,promotionSalesSharePct:rate(cur.promotionSales,cur.sales),discountAmount:round(cur.discountAmount),previousSales:round(prev.sales),tickets:cur.tickets,previousTickets:prev.tickets,averageBasket:cur.tickets?round(cur.sales/cur.tickets):null,previousAverageBasket:prev.tickets?round(prev.sales/prev.tickets):null,identifiedTicketCoveragePct:rate(cur.identifiedTickets,cur.tickets),previousIdentifiedTicketCoveragePct:rate(prev.identifiedTickets,prev.tickets),identifiedCustomers:cur.customers.size,previousIdentifiedCustomers:prev.customers.size,previousCustomersNotObserved:[...prev.customers.keys()].filter(id=>!cur.customers.has(id)).length},signals:products.filter(p=>p.signal!=='MONITOR').sort((a,b)=>Math.abs(b.current.sales-b.previous.sales)-Math.abs(a.current.sales-a.previous.sales)),products:products.map(p=>({...p,regularCustomerHabit:habitCohort(previousEvidence,currentEvidence,p.productNumber,habitIndex),interpretation:pricingInterpretation(p)})).sort((a,b)=>b.current.sales-a.current.sales),affinities:pairs,quality:{comparable,minimumTickets,oversizedAffinityBaskets:cur.oversizedAffinityBaskets,rejectedIdentityRows:(currentEvidence.rejectedIdentity||0)+(previousEvidence.rejectedIdentity||0),causalClaim:false,priceBasis:'Prix TTC réalisé moyen : promotions et mix compris, pas le tarif catalogue.',limitations:['Association observée, pas une causalité prouvée.','Vérifier promotions, ruptures, saisonnalité et durée des fenêtres.','Analyse de retour client limitée aux tickets identifiés et au périmètre consulté.','Le CA antérieur des clients non revus ne doit pas être additionné entre articles.']}};
+ const customerReturn = customerReturnEvidence(prev.customers,cur.customers);
+ return{status:currentEvidence.rejectedIdentity||previousEvidence.rejectedIdentity?'PARTIAL':'READY',summary:{customerReturn,customerSalesBridge:customerSalesBridge(prev,cur,customerReturn),customerOffers:customerOfferEvidence(previousEvidence,currentEvidence,cur.customers),sales:round(cur.sales),promotionSales:round(cur.promotionSales),previousPromotionSales:round(prev.promotionSales),promotionTickets:cur.promotionTickets,previousPromotionTickets:prev.promotionTickets,promotionSalesSharePct:rate(cur.promotionSales,cur.sales),discountAmount:round(cur.discountAmount),previousSales:round(prev.sales),tickets:cur.tickets,previousTickets:prev.tickets,averageBasket:cur.tickets?round(cur.sales/cur.tickets):null,previousAverageBasket:prev.tickets?round(prev.sales/prev.tickets):null,identifiedTicketCoveragePct:rate(cur.identifiedTickets,cur.tickets),previousIdentifiedTicketCoveragePct:rate(prev.identifiedTickets,prev.tickets),identifiedCustomers:cur.customers.size,previousIdentifiedCustomers:prev.customers.size,previousCustomersNotObserved:[...prev.customers.keys()].filter(id=>!cur.customers.has(id)).length},signals:products.filter(p=>p.signal!=='MONITOR').sort((a,b)=>Math.abs(b.current.sales-b.previous.sales)-Math.abs(a.current.sales-a.previous.sales)),products:products.map(p=>({...p,regularCustomerHabit:habitCohort(previousEvidence,currentEvidence,p.productNumber,habitIndex),interpretation:pricingInterpretation(p)})).sort((a,b)=>b.current.sales-a.current.sales),affinities:pairs,quality:{comparable,minimumTickets,oversizedAffinityBaskets:cur.oversizedAffinityBaskets,rejectedIdentityRows:(currentEvidence.rejectedIdentity||0)+(previousEvidence.rejectedIdentity||0),causalClaim:false,priceBasis:'Prix TTC réalisé moyen : promotions et mix compris, pas le tarif catalogue.',limitations:['Association observée, pas une causalité prouvée.','Vérifier promotions, ruptures, saisonnalité et durée des fenêtres.','Analyse de retour client limitée aux tickets identifiés et au périmètre consulté.','Le CA antérieur des clients non revus ne doit pas être additionné entre articles.']}};
 }
