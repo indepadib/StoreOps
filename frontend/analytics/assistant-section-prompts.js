@@ -6,7 +6,7 @@ export const sectionPrompts={
  network:[['Diagnostic magasins','Quel est le problème des magasins ?'],['Comparer les visites','Comparer les magasins par tickets'],['Comparer les paniers','Comparer les magasins par panier moyen']],
  categories:[['Enquêter sur PGC','Pourquoi les ventes PGC baissent ?'],['Enquêter sur APLS','Pourquoi les ventes APLS baissent ?'],['Rayons moteurs','Quels sont les 10 meilleurs rayons par CA ?']],
  suppliers:[['Ventes par fournisseur','Quels sont les 10 meilleurs fournisseurs par CA ?'],['Analyser l’import','Pourquoi les ventes import baissent ?'],['Disponibilité import','Détention entrepôt import']],
- crm:[['Retour des clients','Quels clients identifiés sont revenus ?'],['Clients distincts','Combien de clients identifiés ?'],['Identification','Quel est le taux d’identification des tickets ?']],
+ crm:[['Retour des clients','Quel est le retour des clients identifiés ?'],['Clients distincts','Combien de clients identifiés ?'],['Identification','Quel est le taux d’identification des tickets ?']],
  inventory:[['Comptages Dynamics','Liste des inventaires Dynamics'],['Journaux de démarque','Quels journaux de démarque Dynamics sont accessibles ?'],['Complément StoreOps','Liste des inventaires StoreOps']],
  loyalty:[['Retour des identifiés','Quel est le retour des clients identifiés ?'],['Poids des identifiés','Quel est le poids du CA identifié ?'],['Exécution en caisse','Top 10 caissiers par identification']],
  cashiers:[['Identification en caisse','Top 10 caissiers par identification'],['Volume de tickets','Top 10 caissiers par tickets'],['CA par caissier','Top 10 caissiers par CA']],

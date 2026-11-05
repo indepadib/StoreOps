@@ -56,3 +56,5 @@ Chaque correction doit disposer d’un exemple de question, d’un résultat att
 ## Mise à jour du 5 novembre 2026
 
 Les douze vues ont maintenant un guide court repliable : quoi regarder et quoi faire ensuite. Le panneau CRM et Fidélité met en avant le retour observé et décompose les dépenses des mêmes clients revenus entre visites et panier. Il réutilise les preuves préparées ou propose un seul bouton de calcul. Une progression indique une piste à confirmer, pas une note absolue ; une journée ouverte reste provisoire. Le même calcul alimente la réponse de l’agent sur le retour des clients.
+
+Le CRM rapproche aussi la variation du CA identifié : variation des mêmes clients revenus + ventes des nouveaux observés − CA antérieur des non-revus. Les codes d’offre lisibles sur les tickets remises permettent de suivre les tickets et clients associés par offre, avec un taux de couverture. Les offres peuvent se chevaucher ; ni un code, ni un non-retour ne prouve l’effet causal d’une promotion ou d’une opération. L’analyse par opération nécessite encore un calendrier fiable et une association vérifiée aux magasins, articles et tickets.
