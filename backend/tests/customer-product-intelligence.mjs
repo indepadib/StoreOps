@@ -18,6 +18,16 @@ assert.equal(p.cohort.repurchasedArticle,5);assert.equal(p.cohort.returnedWithou
 assert.equal(p.priceVolumeDecomposition.priceEffect+p.priceVolumeDecomposition.volumeEffect,p.priceVolumeDecomposition.salesDelta);
 assert.equal(report.quality.causalClaim,false);assert.ok(!JSON.stringify(report).includes('customer-1'));
 assert.equal(compareBasketEvidence(evidence(after),evidence(before),{comparable:false}).signals.length,0);
+const cohortBefore=[...before,...['2026-10-21','2026-10-22'].map(date=>({...row('customer-9',date,'P',10),date}))];
+const cohortReport=compareBasketEvidence(evidence(after),evidence(cohortBefore),{currentEndDate:'2026-11-01',comparable:false,includeNonreturn:true});
+const cohort=cohortReport.summary.nonreturn;
+assert.equal(cohort.customers,cohortReport.summary.customerReturn.notObserved);
+assert.equal(cohort.sales,cohortReport.summary.customerReturn.notObservedSales);
+assert.equal(cohort.segments.reduce((n,s)=>n+s.customers,0),2);
+assert.equal(cohort.priceCustomers,1);
+assert.equal(cohort.rows[0].segment,'OVERDUE');
+assert.deepEqual(cohort.rows[0].topArticles[0],['P',3]);
+assert.ok(!JSON.stringify(cohort).includes('customer-9'));
 const collisions=[row('','1','X',10),{...row('','1','X',10),terminalId:'T2'},row('','1','X',10,'EA','B')];
 assert.equal(evidence(collisions).baskets.length,3,'till/store identity protects basket counts');
 assert.equal(compareBasketEvidence(evidence(collisions),evidence([])).summary.identifiedTicketCoveragePct,0);
