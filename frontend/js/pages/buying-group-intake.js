@@ -1,5 +1,6 @@
 import {api,apiPrivateFile} from '../api.js';
 import {buyingManagementContext} from './buying-group-management.js';
+import {mountContractReadingProgress} from './buying-group-reading-queue.js';
 import {renderDetailedReading} from './buying-group-reading-view.js';
 
 // Upload comes first. Registration is independent and optional until the operator
@@ -8,7 +9,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const safeDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))?String(s):'';
 const money=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:2}).format(Number(n)||0);
 const entities=[['FRANPRIX','Franprix'],['VENEZIA','Venezia Ice'],['FLORMAR','Flormar'],['DAHAB','Dahab'],['INTERSPORT','Intersport'],['PRIMOR','Primor'],['BEAUTY_FOR_YOU','Beauty For You']];
-const state={loaded:false,items:[],ai:{enabled:false},selectedId:null,busy:false,error:'',message:'',previewUrl:null};
+const state={loaded:false,items:[],ai:{enabled:false},selectedId:null,busy:false,error:'',message:'',previewUrl:null,readJobId:null};
 let fetchInProgress=null;
 const active=()=>state.items.find(x=>x.id===state.selectedId)||null;
 const choices=(rows,current)=>rows.map(([v,label])=>'<option value="'+esc(v)+'" '+(String(v)===String(current)?'selected':'')+'>'+esc(label)+'</option>').join('');
@@ -70,8 +71,9 @@ function currentPanel(){
   '<div class="hsi-current-file"><strong>'+esc(item.file_name)+'</strong>'+
   '<button id="hsiView" class="hsm-quiet">Ouvrir l’original</button></div>'+
   '<div id="hsiViewer" hidden class="hsi-viewer"></div>'+
+  '<div id="hsiReadingProgress" aria-live="polite"></div>'+ 
   (item.content_type==='application/pdf'&&['UPLOADED','ANALYZED'].includes(item.status)?
-   (state.ai?.enabled?'<div class="hsi-ai"><p>Tu peux demander une lecture IA du PDF pour préremplir la fiche, après autorisation explicite de transmission.</p>'+
+   (state.ai?.enabled?'<div class="hsi-ai"><p>La lecture se fait sans quitter H&S. Le serveur transmet le PDF au prestataire IA externe seulement après ton accord explicite.</p>'+
     '<label class="hsp-consent"><input type="checkbox" id="hsiConsent"> J’autorise la transmission de ce document à Anthropic via le service IA autorisé par H&S.</label>'+
     '<button type="button" id="hsiAnalyze" class="hsm-quiet">'+(item.status==='ANALYZED'?'Relire en profondeur (2 analyses)':'Analyser en profondeur (2 analyses)')+'</button></div>':
     '<p class="hsi-warning">La lecture IA n’est pas configurée sur ce service. Tu peux tout de même enregistrer le contrat et examiner ses clauses manuellement.</p>')
@@ -151,6 +153,16 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
     renderContractIntake(root,onRegistered);
   }));
   const item=active();
+  if(item){
+    mountContractReadingProgress(root.querySelector('#hsiReadingProgress'),{
+      targetType:'INTAKE',targetId:item.id,expectedJobId:state.readJobId,
+      onComplete:async()=>{
+        state.readJobId=null;
+        state.message='Lecture approfondie terminée : vérifie les preuves et les conditions avant de valider.';
+        await renderContractIntake(root,onRegistered,{force:true});
+      }
+    });
+  }
   root.querySelector('#hsiView')?.addEventListener('click',()=>viewer(root,item));
   root.querySelector('[name="scope"]')?.addEventListener('change',e=>{
     const sel=root.querySelector('[name="entityCode"]');
@@ -160,9 +172,10 @@ export async function renderContractIntake(root,onRegistered,{force=false}={}){
     if(!root.querySelector('#hsiConsent')?.checked){state.error='Coche le consentement explicite avant la lecture IA.';await renderContractIntake(root,onRegistered);return}
     if(state.busy)return;state.busy=true;state.error='';state.message='';
     try{
-      await api('/api/buying-group/intakes/'+encodeURIComponent(item.id)+'/analyze',
+      const queued=await api('/api/buying-group/intakes/'+encodeURIComponent(item.id)+'/analyze',
         {method:'POST',body:{consent:true,reanalyze:item.status==='ANALYZED'},noRetry:true});
-      state.message='Deux lectures spécialisées terminées. Vérifie les preuves, divergences et conditions RFA avant d’enregistrer le dossier.';
+      state.readJobId=queued.jobId;
+      state.message='Analyse démarrée sur le serveur. Tu peux suivre son avancement ici sans quitter H&S.';
       state.busy=false;await renderContractIntake(root,onRegistered,{force:true});
     }catch(error){state.busy=false;state.error=error.message;await renderContractIntake(root,onRegistered)}
     finally{state.busy=false}
