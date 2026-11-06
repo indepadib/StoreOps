@@ -132,6 +132,19 @@ document.addEventListener('input',e=>{
  renderCohortRows(panel);
 });
 document.addEventListener('click',e=>{
+ const focus=e.target.closest('[data-cohort-focus]')?.dataset.cohortFocus;
+ if(focus){
+  const target=e.target.closest('[data-cohort-diagnosis]').querySelector(focus==='price'?'[data-cohort-price]':'[data-cohort-panel]');
+  target.open=true;
+  if(focus==='overdue'){
+   target.querySelector('[data-cohort-segment]').value='OVERDUE';
+   target.dataset.page=1;
+   renderCohortRows(target);
+  }
+  target.querySelector('summary').focus();
+  target.scrollIntoView({block:'nearest'});
+  return;
+ }
  const panel=e.target.closest('[data-cohort-panel]');
  if(!panel)return;
  if(e.target.closest('[data-cohort-prev],[data-cohort-next]')){
@@ -154,6 +167,25 @@ document.addEventListener('click',e=>{
   setTimeout(()=>URL.revokeObjectURL(url),1000);
  }
 });
+function renderCohortPriorities(report){
+ const c=report.summary.nonreturn;
+ if(!c.customers)return '';
+ const overdue=c.segments.find(row=>row.segment==='OVERDUE');
+ const occasional=c.segments.find(row=>row.segment==='ONE_DAY');
+ const before=report.summary.previousIdentifiedTicketCoveragePct,after=report.summary.identifiedTicketCoveragePct;
+ const coverage=Number.isFinite(before)&&Number.isFinite(after)?pct(before)+' → '+pct(after):'Couverture indisponible';
+ return `<h4>Quoi vérifier en premier</h4>
+ <div class="studio-cards">
+ ${overdue?card('Habitués à examiner',number(overdue.customers),money(overdue.sales)+' d’achats historiques') : card('Habitués en retard',number(0),'Aucun retard mesurable dans le périmètre')}
+ ${card('Clients vus une seule journée',number(occasional?.customers??0),'Cadence individuelle inconnue')}
+ ${card('Tickets rattachés à un client',coverage,'Référence → suivi · contrôler la saisie en caisse avant d’interpréter le taux de retour')}
+ </div>
+ <ol>
+ ${overdue?`<li><strong>Clients.</strong> Examiner les habitués en retard par dernier magasin, puis vérifier leurs articles récurrents. <button type="button" data-cohort-focus="overdue">Voir les ${esc(number(overdue.customers))} profils</button></li>`:''}
+ <li><strong>Commerce et disponibilité.</strong> Repérer un article fréquent et contrôler son prix payé, ses remises et les ruptures datées dans le magasin fréquenté. <button type="button" data-cohort-focus="price">Voir les signaux prix</button></li>
+ <li><strong>Mesure.</strong> Pour évaluer une action, choisir un groupe comparable et suivre le retour à 30 jours, les tickets, le panier et la marge. Vérifier que la couverture d’identification est comparable entre groupes.</li>
+ </ol>`;
+}
 function renderNonreturn(report){
  const c=report.summary.nonreturn;
  if(!c)return '<button type="button" data-crm-proof>Décomposer les clients non revus</button><p role="status" id="crmProofStatus"></p>';
@@ -164,13 +196,14 @@ function renderNonreturn(report){
   return [esc(cohortSegments[key]),number(row?.customers??0),pct(row?.share??(c.customers?0:null)),number(row?.tickets??0),money(row?.sales??0)];
  });
  const articles=c.articles.filter(p=>p.priceChangePct!=null).slice(0,20);
- return `<h3>Décomposition des clients non revus</h3>
+ return `<section data-cohort-diagnosis><h3>Décomposition des clients non revus</h3>
  <p>${esc(dates)} · ${esc((report.stores||[]).map(s=>s.name||s.id).join(' + '))}</p>
  ${report.status==='PARTIAL'||report.quality?.currentDayIncomplete||report.excludedStores?.length?'<p>Couverture partielle. Le décompte peut évoluer selon les tickets et les magasins disponibles.</p>':''}
  <div class="studio-cards">${card('Clients non revus',number(c.customers),pct(c.share)+' des clients identifiés de la référence')}${card('Achats avant',money(c.sales),number(c.tickets)+' tickets historiques')}${card('Panier avant',money(c.basket),'Clients revenus avant : '+money(c.returningBasket))}${card('Tickets par client avant',number(c.ticketsPerCustomer),'Clients revenus avant : '+number(c.returningTicketsPerCustomer))}</div>
+ ${renderCohortPriorities(report)}
  ${table(['Rythme avant et délai depuis la dernière visite','Clients','Part des non-revus','Tickets avant','CA avant'],segments)}
  <p>Le retard est mesuré à la fin du suivi. Il dépasse 1,5 fois l’intervalle médian entre visites, estimé sur au moins trois jours de visite distincts.</p>
- <details><summary>Prix, promotions et disponibilité</summary>
+ <details data-cohort-price><summary>Prix, promotions et disponibilité</summary>
  <p>${esc(number(c.priceCustomers))} clients achetaient régulièrement au moins un article dont le prix TTC réalisé a augmenté d’au moins 10 %. ${esc(number(c.promoCustomers))} avaient eu au moins un ticket avec remise périodique avant. Les deux groupes peuvent se recouper.</p>
  ${table(['Article habituel','Non-revus','Revenus','Part non revue','Prix avant','Prix après','Variation','Enquête'],articles.map(p=>[esc(productLabel(p)),number(p.customers),number(p.returned),pct(p.nonreturnShare),money(p.previousPrice),money(p.currentPrice),pct(p.priceChangePct),`<button type="button" data-assistant-question="${esc('Quel est l’impact prix, panier et retour client pour '+p.productNumber+' sur les périodes affichées ?')}">Analyser</button>`]))}
  <p>Article habituel : présent dans au moins deux tickets et dans au moins la moitié des tickets du client avant. Prix moyen sur le périmètre affiché, à unité identique et avec au moins cinq tickets par fenêtre. Les prix réalisés incluent l’effet des remises et du mix. Ces rapprochements orientent l’enquête. Les ruptures historiques et les motifs individuels restent indéterminés.</p></details>
@@ -181,7 +214,7 @@ function renderNonreturn(report){
  <label>Code article <input type="search" data-cohort-article placeholder="HS-006590"></label>
  <button type="button" data-cohort-export>Exporter tous les profils (CSV)</button>
  <div><button type="button" data-cohort-prev>Précédent</button> <span data-cohort-page role="status"></span> <button type="button" data-cohort-next>Suivant</button></div>
- <div data-cohort-rows></div></details>`;
+ <div data-cohort-rows></div></details></section>`;
 }
 function customerDecision(){
  const b=state.baskets,r=b?.summary?.customerReturn;if(!r)return '<p>Comparer les mêmes clients sur les deux périodes pour distinguer visites et panier.</p><button type="button" data-crm-proof>Calculer le retour des clients</button><p role="status" id="crmProofStatus"></p>';
