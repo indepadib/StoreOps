@@ -60,6 +60,14 @@ function readPreference(){
  try{const v=localStorage.getItem(storage);return modes.some(m=>m.id===v)?v:'focus'}catch{return'focus'}
 }
 function writePreference(value){try{localStorage.setItem(storage,value)}catch{}}
+function syncLensIndicator(){
+ const track=el('riExperienceLens'),active=track?.querySelector('[data-ri-mode-choice][aria-pressed="true"]');
+ if(!active)return;
+ // A single physical surface moves under the active label, rather than
+ // crossfading three separate cards. Transform-only animation is cheap.
+ track.style.setProperty('--ri-lens-x',(active.offsetLeft-4)+'px');
+ track.style.setProperty('--ri-lens-width',active.offsetWidth+'px');
+}
 function setMode(mode,{remember=true}={}){
  if(!modes.some(m=>m.id===mode))return;
  currentMode=mode;document.body.dataset.riMode=mode;
@@ -68,6 +76,7 @@ function setMode(mode,{remember=true}={}){
   btn.classList.toggle('is-active',selected);btn.setAttribute('aria-pressed',String(selected))
  }
  const copy=el('riExperienceModeHelp');if(copy)copy.textContent=modes.find(m=>m.id===mode).description;
+ syncLensIndicator();
  if(remember)writePreference(mode);
 }
 function selectedSection(){return window.RETAIL_INTELLIGENCE?.getState?.()?.section||document.body.dataset.analyticsSection||'overview'}
@@ -141,9 +150,19 @@ function defineFinder(){
  trigger.addEventListener('click',showFinder);
  field.addEventListener('input',()=>renderFinder(field.value));
  field.addEventListener('keydown',event=>{
+  if(event.key==='ArrowDown'){event.preventDefault();results.querySelector('button')?.focus();return}
   if(event.key==='Enter'){
    const first=results.querySelector('button[data-ri-finder-action]');
    if(first){event.preventDefault();first.click()}
+  }
+ });
+ results.addEventListener('keydown',event=>{
+  const buttons=[...results.querySelectorAll('button[data-ri-finder-action]')];
+  const current=buttons.indexOf(document.activeElement);
+  if(['ArrowDown','ArrowUp','Home','End'].includes(event.key)){
+   event.preventDefault();const target=event.key==='Home'?0:event.key==='End'?buttons.length-1:
+    (current+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length;
+   buttons[target]?.focus()
   }
  });
  results.addEventListener('click',event=>{
@@ -180,6 +199,7 @@ function connect(){
   const b=event.target.closest('[data-ri-action]');if(b)act(b.dataset.riAction)
  });
  defineFinder();setupFilters();updateHeading();
+ window.addEventListener('resize',syncLensIndicator,{passive:true});
  document.addEventListener('retail-intelligence:section',updateHeading);
 }
 connect();
