@@ -41,6 +41,8 @@ async function start(){
     await import(analyticsAsset('/analytics/workspace-bi.js'));
     await import(analyticsAsset('/analytics/article-reference.js'));
     await import(analyticsAsset('/analytics/decision-studio.js'));
+    await import(analyticsAsset('/analytics/business-story.js'));
+    await import(analyticsAsset('/analytics/companion-dictionary.js'));
     await import(analyticsAsset('/analytics/basket-direction.js'));
     await import(analyticsAsset('/analytics/loss-inventory.js'));
     await import(analyticsAsset('/analytics/detention-views.js'));
