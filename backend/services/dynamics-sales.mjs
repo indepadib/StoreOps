@@ -77,7 +77,7 @@ function nextDate(day,delta=1){const d=new Date(`${day}T00:00:00Z`);d.setUTCDate
 // Preserve historical ticket preparation long enough to complete a full
 // customer study. Recent dates remain short-lived for Dynamics corrections.
 // The shared cache already caps storage TTL at 604800 seconds (7 days).
-function basketEvidenceTtl(day,today=new Date().toISOString().slice(0,10)){
+export function basketEvidenceTtl(day,today=new Date().toISOString().slice(0,10)){
  return day<nextDate(today,-2)?604800:day<today?10800:900
 }
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
