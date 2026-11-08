@@ -11,9 +11,9 @@ const summary=(host,title,description)=>{
 };
 const table=(host,headers,rows)=>{
  const box=put(host,'div','customer-journey-table-scroll'),t=put(box,'table','customer-journey-table');
- const tr=put(put(t,'thead'),'tr');
+ const tr=put(t.createTHead(),'tr');
  for(const x of headers)put(tr,'th',null,x);
- const body=put(t,'tbody');
+ const body=t.createTBody();
  for(const row of rows){
   const line=put(body,'tr');
   for(const [index,entry] of row.entries())put(line,'td',index===0?'journey-first':'',entry)
