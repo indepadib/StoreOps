@@ -11,6 +11,7 @@ import { readAnalyticsCatalog } from './analytics-catalog.mjs';
 import { readSupplierOperations } from './analytics-suppliers.mjs';
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
+import { readMonthlySalesExport } from './analytics-monthly-export.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -95,6 +96,19 @@ export async function handleAnalyticsApi({ req, url, user }){
     const data=await readAnalyticsCatalog(sorted);
     await writeAnalyticsCache(cacheKey,'catalog-v11',data,7*24*3600);
     return{status:200,data:{...data,cache:{status:'MISS'}}};
+  }
+
+  if(req.method==='GET'&&url.pathname==='/api/analytics/monthly-export'){
+    const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))?clean(v):null;
+    const startDate=iso(url.searchParams.get('start')),endDate=iso(url.searchParams.get('end')),force=url.searchParams.get('force')==='1';
+    if(!startDate||!endDate)return{status:400,data:{error:'start et end requis au format YYYY-MM-DD.'}};
+    const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
+    const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
+    const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
+    if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
+    if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},stores:[],columns:[],rows:[],message:'Aucun magasin accessible.'}};
+    try{return{status:200,data:await readMonthlySalesExport(stores,{startDate,endDate,force})}}
+    catch(error){return{status:Number(error?.status)||500,data:{error:error?.message||'Export mensuel indisponible.',code:error?.code||'MONTHLY_EXPORT_FAILED'}}}
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/decision'){
