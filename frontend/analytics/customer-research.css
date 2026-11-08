@@ -1,0 +1,47 @@
+
+/* CRM study · evidence-led, quiet native-card treatment */
+.customer-research{padding:22px;margin:18px 0 28px;border:1px solid #e4eaf2;border-radius:22px;background:linear-gradient(162deg,#fff,#fcfdff 78%,#fff9fb);box-shadow:0 12px 35px rgba(20,35,59,.045)}
+.customer-research-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.customer-research-heading h3{font-size:clamp(20px,2.2vw,28px);line-height:1.2;letter-spacing:-.04em;margin:6px 0 9px;color:#203048}
+.customer-research-heading p{font-size:12px;color:#65758a;line-height:1.6;margin:0}
+.customer-research-heading button{flex-shrink:0}
+.customer-research-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 0;border-bottom:1px solid #edf1f6}
+.customer-research-toolbar label{display:grid;gap:5px;font-size:11px;color:#68778d;font-weight:730}
+.customer-research-toolbar input{border:1px solid #d9e0eb;border-radius:10px;padding:9px 10px;min-height:39px;color:#1f2f46;background:#fff}
+.customer-research-toolbar p{font-size:11px;line-height:1.55;color:#778498;margin:0;flex-basis:100%}
+#customerResearchStatus{padding:13px 0 8px;font-size:12px;color:#697a90;line-height:1.6}
+#customerResearchStatus.research-error{color:#a4384d}
+.customer-research-result-heading{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:13px 0}
+.customer-research-result-heading strong{color:#31445c;font-size:13px}.customer-research-result-heading small{font-size:11px;color:#77869b}
+.customer-research-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:12px 0 17px}
+.customer-research-metric{display:flex;flex-direction:column;gap:7px;min-width:0;padding:14px;border:1px solid #e7ecf3;border-radius:13px;background:#fff}
+.customer-research-metric small{font-size:11px;color:#697a8f;font-weight:640;line-height:1.45}
+.customer-research-metric strong{font-size:clamp(17px,2vw,24px);letter-spacing:-.025em;font-variant-numeric:tabular-nums;color:#17243a;overflow-wrap:anywhere}
+.customer-research-metric span{font-size:10px;line-height:1.5;color:#8592a5}
+.customer-research-panel{background:#fff;border:1px solid #e6ebf2;border-radius:17px;padding:18px;margin:14px 0}
+.customer-research-panel h4{margin:0 0 10px;font-size:16px;letter-spacing:-.02em;color:#263750}
+.customer-research-panel h5{font-size:13px;font-weight:750;color:#334961;margin:8px 0}
+.customer-research-desc{font-size:12px;color:#6c798e;line-height:1.65}
+.customer-research-products{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.customer-research-product-group{min-width:0;display:grid;align-content:start;gap:9px}
+.customer-research-product{min-width:0;background:#fafbfd;border:1px solid #e8ecf2;border-radius:14px;padding:14px}
+.research-product-head{display:flex;align-items:baseline;justify-content:space-between;gap:9px;flex-wrap:wrap}
+.research-product-head strong{font-size:13px;color:#21324c}
+.research-product-head small{font-size:10px;color:#7c899d}
+.research-product-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.research-product-stats .customer-research-metric{padding:11px}.research-product-stats .customer-research-metric strong{font-size:15px}
+.research-control{font-size:11px;line-height:1.6;background:#edf2f8;padding:10px;border-radius:10px;color:#344b65}
+.research-signal{font-size:11px;line-height:1.6;color:#7d5c24;background:#fff7e8;border-radius:10px;padding:10px}
+.customer-research-factors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:14px}
+.research-factor{border:1px solid #e7ebf2;background:#fdfdfe;border-radius:12px;padding:13px;display:flex;flex-direction:column;gap:8px}
+.research-factor strong{font-size:12px;color:#253650}.research-factor-state{display:inline-block;width:fit-content;border-radius:6px;background:#edf1f7;color:#597089;font-size:10px;padding:5px 7px}
+.research-factor p{font-size:11px;line-height:1.6;color:#687a90;margin:0}
+.customer-research-quality{border-top:1px solid #e9eef4;margin:17px 0 0;padding-top:16px}
+.customer-research-quality strong{font-size:14px;color:#283a54}
+.customer-research-quality p,.customer-research-warning,.research-base-store{font-size:11px;line-height:1.7;color:#738298;margin:7px 0}
+.research-empty{font-size:11px;color:#9a6470}
+.customer-research button:focus-visible,.customer-research input:focus-visible{outline:3px solid #d53270;outline-offset:3px}
+@media(max-width:1100px){.customer-research-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.customer-research-products{grid-template-columns:1fr}.customer-research-factors{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){.customer-research{padding:15px;border-radius:18px}.customer-research-heading{flex-direction:column}.customer-research-heading button{width:100%}.customer-research-factors{grid-template-columns:1fr}.research-product-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:390px){.customer-research-metrics,.research-product-stats{grid-template-columns:1fr}}
+@media print{.customer-research-toolbar,#customerResearchRun{display:none!important}.customer-research{break-inside:avoid;box-shadow:none}.customer-research-panel{break-inside:avoid}}
