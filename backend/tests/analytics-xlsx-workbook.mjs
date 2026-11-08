@@ -6,7 +6,10 @@ import { createXlsxBlob } from '../../frontend/analytics/xlsx-workbook.js';
 // being installed on the CI runner.
 const data=Buffer.from(await (await createXlsxBlob([
  {name:'01 Synthèse',headers:['CA TTC','Magasin','Évolution %'],keys:['ca_n','store_name','ca_evolution_pct'],rows:[[12345.67,'Franprix & Trèfle',2.15],[0,"=DON'T EXECUTE",null]]},
- {name:'02 Magasins',headers:['Code','CA'],keys:['store_code','ca_n'],rows:[['FRP0001',100],['FRP0002',200]]}
+ {name:'02 Magasins',headers:['Code','CA'],keys:['store_code','ca_n'],rows:[['FRP0001',100],['FRP0002',200]]},
+ {name:'03 Ratios',headers:['Poids CA période %','Évolution CA %','Écart poids CA pts','Classement','Poids comparaison %'],
+  keys:['ca_weight_pct','ca_evolution_pct','ca_weight_delta_points','rank_delta','ca_weight_n1_pct'],
+  rows:[[3.35,-15.89,-0.09,2,3.44],[2.07,20.23,0.08,-3,1.99]]}
 ])).arrayBuffer());
 assert.equal(data.readUInt32LE(0),0x04034b50,'ZIP must begin with a local-file signature');
 const files=new Map();let pos=0;
@@ -28,6 +31,18 @@ assert(files.has('[Content_Types].xml'));
 assert(files.has('xl/workbook.xml'));
 assert(files.has('xl/worksheets/sheet1.xml'));
 assert(files.has('xl/worksheets/sheet2.xml'));
+assert(files.has('xl/worksheets/sheet3.xml'));
+const percentageSheet=files.get('xl/worksheets/sheet3.xml');
+const styles=files.get('xl/styles.xml');
+// APIs provide already human-readable 3.35% and -15.89%. Store as 0.0335
+// and -0.1589 so Excel, Numbers and mobile viewers all display correctly.
+assert.match(percentageSheet,/<c r="A2" s="4"><v>0\.0335<\/v><\/c>/,'3.35 must render as 3.35%, not 335%');
+assert.match(percentageSheet,/<c r="B2" s="4"><v>-0\.1589<\/v><\/c>/,'-15.89 must render as -15.89%, not -1589%');
+assert.match(percentageSheet,/<c r="C2" s="5"><v>-0\.09<\/v><\/c>/,'percentage-point deltas must NOT be multiplied by 100');
+assert.match(percentageSheet,/<c r="D2" s="2"><v>2<\/v><\/c>/,'ranking differences must not become percentages or DH');
+assert.match(percentageSheet,/<c r="E2" s="4"><v>0\.0344<\/v><\/c>/,'comparison weight must use same normalization');
+assert.match(styles,/formatCode="0\.00%"/,'percentage must use standard portable XLSX percent format');
+assert.match(styles,/numFmtId="166" formatCode="0\.00 &quot;pts&quot;"/,'delta points must use explicit point unit');
 assert.match(files.get('xl/workbook.xml'),/01 Synthèse/);
 assert.match(files.get('xl/worksheets/sheet1.xml'),/12345\.67/);
 assert.match(files.get('xl/worksheets/sheet1.xml'),/Franprix &amp; Trèfle/);
