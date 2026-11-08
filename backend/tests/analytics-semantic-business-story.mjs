@@ -13,6 +13,12 @@ assert(semanticMetrics.find(m=>m.id==='recruitment_rate').availability==='NEEDS_
 assert.match(semanticMetrics.find(m=>m.id==='gross_margin_ht').warning,/g\/kg/,'Cost unit conversion requires guardrails');
 const catalog=semanticPublicModel();
 assert.equal(catalog.version,'RI-SEMANTIC-1.0');
+assert.equal(catalog.logicalDataModel.status,'DESIGN_ONLY_NOT_MATERIALIZED','Logical star schema cannot masquerade as deployed materialized model');
+assert(catalog.logicalDataModel.entities.length>=8);
+assert(catalog.logicalDataModel.entities.some(e=>e.id==='fact_sales_ticket'&&/ticket/i.test(e.grain)));
+assert(catalog.logicalDataModel.entities.some(e=>e.id==='fact_loyalty_event'&&e.status==='SOURCE_REQUIRED'));
+assert(catalog.logicalDataModel.relations.some(r=>r.from==='fact_sales_line'&&r.to==='fact_sales_ticket'));
+
 assert(catalog.domains.includes('FIDÉLITÉ')&&catalog.domains.includes('CLIENTS'));
 assert(!catalog.metrics.some(m=>'aliases'in m),'Public schema excludes language internals');
 assert.equal(lookupSemanticMetrics('poids ca')[0].id,'sales_share');
