@@ -9,6 +9,7 @@ import {readDetentionPage} from './analytics-detention.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {buildCustomerRetentionResearch} from './analytics-customer-research.mjs';
 import {readStoreLoyaltyEnrollments} from './dynamics-loyalty.mjs';
+import {createHash} from 'node:crypto';
 const day=v=>{const x=String(v||''),d=new Date(x+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===x?x:null};
 export function intelligenceScope(user,requested,stores){
  const allowed=stores.filter(s=>canAccessStore(user,s.id));
@@ -16,13 +17,13 @@ export function intelligenceScope(user,requested,stores){
  const found=allowed.filter(s=>s.id===requested);if(!found.length)throw Object.assign(new Error('Magasin interdit ou inconnu.'),{status:403});return found;
 }
 export async function handleCustomerBiApi({req,url,user}){
- if(req.method!=='GET'||!['/api/analytics/customer-intelligence','/api/analytics/detention','/api/analytics/detention/prepare','/api/analytics/detention/history','/api/analytics/detention/history/prepare','/api/analytics/article-reference','/api/analytics/intelligence-scope','/api/analytics/customer-intelligence/prepare','/api/analytics/customer-research','/api/analytics/customer-base'].includes(url.pathname))return null;
+ if(req.method!=='GET'||!['/api/analytics/customer-intelligence','/api/analytics/detention','/api/analytics/detention/prepare','/api/analytics/detention/history','/api/analytics/detention/history/prepare','/api/analytics/article-reference','/api/analytics/intelligence-scope','/api/analytics/customer-intelligence/prepare','/api/analytics/customer-research','/api/analytics/customer-base','/api/analytics/customer-base/prepare'].includes(url.pathname))return null;
  const all=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all();let stores=intelligenceScope(user,url.searchParams.get('storeId'),all);
  const requestedIds=(url.searchParams.get('storeIds')||'').split(',').filter(Boolean);
  if(requestedIds.length){if(requestedIds.some(id=>!stores.some(s=>s.id===id)))return{status:403,data:{error:'Périmètre magasin interdit.'}};stores=stores.filter(s=>requestedIds.includes(s.id))}
  const excludedStores=stores.filter(s=>!salesIntegrationConfig(s.id).ready).map(s=>({...s,reason:'Connexion ventes non configurée'}));
  if(url.pathname.endsWith('/intelligence-scope'))return{status:200,data:{stores:stores.filter(s=>salesIntegrationConfig(s.id).ready),excludedStores}};
- if(url.pathname.includes('customer-intelligence')||url.pathname==='/api/analytics/customer-research'||url.pathname==='/api/analytics/customer-base'){
+ if(url.pathname.includes('customer-intelligence')||url.pathname==='/api/analytics/customer-research'||url.pathname==='/api/analytics/customer-base'||url.pathname==='/api/analytics/customer-base/prepare'){
   if(url.searchParams.get('storeId')&&url.searchParams.get('storeId')!=='ALL'&&excludedStores.length)return{status:422,data:{error:'Ce magasin ne dispose pas de connexion ventes configurée.'}};
   stores=stores.filter(s=>salesIntegrationConfig(s.id).ready);
  }
@@ -66,6 +67,26 @@ export async function handleCustomerBiApi({req,url,user}){
   await writeAnalyticsCache(cacheKey,'customer-research-v1',data,600);
   return{status:200,data}
  }
+ // Enrollment history is built month by month and persisted in the same
+ // shared Postgres cache as Analytics. Never expose card/customer identifiers.
+ if(url.pathname==='/api/analytics/customer-base/prepare'){
+  const start=day(url.searchParams.get('start')),end=day(url.searchParams.get('end'));
+  if(!start||!end||start>end||Math.round((Date.parse(end)-Date.parse(start))/86400000)>31)
+   return{status:400,data:{error:'Un mois calendaire (31 jours maximum) est requis.'}};
+  if(stores.length!==1)return{status:400,data:{error:'Un seul magasin autorisé par lot d’adhésions.'}};
+  const store=stores[0],key=analyticsCacheKey('customer-enrollment-chunk-v1',[store.id,start,end]);
+  const old=await readAnalyticsCache(key);if(old)return{status:200,data:{status:'READY',storeId:store.id,enrollments:old.count,cached:true}};
+  const rows=await readStoreLoyaltyEnrollments(store.id,{startDate:start,endDate:end});
+  if(rows.status!=='READY'||rows.truncated)return{status:422,data:{error:'Adhésions historiques non complètes pour ce mois ; le cumul restera indisponible.',source:rows.source||null,code:rows.truncated?'LOYALTY_TRUNCATED':'LOYALTY_UNAVAILABLE'}};
+  const fingerprints=[...new Set((rows.items||[]).map(row=>String(row.customerAccount||'').trim()).filter(Boolean)
+   .map(id=>createHash('sha256').update('RI-lifetime-v1|'+id).digest('hex')))];
+  const completeIdentity=rows.identityBasis==='CUSTOMER_ACCOUNT'&&fingerprints.length===rows.total;
+  const data={count:rows.total,identities:completeIdentity?fingerprints:[],identityComplete:completeIdentity,
+   storeId:store.id,source:rows.source,checkedAt:new Date().toISOString()};
+  const saved=await writeAnalyticsCache(key,'customer-enrollment-chunk-v1',data,604800);
+  if(!saved)return{status:503,data:{error:'L’historique mensuel n’a pas pu être persisté. Relancer la journée plutôt que compter un résultat non sauvegardé.'}};
+  return{status:200,data:{status:'READY',storeId:store.id,enrollments:data.count,identityComplete:data.identityComplete}}
+ }
  // A true recruitment count comes from D365 enrollment records, not first
  // observed tickets. The caller must supply a known opening/historical start.
  if(url.pathname==='/api/analytics/customer-base'){
@@ -74,26 +95,37 @@ export async function handleCustomerBiApi({req,url,user}){
   if(!start||!end||start>end||end>today||Date.parse(end)-Date.parse(start)>2*366*86400000)
    return{status:400,data:{error:'Date de départ historique vérifiée et date de fin requises (deux années maximum).'}};
   if(!stores.length)return{status:422,data:{error:'Aucun magasin avec fidélité configurée.'}};
-  const scope=stores.map(x=>x.id).sort().join(','),key=analyticsCacheKey('customer-base-lifetime-v1',[scope,start,end]);
+  const scope=stores.map(x=>x.id).sort().join(','),key=analyticsCacheKey('customer-base-lifetime-v2',[scope,start,end]);
   const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
-  const readings=await Promise.all(stores.map(async s=>{
-   try{return{store:s,reading:await readStoreLoyaltyEnrollments(s.id,{startDate:start,endDate:end})}}
-   catch(error){return{store:s,reading:{status:'UNAVAILABLE',error:{code:error.code||'SOURCE_FAILED',message:error.message}}}}
-  }));
-  const safe=readings.map(({store,reading})=>({storeId:store.id,storeName:store.name,
-   status:reading.status,source:reading.source||null,enrollments:reading.status==='READY'&&!reading.truncated?reading.total:null,
-   identityBasis:reading.identityBasis||null,truncated:!!reading.truncated,error:reading.error||null}));
-  const complete=safe.every(x=>x.status==='READY'&&!x.truncated),distinctPossible=complete&&safe.every(x=>x.identityBasis==='CUSTOMER_ACCOUNT');
-  const identities=new Set();
-  if(distinctPossible)for(const x of readings)for(const row of x.reading.items||[])if(row.customerAccount)identities.add(row.customerAccount);
-  const out={status:complete?'READY':'PARTIAL',historyStart:start,end,
-   openingDateCertified:false,
-   note:'Cumul depuis la date de départ historique choisie ; cette date ne prouve pas la date officielle d’ouverture.',
-   enrollments:complete?safe.reduce((n,x)=>n+x.enrollments,0):null,
-   distinctRegisteredCustomers:distinctPossible?identities.size:null,
-   distinctIdentityCoverage:distinctPossible?'ALL_STORES_CUSTOMER_ACCOUNT':'MISSING_CUSTOMER_ID_OR_PARTIAL',
-   stores:safe,provenance:'D365 Loyalty Card enrollment dates',checkedAt:new Date().toISOString()};
-  await writeAnalyticsCache(key,'customer-base-lifetime-v1',out,1800);
+  const months=[];
+  const nextDay=d=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+1);return x.toISOString().slice(0,10)};
+  for(let d=start;d<=end;){
+   const [year,month]=d.split('-').map(Number),monthLast=new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
+   const last=monthLast<end?monthLast:end;months.push({start:d,end:last});d=nextDay(last)
+  }
+  const keys=stores.flatMap(store=>months.map(m=>({store,m,key:analyticsCacheKey('customer-enrollment-chunk-v1',[store.id,m.start,m.end])})));
+  const rows=[];
+  for(let i=0;i<keys.length;i+=12)rows.push(...await Promise.all(keys.slice(i,i+12).map(async v=>({...v,value:await readAnalyticsCache(v.key)}))));
+  const pending=rows.filter(r=>!r.value);
+  if(pending.length)return{status:200,data:{status:'PREPARATION_REQUIRED',
+   missingMonths:pending.length,coveredMonths:rows.length-pending.length,totalMonths:rows.length,
+   tasks:pending.slice(0,6).map(r=>({storeId:r.store.id,start:r.m.start,end:r.m.end})),
+   message:'Construction par mois avec reprise et persistance. Les chiffres ne sont pas publiés avant la couverture complète.'}};
+  const storeTotals=new Map(stores.map(s=>[s.id,{storeId:s.id,storeName:s.name,enrollments:0,source:null}]));
+  const ids=new Set(),identityComplete=rows.every(r=>r.value.identityComplete===true);
+  for(const row of rows){
+   storeTotals.get(row.store.id).enrollments+=row.value.count;
+   storeTotals.get(row.store.id).source=row.value.source;
+   if(identityComplete)for(const id of row.value.identities)ids.add(id)
+  }
+  const out={status:'READY',historyStart:start,end,openingDateCertified:false,
+   note:'Cumul depuis la date de début choisie. La date officielle d’ouverture du magasin doit être certifiée. Les inscriptions enregistrées sont différentes des clients identifiés dans les tickets.',
+   enrollments:[...storeTotals.values()].reduce((n,x)=>n+x.enrollments,0),
+   distinctRegisteredCustomers:identityComplete?ids.size:null,
+   distinctIdentityCoverage:identityComplete?'CUSTOMER_ACCOUNT_COMPLETE':'MISSING_CUSTOMER_ID',
+   stores:[...storeTotals.values()].map(r=>({...r,status:'READY',identityBasis:identityComplete?'CUSTOMER_ACCOUNT':'UNVERIFIED'})),
+   provenance:'D365 Loyalty Card · fenêtres mensuelles certifiées',checkedAt:new Date().toISOString(),monthsCovered:rows.length};
+  await writeAnalyticsCache(key,'customer-base-lifetime-v2',out,1800);
   return{status:200,data:out};
  }
  if(url.pathname==='/api/analytics/customer-intelligence/prepare'){
