@@ -239,8 +239,8 @@ export async function readMonthlySalesExport(stores=[],{startDate='',endDate='',
  for(const [index,store] of stores.entries()){
   await onProgress({phase:'READING_SALES',completed:index,total:stores.length,store:store.name});
   const [current,previous]=await Promise.all([
-   readStoreSalesRange(store.id,{startDate,endDate,force}),
-   readStoreSalesRange(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})
+   readStoreSalesRange(store.id,{startDate,endDate,force,exportLean:true}),
+   readStoreSalesRange(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force,exportLean:true})
   ]);
   let currentEvidence=null,previousEvidence=null,currentEvidenceError=null,previousEvidenceError=null;
   if(current.status==='READY')try{currentEvidence=await readBasketPeriod(store.id,{startDate,endDate,force})}catch(error){currentEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
