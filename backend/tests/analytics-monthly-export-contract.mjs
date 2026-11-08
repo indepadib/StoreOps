@@ -60,4 +60,19 @@ assert.match(service,/ca_volume_effect/,'product mix decomposition must include 
 assert.match(service,/ca_price_effect/,'product mix decomposition must include price effect');
 assert.match(service,/const partners=new Map/,'basket association must use pre-indexed cooccurrence for performance');
 
+
+const cache=readFileSync(new URL('../services/analytics-persistent-cache.mjs',import.meta.url),'utf8');
+assert.match(cache,/readAnalyticsCacheFresh\(key,\{strict=false\}/,'fresh status API must support strict durable reads');
+assert.match(cache,/if\(strict\)throw/,'unavailable database must not masquerade as a stale export status');
+assert.match(jobs,/freshJob=async id=>readAnalyticsCacheFresh\(exportJobKey\(id\),\{strict:true\}\)/,'export job status must bypass function-instance memory cache');
+assert.match(jobs,/const id=parts\[0\],job=await freshJob\(id\)/,'job status and page permissions must read authoritative status');
+assert.doesNotMatch(jobs,/readAnalyticsCache\(exportJobKey\(id\)\)/,'job endpoint must never serve a long-lived in-memory status');
+assert.match(jobs,/EXPORT_STALLED/,'stale background jobs must be actionable and restartable');
+assert.match(background,/readAnalyticsCacheFresh/,'worker must read current persisted job state');
+assert.match(ui,/async function readPage/,'failed page fetches must not restart the entire XLSX');
+assert.match(ui,/error\?\.status===409/,'temporary stale-page races must be retried');
+assert.match(ui,/MAX_VISIBLE_WAIT_MS=90_000/,'foreground should not hold the user for many minutes');
+assert.match(ui,/fullExportStatus/,'progress must remain visible beyond toast duration');
+assert.match(html,/id="fullExportStatus"/,'Analytics shell must render an export progress region');
+
 console.log('Analytics full period/comparison export contract passed.');
