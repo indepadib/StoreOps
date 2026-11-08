@@ -1106,7 +1106,7 @@
       toast('Vue locale réinitialisée');
     });
 
-    $('.side-nav button:not(:disabled)').forEach(btn => {
+    $$('.side-nav button:not(:disabled)').forEach(btn => {
       btn.addEventListener('click', () => {
         state.section = btn.dataset.section || 'overview';
         applySectionView();
@@ -1116,7 +1116,7 @@
       });
     });
 
-    $('[data-mobile-section]').forEach(btn => {
+    $$('[data-mobile-section]').forEach(btn => {
       btn.addEventListener('click', () => {
         state.section = btn.dataset.mobileSection || 'overview';
         applySectionView();
@@ -1321,10 +1321,10 @@
       bottomGrid.hidden = state.section !== 'overview' || !anyVisible;
     }
 
-    $('.side-nav button[data-section]').forEach(btn => {
+    $$('.side-nav button[data-section]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.section === state.section);
     });
-    $('[data-mobile-section]').forEach(btn => {
+    $$('[data-mobile-section]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mobileSection === state.section);
       if (btn.dataset.mobileSection === state.section) btn.setAttribute('aria-current', 'page');
       else btn.removeAttribute('aria-current');
