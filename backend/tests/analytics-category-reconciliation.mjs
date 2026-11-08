@@ -62,7 +62,7 @@ assert.equal(buildReliableCategories(divergent,catalog).status,'UNAVAILABLE','Ca
 const html=readFileSync(new URL('../../frontend/analytics/decision-studio.js',import.meta.url),'utf8');
 assert.match(html,/from '.\/category-reconciliation\.js'/);
 assert.match(html,/categorySummaryLines\(categoryReport,money,number\)/);
-assert.match(html,/Couverture du CA par rayon/);
+assert.match(html,/CA catégorisé/);
 assert.match(html,/classification\.status==='UNAVAILABLE'/);
 for(const name of ['category-reconciliation.js','decision-studio.js']){
  const path=fileURLToPath(new URL('../../frontend/analytics/'+name,import.meta.url));
