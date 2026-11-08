@@ -134,15 +134,43 @@ async function runResearch(){
  }catch(error){if(!signal.aborted)setStatus('Étude suspendue : '+(error.message||'lecture indisponible')+'. Les journées validées restent en cache.',true)}
  finally{run.disabled=false;run.textContent='Construire / reprendre le rapport';running=false}
 }
+let baseController=null;
 async function runCustomerBase(){
- const start=$('customerHistoryStart').value,end=dates().end,btn=$('customerBaseRun');
- if(!start){setStatus('Renseignez et vérifiez la date officielle de début d’historique fidélité ; aucune date d’ouverture n’est supposée.',true);$('customerHistoryStart').focus();return}
- btn.disabled=true;try{setStatus('Lecture de la base fidélité depuis le '+start+'…');
- const r=await core.api('/api/analytics/customer-base?'+new URLSearchParams({...dates(),historyStart:start,end}),{noRetry:true});
- renderBase(r);setStatus(r.status==='READY'?'Adhésions de la période historique disponibles ; date d’ouverture à certifier.':'Périmètre historique incomplet ; pas de cumul fictif.')
- }catch(e){setStatus('Enrôlements indisponibles : '+(e.message||'erreur source'),true)}
- finally{btn.disabled=false}
+ const historyStart=$('customerHistoryStart').value,historyEnd=dates().end,btn=$('customerBaseRun');
+ if(!historyStart){setStatus('Renseignez et vérifiez la date officielle de début d’historique fidélité ; aucune date d’ouverture n’est supposée.',true);$('customerHistoryStart').focus();return}
+ if(baseController)baseController.abort();
+ const signal=(baseController=new AbortController()).signal;
+ btn.disabled=true;$('customerBaseCancel').hidden=false;
+ const params=new URLSearchParams({...dates(),historyStart,end:historyEnd});
+ try{
+  for(let attempt=0;attempt<90;attempt++){
+   if(signal.aborted)return;
+   const r=await core.api('/api/analytics/customer-base?'+params,{noRetry:true,signal});
+   if(r.status!=='PREPARATION_REQUIRED'){
+    renderBase(r);
+    setStatus(r.status==='READY'?'Adhésions historiques vérifiées sur la fenêtre choisie. Attention : date d’ouverture à certifier.':'Historique partiel ; aucun total inventé.');
+    return
+   }
+   setStatus('Base historique · '+r.coveredMonths+'/'+r.totalMonths+' périodes mensuelles contrôlées. Lecture de '+r.tasks.length+' mois supplémentaires…');
+   let cursor=0,completed=0,error=null;const tasks=r.tasks;
+   await Promise.all(Array.from({length:Math.min(2,tasks.length)},async()=>{
+    while(cursor<tasks.length&&!error&&!signal.aborted){
+     const task=tasks[cursor++];
+     try{
+      const p=new URLSearchParams({storeId:task.storeId,start:task.start,end:task.end});
+      await core.api('/api/analytics/customer-base/prepare?'+p,{noRetry:true,signal});
+      completed++;
+      setStatus('Base historique · '+(r.coveredMonths+completed)+'/'+r.totalMonths+' mois préparés. Données enregistrées et réutilisables.')
+     }catch(e){if(!signal.aborted)error=e;return}
+    }
+   }));
+   if(error)throw error
+  }
+  setStatus('Historique important : les périodes certifiées ont été conservées. Relancez pour reprendre le traitement.',true);
+ }catch(e){if(!signal.aborted)setStatus('Historique fidélité interrompu : '+(e.message||'source indisponible')+'. Les mois déjà sauvegardés seront réutilisés.',true)}
+ finally{btn.disabled=false;$('customerBaseCancel').hidden=true;baseController=null}
 }
+$('customerBaseCancel')?.addEventListener('click',()=>baseController?.abort());
 $('customerResearchRun')?.addEventListener('click',runResearch);
 $('customerBaseRun')?.addEventListener('click',runCustomerBase);
 document.addEventListener('retail-intelligence:section',()=>{if(controller&&!running)controller.abort()});
