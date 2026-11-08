@@ -50,6 +50,8 @@ jobs:
           node backend/tests/v233-unit-aware-margin.mjs
       - name: Analytics performance and cache contract
         run: node backend/tests/analytics-performance-contract.mjs
+      - name: Analytics complete monthly N/N-1 export contract
+        run: node backend/tests/analytics-monthly-export-contract.mjs
       - name: Sales parent tickets and fiscal inclusion
         run: |
           node backend/tests/sales-parent-parity.mjs
