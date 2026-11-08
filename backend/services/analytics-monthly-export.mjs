@@ -89,11 +89,18 @@ function basketStats(evidence){
   }
  }
  const totalTickets=evidence.baskets.length;
+ // Index co-occurrences once; monthly exports can contain thousands of pairs.
+ const partners=new Map();
+ for(const [key,count] of pairCounts){
+  const split=key.indexOf('|'),a=key.slice(0,split),b=key.slice(split+1);
+  if(!partners.has(a))partners.set(a,[]);
+  if(!partners.has(b))partners.set(b,[]);
+  partners.get(a).push({other:b,count});partners.get(b).push({other:a,count});
+ }
  for(const [sku,cur] of products){
   let best=null;
-  for(const [key,count] of pairCounts){
-   const [a,b]=key.split('|');if(a!==sku&&b!==sku)continue;
-   const other=a===sku?b:a,otherTickets=ticketCounts.get(other)||0,lift=cur.tickets&&otherTickets&&totalTickets?round2(count*totalTickets/(cur.tickets*otherTickets)):null;
+  for(const {other,count} of partners.get(sku)||[]){
+   const otherTickets=ticketCounts.get(other)||0,lift=cur.tickets&&otherTickets&&totalTickets?round2(count*totalTickets/(cur.tickets*otherTickets)):null;
    const candidate={productNumber:other,tickets:count,sharePct:pct(count,cur.tickets),lift};
    if(!best||candidate.tickets>best.tickets||candidate.tickets===best.tickets&&n(candidate.lift)>n(best.lift))best=candidate
   }
@@ -129,6 +136,13 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
  const cm=new Map((current.products||[]).map(x=>[clean(x.key),x])),pm=new Map((previous.products||[]).map(x=>[clean(x.key),x])),keys=[...new Set([...cm.keys(),...pm.keys()])];
  const cb=basketStats(currentEvidence),pb=basketStats(previousEvidence),cr=rankMap(current.products||[]),pr=rankMap(previous.products||[]);
  const totalCurrent=n(current.summary?.sales),totalPrevious=n(previous.summary?.sales);
+ const currentDays=daysBetween(currentPeriod.startDate,currentPeriod.endDate),previousDays=daysBetween(previousPeriod.startDate,previousPeriod.endDate);
+ const cumulative=new Map();let running=0;
+ for(const product of [...(current.products||[])].sort((a,b)=>n(b.sales)-n(a.sales))){
+  running+=n(product.sales);
+  const share=totalCurrent?pct(running,totalCurrent):null;
+  cumulative.set(clean(product.key),{share,className:share===null?null:share<=80?'A':share<=95?'B':'C'});
+ }
  return keys.map(productNumber=>{
   const c=cm.get(productNumber)||{},p=pm.get(productNumber)||{},cat=catalog.get(productNumber)||{},bc=cb.products.get(productNumber)||{},bp=pb.products.get(productNumber)||{};
   const cq=singleQuantity(quantityMap(c)),pq=singleQuantity(quantityMap(p)),sameUnit=!!cq.unit&&cq.unit===pq.unit,avgPriceC=cq.units>0?round2(n(c.sales)/cq.units):null,avgPriceP=pq.units>0?round2(n(p.sales)/pq.units):null;
@@ -150,10 +164,14 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
    status_vs_n1:productStatus(c,p),
    ca_n:round2(c.sales),ca_n1:round2(p.sales),ca_delta:round2(n(c.sales)-n(p.sales)),ca_evolution_pct:growth(c.sales,p.sales),
    ca_weight_pct:pct(c.sales,totalCurrent),ca_weight_n1_pct:pct(p.sales,totalPrevious),ca_weight_delta_points:totalCurrent&&totalPrevious?round2(pct(c.sales,totalCurrent)-pct(p.sales,totalPrevious)):null,
+   ca_daily_n:currentDays?round2(n(c.sales)/currentDays):null,ca_daily_n1:previousDays?round2(n(p.sales)/previousDays):null,
+   abc_class_n:cumulative.get(productNumber)?.className||null,cumulative_ca_pct_n:cumulative.get(productNumber)?.share??null,
    rank_ca_n:cr.get(productNumber)||null,rank_ca_n1:pr.get(productNumber)||null,rank_delta:cr.get(productNumber)&&pr.get(productNumber)?pr.get(productNumber)-cr.get(productNumber):null,
    quantity_n:cq.units??round2(c.units),quantity_n1:pq.units??round2(p.units),quantity_unit:cq.unit||pq.unit||'',
    quantity_delta:sameUnit?round2(cq.units-pq.units):null,quantity_evolution_pct:sameUnit?growth(cq.units,pq.units):null,
    realized_price_n:avgPriceC,realized_price_n1:avgPriceP,realized_price_evolution_pct:avgPriceC!=null&&avgPriceP!=null?growth(avgPriceC,avgPriceP):null,
+   ca_volume_effect:sameUnit&&avgPriceP!=null?round2((cq.units-pq.units)*avgPriceP):null,
+   ca_price_effect:sameUnit&&avgPriceC!=null&&avgPriceP!=null?round2(cq.units*(avgPriceC-avgPriceP)):null,
    tickets_scope_n:cb.totalTickets,tickets_scope_n1:pb.totalTickets,
    tickets_with_product_n:basketNumber(cb,bc,'tickets'),tickets_with_product_n1:basketNumber(pb,bp,'tickets'),tickets_with_product_evolution_pct:cb.ready&&pb.ready?growth(bc.tickets??0,bp.tickets??0):null,
    basket_penetration_pct:basketNumber(cb,bc,'penetrationPct'),basket_penetration_n1_pct:basketNumber(pb,bp,'penetrationPct'),basket_penetration_delta_points:cb.ready&&pb.ready?round2((bc.penetrationPct??0)-(bp.penetrationPct??0)):null,
@@ -178,9 +196,11 @@ export const MONTHLY_EXPORT_COLUMNS=[
  ['department_code','Code département'],['department','Département'],['rayon_code','Code rayon'],['rayon','Rayon'],['family_code','Code famille'],['family','Famille'],['subfamily_code','Code sous-famille'],['subfamily','Sous-famille'],['subsubfamily_code','Code sous-sous-famille'],['subsubfamily','Sous-sous-famille'],['ub_code','Code UB'],['ub','UB'],
  ['retail_scope','Scope retail'],['vendor_account','Compte fournisseur'],['vendor_name','Fournisseur'],['supply_mode','Mode appro'],['sales_unit','Unité vente'],['inventory_unit','Unité stock'],['purchase_unit','Unité achat'],['status_vs_n1','Statut vs comparaison'],
  ['ca_n','CA période TTC'],['ca_n1','CA comparaison TTC'],['ca_delta','Écart CA'],['ca_evolution_pct','Évolution CA %'],['ca_weight_pct','Poids CA période %'],['ca_weight_n1_pct','Poids CA comparaison %'],['ca_weight_delta_points','Écart poids CA pts'],
+ ['ca_daily_n','CA / jour calendaire période'],['ca_daily_n1','CA / jour calendaire comparaison'],['abc_class_n','Classe ABC CA période'],['cumulative_ca_pct_n','Poids CA cumulé période %'],
  ['rank_ca_n','Rang CA période'],['rank_ca_n1','Rang CA comparaison'],['rank_delta','Gain/perte rang'],
  ['quantity_n','Quantité période'],['quantity_n1','Quantité comparaison'],['quantity_unit','Unité quantité'],['quantity_delta','Écart quantité'],['quantity_evolution_pct','Évolution quantité %'],
  ['realized_price_n','Prix moyen réalisé période'],['realized_price_n1','Prix moyen réalisé comparaison'],['realized_price_evolution_pct','Évolution prix moyen %'],
+ ['ca_volume_effect','Effet volume estimé DH'],['ca_price_effect','Effet prix estimé DH'],
  ['tickets_scope_n','Tickets périmètre période'],['tickets_scope_n1','Tickets périmètre comparaison'],['tickets_with_product_n','Tickets avec article période'],['tickets_with_product_n1','Tickets avec article comparaison'],['tickets_with_product_evolution_pct','Évolution tickets article %'],
  ['basket_penetration_pct','Présence panier période %'],['basket_penetration_n1_pct','Présence panier comparaison %'],['basket_penetration_delta_points','Écart présence panier pts'],
  ['average_basket_with_product','Panier moyen avec article période'],['average_basket_with_product_n1','Panier moyen avec article comparaison'],['average_basket_evolution_pct','Évolution panier avec article %'],
@@ -211,12 +231,13 @@ async function catalogForProducts(products=[]){
  }
  return results.flat()
 }
-export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false,scope='all'}={}){
+export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false,scope='all',onProgress=()=>{}}={}){
  const days=daysBetween(startDate,endDate),comparisonDays=daysBetween(compareStartDate,compareEndDate);
  if(!days||days<1||days>31)throw Object.assign(new Error('Export Analytics : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
  if(!comparisonDays||comparisonDays<1||comparisonDays>31)throw Object.assign(new Error('Export Analytics : la période de comparaison doit contenir 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_COMPARISON_RANGE'});
  const currentPeriod={startDate,endDate},previousPeriod={startDate:compareStartDate,endDate:compareEndDate},storeResults=[];
- for(const store of stores){
+ for(const [index,store] of stores.entries()){
+  await onProgress({phase:'READING_SALES',completed:index,total:stores.length,store:store.name});
   const [current,previous]=await Promise.all([
    readStoreSalesRange(store.id,{startDate,endDate,force}),
    readStoreSalesRange(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})
@@ -224,9 +245,12 @@ export async function readMonthlySalesExport(stores=[],{startDate,endDate,compar
   let currentEvidence=null,previousEvidence=null,currentEvidenceError=null,previousEvidenceError=null;
   if(current.status==='READY')try{currentEvidence=await readBasketPeriod(store.id,{startDate,endDate,force})}catch(error){currentEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
   if(previous.status==='READY')try{previousEvidence=await readBasketPeriod(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})}catch(error){previousEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
-  storeResults.push({store,current,previous,currentEvidence,previousEvidence,currentEvidenceError,previousEvidenceError})
+  storeResults.push({store,current,previous,currentEvidence,previousEvidenceError, currentEvidenceError,previousEvidence});
+  await onProgress({phase:'READING_SALES',completed:index+1,total:stores.length,store:store.name});
  }
+ await onProgress({phase:'ENRICHING_CATALOG',completed:0,total:1});
  const products=storeResults.flatMap(x=>[...(x.current.products||[]),...(x.previous.products||[])]).map(x=>x.key),catalogItems=await catalogForProducts(products),catalog=catalogMap(catalogItems);
+ await onProgress({phase:'ENRICHING_CATALOG',completed:1,total:1});
  const networkCurrent=combineRanges(storeResults.map(x=>x.current)),networkPrevious=combineRanges(storeResults.map(x=>x.previous)),networkCurrentEvidence=combineEvidence(storeResults.map(x=>x.currentEvidence)),networkPreviousEvidence=combineEvidence(storeResults.map(x=>x.previousEvidence));
  const scopeMode=['network','stores'].includes(clean(scope).toLowerCase())?clean(scope).toLowerCase():'all';
  const networkRows=scopeMode==='stores'?[]:buildScopeRows({scopeType:'NETWORK',storeName:'Réseau sélectionné',current:networkCurrent,previous:networkPrevious,currentEvidence:networkCurrentEvidence,previousEvidence:networkPreviousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode});
