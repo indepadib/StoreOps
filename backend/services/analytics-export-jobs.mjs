@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../db.mjs';
 import { canAccessStore } from './permissions.mjs';
-import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
+import { analyticsCacheKey, readAnalyticsCache, readAnalyticsCacheFresh, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 
 // Long monthly exports must not run inside the ~30-second public API request.
 // Only authenticated callers may create/read a job; the background worker gets
@@ -13,6 +13,13 @@ const clean=v=>String(v??'').trim();
 const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))&&!Number.isNaN(Date.parse(v+'T00:00:00Z'))?clean(v):null;
 const daysBetween=(a,b)=>a&&b&&b>=a?Math.round((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000)+1:0;
 const error=(status,message,code)=>({status,data:{error:message,code}});
+const freshJob=async id=>readAnalyticsCacheFresh(exportJobKey(id),{strict:true});
+const abandoned=job=>['QUEUED','RUNNING'].includes(job?.status)&&
+ Date.now()-Date.parse(job.updatedAt||job.createdAt||0)>17*60_000;
+const publicStatus=job=>{
+ const {input,...safeJob}=job;
+ return abandoned(job)?{...safeJob,status:'FAILED',code:'EXPORT_STALLED',message:'La préparation a dépassé le délai maximal. Relancer l’export.'}:safeJob
+};
 async function readBody(req){
  return new Promise((resolve,reject)=>{
   let value='';req.on('data',chunk=>{value+=chunk;if(value.length>20000)reject(new Error('Requête trop volumineuse'))});
@@ -41,8 +48,8 @@ export async function handleAnalyticsExportJobApi({req,url,user}){
   const reuseKey=pendingKey(user.id,fingerprint);
   const existing=await readAnalyticsCache(reuseKey);
   if(existing?.jobId){
-   const prior=await readAnalyticsCache(exportJobKey(existing.jobId));
-   if(prior&&prior.userId===user.id&&['QUEUED','RUNNING','READY'].includes(prior.status))return{status:202,data:{jobId:prior.id,status:prior.status,reused:true}};
+   const prior=await freshJob(existing.jobId);
+   if(prior&&prior.userId===user.id&&!abandoned(prior)&&['QUEUED','RUNNING','READY'].includes(prior.status))return{status:202,data:{jobId:prior.id,status:prior.status,reused:true}};
   }
   const id=randomUUID(),job={id,userId:user.id,status:'QUEUED',input,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),progress:{phase:'QUEUED',completed:0,total:stores.length},pages:0};
   if(!await writeAnalyticsCache(exportJobKey(id),'monthly-export-job-v1',job,21600))return error(503,'Impossible de préparer le stockage sécurisé de l’export.','EXPORT_STORAGE_UNAVAILABLE');
@@ -62,14 +69,13 @@ export async function handleAnalyticsExportJobApi({req,url,user}){
   return{status:202,data:{jobId:id,status:'QUEUED',message:'Préparation de l’export en tâche serveur.'}}
  }
  if(req.method==='GET'&&parts.length>=1&&/^[0-9a-f-]{36}$/i.test(parts[0])){
-  const id=parts[0],job=await readAnalyticsCache(exportJobKey(id));
+  const id=parts[0],job=await freshJob(id);
   if(!job||job.userId!==user.id)return error(404,'Export introuvable ou expiré.','EXPORT_JOB_NOT_FOUND');
   if(parts.length===1){
-   const {input,...publicJob}=job;
-   return{status:200,data:publicJob}
+   return{status:200,data:publicStatus(job)}
   }
   if(parts.length===3&&parts[1]==='pages'&&/^\d+$/.test(parts[2])){
-   if(job.status!=='READY')return error(409,'Export pas encore disponible.','EXPORT_NOT_READY');
+   if(job.status!=='READY')return error(409,abandoned(job)?'Préparation expirée. Relancer l’export.':'Export pas encore disponible.','EXPORT_NOT_READY');
    const index=Number(parts[2]);
    if(!Number.isSafeInteger(index)||index<0||index>=Number(job.pages||0))return error(404,'Page d’export inexistante.','EXPORT_PAGE_NOT_FOUND');
    const rows=await readAnalyticsCache(exportPageKey(id,index));
