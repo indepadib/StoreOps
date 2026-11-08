@@ -29,8 +29,9 @@ export async function answerBusinessQuestion(stores,input,{allowedStores=stores,
  if(researchIntent){
   const scopeHints=allowedStores.filter(s=>[s.id,s.name,s.code].some(name=>name&&normalize(question).includes(normalize(name))));
   const selected=scopeHints.length===1?scopeHints:stores;
-  const requested=researchIntent.kind==='CUSTOMER_LIFETIME'?input:requestedPeriod(question,input,clock).input;
-  return customerResearchQuestion(selected,{...requested,question},{read});
+  const requestedPeriodResult=researchIntent.kind==='CUSTOMER_LIFETIME'?{input}:requestedPeriod(question,input,clock);
+  if(requestedPeriodResult.clarification)return clarification(requestedPeriodResult.clarification);
+  return customerResearchQuestion(selected,{...requestedPeriodResult.input,question},{read});
  }
  if(input.followUp?.plan){try{previousPlan=validateQueryPlan(input.followUp.plan)}catch{return clarification('Le contexte précédent n’est plus exploitable. Reformulez la question complète.')}}
  const continuation=/^(et|idem|pareil|aussi|seulement|uniquement|plutot|pour )/.test(normalize(question)),previousPeriod=input.followUp?.period;const effectiveInput=continuation&&previousPeriod&&!input.preparationScope?{...input,start:previousPeriod.start,end:previousPeriod.end,compareStart:previousPeriod.compareStart,compareEnd:previousPeriod.compareEnd,slices:undefined}:input;const period=requestedPeriod(question,effectiveInput,clock);if(period.clarification)return clarification(period.clarification);
