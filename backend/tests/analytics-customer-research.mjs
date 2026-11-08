@@ -6,7 +6,7 @@ process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'customer-research-')),'t
 delete process.env.ANTHROPIC_API_KEY;
 const {buildCustomerRetentionResearch}=await import('../services/analytics-customer-research.mjs');
 const {classifyCustomerResearchQuestion,customerResearchQuestion}=await import('../services/analytics-customer-research-intent.mjs');
-const {answerBusinessQuestion}=await import('../services/analytics-query-agent.mjs');
+const {answerBusinessQuestion,needsAdvancedQueryPlanning}=await import('../services/analytics-query-agent.mjs');
 const {$type}=globalThis;void $type;
 const before=[],after=[];
 function basket(arr,id,day,items){
@@ -67,6 +67,8 @@ assert.equal(classifyCustomerResearchQuestion('Explique pourquoi les clients rev
 assert.equal(classifyCustomerResearchQuestion('Quel impact augmentation des prix du jus orange et poulet sur la fréquentation ?').kind,'CUSTOMER_RETENTION_RESEARCH');
 assert.equal(classifyCustomerResearchQuestion('Les clients sont-ils revenus ?'),null,'Simple question must retain classic query agent');
 assert.equal(classifyCustomerResearchQuestion('Top 10 articles'),null);
+assert.equal(needsAdvancedQueryPlanning('Pourquoi les ventes et le panier reculent alors que les promotions augmentent dans les magasins et les clients identifiés ?'),true);
+assert.equal(needsAdvancedQueryPlanning('Quel est le CA ?'),false);
 const stores=[{id:'trefle',name:'Trèfle'}],input={start:'2026-10-11',end:'2026-10-20',compareStart:'2026-10-01',compareEnd:'2026-10-10',question:'Impact de la hausse du prix du jus orange et poulet sur les clients ?'};
 const key='customer-research-v1|trefle|2026-10-11|2026-10-20|2026-10-01|2026-10-10';
 const hit=await customerResearchQuestion(stores,input,{read:async k=>k===key?r:null});
