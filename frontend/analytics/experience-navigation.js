@@ -177,6 +177,30 @@ function defineFinder(){
   }
  });
 }
+function setupTools(){
+ const details=el('riTools'),menu=el('riToolsMenu'),bar=document.querySelector('.topbar-actions');
+ if(!details||!menu||!bar)return;
+ const buttons=['customizeBtn','fullExportBtn','exportBtn'].map(el);
+ if(buttons.some(x=>!x))return;
+ const media=window.matchMedia('(max-width: 780px)');
+ // Moving the original buttons preserves their event handlers, permissions
+ // and disabled state. No duplicate export implementation is introduced.
+ function layout(){
+  if(media.matches){
+   for(const button of buttons)menu.append(button);
+   details.hidden=false
+  }else{
+   details.open=false;
+   for(const button of buttons)bar.insertBefore(button,details);
+   details.hidden=true
+  }
+ }
+ menu.addEventListener('click',event=>{if(event.target.closest('button'))details.open=false});
+ document.addEventListener('pointerdown',event=>{
+  if(details.open&&!details.contains(event.target))details.open=false
+ });
+ media.addEventListener?.('change',layout);layout()
+}
 function setupFilters(){
  const toggle=el('riFilterMore'),filters=el('filterbar');
  if(!toggle||!filters)return;
@@ -198,7 +222,7 @@ function connect(){
  document.addEventListener('click',event=>{
   const b=event.target.closest('[data-ri-action]');if(b)act(b.dataset.riAction)
  });
- defineFinder();setupFilters();updateHeading();
+ setupTools();defineFinder();setupFilters();updateHeading();
  window.addEventListener('resize',syncLensIndicator,{passive:true});
  document.addEventListener('retail-intelligence:section',updateHeading);
 }
