@@ -84,7 +84,7 @@ assert.match(answer.answer,/Écart : 5 pts/,'Percentage differences are expresse
 assert(answer.semanticTrace.some(m=>m.id==='promotion_sales_share'),'Grounded answer must expose the semantic source/method');
 const daily=renderQueryAnswer(parseQuery('Quel est mon CA moyen par jour ?'),evidence);
 assert.match(daily.answer,/120 DH/);assert.match(daily.answer,/100 DH/);
-assert.match(daily.answer,/jours calendaires/);
+assert.match(daily.answer,/jours calendaires/i);
 
 const ui=readFileSync(new URL('../../frontend/analytics/index.html',import.meta.url),'utf8');
 const bootstrap=readFileSync(new URL('../../frontend/analytics/bootstrap.js',import.meta.url),'utf8');
