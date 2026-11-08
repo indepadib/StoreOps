@@ -10,7 +10,18 @@ const pct=v=>v==null||!Number.isFinite(Number(v))?'Non mesuré':nf.format(v)+' %
 const money=v=>v==null||!Number.isFinite(Number(v))?'Non mesuré':nf.format(v)+' DH';
 const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n};
 function add(parent,tag,cls,text){const n=node(tag,cls,text);parent.append(n);return n}
-const dates=()=>{const s=core.getState();return{start:s.periodStart,end:s.periodEnd,compareStart:s.compareStart,compareEnd:s.compareEnd,storeIds:core.getSelectedStores().map(x=>x.id).join(','),storeId:'ALL'}};
+const shiftDay=(day,offset)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+offset);return d.toISOString().slice(0,10)};
+const daysBetween=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/86400000)+1;
+const dates=()=>{
+ const s=core.getState(),today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),
+ yesterday=shiftDay(today,-1);
+ let start=s.periodStart,end=s.periodEnd,compareStart=s.compareStart,compareEnd=s.compareEnd;
+ if(end>=today){
+  if(start>yesterday){start=yesterday;end=yesterday;compareStart=compareEnd=shiftDay(yesterday,-1)}
+  else{end=yesterday;const count=daysBetween(start,end);compareStart=shiftDay(compareEnd,-(count-1))}
+ }
+ return{start,end,compareStart,compareEnd,storeIds:core.getSelectedStores().map(x=>x.id).join(','),storeId:'ALL'}
+};
 const key=()=>JSON.stringify(dates());
 function summaryCard(label,value,detail){
  const card=node('article','customer-research-metric');add(card,'small',null,label);add(card,'strong',null,value);add(card,'span',null,detail);return card
@@ -124,7 +135,7 @@ async function runResearch(){
    const data=await core.api('/api/analytics/customer-research?'+new URLSearchParams(dates()),{noRetry:true,signal});
    if(data.status!=='PREPARATION_REQUIRED'){
     render(data);
-    setStatus('Étude calculée sur les tickets et clients identifiés des deux périodes · aucune preuve causale inventée.');
+    setStatus('Étude calculée sur les journées terminées indiquées dans le rapport · les journées en cours sont exclues · aucune causalité inventée.');
     return
    }
    setStatus(data.missingDays+' journées de paniers à préparer, par lots de 12. Lecture contrôlée pour éviter les délais 504.');
