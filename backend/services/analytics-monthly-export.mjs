@@ -231,7 +231,7 @@ async function catalogForProducts(products=[]){
  }
  return results.flat()
 }
-export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false,scope='all',onProgress=()=>{}}={}){
+export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false,scope='all',onProgress=(_progress)=>{}}={}){
  const days=daysBetween(startDate,endDate),comparisonDays=daysBetween(compareStartDate,compareEndDate);
  if(!days||days<1||days>31)throw Object.assign(new Error('Export Analytics : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
  if(!comparisonDays||comparisonDays<1||comparisonDays>31)throw Object.assign(new Error('Export Analytics : la période de comparaison doit contenir 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_COMPARISON_RANGE'});
