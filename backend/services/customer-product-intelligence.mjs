@@ -17,7 +17,7 @@ export function basketEvidence(rows,fields,{storeId,amount}={}){
   const customer=clean(row[fields.customer]),customerToken=anonymous.has(customer.toUpperCase())?null:createHash('sha256').update('storeops-customer-v1|'+customer).digest('hex');
   const b=baskets.get(key)||{key,storeId,date:clean(row[fields.date]).slice(0,10),customerToken,items:new Map()};
   if(b.customerToken!==customerToken)b.customerToken=null;
-  const unit=clean(row[fields.salesUnit]||row.unit).toUpperCase(),itemKey=JSON.stringify([sku,unit]),item=b.items.get(itemKey)||{productNumber:sku,unit,sales:0,promotionSales:0,units:0,discountAmount:0,periodicDiscountAmount:0,offerIds:new Set()};
+  const unit=clean(row[fields.salesUnit]||row.unit).toUpperCase(),itemKey=JSON.stringify([sku,unit]),item=b.items.get(itemKey)||{productNumber:sku,productName:fields.name?clean(row[fields.name])||null:null,unit,sales:0,promotionSales:0,units:0,discountAmount:0,periodicDiscountAmount:0,offerIds:new Set()};
   item.discountAmount+=Math.abs(Number(row[fields.discount])||0);item.periodicDiscountAmount+=Math.abs(Number(row[fields.periodicDiscount])||0);if(row[fields.offer])item.offerIds.add(clean(row[fields.offer]));
   item.sales+=amount(row);if(Math.abs(Number(row[fields.periodicDiscount])||0)>0)item.promotionSales+=amount(row);item.units+=Math.abs(Number(row[fields.quantity])||0);b.items.set(itemKey,item);baskets.set(key,b);
  }
