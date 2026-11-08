@@ -114,7 +114,7 @@ async function callLocalApi(request:Request){
   const incoming=new URL(request.url),body=!READ_METHODS.has(request.method)?Buffer.from(await request.arrayBuffer()):undefined;
   const upstream=await callLocalPath(request,`${incoming.pathname}${incoming.search}`,{method:request.method,body});
   const responseHeaders=new Headers(upstream.headers);for(const name of ['content-length','transfer-encoding','content-encoding','connection'])responseHeaders.delete(name);
-  return new Response(await upstream.arrayBuffer(),{status:upstream.status,statusText:upstream.statusText,headers:responseHeaders})
+  return new Response([204,205,304].includes(upstream.status)?null:await upstream.arrayBuffer(),{status:upstream.status,statusText:upstream.statusText,headers:responseHeaders})
 }
 
 function statelessHealth(request:Request){
@@ -248,6 +248,14 @@ async function syncReadRuntime(database:any){
   try{return await readSyncPromise}finally{readSyncPromise=null}
 }
 
+// Background workers reuse the same Postgres-backed store snapshot and Dynamics config.
+export async function prepareAnalyticsRuntime(){
+ const database=getDatabase();
+ const runtime=await syncReadRuntime(database);
+ await loadRuntime();
+ return runtime;
+}
+
 function withTiming(response:Response,mode:'read-light'|'read-fast'|'write-sync',startedAt:number,syncAt:number,runtimeAt:number,backendAt:number){
   const headers=new Headers(response.headers),now=Date.now(),state=Math.max(0,syncAt-startedAt),runtime=Math.max(0,runtimeAt-syncAt),backend=Math.max(0,backendAt-runtimeAt),total=Math.max(0,now-startedAt);
   headers.set('Server-Timing',`state;dur=${state}, runtime;dur=${runtime}, backend;dur=${backend}, total;dur=${total}`);headers.set('X-StoreOps-Bridge',mode);if(localRevision!==null)headers.set('X-StoreOps-Revision',localRevision);
@@ -297,7 +305,7 @@ export default async(request:Request)=>{
       return await serveBuyingGroup(request,database,user);
     }catch(error){console.error('Buying Group auth/bootstrap failed',error);return errorResponse(error)}
   }
-  const analyticalRead=request.method==='POST'&&new URL(request.url).pathname==='/api/analytics/assistant';
+  const analyticalRead=request.method==='POST'&&['/api/analytics/assistant','/api/analytics/monthly-export/jobs'].includes(new URL(request.url).pathname);
   try{return (READ_METHODS.has(request.method)||analyticalRead)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
 
