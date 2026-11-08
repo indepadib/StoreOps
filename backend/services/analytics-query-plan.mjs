@@ -1,6 +1,6 @@
 export const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[’']/g,' ').replace(/[^a-z0-9_.,%<>!= -]+/g,' ').replace(/\s+/g,' ').trim();
 export const entities=['network','products','stores','department','rayon','family','suppliers','cashiers','days','hours','baskets','customers','stock'];
-export const metrics=['sales','previousSales','delta','changePct','sharePct','tickets','previousTickets','averageBasket','units','marginValue','marginRate','identifiedTicketRate','identifiedSalesShare','promotionSales','promotionTickets','discountAmount','penetrationPct','realizedUnitPrice','repurchasePct'];
+export const metrics=['sales','previousSales','delta','changePct','sharePct','tickets','previousTickets','averageBasket','units','marginValue','marginRate','identifiedTicketRate','identifiedSalesShare','promotionSales','promotionTickets','discountAmount','promotionSalesShare','salesPerDay','ticketsPerDay','penetrationPct','realizedUnitPrice','repurchasePct'];
 export const operations=['summary','count','rank','list','compare','drivers','concentration','affinity','pricing','retention','customerSales','actions'];
 const own=(x,k)=>Object.hasOwn(x,k),obj=x=>x&&typeof x==='object'&&!Array.isArray(x);
 export function validateQueryPlan(value){
@@ -30,6 +30,11 @@ export function parseQuery(question,{previousPlan=null}={}){
  if(op!=='retention'&&/combien|nombre|\bnb\b/.test(q)&&/article|produit|reference|fournisseur|client/.test(q)&&!/quantite|volume|unite/.test(q))op='count';
  const requested=[];const add=(m,p)=>{if(p.test(q)&&!requested.includes(m))requested.push(m)};
  add('sales',/\bca\b|chiffre|vente|activite/);add('delta',/evolu|progress|variation|hausse|baisse|chute|contribut/);add('tickets',/ticket|frequent/);if(/ticket/.test(q)&&/promo|remis/.test(q)){requested.splice(requested.indexOf('tickets'),1);requested.push('promotionTickets');}add('averageBasket',/panier/);add('units',/volume|quantite|unite|plus vendu|moins vendu/);add('marginRate',/taux.*marge|marge.*%/);if(!requested.includes('marginRate'))add('marginValue',/marge|rentab/);add('identifiedTicketRate',/identif|fidelis|recrut/);add('promotionSales',/promo|remis/);add('penetrationPct',/penetration/);add('realizedUnitPrice',/prix|tarif/);add('repurchasePct',/reachat|retention|rachat/);
+ const dailyAverage=/\bca\b.*(?:moyen|moyenne|par jour)|(?:ca|chiffre).*quotidien|(?:tickets|frequentation).*par jour|(?:moyenne|moyen).*\bca\b.*jour/.test(q);
+ if(dailyAverage&&!codes.length&&!/article|produit|reference|sku|rayon|famille|departement|magasin/.test(q))entity='network';
+ if(dailyAverage){requested.splice(0,requested.length);if(/ticket|frequent/.test(q))requested.push('ticketsPerDay');else requested.push('salesPerDay')}
+ if(/(?:poids|part|proportion).*\bca\b.*(?:remis|promo)|(?:ca|ventes).*remis.*(?:poids|part)/.test(q)){requested.splice(0,requested.length,'promotionSalesShare');entity='network'}
+ if(/(?:poids|part|proportion).*\bca\b.*(?:identif|fidel)|(?:ca|ventes).*identif.*(?:poids|part)/.test(q)){requested.splice(0,requested.length,'identifiedSalesShare');entity='network'}
  const previous=follow?previousPlan.queries[0]:null;if(previous){if(entity==='network')entity=previous.entity;if(op==='summary'&&!/bilan|resume|synthese/.test(q))op=previous.operation;}
  const filters={...(previous?.filters||{}),codes:codes.length?codes:previous?.filters?.codes||[]};
  if(/val[ -]?fleuri/.test(q)&&!/trefle/.test(q))filters.store='Val Fleuri';else if(/trefle/.test(q)&&!/val[ -]?fleuri/.test(q))filters.store='Trèfle';else if(/trefle/.test(q)&&/val[ -]?fleuri/.test(q))delete filters.store;
