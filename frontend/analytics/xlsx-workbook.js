@@ -36,10 +36,14 @@ async function zip(files){
  uint32(end,offset-start);uint32(end,start);uint16(end,0);parts.push(new Uint8Array(end));
  return new Blob(parts,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
 }
+// StoreOps returns percentages already expressed on a 0..100 scale
+// (3.35 means 3.35%). Excel/Numbers expects 0..1 for a true '%' format.
+// Keep percentage-point deltas numeric (0.09 means 0.09 point).
 const numericStyle=(key,label='')=>{
- const s=(key+' '+label).toLowerCase();
- if(/%|_pct|_percentage|_points|pct_|pourcent|taux|poids|pénétration|évolution/.test(s))return 4;
- if(/ca_|sales|price|prix|basket|panier|discount|remise|marge|cost|coût|amount|valeur|effect|effet|delta/.test(s))return 3;
+ const k=String(key||'').toLowerCase(),s=(k+' '+label).toLowerCase();
+ if(/_delta_points$|_points$|écart poids ca pts|écart présence panier pts|écart en points/.test(s))return 5;
+ if(/_pct\b|pct_|_percentage\b|\b%\b|%|pourcent|taux|poids ca|pénétration|évolution/.test(s))return 4;
+ if(/ca_|sales|price|prix|basket|panier|discount|remise|marge|cost|coût|amount|valeur|effect|effet/.test(s)&&!/^rank_/.test(k))return 3;
  return 2
 };
 function worksheet(sheet){
@@ -48,8 +52,12 @@ function worksheet(sheet){
  const lastColumn=colName(Math.max(0,headers.length-1)),endRow=rows.length+1;
  const cell=(value,ref,key,label,header=false)=>{
   if(value===null||value===undefined||value==='')return '';
-  if(!header&&typeof value==='number'&&Number.isFinite(value))
-   return '<c r="'+ref+'" s="'+numericStyle(key,label)+'"><v>'+value+'</v></c>';
+  if(!header&&typeof value==='number'&&Number.isFinite(value)){
+   const style=numericStyle(key,label);
+   // Normalize only for real percentages. Never scale percentage-point changes.
+   const stored=style===4?value/100:value;
+   return '<c r="'+ref+'" s="'+style+'"><v>'+stored+'</v></c>'
+  }
   return '<c r="'+ref+'" s="'+(header?1:0)+'" t="inlineStr"><is><t xml:space="preserve">'+xml(value)+'</t></is></c>'
  };
  const lines=['<row r="1" ht="34" customHeight="1">'+headers.map((h,j)=>cell(h,colName(j)+'1',keys[j],h,true)).join('')+'</row>'];
@@ -67,16 +75,17 @@ function worksheet(sheet){
 }
 const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
  +'<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
- +'<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;DH&quot;"/><numFmt numFmtId="165" formatCode="0.00&quot;%&quot;"/></numFmts>'
+ +'<numFmts count="3"><numFmt numFmtId="164" formatCode="#,##0.00 &quot;DH&quot;"/><numFmt numFmtId="165" formatCode="0.00%"/><numFmt numFmtId="166" formatCode="0.00 &quot;pts&quot;"/></numFmts>'
  +'<fonts count="2"><font><sz val="10"/><name val="Aptos"/></font><font><b/><sz val="10"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font></fonts>'
  +'<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF17202E"/><bgColor indexed="64"/></patternFill></fill></fills>'
  +'<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
  +'<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
- +'<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+ +'<cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
  +'<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFill="1" applyFont="1"/>'
  +'<xf numFmtId="3" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
  +'<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
- +'<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>';
+ +'<xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>' 
+ +'<xf numFmtId="166" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs></styleSheet>';
 export async function createXlsxBlob(sheets){
  if(!Array.isArray(sheets)||!sheets.length)throw Error('Aucune feuille à exporter.');
  const used=new Set();
