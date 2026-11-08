@@ -34,7 +34,7 @@
     </div>
 
     <div class="topbar-actions">
-      <button class="icon-btn mobile-only" id="mobileFiltersBtn" aria-label="Filtres">☰</button>
+      <button class="icon-btn mobile-only mobile-menu-btn" id="mobileFiltersBtn" aria-label="Ouvrir le menu Analytics" aria-expanded="false"><span aria-hidden="true">☰</span><strong>Menu</strong></button>
       <div class="freshness" id="freshnessPill">
         <span class="status-dot"></span>
         <span id="freshnessText">Connexion…</span>
@@ -44,6 +44,14 @@
       <button class="primary-btn" id="exportBtn">Exporter <span aria-hidden="true">↗</span></button>
     </div>
   </header>
+
+  <nav class="mobile-quick-nav" aria-label="Navigation rapide Analytics">
+    <button class="active" type="button" data-mobile-section="overview">Vue exec</button>
+    <button type="button" data-mobile-section="sales">Ventes</button>
+    <button type="button" data-mobile-section="network">Réseau</button>
+    <button type="button" data-mobile-section="inventory">Stock</button>
+    <button type="button" data-mobile-section="loyalty">Fidélité</button>
+  </nav>
 
   <div class="app">
     <aside class="sidebar">
