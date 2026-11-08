@@ -39,14 +39,19 @@ export async function handleCustomerBiApi({req,url,user}){
   const scope=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('customer-research-v1',[scope,start,end,compareStart,compareEnd]);
   const cached=await readAnalyticsCache(cacheKey);
   if(cached)return{status:200,data:cached};
-  const missing=[];const windows=[[compareStart,compareEnd],[start,end]];
+  const missing=[],dates=[],windows=[[compareStart,compareEnd],[start,end]];
   for(const store of stores)for(const [a,b] of windows){
    let cursor=a;
    for(let i=0;i<31&&cursor<=b;i++){
-    const present=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[store.id,cursor,cursor]));
-    if(!present)missing.push({storeId:store.id,date:cursor});
+    dates.push({storeId:store.id,date:cursor});
     const d=new Date(cursor+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+1);cursor=d.toISOString().slice(0,10)
    }
+  }
+  // Do not pay 120+ serial database round trips for two 31-day windows.
+  for(let i=0;i<dates.length;i+=12){
+   const batch=dates.slice(i,i+12);
+   const ready=await Promise.all(batch.map(x=>readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[x.storeId,x.date,x.date]))));
+   for(let j=0;j<batch.length;j++)if(!ready[j])missing.push(batch[j])
   }
   if(missing.length)return{status:200,data:{status:'PREPARATION_REQUIRED',tasks:missing.slice(0,12),missingDays:missing.length,
    message:'Les journées manquantes se préparent par petits lots pour éviter les erreurs 504.'}};
