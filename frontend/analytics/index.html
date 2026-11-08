@@ -21,9 +21,10 @@
 <link rel="stylesheet" href="/analytics/decision-studio.css">
 <link rel="stylesheet" href="/analytics/business-experience.css">
 <link rel="stylesheet" href="/analytics/customer-research.css">
+<link rel="stylesheet" href="/analytics/experience-navigation.css">
 <link rel="icon" type="image/svg+xml" href="/analytics/favicon.svg">
 </head>
-<body>
+<body data-ri-mode="focus">
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
   <header class="topbar">
@@ -41,6 +42,7 @@
         <span class="status-dot"></span>
         <span id="freshnessText">Connexion…</span>
       </div>
+      <button class="ghost-btn ri-finder-trigger" id="riFinderTrigger" type="button" aria-haspopup="dialog" aria-controls="riFinderDialog"><span aria-hidden="true">⌕</span> Explorer <kbd>⌘ K</kbd></button>
       <button class="ghost-btn" id="customizeBtn">Vue</button>
       <button class="ghost-btn" id="fullExportBtn" title="Ventes complètes, hiérarchie, comparaison active, poids CA et présence panier">Export complet période/comparaison</button>
       <button class="primary-btn" id="exportBtn">Exporter <span aria-hidden="true">↗</span></button>
@@ -48,12 +50,20 @@
   </header>
   <div id="fullExportStatus" class="export-progress-banner" role="status" aria-live="polite" hidden></div>
 
+  <dialog id="riFinderDialog" class="ri-finder-dialog" aria-labelledby="riFinderTitle">
+    <div class="ri-finder-head"><span aria-hidden="true">✦</span><div><h2 id="riFinderTitle">Où veux-tu aller ?</h2><p>Retrouver une analyse ou poser une question métier.</p></div></div>
+    <label class="ri-finder-search"><span class="sr-only">Rechercher une analyse</span><input id="riFinderInput" type="search" autocomplete="off" placeholder="Clients, ruptures, prix, magasins, panier…" aria-controls="riFinderResults"></label>
+    <div id="riFinderResults" class="ri-finder-results" aria-live="polite"></div>
+    <footer class="ri-finder-footer">Entrée : ouvrir · Échap : fermer · Ctrl/⌘ + K : recherche rapide</footer>
+  </dialog>
   <nav class="mobile-quick-nav" aria-label="Navigation rapide Analytics">
     <button class="active" type="button" data-mobile-section="overview">Vue exec</button>
     <button type="button" data-mobile-section="sales">Ventes</button>
     <button type="button" data-mobile-section="network">Réseau</button>
     <button type="button" data-mobile-section="inventory">Stock</button>
     <button type="button" data-mobile-section="loyalty">Fidélité</button>
+    <button type="button" data-mobile-section="crm">Clients</button>
+    <button type="button" data-mobile-section="promotions">Promos</button>
   </nav>
 
   <div class="app">
@@ -122,6 +132,7 @@
             <option value="custom">Personnalisée</option>
           </select>
         </div>
+        <button id="riFilterMore" type="button" class="ri-filter-more" aria-controls="filterbar" aria-expanded="false">Dates et comparaison</button>
         <div class="filter-group date-range-group">
           <label>Du</label>
           <input type="date" id="periodStart">
@@ -165,6 +176,18 @@
         </div>
         <button class="filter-refresh" id="refreshBtn" title="Relire les résultats disponibles sans forcer Dynamics">Actualiser rapidement</button><button class="filter-refresh" id="verifySourceBtn" title="Relecture complète, plus lente">Vérifier Dynamics</button>
         <div class="active-period" id="periodSummary"></div>
+      </section>
+
+      <section id="riExperience" class="ri-experience" aria-label="Niveaux de lecture du tableau de bord">
+        <div class="ri-experience-top">
+          <div class="ri-experience-copy"><span class="ri-eyebrow">VOTRE ESPACE DE DÉCISION</span><h2 id="riExperienceSection">Vue exécutive</h2><p id="riExperienceSubtitle">Les résultats essentiels et les décisions à prendre.</p></div>
+          <div class="ri-lens-control" id="riExperienceLens" role="group" aria-label="Niveau de lecture">
+            <button type="button" data-ri-mode-choice="focus" aria-pressed="true">L’essentiel</button>
+            <button type="button" data-ri-mode-choice="explore" aria-pressed="false">Explorer</button>
+            <button type="button" data-ri-mode-choice="full" aria-pressed="false">Toutes les données</button>
+          </div>
+        </div>
+        <div class="ri-experience-bottom"><div id="riExperienceActions" class="ri-experience-actions" aria-label="Questions pour cette rubrique"></div><p id="riExperienceModeHelp" aria-live="polite">Les messages et indicateurs prioritaires, sans tableaux secondaires.</p></div>
       </section>
 
       <section id="brandUnavailable" class="empty-product" hidden>
