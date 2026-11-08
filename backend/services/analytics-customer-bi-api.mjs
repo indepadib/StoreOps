@@ -8,6 +8,7 @@ import {combineBasketEvidence,compareBasketEvidence} from './customer-product-in
 import {readDetentionPage} from './analytics-detention.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {buildCustomerRetentionResearch} from './analytics-customer-research.mjs';
+import {buildCustomerJourneyEvidence} from './analytics-customer-journey-v2.mjs';
 import {readStoreLoyaltyEnrollments} from './dynamics-loyalty.mjs';
 import {createHash} from 'node:crypto';
 const day=v=>{const x=String(v||''),d=new Date(x+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===x?x:null};
@@ -36,7 +37,7 @@ export async function handleCustomerBiApi({req,url,user}){
   if(!start||!end||!compareStart||!compareEnd||start>end||compareStart>compareEnd||compareEnd>=start||end>=today||span(start,end)>31||span(compareStart,compareEnd)>31)
    return{status:400,data:{error:'Fenêtres terminées, non chevauchantes, de 31 jours maximum. La journée en cours est exclue.'}};
   if(!stores.length||excludedStores.length)return{status:422,data:{status:'UNAVAILABLE',error:'Source tickets manquante sur au moins un magasin du périmètre.',excludedStores}};
-  const scope=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('customer-research-v1',[scope,start,end,compareStart,compareEnd]);
+  const scope=stores.map(x=>x.id).sort().join(','),cacheKey=analyticsCacheKey('customer-research-v2',[scope,start,end,compareStart,compareEnd]);
   const cached=await readAnalyticsCache(cacheKey);
   if(cached)return{status:200,data:cached};
   const missing=[],dates=[],windows=[[compareStart,compareEnd],[start,end]];
@@ -63,13 +64,18 @@ export async function handleCustomerBiApi({req,url,user}){
   }));
   let products=[];try{products=db.prepare("SELECT product_number AS productNumber,product_name AS productName FROM product_identity_cache WHERE product_name LIKE '%orange%' OR product_name LIKE '%ORANGE%' OR product_name LIKE '%poulet%' OR product_name LIKE '%POULET%' OR product_name LIKE '%chicken%' OR product_name LIKE '%CHICKEN%'").all()}catch{products=[]}
   const productNames=Object.fromEntries(products.filter(x=>x.productNumber&&x.productName).map(x=>[x.productNumber,x.productName]));
+  const previousEvidence=combineBasketEvidence(perStore.map(x=>x.previous));
+  const currentEvidence=combineBasketEvidence(perStore.map(x=>x.current));
+  for(const basket of [...(previousEvidence.baskets||[]),...(currentEvidence.baskets||[])])
+   for(const item of basket.items||[])if(item.productNumber&&item.productName&&!productNames[item.productNumber])productNames[item.productNumber]=item.productName;
   const report=buildCustomerRetentionResearch({
-   previousEvidence:combineBasketEvidence(perStore.map(x=>x.previous)),
-   currentEvidence:combineBasketEvidence(perStore.map(x=>x.current)),
-   productNames,storeIds:stores.map(x=>x.id),period:{start,end},comparison:{start:compareStart,end:compareEnd}
+   previousEvidence,currentEvidence,productNames,storeIds:stores.map(x=>x.id),period:{start,end},comparison:{start:compareStart,end:compareEnd}
   });
-  const data={...report,selectedStores:stores.map(s=>({id:s.id,name:s.name})),checkedAt:new Date().toISOString()};
-  await writeAnalyticsCache(cacheKey,'customer-research-v1',data,600);
+  const journey=buildCustomerJourneyEvidence({
+   previousEvidence,currentEvidence,productNames,storeIds:stores.map(x=>x.id),period:{start,end},comparison:{start:compareStart,end:compareEnd}
+  });
+  const data={...report,journey,selectedStores:stores.map(s=>({id:s.id,name:s.name})),checkedAt:new Date().toISOString()};
+  await writeAnalyticsCache(cacheKey,'customer-research-v2',data,600);
   return{status:200,data}
  }
  // Enrollment history is built month by month and persisted in the same
