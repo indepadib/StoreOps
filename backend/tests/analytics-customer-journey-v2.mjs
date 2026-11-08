@@ -82,6 +82,6 @@ const view=readFileSync(new URL('../../frontend/analytics/customer-journey-view.
 assert.match(page,/renderCustomerJourney/);
 assert.match(view,/oldProductsNoLongerPurchased/);
 assert.match(view,/newProductsBoughtInstead/);
-assert.match(view,/NE PAs/i);
+assert.match(view,/PAS du chiffre/);
 assert.doesNotMatch(view,/innerHTML\s*=/);
 console.log('Customer Journey V2: source-proof loyalty cohorts, basket migrations, price UOM gates, promo return and anonymous cases PASS');
