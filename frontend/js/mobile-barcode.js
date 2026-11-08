@@ -11,7 +11,7 @@ const HTML5_QRCODE_URLS=['https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-
 const QUAGGA2_URLS=['https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/dist/quagga.min.js','https://unpkg.com/@ericblade/quagga2@1.12.1/dist/quagga.min.js'];
 const LINEAR_FORMAT_KEYS=['EAN_13','EAN_8','UPC_A','UPC_E','CODE_128','CODE_39','ITF'];
 const QUAGGA_READERS=['ean_reader','ean_8_reader','upc_reader','upc_e_reader','code_128_reader','code_39_reader','i2of5_reader'];
-const SCANNER_DOM_VERSION='2410';
+const SCANNER_DOM_VERSION='2420';
 const PREFERRED_CAMERA_KEY='storeops_barcode_camera_v2410';
 
 let activeStream=null,activeFrame=null,activeHtml5=null,activeQuagga=false,quaggaDetectedHandler=null,scanBusy=false,lastDetect=0,html5Loader=null,quaggaLoader=null,activeFallbackTimer=null;
@@ -302,6 +302,24 @@ async function startIosFallback(input,afterScan,{reason='ios',token=scanToken}={
   activeCameraIndex=0;
   await startHtml5Candidate(input,afterScan,token,'linear');
 }
+async function rotatedPhotoCandidates(file){
+  const candidates=[file];
+  if(typeof createImageBitmap!=='function')return candidates;
+  let bitmap=null;
+  try{
+    bitmap=await createImageBitmap(file);
+    for(const angle of [90,-90]){
+      const canvas=document.createElement('canvas'),turn=Math.abs(angle)===90;
+      canvas.width=turn?bitmap.height:bitmap.width;canvas.height=turn?bitmap.width:bitmap.height;
+      const ctx=canvas.getContext('2d',{alpha:false});if(!ctx)continue;
+      ctx.translate(canvas.width/2,canvas.height/2);ctx.rotate(angle*Math.PI/180);ctx.drawImage(bitmap,-bitmap.width/2,-bitmap.height/2);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',.94));
+      if(blob)candidates.push(new File([blob],'storeops-ean-'+angle+'.jpg',{type:'image/jpeg'}));
+    }
+  }catch{}
+  finally{try{bitmap?.close?.()}catch{}}
+  return candidates;
+}
 async function scanPhotoFile(file){
   const input=activeTargetInput,afterScan=activeAfterScan,token=scanToken;if(!input||!file)return;
   if(activeFallbackTimer)clearTimeout(activeFallbackTimer);activeFallbackTimer=null;stopTracks();if(activeFrame)cancelAnimationFrame(activeFrame);activeFrame=null;
@@ -311,8 +329,14 @@ async function scanPhotoFile(file){
   setScanStatus('Analyse de la photo en cours…','switching');
   try{
     activeHtml5=new window.Html5Qrcode('storeopsHtml5Reader',formatConfig());
-    const decoded=await activeHtml5.scanFile(file,false);
-    if(token===scanToken)fillScanned(input,decoded,afterScan);
+    const candidates=await rotatedPhotoCandidates(file);let decoded='';
+    for(let i=0;i<candidates.length&&!decoded;i++){
+      if(token!==scanToken)return;
+      if(i>0)setScanStatus('Code difficile · nouvel essai après rotation '+(i===1?'90°':'-90°')+'…','switching');
+      try{decoded=await activeHtml5.scanFile(candidates[i],false)}catch{}
+    }
+    if(decoded&&token===scanToken)return fillScanned(input,decoded,afterScan);
+    throw new Error('BARCODE_NOT_FOUND');
   }catch{
     if(token!==scanToken)return;
     setScanStatus('Code non lu sur cette photo. Reprends-la de plus près, sans reflet, ou relance le live.','photo');
