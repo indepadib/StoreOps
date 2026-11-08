@@ -42,6 +42,7 @@ jobs:
           node backend/tests/analytics-customer-research.mjs
           node backend/tests/analytics-customer-journey-v2.mjs
           node backend/tests/analytics-experience-navigation.mjs
+          node backend/tests/analytics-category-reconciliation.mjs
           node backend/tests/analytics-semantic-business-story.mjs
           node backend/tests/analytics-decision-tools.mjs
           node backend/tests/article-impact-analysis.mjs
