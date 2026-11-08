@@ -1,5 +1,6 @@
 import {normalize} from './analytics-query-plan.mjs';
 import {mergeEvidenceRows} from './analytics-query-evidence.mjs';
+import {semanticMetrics,semanticVersion} from './analytics-semantic-model.mjs';
 const known=v=>v!=null&&v!==''&&Number.isFinite(Number(v));
 const n=v=>known(v)?new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(Number(v)):'Non mesuré';
 const money=v=>known(v)?n(v)+' DH':'Non mesuré';
@@ -122,7 +123,12 @@ export function executeQuery(q,e){
  }
  return{title:entityTitle[q.entity]||q.entity,headline,actions,columns,rows:selected.map(r=>[r.label+(r.article?' ('+r.article+')':''),...q.metrics.map(m=>display(value(r,m,total),m,r))]),export:{columns,rows:exportRows,limited:q.operation!=='rank'&&rows.length>500},lines};
 }
+const semanticMap={sales:'sales_ttc',previousSales:'sales_ttc',delta:'sales_delta',changePct:'sales_change_pct',sharePct:'sales_share',tickets:'tickets',previousTickets:'tickets',averageBasket:'average_basket',units:'units_sold',marginValue:'gross_margin_ht',marginRate:'gross_margin_rate',identifiedTicketRate:'identified_ticket_rate',identifiedSalesShare:'identified_sales_share',promotionSales:'promotion_sales',promotionTickets:'promotion_tickets',discountAmount:'discount_amount',penetrationPct:'basket_penetration',realizedUnitPrice:'realized_price',repurchasePct:'customer_return_rate',promotionSalesShare:'promotion_sales_share',salesPerDay:'sales_per_day',ticketsPerDay:'tickets_per_day'};
+function semanticTrace(plan){
+ const ids=[...new Set(plan.queries.flatMap(q=>q.metrics).map(metric=>semanticMap[metric]).filter(Boolean))];
+ return ids.map(id=>semanticMetrics.find(m=>m.id===id)).filter(Boolean).map(({aliases,...definition})=>definition)
+}
 export function renderQueryAnswer(plan,e){const sections=plan.queries.map(q=>executeQuery(q,e)),period=e.facts.period;const scope=e.stores.map(s=>s.name).join(' + '),intro=`Périmètre : ${scope}. ${period.start} → ${period.end} ; comparaison ${period.compareStart} → ${period.compareEnd}.`;
  const issues=[...new Map((e.facts.quality||[]).flatMap(p=>p.issues||[]).map(i=>[i.code,i])).values()];if(issues.length)sections.push({title:'Qualité des preuves',lines:issues.slice(0,6).map(i=>(i.level||'INFO')+' · '+(i.message||i.code))});
  if(e.baskets?.status==='PARTIAL')sections.push({title:'Couverture des paniers',lines:['Les preuves de tickets sont partielles ; les résultats détaillés portent uniquement sur les lignes exploitables et ne certifient pas un total exhaustif.']});
- const answer=[intro,...sections.flatMap(s=>[s.title,...(s.headline?[s.headline]:[]),...(s.rows||[]).map(r=>r.map((c,i)=>(s.columns?.[i]?s.columns[i]+' : ':'')+c).join(' · ')),...(s.lines||[]),...(s.actions||[]).map(a=>'Action à examiner : '+a)])].join('\n\n');return{answer,sections,period,sources:e.facts.sources||[],scope,engine:'QUERY_GROUNDED',providerDataSent:false,queryPlan:plan,needs:[...new Set(sections.map(s=>s.needs).filter(Boolean))]};}
+ const answer=[intro,...sections.flatMap(s=>[s.title,...(s.headline?[s.headline]:[]),...(s.rows||[]).map(r=>r.map((c,i)=>(s.columns?.[i]?s.columns[i]+' : ':'')+c).join(' · ')),...(s.lines||[]),...(s.actions||[]).map(a=>'Action à examiner : '+a)])].join('\n\n');return{answer,sections,period,sources:e.facts.sources||[],scope,engine:'QUERY_GROUNDED',providerDataSent:false,semanticVersion,semanticTrace:semanticTrace(plan),queryPlan:plan,needs:[...new Set(sections.map(s=>s.needs).filter(Boolean))]};}
