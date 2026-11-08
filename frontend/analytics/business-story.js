@@ -40,6 +40,11 @@ function render(){
  // mix it with a newer date/store selection during an in-flight request.
  if(decision.period?.startDate!==s.periodStart||decision.period?.endDate!==s.periodEnd||
   decision.comparison?.startDate!==s.compareStart||decision.comparison?.endDate!==s.compareEnd){host.hidden=true;return}
+ // A scope switch can keep a prior cached decision in memory briefly.
+ // Never show an old store's analysis under the newly selected store filter.
+ const requested=(core.getSelectedStores?.()||[]).map(x=>x.id).sort();
+ const covered=(decision.stores||[]).map(x=>x.storeId).filter(Boolean).sort();
+ if(requested.length!==covered.length||requested.some((id,i)=>id!==covered[i])){host.hidden=true;return}
  const model=buildBusinessStory(decision);if(!model){host.hidden=true;return}
  host.replaceChildren(storyHeader(model));
  const metrics=el('div','business-metrics-grid');
