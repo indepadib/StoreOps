@@ -4,6 +4,10 @@ import {join} from 'node:path';
 import {tmpdir} from 'node:os';
 process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'customer-journey-v2-')),'test.db');
 const {buildCustomerJourneyEvidence}=await import('../services/analytics-customer-journey-v2.mjs');
+const {basketEvidenceTtl}=await import('../services/dynamics-sales.mjs');
+assert.equal(basketEvidenceTtl('2026-11-04','2026-11-08'),604800,'Historical prepared tickets must survive multi-day investigation');
+assert.equal(basketEvidenceTtl('2026-11-07','2026-11-08'),10800,'Recent corrected days are refreshed sooner');
+assert.equal(basketEvidenceTtl('2026-11-08','2026-11-08'),900,'Current-day data stay short-lived');
 const {customerResearchQuestion}=await import('../services/analytics-customer-research-intent.mjs');
 const original=[],latest=[];
 const add=(list,id,date,items,promotional=false)=>list.push({
