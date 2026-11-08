@@ -483,12 +483,19 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       [rateLabel,displayRate==null?'N/A':(estimated?'~ ':'')+api.percent(displayRate),margin.partial?'<span class="metric-na">non comparable au total</span>':estimated?'<span class="metric-na">estimation</span>':s.marginRateDelta==null?'<span class="metric-na">N/A</span>':signed(api,s.marginRateDelta),margin.partial?'taux du CA HT valorisé':estimated?'pas une marge comptable historique':'écart en points'],
       ['CA fidélisé',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'<span class="metric-na">N/A</span>':api.money(cur.identifiedSales,true),'poids du CA identifié']
     ];
+    const selected=sectionState(),currentDays=selected?rangeDays(selected.periodStart,selected.periodEnd):null,comparisonDays=selected?rangeDays(selected.compareStart,selected.compareEnd):null;
+    const perDay=(value,days)=>value==null||!days?null:Number(value)/days;
+    const promotionWeight=(promotion,sales)=>promotion==null||sales==null||Number(sales)===0?null:100*Number(promotion)/Number(sales);
     $('#decisionSalesKpis').innerHTML=[
       {label:'Chiffre d’affaires TTC',value:cur.sales,previous:prev.sales,unit:'money',daily:true,positiveGood:true},
       {label:'Tickets',value:cur.tickets,previous:prev.tickets,daily:true,positiveGood:true},
+      {label:'CA TTC / jour',value:perDay(cur.sales,currentDays),previous:perDay(prev.sales,comparisonDays),unit:'money',positiveGood:true,note:'Moyenne calendaire sur la période'},
+      {label:'Tickets / jour',value:perDay(cur.tickets,currentDays),previous:perDay(prev.tickets,comparisonDays),positiveGood:true,note:'Fréquentation par jour calendaire'},
       {label:'Panier moyen',value:cur.averageBasket,previous:prev.averageBasket,unit:'money',positiveGood:true,note:'Moyenne par ticket, pas par jour'},
       {label:rateLabel,value:displayRate,previous:margin.partial?null:prev.marginRate,unit:'percent',estimated,emphasis:true,changeMode:margin.partial?'none':'points',note:'Montant HT : '+(displayMargin==null?'À compléter':api.money(displayMargin))+' · coût couvert '+api.percent(marginCoverage,2)+(margin.partial?' · partiel, non extrapolé':'')},
       {label:'CA remisé TTC',value:cur.promotionSales,previous:prev.promotionSales,unit:'money',daily:true,note:'Lignes avec remise périodique enregistrée'},
+      {label:'Poids du CA remisé',value:promotionWeight(cur.promotionSales,cur.sales),previous:promotionWeight(prev.promotionSales,prev.sales),unit:'percent',changeMode:'points',note:'CA lignes remisées / CA total · selon couverture Dynamics'},
+      {label:'CA identifié TTC',value:cur.identifiedSales,previous:prev.identifiedSales,unit:'money',positiveGood:true,note:'CA rattaché à un client identifié'},
       {label:'Poids du CA identifié',value:cur.identifiedSalesShare,previous:prev.identifiedSalesShare,unit:'percent',changeMode:'points',note:cur.identifiedSales==null?'Identification à compléter':api.money(cur.identifiedSales)+' de CA identifié'}
     ].map(k=>performanceCard({...k,scope:sectionState()})).join('');
     renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive'); renderHourlyIntelligence();
