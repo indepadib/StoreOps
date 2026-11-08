@@ -19,6 +19,12 @@ export function renderQueryResult(container,result,{onSuggestion,onScope}={}){
   }
   container.append(details)
  }
+ if(result.suggestedSection==='crm'){
+  const btn=document.createElement('button');btn.type='button';btn.className='assistant-research-action';
+  btn.textContent='Ouvrir Clients & CRM · Étude de rétention';
+  btn.addEventListener('click',()=>{window.RETAIL_INTELLIGENCE?.navigate?.('crm');document.getElementById('customerResearch')?.scrollIntoView?.({behavior:'smooth',block:'start'})});
+  container.append(btn)
+ }
  if(result.suggestedScope){const b=document.createElement('button');b.type='button';b.textContent='Charger la période et les magasins demandés';b.onclick=()=>onScope?.(result.suggestedScope,result.originalQuestion);container.appendChild(b)}
  return true;
 }
