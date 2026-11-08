@@ -74,6 +74,37 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
 .ri-filter-more:active{transform:scale(.98)}
 #filterbar[data-ri-filters="compact"] .active-period{max-width:100%;font-weight:650}
 
+/* Compact mobile actions: originals are moved, not cloned, retaining all exports. */
+.ri-tools{position:relative}
+.ri-tools>summary{list-style:none;display:grid;place-items:center;min-width:42px;min-height:40px;padding:0 8px;color:#fff;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.09);border-radius:11px;cursor:pointer;font-size:23px;font-weight:750;line-height:1}
+.ri-tools>summary::-webkit-details-marker{display:none}
+.ri-tools[open]>summary{border-color:rgba(244,124,169,.5);background:rgba(255,255,255,.16)}
+.ri-tools-menu{position:absolute;top:calc(100% + 10px);right:0;display:grid;gap:5px;width:min(278px,calc(100vw - 20px));padding:10px;background:rgba(253,254,255,.96);border:1px solid rgba(227,233,241,.96);border-radius:15px;box-shadow:0 17px 55px rgba(10,20,37,.22);z-index:70}
+.ri-tools:not([open])>.ri-tools-menu{display:none}
+.ri-tools-menu>button,.topbar .ri-tools-menu>button{display:block;width:100%;min-height:43px;margin:0;padding:11px 12px;text-align:left;border:1px solid transparent;border-radius:9px;background:transparent;color:#263951;font-size:12px;font-weight:720;white-space:normal}
+.ri-tools-menu>button:hover,.topbar .ri-tools-menu>button:hover{background:#f3f6fa;border-color:#e6ebf2;color:#1f2d46;box-shadow:none;transform:none}
+.ri-tools-menu>button:disabled{opacity:.42;cursor:not-allowed}
+.ri-tools[open] .ri-tools-menu{animation:ri-tools-in 150ms var(--ri-ease-out)}
+@keyframes ri-tools-in{from{opacity:.4;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:780px){
+ .topbar .topbar-actions{gap:6px}
+ .topbar{padding-inline:12px}
+ .topbar .ri-tools{display:block}
+ .product-subtitle{display:none}
+ .topbar .brand-block{min-width:0;gap:9px}
+ .topbar .product-name{font-size:14px}
+ .topbar .freshness{padding:9px;min-width:28px;min-height:37px;justify-content:center}
+ .topbar #freshnessText{position:absolute!important;inline-size:1px!important;block-size:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+ .topbar .mobile-menu-btn{width:39px;min-width:39px}
+ .topbar .mobile-menu-btn strong{display:none}
+}
+@media(max-width:390px){
+ .topbar .brand-symbol{width:32px;height:32px}
+ .topbar .product-name{font-size:13px}
+ .topbar-actions{gap:4px}
+ .topbar{padding-inline:9px}
+}
+
 /* Navigation action, desktop + mobile */
 .topbar .ri-finder-trigger{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.08);color:#eef3fa;min-height:39px;padding:9px 13px}
 .ri-finder-trigger>span{font-size:19px;line-height:0;font-weight:400}
@@ -144,6 +175,7 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
  .ri-experience *, .ri-finder-dialog *, .ri-filter-more{transition:none!important;animation:none!important}
  .ri-lens-control>.ri-lens-indicator{transition:none!important}
  .ri-finder-dialog[open]{animation:none!important}
+ .ri-tools[open] .ri-tools-menu{animation:none!important}
  .ri-finder-dialog::backdrop{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 }
 @media(prefers-reduced-transparency:reduce),(prefers-contrast:more){
