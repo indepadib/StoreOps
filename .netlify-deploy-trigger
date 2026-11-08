@@ -1,5 +1,6 @@
-StoreOps v2.42 mobile operability release
-- Analytics mobile navigation visible
-- Network self-healing retained
-- iPhone barcode rotated-photo fallback
-release: 2026-11-08
+StoreOps v2.42.1 mobile operability release
+- Retail Intelligence mobile: visible quick navigation including Network
+- StoreOps Network: resilient fallback/retry retained
+- iPhone barcode: multi-angle + rotated photo recovery
+- validated Glovo 2.0 optional-price contract; raw quantity remains forbidden
+release: 2026-11-08T12:47Z
