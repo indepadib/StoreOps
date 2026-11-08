@@ -1034,3 +1034,22 @@ body[data-analytics-section="promotions"] #promotionIntelligence{
   .filter-refresh{min-height:44px!important}
   .topbar-actions .primary-btn{font-size:10px!important}
 }
+
+
+/* v2.42 mobile navigation */
+.mobile-quick-nav{display:none}
+@media(max-width:860px){
+  .mobile-menu-btn{width:auto!important;min-width:78px!important;height:42px!important;padding:0 12px!important;display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;border-radius:12px!important}
+  .mobile-menu-btn strong{font-size:11px;letter-spacing:.01em}
+  body.mobile-nav-open .mobile-menu-btn{background:#fff!important;color:#111!important;border-color:#fff!important}
+  .mobile-quick-nav{display:flex;position:sticky;top:64px;z-index:39;gap:7px;overflow-x:auto;overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;padding:9px 10px;background:rgba(247,247,248,.96);border-bottom:1px solid var(--line);backdrop-filter:blur(14px);scrollbar-width:none}
+  .mobile-quick-nav::-webkit-scrollbar{display:none}
+  .mobile-quick-nav button{flex:0 0 auto;border:1px solid var(--line-strong);background:#fff;color:#38414d;border-radius:999px;padding:9px 12px;font-weight:800;font-size:11px;line-height:1;box-shadow:0 4px 12px rgba(17,24,39,.04)}
+  .mobile-quick-nav button.active{background:#111;color:#fff;border-color:#111}
+}
+@media(max-width:520px){
+  .product-name{font-size:14px}
+  .brand-block{gap:8px}
+  .brand-symbol{width:34px;height:34px;border-radius:11px;font-size:16px}
+  .topbar-actions .primary-btn{padding:10px 12px!important}
+}
