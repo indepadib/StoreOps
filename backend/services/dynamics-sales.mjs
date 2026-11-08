@@ -74,6 +74,12 @@ function parseMap(raw=''){
 function field(name,fallback=''){const v=clean(process.env[name]||fallback);return validField(v)?v:''}
 function salesLive(saved=null){return config.dynamics.mode==='live'&&(saved?.state==='LIVE'||(config.dynamics.read?.sales||clean(process.env.D365_SALES_READ_MODE).toLowerCase())==='live')}
 function nextDate(day,delta=1){const d=new Date(`${day}T00:00:00Z`);d.setUTCDate(d.getUTCDate()+delta);return d.toISOString().slice(0,10)}
+// Preserve historical ticket preparation long enough to complete a full
+// customer study. Recent dates remain short-lived for Dynamics corrections.
+// The shared cache already caps storage TTL at 604800 seconds (7 days).
+function basketEvidenceTtl(day,today=new Date().toISOString().slice(0,10)){
+ return day<nextDate(today,-2)?604800:day<today?10800:900
+}
 function dateOnly(v){const s=clean(v);return /^\d{4}-\d{2}-\d{2}/.test(s)?s.slice(0,10):null}
 function dateFilter(f,day,configuredMode=null){
  const mode=clean(configuredMode||process.env.D365_SALES_DATE_FILTER_MODE||'datetime').toLowerCase();
@@ -285,10 +291,10 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
    if(!raw.value.length){empty={storeId,baskets:[],rejectedIdentity:0};continue}
    const rows=await validateParentSales(raw.value,c,filters),value=basketEvidence(rows.filter(r=>includedRetailSaleRow(r,c)),fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
    value.source=`D365/${c.entity}`;value.startDate=startDate;value.endDate=endDate;value.checkedAt=new Date().toISOString();
-   await writeAnalyticsCache(key,'basket-evidence-v3',value,endDate<new Date().toISOString().slice(0,10)?3600:900);return value;
+   await writeAnalyticsCache(key,'basket-evidence-v3',value,basketEvidenceTtl(endDate));return value;
   }catch(error){if(String(error.code||'').startsWith('D365_SALES_PARENT_')||error.code==='BASKET_ROWS_TRUNCATED')throw error;lastError=error}
  }}
- if(empty){empty.checkedAt=new Date().toISOString();await writeAnalyticsCache(key,'basket-evidence-v3',empty,900);return empty}throw lastError||new Error('Lecture des paniers impossible.');
+ if(empty){empty.checkedAt=new Date().toISOString();await writeAnalyticsCache(key,'basket-evidence-v3',empty,basketEvidenceTtl(endDate));return empty}throw lastError||new Error('Lecture des paniers impossible.');
 }
 export async function readStoreSalesDay(storeId,businessDate,{cutoffMinute=null}={}){
  const c=salesIntegrationConfig(storeId);if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,businessDate,config:{mode:c.mode,entity:c.entity,retailId:c.retailId,retailIdSource:c.retailIdSource,missing:c.missing},data:null};
@@ -518,7 +524,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
     await Promise.all(dates.map(async date=>{
      const evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
      Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});
-     await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,date<today?24*3600:900)
+     await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,basketEvidenceTtl(date,today))
     }))
    }
   }
@@ -756,7 +762,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  if(c.entity==='RetailTransactionSalesTransBIEntities'&&!selected.truncated){
   const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},byDay=new Map();for(const row of includedRows){const date=dateOnly(row[c.fields.date]);if(!byDay.has(date))byDay.set(date,[]);byDay.get(date).push(row)}
-  const now=new Date().toISOString();for(let i=0;i<days;i++){const date=nextDate(start,i),evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,900)}
+  const now=new Date().toISOString();for(let i=0;i<days;i++){const date=nextDate(start,i),evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,basketEvidenceTtl(date,now.slice(0,10)))}
  }
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;
