@@ -30,7 +30,7 @@ function fromServer(rows,base){
   if(!Number.isFinite(Number(r.sales)))continue;
   if(!classifiedRow(r)){unknown.push(r);continue}
   const key=String(r.key),value=byKey.get(key)||{key,label:String(r.label),sales:0,previousSales:0,articles:0};
-  value.sales+=number(r.sales);value.previousSales+=number(r.previousSales);
+  value.sales+=number(r.sales);value.previousSales+=number(r.previousSales??r.previous);
   value.articles+=number(r.articles);byKey.set(key,value)
  }
  const total=Number.isFinite(Number(base))?number(base):[...byKey.values(),...unknown].reduce((s,x)=>s+number(x.sales),0);
@@ -90,6 +90,6 @@ export function categorySummaryLines(report,money,number){
   (x.change!=null?' · évolution '+number(x.change)+' %':' · évolution N/D'));
  if(report.unknownSales>Math.max(.02,report.total*.001))
   lines.push('Articles non classés · '+money(report.unknownSales)+
-   ' · couverture rayon '+number(report.coveragePct)+' % du CA');
+   ' · couverture classification '+number(report.coveragePct)+' % du CA');
  return lines
 }
