@@ -10,6 +10,13 @@ const check=spawnSync(process.execPath,['--check',source],{encoding:'utf8'});
 assert.equal(check.status,0,'Experience navigation JS must pass native syntax check: '+check.stderr);
 assert.match(html,/id="riExperience"/);
 assert.match(html,/id="riFinderDialog"/);
+assert.match(html,/id="riTools"/);
+assert.match(html,/id="riToolsMenu"/);
+assert.match(js,/function setupTools\(/);
+assert.match(js,/menu\.append\(button\)/,'Mobile tools must move original controls with their handlers');
+assert.match(js,/bar\.insertBefore\(button,details\)/,'Desktop must restore the originals');
+assert.match(js,/function syncLensIndicator\(/);
+assert.match(css,/\.ri-lens-indicator/);
 assert.match(html,/id="riFinderInput"[^>]*type="search"|type="search"[^>]*id="riFinderInput"/);
 assert.match(html,/id="riFilterMore"[^>]*aria-expanded="false"/);
 for(const mode of ['focus','explore','full']){
