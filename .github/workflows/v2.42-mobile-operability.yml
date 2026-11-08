@@ -1,0 +1,28 @@
+name: V2.42 Mobile Operability
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  mobile-operability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax
+        run: |
+          node --check frontend/analytics/analytics.js
+          node --check frontend/js/mobile-barcode.js
+          node --check frontend/js/pages/network.js
+          node --check backend/tests/v242-mobile-operability.mjs
+      - name: Mobile operability contract
+        run: node backend/tests/v242-mobile-operability.mjs
+      - name: Scanner and Network regression
+        run: node backend/tests/v2403-mobile-network-hotfix.mjs
