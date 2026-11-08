@@ -2,7 +2,7 @@ const core=window.RETAIL_INTELLIGENCE;
 const button=document.getElementById('fullExportBtn');
 
 const safeCell=value=>{
- const raw=value===null||value===undefined?'':String(value);
+ const raw=value===null||value===undefined||value===''?'N/D':String(value);
  const protectedValue=/^[=+@\-\t\r]/.test(raw)?"'"+raw:raw;
  return '"'+protectedValue.replaceAll('"','""')+'"';
 };
@@ -21,7 +21,7 @@ function csvFrom(data){
 async function saveCsv(text,filename){
  const blob=new Blob([text],{type:'text/csv;charset=utf-8'}),file=new File([blob],filename,{type:'text/csv;charset=utf-8'});
  if(navigator.share&&navigator.canShare?.({files:[file]})){
-  try{await navigator.share({files:[file],title:'StoreOps Analytics · ventes complètes N / N-1',text:'Export mensuel complet des ventes'});return'SHARED'}
+  try{await navigator.share({files:[file],title:'StoreOps Analytics · ventes complètes période / comparaison',text:'Export complet des ventes selon la comparaison active'});return'SHARED'}
   catch(error){if(error?.name==='AbortError')return'CANCELLED'}
  }
  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.rel='noopener';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);return'DOWNLOADED'
@@ -33,14 +33,14 @@ async function run(){
  const stores=core.getSelectedStores(),ids=stores.map(s=>s.id).join(',');
  const old=button.innerHTML;button.disabled=true;button.textContent='Préparation du dataset…';
  try{
-  const params=new URLSearchParams({start:state.periodStart,end:state.periodEnd});
+  const params=new URLSearchParams({start:state.periodStart,end:state.periodEnd,compareStart:state.compareStart,compareEnd:state.compareEnd,comparisonMode:state.comparisonMode||'custom'});
   if(ids)params.set('storeIds',ids);
   const data=await core.api('/api/analytics/monthly-export?'+params.toString());
   if(!data?.rows?.length)throw new Error(data?.message||'Aucune vente à exporter sur cette période.');
   button.textContent='Génération Excel…';
   const scope=stores.length===1?(stores[0].code||stores[0].id):'reseau';
-  const result=await saveCsv(csvFrom(data),'StoreOps-Analytics-ventes-completes-N-N1-'+scope+'-'+state.periodStart+'-'+state.periodEnd+'.csv');
-  if(result!=='CANCELLED')toast((data.summary?.rows||data.rows.length)+' lignes exportées · hiérarchie + N-1 + paniers + poids CA.');
+  const result=await saveCsv(csvFrom(data),'StoreOps-Analytics-ventes-completes-PERIODE-COMPARAISON-'+scope+'-'+state.periodStart+'-'+state.periodEnd+'-vs-'+state.compareStart+'-'+state.compareEnd+'.csv');
+  if(result!=='CANCELLED')toast((data.summary?.rows||data.rows.length)+' lignes exportées · hiérarchie + comparaison active + paniers + poids CA.');
  }catch(error){
   console.error('Full monthly sales export failed',error);
   toast(error?.message||'Impossible de générer l’export complet.');
