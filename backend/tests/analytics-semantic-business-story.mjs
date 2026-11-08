@@ -76,7 +76,8 @@ const evidence={
 const answer=renderQueryAnswer(parseQuery('Quel est le poids du CA remisé ?'),evidence);
 assert.match(answer.answer,/15 %/);
 assert.match(answer.answer,/10 %/);
-assert.match(answer.answer,/pas le ROI promo/);
+assert.match(answer.answer,/retour sur investissement/);
+assert.match(answer.answer,/Écart : 5 pts/,'Percentage differences are expressed in points');
 const daily=renderQueryAnswer(parseQuery('Quel est mon CA moyen par jour ?'),evidence);
 assert.match(daily.answer,/120 DH/);assert.match(daily.answer,/100 DH/);
 assert.match(daily.answer,/jours calendaires/);
