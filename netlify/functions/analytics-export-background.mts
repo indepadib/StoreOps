@@ -1,8 +1,8 @@
 import type { Config } from '@netlify/functions';
 import { prepareAnalyticsRuntime } from './api.mts';
-import { readMonthlySalesExport } from '../../backend/services/analytics-monthly-export.mjs';
-import { readAnalyticsCache, writeAnalyticsCache } from '../../backend/services/analytics-persistent-cache.mjs';
-import { exportJobKey, exportPageKey } from '../../backend/services/analytics-export-jobs.mjs';
+import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from '../../backend/services/analytics-persistent-cache.mjs';
+const exportJobKey=(id:string)=>analyticsCacheKey('monthly-export-job-v1',[id]);
+const exportPageKey=(id:string,index:number)=>analyticsCacheKey('monthly-export-job-page-v1',[id,index]);
 
 type ExportJob={id:string,status:string,userId:string,input:any,createdAt:string,updatedAt:string,progress:any,pages:number,[key:string]:any};
 const expirySeconds=21600;
@@ -22,6 +22,8 @@ export default async function processExport(request:Request){
  try{
   await update({status:'RUNNING',progress:{phase:'INITIALIZING',completed:0,total:job.input.stores.length}});
   await prepareAnalyticsRuntime();
+  // Import backend services only after Netlify has restored the StoreOps DB/env.
+  const {readMonthlySalesExport}=await import('../../backend/services/analytics-monthly-export.mjs');
   const input=job.input;
   const data=await readMonthlySalesExport(input.stores,{
    startDate:input.startDate,endDate:input.endDate,compareStartDate:input.compareStartDate,
