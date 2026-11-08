@@ -264,7 +264,14 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
  const key=analyticsCacheKey('basket-evidence-v3',[storeId,startDate,endDate]);
  if(!force){const cached=await readAnalyticsCache(key);if(cached)return cached}
  if(days>1){
-  const parts=[];for(let n=0;n<days;n++){const date=nextDate(startDate,n),daily=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]));if(!daily)throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});parts.push(daily)}
+  // Cached daily baskets are independent reads. Fetch in small bounded groups
+  // instead of 31 sequential Postgres round-trips for each export period.
+  const dates=Array.from({length:days},(_,i)=>nextDate(startDate,i)),parts=[];
+  for(let i=0;i<dates.length;i+=8){
+   const group=await Promise.all(dates.slice(i,i+8).map(date=>readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]))));
+   if(group.some(daily=>!daily))throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});
+   parts.push(...group);
+  }
   return{storeId,baskets:parts.flatMap(x=>x.baskets||[]),rejectedIdentity:parts.reduce((n,x)=>n+(x.rejectedIdentity||0),0),checkedAt:parts.map(x=>x.checkedAt).filter(Boolean).sort()[0]||null};
  }
  const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
@@ -436,19 +443,27 @@ function finishMetricRows(map,margin){
   return{key:x.key,label:x.label,sales,units:round2(x.units),quantityUnit:q.length===1?q[0][0]:null,quantityByUnit:Object.fromEntries(q.map(([u,v])=>[u,round2(v)])),marginValue,marginRate:marginValue!==null&&sales?round2(marginValue/sales*100):null}
  }).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
-export async function readStoreSalesRange(storeId,{startDate,endDate,force=false}={}){
+export async function readStoreSalesRange(storeId,{startDate,endDate,force=false,exportLean=false}={}){
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
- const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300)),cacheKey=`v32|${storeId}|${start}|${end}`,persistentKey=analyticsCacheKey('sales-range-v32',[storeId,start,end]);
+ const cacheSeconds=Math.max(60,Math.min(3600,Number(process.env.RETAIL_ANALYTICS_RANGE_CACHE_SECONDS)||300));
+ // Never store a lean export projection under the full decision-analytics cache.
+ const rangeNamespace=exportLean?'sales-range-export-v1':'sales-range-v32';
+ const cacheKey=(exportLean?'export-v1':'v32')+'|'+storeId+'|'+start+'|'+end;
+ const persistentKey=analyticsCacheKey(rangeNamespace,[storeId,start,end]);
  const hit=salesRangeCache.get(cacheKey);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'MEMORY_HIT'}};
  if(!force){
   const persistent=await readAnalyticsCache(persistentKey);
   if(persistent){salesRangeCache.set(cacheKey,{value:persistent,expiresAt:Date.now()+cacheSeconds*1000});return{...persistent,cache:{status:'PERSISTENT_HIT'}}}
+  if(exportLean){
+   const full=await readAnalyticsCache(analyticsCacheKey('sales-range-v32',[storeId,start,end]));
+   if(full?.summary&&Array.isArray(full.products))return{...full,cache:{status:'FULL_RANGE_REUSED'}}
+  }
  }
 
- c=await resolveMarginFields(c);
- const marginConfig=validatedMarginConfig(c);
+ if(!exportLean)c=await resolveMarginFields(c);
+ const marginConfig=exportLean?null:validatedMarginConfig(c);
  const select=[...Object.values(c.fields),...(c.entity==='RetailTransactionSalesTransBIEntities'?[...Object.values(retailParentIdentityFields),'unit','discAmount','periodicDiscAmount','discOfferId']:[]),config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
  const identifiers=c.storeFilterCandidates?.length?c.storeFilterCandidates:[{kind:'RETAIL_CHANNEL',value:c.retailId}],dateModes=[...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])];
  let selected=null,lastError=null,firstEmpty=null;
@@ -489,6 +504,36 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
 
  const totalRaw=aggregateSalesRows(selected.rows,c);
  const includedRows=selected.rows.filter(row=>includedRetailSaleRow(row,c));
+ if(exportLean){
+  // Monthly exports use product sales, quantities, fiscal ticket count and
+  // prepared basket evidence. Avoid transaction margin UOM master lookups,
+  // customer/co-purchase graphs and payroll/staff aggregation on this path.
+  // Full dashboard readStoreSalesRange retains its existing cache and logic.
+  if(c.entity==='RetailTransactionSalesTransBIEntities'&&!selected.truncated&&days<=31){
+   const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},byDay=new Map();
+   for(const row of includedRows){const date=dateOnly(row[c.fields.date]);if(!byDay.has(date))byDay.set(date,[]);byDay.get(date).push(row)}
+   const now=new Date().toISOString(),today=now.slice(0,10),writeBatch=6;
+   for(let offset=0;offset<days;offset+=writeBatch){
+    const dates=Array.from({length:Math.min(writeBatch,days-offset)},(_,j)=>nextDate(start,offset+j));
+    await Promise.all(dates.map(async date=>{
+     const evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});
+     Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});
+     await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,date<today?24*3600:900)
+    }))
+   }
+  }
+  const result={
+   status:selected.truncated?'TRUNCATED':'READY',source:`D365/${c.entity}`,
+   storeId,startDate:start,endDate:end,days,
+   summary:{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units,averageBasket:totalRaw.tickets?round2(totalRaw.sales/totalRaw.tickets):null},
+   products:totalRaw.products,
+   diagnostics:{rowCount:selected.rowCount||selected.rows.length,pages:selected.pages||0,truncated:selected.truncated,chunks:selected.chunks,readMode:'EXPORT_LEAN',storeIdentifierKind:selected.identifier?.kind||null,dateFilterMode:selected.mode}
+  };
+  salesRangeCache.set(cacheKey,{value:result,expiresAt:Date.now()+cacheSeconds*1000});
+  const today=new Date().toISOString().slice(0,10);
+  await writeAnalyticsCache(persistentKey,'sales-range-export-v1',result,end>=today?900:24*3600);
+  return{...result,cache:{status:'MISS'}}
+ }
  const configuredCostKind=clean(process.env.D365_SALES_COST_KIND||process.env.RETAIL_MARGIN_COST_KIND||'').toUpperCase();
  let evaluationFields=c.fields;
  let detectedCostKind=inferTransactionCostKind(c.fields.cost,configuredCostKind);
