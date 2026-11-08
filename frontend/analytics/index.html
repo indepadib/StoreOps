@@ -397,6 +397,12 @@
             </div>
             <span class="coverage-badge" id="crmQualityBadge">Qualité en cours de contrôle</span>
           </div>
+          <section id="customerResearch" class="customer-research" aria-label="Étude de rétention et des effets prix">
+            <div class="customer-research-heading"><div><span class="mini-kicker">ÉTUDE CLIENT · PREUVES & HYPOTHÈSES</span><h3>Qui ne revient pas et qu'est-ce qui a changé ?</h3><p>Jus d’orange, poulet, prix payés, clients non revus et comparaisons. Aucune causalité présumée.</p></div><button type="button" id="customerResearchRun" class="primary-btn">Construire le rapport</button></div>
+            <div class="customer-research-toolbar"><label>Début de l’historique fidélité à vérifier <input type="date" id="customerHistoryStart" aria-label="Date de début historique fidélité"></label><button type="button" id="customerBaseRun" class="ghost-btn">Adhésions depuis cette date</button><p>La date de lancement officiel des magasins n’est pas renseignée dans StoreOps : le total ne sera jamais présenté comme « depuis ouverture » sans validation.</p></div>
+            <div id="customerResearchStatus" role="status" aria-live="polite">Sélectionnez les périodes en haut de la page puis lancez l’étude.</div>
+            <div id="customerResearchContent"></div><div id="customerBaseContent"></div>
+          </section>
           <div class="crm-kpis" id="crmKpis"></div>
           <div class="decision-grid crm-story-grid">
             <article class="decision-card crm-insight-card">
