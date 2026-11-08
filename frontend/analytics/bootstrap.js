@@ -32,6 +32,7 @@ async function start(){
 
     await import(analyticsAsset('/analytics/tenants.js'));
     await import(analyticsAsset('/analytics/analytics.js'));
+    await import(analyticsAsset('/analytics/monthly-sales-export.js'));
     await import(analyticsAsset('/analytics/categories.js'));
     await import(analyticsAsset('/analytics/inventory.js'));
     await import(analyticsAsset('/analytics/loyalty.js'));
