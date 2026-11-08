@@ -55,8 +55,17 @@ export function analyticsCacheKey(group,parts=[]){
 
 // Compare-and-set for paged operational reads. Prevents a slower instance from
 // replacing a newer cursor with an older page after concurrent requests.
-export async function readAnalyticsCacheFresh(key){
- try{const database=await getAnalyticsDatabase();const rows=await database.sql`SELECT payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;return rows?.[0]?.payload||null}catch{return memoryRead(key)}
+export async function readAnalyticsCacheFresh(key,{strict=false}={}){
+ // Export job state is shared between Netlify instances. Never return an old
+ // memory snapshot when the caller requires the latest persisted job state.
+ try{
+  const database=await getAnalyticsDatabase();
+  const rows=await database.sql`SELECT payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;
+  return rows?.[0]?.payload||null
+ }catch(cause){
+  if(strict)throw Object.assign(new Error('État de l’export temporairement indisponible.'),{status:503,code:'EXPORT_STATE_STORE_UNAVAILABLE',cause});
+  return memoryRead(key)
+ }
 }
 export async function compareAnalyticsCache(key,payload,expectedRevision){
  const json=JSON.stringify(payload),expected=expectedRevision==null?null:String(expectedRevision);

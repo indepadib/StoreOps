@@ -3,6 +3,13 @@ import { createXlsxBlob } from './xlsx-workbook.js';
 const core=window.RETAIL_INTELLIGENCE;
 const button=document.getElementById('fullExportBtn');
 const SESSION_KEY='retail-intelligence:monthly-export-job:v2';
+const MAX_VISIBLE_WAIT_MS=90_000;
+const progressBanner=document.getElementById('fullExportStatus');
+function report(message,{ready=false}={}){
+ if(!progressBanner)return;
+ progressBanner.hidden=false;progressBanner.textContent=message;
+ progressBanner.classList.toggle('is-ready',ready)
+}
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const n=v=>v===null||v===undefined||v===''?0:Number(v)||0;
 const round=v=>Math.round((Number(v)||0)*100)/100;
@@ -129,14 +136,35 @@ function buildSheets(job,rows){
  ]
 }
 async function prepareJob(jobId){
- for(let attempt=0;attempt<220;attempt++){
+ const stopAt=Date.now()+MAX_VISIBLE_WAIT_MS;
+ for(let attempt=0;Date.now()<stopAt;attempt++){
   const job=await core.api('/api/analytics/monthly-export/jobs/'+encodeURIComponent(jobId),{noRetry:true});
-  if(job.status==='FAILED')throw new Error(job.message||'L’export a échoué. Vérifie les sources Dynamics.');
+  if(job.status==='FAILED'){
+   sessionStorage.removeItem(SESSION_KEY);
+   throw Object.assign(new Error(job.message||'La préparation de l’export a échoué.'),{code:job.code||'EXPORT_FAILED'})
+  }
   if(job.status==='READY')return job;
-  button.textContent=phaseLabel(job.progress);
-  await sleep(Math.min(5500,1600+attempt*120))
+  const phase=phaseLabel(job.progress);
+  button.textContent=phase;
+  report('Export en préparation · '+phase+'. Les données restent en cours de traitement sur le serveur.');
+  await sleep(Math.min(5000,2500+attempt*180))
  }
- throw new Error('La préparation n’est pas terminée. Relance l’export pour récupérer le même travail sans le recalculer.')
+ report('Export toujours en préparation. Tu peux continuer à utiliser StoreOps : reviens sur cette page et reclique sur Export complet pour récupérer le même fichier.');
+ return null
+}
+async function readPage(jobId,page,total){
+ const url='/api/analytics/monthly-export/jobs/'+encodeURIComponent(jobId)+'/pages/'+page;
+ for(let attempt=0;attempt<8;attempt++){
+  try{return await core.api(url,{noRetry:true})}
+  catch(error){
+   if((error?.status===409||error?.code==='EXPORT_NOT_READY')&&attempt<7){
+    button.textContent='Synchronisation des pages '+(page+1)+'/'+total;
+    await sleep(Math.min(2200,400+attempt*300));continue
+   }
+   throw error
+  }
+ }
+ throw new Error('La page Excel est momentanément indisponible.')
 }
 async function run(){
  if(!core||!button)return;
@@ -149,6 +177,7 @@ async function run(){
  const fingerprint=JSON.stringify(query);
  const original=button.innerHTML;button.disabled=true;
  try{
+  report('Préparation de l’export · recherche des données et du dernier traitement.');
   let jobId=getSavedJob(fingerprint);
   if(!jobId){
    button.textContent='Création de l’export…';
@@ -161,11 +190,13 @@ async function run(){
   catch(error){if(error?.code==='EXPORT_JOB_NOT_FOUND'){
    sessionStorage.removeItem(SESSION_KEY);throw new Error('L’export précédent a expiré. Relance pour en créer un nouveau.');
   }throw error}
+  if(!job){toast('Export en cours côté serveur. Reclique plus tard pour reprendre, sans recommencer.');return}
   if(!job.columns?.length)throw new Error('L’export est dépourvu de définition des colonnes.');
+  report('Données prêtes · récupération des '+job.pages+' pages du fichier Excel.',{ready:true});
   const rows=[];
   for(let page=0;page<(job.pages||0);page++){
    button.textContent='Téléchargement des données '+(page+1)+'/'+job.pages;
-   const data=await core.api('/api/analytics/monthly-export/jobs/'+encodeURIComponent(jobId)+'/pages/'+page,{noRetry:true});
+   const data=await readPage(jobId,page,job.pages);
    rows.push(...(data.rows||[]))
   }
   if(!rows.length)throw new Error('Aucune ligne de ventes à exporter sur cette période.');
@@ -175,8 +206,11 @@ async function run(){
   const partial=job.dataStatus==='READY'?'':'-PARTIEL';
   const filename='StoreOps-Analytics-Ventes-'+storeScope+'-'+state.periodStart+'_'+state.periodEnd+partial+'.xlsx';
   const result=await saveXlsx(workbook,filename);
-  if(result!=='CANCELLED')toast(rows.length+' lignes · 7 onglets Excel · '+(partial?'Données partielles à contrôler':'Ventes prêtes')+'.');
- }catch(error){console.error('StoreOps Analytics XLSX export failed',error);toast(error?.message||'Impossible de préparer le classeur.')}
+  if(result!=='CANCELLED'){
+   report(rows.length+' lignes préparées · 7 onglets Excel · '+(partial?'données partielles à contrôler':'ventes prêtes')+'.',{ready:true});
+   toast(rows.length+' lignes · 7 onglets Excel · '+(partial?'Données partielles à contrôler':'Ventes prêtes')+'.')
+  }
+ }catch(error){console.error('StoreOps Analytics XLSX export failed',error);const message=error?.message||'Impossible de préparer le classeur.';report('Export interrompu : '+message);toast(message)}
  finally{button.disabled=false;button.innerHTML=original}
 }
 button?.addEventListener('click',run);

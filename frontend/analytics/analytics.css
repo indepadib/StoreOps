@@ -291,3 +291,12 @@ body.compact .network-table th,body.compact .network-table td{padding:8px 10px}
 /* Filters stay available at the top without covering the analysis on scroll. */
 @media screen{.filterbar{position:relative;top:auto}.active-period{white-space:normal;line-height:1.5}body .margin-status{white-space:normal;font-size:11px;line-height:1.55;border-radius:10px}body .decision-head p{font-size:13px}body .decision-table th,body .network-table th{font-size:11px}body .decision-table td,body .network-table td{font-size:12px}body .element-cell span{font-size:11px}.decision-table-wrap,.table-wrap{scrollbar-width:auto}body .benchmark-card small,body .quadrant-card small,body .crm-kpi small{font-size:11px}body .benchmark-card span,body .quadrant-card span,body .crm-kpi span{font-size:12px;line-height:1.5}body[data-analytics-section=detention] .table-wrap th,body[data-analytics-section=detention] .table-wrap td{font-size:12px;line-height:1.5}.filterbar input,.filterbar select,.filterbar button{min-height:40px}.panel,.decision-studio,#executiveOnePager{scroll-margin-top:88px}}
 @media(max-width:600px){.main{padding:12px 10px 80px}.filterbar{border-radius:12px}.filter-group,.filter-group.wide{min-width:0}.active-period{grid-column:1/-1}.decision-head h2{font-size:25px}.assistant-toggle{font-size:11px;padding:11px 14px;bottom:12px;right:12px}}
+
+/* Long-running Analytics export: persistent progress outside the transient toast. */
+.export-progress-banner{
+ display:block;padding:12px 24px;border-bottom:1px solid #f4d88e;background:#fff8e7;
+ color:#694700;font-size:13px;line-height:1.5;font-weight:600;
+}
+.export-progress-banner[hidden]{display:none}
+.export-progress-banner.is-ready{background:#ecf8ef;color:#176a37;border-bottom-color:#bde5c9}
+@media(max-width:720px){.export-progress-banner{padding:11px 14px;font-size:12px}}
