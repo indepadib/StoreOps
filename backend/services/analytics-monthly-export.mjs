@@ -11,12 +11,29 @@ function daysBetween(start,end){
  const a=Date.parse(start+'T00:00:00Z'),b=Date.parse(end+'T00:00:00Z');
  return Number.isFinite(a)&&Number.isFinite(b)&&b>=a?Math.floor((b-a)/86400000)+1:null;
 }
-function shiftYear(iso,delta=-1){
- const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);if(!m)return null;
- const year=Number(m[1])+delta,month=Number(m[2]),day=Number(m[3]),max=new Date(Date.UTC(year,month,0)).getUTCDate();
- return String(year).padStart(4,'0')+'-'+String(month).padStart(2,'0')+'-'+String(Math.min(day,max)).padStart(2,'0');
+function shiftDays(iso,days){
+ const d=new Date(iso+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)
 }
-export function previousYearPeriod(startDate,endDate){return{startDate:shiftYear(startDate,-1),endDate:shiftYear(endDate,-1)}}
+const COMPARISON_LABELS={
+ previous_period:'Période précédente',
+ previous_month:'Mois précédent',
+ previous_year:'Même période N-1',
+ custom:'Personnalisée'
+};
+function comparisonLabel(mode){return COMPARISON_LABELS[clean(mode)]||'Comparaison Analytics'}
+async function readBasketPeriod(storeId,{startDate,endDate,force=false}={}){
+ const days=daysBetween(startDate,endDate);
+ if(!days||days<1||days>31)throw Object.assign(new Error('Fenêtre paniers : 1 à 31 jours.'),{status:400,code:'INVALID_RANGE'});
+ if(!force){
+  try{return await readStoreBasketEvidence(storeId,{startDate,endDate,force:false})}
+  catch(error){if(error?.code!=='BASKET_PREPARATION_REQUIRED')throw error}
+ }
+ const dates=Array.from({length:days},(_,i)=>shiftDays(startDate,i)),concurrency=3;
+ for(let i=0;i<dates.length;i+=concurrency){
+  await Promise.all(dates.slice(i,i+concurrency).map(date=>readStoreBasketEvidence(storeId,{startDate:date,endDate:date,force})))
+ }
+ return readStoreBasketEvidence(storeId,{startDate,endDate,force:false})
+}
 
 function quantityMap(row={}){
  const out=new Map(),raw=row.quantityByUnit&&typeof row.quantityByUnit==='object'?Object.entries(row.quantityByUnit):row.quantityUnit?[[row.quantityUnit,row.units]]:[];
@@ -102,12 +119,12 @@ function basketStats(evidence){
 function catalogMap(items=[]){return new Map((items||[]).map(x=>[clean(x.productNumber),x]))}
 function node(catalog,level){return catalog?.hierarchy?.[level]||{}}
 function productStatus(cur,prev){
- const c=n(cur?.sales),p=n(prev?.sales);if(c>0&&p===0)return'NEW_VS_N1';if(c===0&&p>0)return'LOST_VS_N1';
+ const c=n(cur?.sales),p=n(prev?.sales);if(c>0&&p===0)return'NEW_VS_COMPARISON';if(c===0&&p>0)return'LOST_VS_COMPARISON';
  const g=growth(c,p);if(g==null)return'STABLE';if(g>=10)return'GROWTH';if(g<=-10)return'DECLINE';return'STABLE'
 }
 function rankMap(rows=[]){return new Map([...rows].sort((a,b)=>n(b.sales)-n(a.sales)||clean(a.key).localeCompare(clean(b.key),'fr')).map((x,i)=>[clean(x.key),i+1]))}
 
-function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current,previous,currentEvidence,previousEvidence,catalog,currentPeriod,previousPeriod}){
+function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current,previous,currentEvidence,previousEvidence,catalog,currentPeriod,previousPeriod,comparisonType='custom'}){
  const cm=new Map((current.products||[]).map(x=>[clean(x.key),x])),pm=new Map((previous.products||[]).map(x=>[clean(x.key),x])),keys=[...new Set([...cm.keys(),...pm.keys()])];
  const cb=basketStats(currentEvidence),pb=basketStats(previousEvidence),cr=rankMap(current.products||[]),pr=rankMap(previous.products||[]);
  const totalCurrent=n(current.summary?.sales),totalPrevious=n(previous.summary?.sales);
@@ -115,9 +132,10 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
   const c=cm.get(productNumber)||{},p=pm.get(productNumber)||{},cat=catalog.get(productNumber)||{},bc=cb.products.get(productNumber)||{},bp=pb.products.get(productNumber)||{};
   const cq=singleQuantity(quantityMap(c)),pq=singleQuantity(quantityMap(p)),sameUnit=!!cq.unit&&cq.unit===pq.unit,avgPriceC=cq.units>0?round2(n(c.sales)/cq.units):null,avgPriceP=pq.units>0?round2(n(p.sales)/pq.units):null;
   const assocC=bc.topAssociation||{},assocP=bp.topAssociation||{},assocCatC=catalog.get(assocC.productNumber)||{},assocCatP=catalog.get(assocP.productNumber)||{};
+  const basketNumber=(stats,row,key)=>stats.ready?(row[key]??0):null;
   return{
-   scope_type:scopeType,store_id:storeId||'',store_code:storeCode||'',store_name:storeName,
-   period_start:currentPeriod.startDate,period_end:currentPeriod.endDate,n1_start:previousPeriod.startDate,n1_end:previousPeriod.endDate,
+   scope_type:scopeType,store_id:storeId||'RÉSEAU',store_code:storeCode||'RÉSEAU',store_name:storeName,
+   period_start:currentPeriod.startDate,period_end:currentPeriod.endDate,n1_start:previousPeriod.startDate,n1_end:previousPeriod.endDate,comparison_type:comparisonLabel(comparisonType),
    product_number:productNumber,product_name:cat.productName||c.label||p.label||productNumber,
    hierarchy_status:cat.hierarchyStatus||'MISSING',
    department_code:node(cat,'department').id||'',department:node(cat,'department').label||'',
@@ -136,17 +154,17 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
    quantity_delta:sameUnit?round2(cq.units-pq.units):null,quantity_evolution_pct:sameUnit?growth(cq.units,pq.units):null,
    realized_price_n:avgPriceC,realized_price_n1:avgPriceP,realized_price_evolution_pct:avgPriceC!=null&&avgPriceP!=null?growth(avgPriceC,avgPriceP):null,
    tickets_scope_n:cb.totalTickets,tickets_scope_n1:pb.totalTickets,
-   tickets_with_product_n:bc.tickets??null,tickets_with_product_n1:bp.tickets??null,tickets_with_product_evolution_pct:bc.tickets!=null&&bp.tickets!=null?growth(bc.tickets,bp.tickets):null,
-   basket_penetration_pct:bc.penetrationPct??null,basket_penetration_n1_pct:bp.penetrationPct??null,basket_penetration_delta_points:bc.penetrationPct!=null&&bp.penetrationPct!=null?round2(bc.penetrationPct-bp.penetrationPct):null,
+   tickets_with_product_n:basketNumber(cb,bc,'tickets'),tickets_with_product_n1:basketNumber(pb,bp,'tickets'),tickets_with_product_evolution_pct:cb.ready&&pb.ready?growth(bc.tickets??0,bp.tickets??0):null,
+   basket_penetration_pct:basketNumber(cb,bc,'penetrationPct'),basket_penetration_n1_pct:basketNumber(pb,bp,'penetrationPct'),basket_penetration_delta_points:cb.ready&&pb.ready?round2((bc.penetrationPct??0)-(bp.penetrationPct??0)):null,
    average_basket_with_product:bc.averageBasket??null,average_basket_with_product_n1:bp.averageBasket??null,average_basket_evolution_pct:bc.averageBasket!=null&&bp.averageBasket!=null?growth(bc.averageBasket,bp.averageBasket):null,
    average_other_items_value_same_basket:bc.averageOtherSales??null,average_other_items_value_same_basket_n1:bp.averageOtherSales??null,
    product_sales_per_containing_ticket:bc.averageProductSales??null,product_sales_per_containing_ticket_n1:bp.averageProductSales??null,
-   active_sales_days:bc.activeDays??null,active_sales_days_n1:bp.activeDays??null,tickets_per_active_day:bc.ticketsPerActiveDay??null,tickets_per_active_day_n1:bp.ticketsPerActiveDay??null,
-   units_per_containing_ticket:bc.unitsPerContainingTicket??null,units_per_containing_ticket_n1:bp.unitsPerContainingTicket??null,
-   promotion_sales:bc.promotionSales??null,promotion_sales_n1:bp.promotionSales??null,promotion_sales_share_pct:bc.promotionSalesSharePct??null,promotion_sales_share_n1_pct:bp.promotionSalesSharePct??null,
-   discount_amount:bc.discountAmount??null,discount_amount_n1:bp.discountAmount??null,
-   top_associated_product:assocC.productNumber||'',top_associated_product_name:assocCatC.productName||'',top_association_tickets:assocC.tickets??null,top_association_share_pct:assocC.sharePct??null,top_association_lift:assocC.lift??null,
-   top_associated_product_n1:assocP.productNumber||'',top_associated_product_n1_name:assocCatP.productName||'',top_association_n1_tickets:assocP.tickets??null,top_association_n1_share_pct:assocP.sharePct??null,top_association_n1_lift:assocP.lift??null,
+   active_sales_days:basketNumber(cb,bc,'activeDays'),active_sales_days_n1:basketNumber(pb,bp,'activeDays'),tickets_per_active_day:basketNumber(cb,bc,'ticketsPerActiveDay'),tickets_per_active_day_n1:basketNumber(pb,bp,'ticketsPerActiveDay'),
+   units_per_containing_ticket:basketNumber(cb,bc,'unitsPerContainingTicket'),units_per_containing_ticket_n1:basketNumber(pb,bp,'unitsPerContainingTicket'),
+   promotion_sales:basketNumber(cb,bc,'promotionSales'),promotion_sales_n1:basketNumber(pb,bp,'promotionSales'),promotion_sales_share_pct:basketNumber(cb,bc,'promotionSalesSharePct'),promotion_sales_share_n1_pct:basketNumber(pb,bp,'promotionSalesSharePct'),
+   discount_amount:basketNumber(cb,bc,'discountAmount'),discount_amount_n1:basketNumber(pb,bp,'discountAmount'),
+   top_associated_product:assocC.productNumber||null,top_associated_product_name:assocCatC.productName||null,top_association_tickets:cb.ready?(assocC.tickets??0):null,top_association_share_pct:cb.ready?(assocC.sharePct??0):null,top_association_lift:assocC.lift??null,
+   top_associated_product_n1:assocP.productNumber||null,top_associated_product_n1_name:assocCatP.productName||null,top_association_n1_tickets:pb.ready?(assocP.tickets??0):null,top_association_n1_share_pct:pb.ready?(assocP.sharePct??0):null,top_association_n1_lift:assocP.lift??null,
    sales_source_status_n:current.status||'UNAVAILABLE',sales_source_status_n1:previous.status||'UNAVAILABLE',basket_source_status_n:cb.ready?'READY':'UNAVAILABLE',basket_source_status_n1:pb.ready?'READY':'UNAVAILABLE'
   }
  }).sort((a,b)=>n(b.ca_n)-n(a.ca_n)||clean(a.product_number).localeCompare(clean(b.product_number),'fr'))
@@ -154,25 +172,25 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
 
 export const MONTHLY_EXPORT_COLUMNS=[
  ['scope_type','Périmètre'],['store_id','ID magasin'],['store_code','Code magasin'],['store_name','Magasin'],
- ['period_start','Début N'],['period_end','Fin N'],['n1_start','Début N-1'],['n1_end','Fin N-1'],
+ ['period_start','Début période'],['period_end','Fin période'],['n1_start','Début comparaison'],['n1_end','Fin comparaison'],['comparison_type','Type comparaison'],
  ['product_number','Code article'],['product_name','Libellé article'],['hierarchy_status','Qualité hiérarchie'],
  ['department_code','Code département'],['department','Département'],['rayon_code','Code rayon'],['rayon','Rayon'],['family_code','Code famille'],['family','Famille'],['subfamily_code','Code sous-famille'],['subfamily','Sous-famille'],['subsubfamily_code','Code sous-sous-famille'],['subsubfamily','Sous-sous-famille'],['ub_code','Code UB'],['ub','UB'],
- ['retail_scope','Scope retail'],['vendor_account','Compte fournisseur'],['vendor_name','Fournisseur'],['supply_mode','Mode appro'],['sales_unit','Unité vente'],['inventory_unit','Unité stock'],['purchase_unit','Unité achat'],['status_vs_n1','Statut vs N-1'],
- ['ca_n','CA N TTC'],['ca_n1','CA N-1 TTC'],['ca_delta','Écart CA'],['ca_evolution_pct','Évolution CA %'],['ca_weight_pct','Poids CA %'],['ca_weight_n1_pct','Poids CA N-1 %'],['ca_weight_delta_points','Écart poids CA pts'],
- ['rank_ca_n','Rang CA N'],['rank_ca_n1','Rang CA N-1'],['rank_delta','Gain/perte rang'],
- ['quantity_n','Quantité N'],['quantity_n1','Quantité N-1'],['quantity_unit','Unité quantité'],['quantity_delta','Écart quantité'],['quantity_evolution_pct','Évolution quantité %'],
- ['realized_price_n','Prix moyen réalisé N'],['realized_price_n1','Prix moyen réalisé N-1'],['realized_price_evolution_pct','Évolution prix moyen %'],
- ['tickets_scope_n','Tickets périmètre N'],['tickets_scope_n1','Tickets périmètre N-1'],['tickets_with_product_n','Tickets avec article N'],['tickets_with_product_n1','Tickets avec article N-1'],['tickets_with_product_evolution_pct','Évolution tickets article %'],
- ['basket_penetration_pct','Présence panier %'],['basket_penetration_n1_pct','Présence panier N-1 %'],['basket_penetration_delta_points','Écart présence panier pts'],
- ['average_basket_with_product','Panier moyen avec article'],['average_basket_with_product_n1','Panier moyen avec article N-1'],['average_basket_evolution_pct','Évolution panier avec article %'],
- ['average_other_items_value_same_basket','Valeur autres articles du panier'],['average_other_items_value_same_basket_n1','Valeur autres articles du panier N-1'],
- ['product_sales_per_containing_ticket','CA article / panier contenant'],['product_sales_per_containing_ticket_n1','CA article / panier contenant N-1'],
- ['active_sales_days','Jours actifs N'],['active_sales_days_n1','Jours actifs N-1'],['tickets_per_active_day','Tickets/jour actif N'],['tickets_per_active_day_n1','Tickets/jour actif N-1'],
- ['units_per_containing_ticket','Qté/panier contenant N'],['units_per_containing_ticket_n1','Qté/panier contenant N-1'],
- ['promotion_sales','CA promo N'],['promotion_sales_n1','CA promo N-1'],['promotion_sales_share_pct','Poids promo N %'],['promotion_sales_share_n1_pct','Poids promo N-1 %'],['discount_amount','Remises N'],['discount_amount_n1','Remises N-1'],
+ ['retail_scope','Scope retail'],['vendor_account','Compte fournisseur'],['vendor_name','Fournisseur'],['supply_mode','Mode appro'],['sales_unit','Unité vente'],['inventory_unit','Unité stock'],['purchase_unit','Unité achat'],['status_vs_n1','Statut vs comparaison'],
+ ['ca_n','CA période TTC'],['ca_n1','CA comparaison TTC'],['ca_delta','Écart CA'],['ca_evolution_pct','Évolution CA %'],['ca_weight_pct','Poids CA période %'],['ca_weight_n1_pct','Poids CA comparaison %'],['ca_weight_delta_points','Écart poids CA pts'],
+ ['rank_ca_n','Rang CA période'],['rank_ca_n1','Rang CA comparaison'],['rank_delta','Gain/perte rang'],
+ ['quantity_n','Quantité période'],['quantity_n1','Quantité comparaison'],['quantity_unit','Unité quantité'],['quantity_delta','Écart quantité'],['quantity_evolution_pct','Évolution quantité %'],
+ ['realized_price_n','Prix moyen réalisé période'],['realized_price_n1','Prix moyen réalisé comparaison'],['realized_price_evolution_pct','Évolution prix moyen %'],
+ ['tickets_scope_n','Tickets périmètre période'],['tickets_scope_n1','Tickets périmètre comparaison'],['tickets_with_product_n','Tickets avec article période'],['tickets_with_product_n1','Tickets avec article comparaison'],['tickets_with_product_evolution_pct','Évolution tickets article %'],
+ ['basket_penetration_pct','Présence panier période %'],['basket_penetration_n1_pct','Présence panier comparaison %'],['basket_penetration_delta_points','Écart présence panier pts'],
+ ['average_basket_with_product','Panier moyen avec article période'],['average_basket_with_product_n1','Panier moyen avec article comparaison'],['average_basket_evolution_pct','Évolution panier avec article %'],
+ ['average_other_items_value_same_basket','Valeur autres articles panier période'],['average_other_items_value_same_basket_n1','Valeur autres articles panier comparaison'],
+ ['product_sales_per_containing_ticket','CA article / panier contenant période'],['product_sales_per_containing_ticket_n1','CA article / panier contenant comparaison'],
+ ['active_sales_days','Jours actifs période'],['active_sales_days_n1','Jours actifs comparaison'],['tickets_per_active_day','Tickets/jour actif période'],['tickets_per_active_day_n1','Tickets/jour actif comparaison'],
+ ['units_per_containing_ticket','Qté/panier contenant période'],['units_per_containing_ticket_n1','Qté/panier contenant comparaison'],
+ ['promotion_sales','CA promo période'],['promotion_sales_n1','CA promo comparaison'],['promotion_sales_share_pct','Poids promo période %'],['promotion_sales_share_n1_pct','Poids promo comparaison %'],['discount_amount','Remises période'],['discount_amount_n1','Remises comparaison'],
  ['top_associated_product','Article associé #1'],['top_associated_product_name','Libellé associé #1'],['top_association_tickets','Tickets communs #1'],['top_association_share_pct','Présence associé dans paniers article %'],['top_association_lift','Lift association'],
- ['top_associated_product_n1','Article associé #1 N-1'],['top_associated_product_n1_name','Libellé associé #1 N-1'],['top_association_n1_tickets','Tickets communs #1 N-1'],['top_association_n1_share_pct','Présence associé N-1 %'],['top_association_n1_lift','Lift association N-1'],
- ['sales_source_status_n','Qualité ventes N'],['sales_source_status_n1','Qualité ventes N-1'],['basket_source_status_n','Qualité paniers N'],['basket_source_status_n1','Qualité paniers N-1']
+ ['top_associated_product_n1','Article associé #1 comparaison'],['top_associated_product_n1_name','Libellé associé #1 comparaison'],['top_association_n1_tickets','Tickets communs #1 comparaison'],['top_association_n1_share_pct','Présence associé comparaison %'],['top_association_n1_lift','Lift association comparaison'],
+ ['sales_source_status_n','Qualité ventes période'],['sales_source_status_n1','Qualité ventes comparaison'],['basket_source_status_n','Qualité paniers période'],['basket_source_status_n1','Qualité paniers comparaison']
 ].map(([key,label])=>({key,label}));
 
 async function catalogForProducts(products=[]){
@@ -180,28 +198,30 @@ async function catalogForProducts(products=[]){
  for(let i=0;i<keys.length;i+=200){const part=await readAnalyticsCatalog(keys.slice(i,i+200));items.push(...(part.items||[]))}
  return items
 }
-export async function readMonthlySalesExport(stores=[],{startDate,endDate,force=false}={}){
- const days=daysBetween(startDate,endDate);
- if(!days||days<1||days>31)throw Object.assign(new Error('Export mensuel : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
- const previousPeriod=previousYearPeriod(startDate,endDate),currentPeriod={startDate,endDate},storeResults=[];
+export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false}={}){
+ const days=daysBetween(startDate,endDate),comparisonDays=daysBetween(compareStartDate,compareEndDate);
+ if(!days||days<1||days>31)throw Object.assign(new Error('Export Analytics : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
+ if(!comparisonDays||comparisonDays<1||comparisonDays>31)throw Object.assign(new Error('Export Analytics : la période de comparaison doit contenir 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_COMPARISON_RANGE'});
+ const currentPeriod={startDate,endDate},previousPeriod={startDate:compareStartDate,endDate:compareEndDate},storeResults=[];
  for(const store of stores){
   const [current,previous]=await Promise.all([
    readStoreSalesRange(store.id,{startDate,endDate,force}),
    readStoreSalesRange(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})
   ]);
-  let currentEvidence=null,previousEvidence=null;
-  if(current.status==='READY')try{currentEvidence=await readStoreBasketEvidence(store.id,{startDate,endDate,force:false})}catch{}
-  if(previous.status==='READY')try{previousEvidence=await readStoreBasketEvidence(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force:false})}catch{}
-  storeResults.push({store,current,previous,currentEvidence,previousEvidence})
+  let currentEvidence=null,previousEvidence=null,currentEvidenceError=null,previousEvidenceError=null;
+  if(current.status==='READY')try{currentEvidence=await readBasketPeriod(store.id,{startDate,endDate,force})}catch(error){currentEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
+  if(previous.status==='READY')try{previousEvidence=await readBasketPeriod(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})}catch(error){previousEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
+  storeResults.push({store,current,previous,currentEvidence,previousEvidence,currentEvidenceError,previousEvidenceError})
  }
  const products=storeResults.flatMap(x=>[...(x.current.products||[]),...(x.previous.products||[])]).map(x=>x.key),catalogItems=await catalogForProducts(products),catalog=catalogMap(catalogItems);
  const networkCurrent=combineRanges(storeResults.map(x=>x.current)),networkPrevious=combineRanges(storeResults.map(x=>x.previous)),networkCurrentEvidence=combineEvidence(storeResults.map(x=>x.currentEvidence)),networkPreviousEvidence=combineEvidence(storeResults.map(x=>x.previousEvidence));
- const networkRows=buildScopeRows({scopeType:'NETWORK',storeName:'Réseau sélectionné',current:networkCurrent,previous:networkPrevious,currentEvidence:networkCurrentEvidence,previousEvidence:networkPreviousEvidence,catalog,currentPeriod,previousPeriod});
- const storeRows=storeResults.flatMap(x=>buildScopeRows({scopeType:'STORE',storeId:x.store.id,storeName:x.store.name,storeCode:x.store.code,current:x.current,previous:x.previous,currentEvidence:x.currentEvidence,previousEvidence:x.previousEvidence,catalog,currentPeriod,previousPeriod}));
+ const networkRows=buildScopeRows({scopeType:'NETWORK',storeName:'Réseau sélectionné',current:networkCurrent,previous:networkPrevious,currentEvidence:networkCurrentEvidence,previousEvidence:networkPreviousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode});
+ const storeRows=storeResults.flatMap(x=>buildScopeRows({scopeType:'STORE',storeId:x.store.id,storeName:x.store.name,storeCode:x.store.code,current:x.current,previous:x.previous,currentEvidence:x.currentEvidence,previousEvidence:x.previousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode}));
+ const comparisonType=clean(comparisonMode)||'custom';
  return{
   status:storeResults.every(x=>x.current.status==='READY'&&x.previous.status==='READY')?'READY':'PARTIAL',
-  period:currentPeriod,comparison:{...previousPeriod,type:'PREVIOUS_YEAR'},stores:stores.map(s=>({id:s.id,name:s.name,code:s.code})),columns:MONTHLY_EXPORT_COLUMNS,rows:[...networkRows,...storeRows],
-  summary:{stores:stores.length,networkProducts:networkRows.length,rows:networkRows.length+storeRows.length,currentSales:networkCurrent.summary.sales,previousSales:networkPrevious.summary.sales,currentTickets:networkCurrent.summary.tickets,previousTickets:networkPrevious.summary.tickets},
-  diagnostics:{catalogProducts:catalogItems.length,basketCurrentReady:storeResults.filter(x=>!!x.currentEvidence).length,basketPreviousReady:storeResults.filter(x=>!!x.previousEvidence).length,checkedAt:new Date().toISOString()}
+  period:currentPeriod,comparison:{...previousPeriod,type:comparisonType,label:comparisonLabel(comparisonType)},stores:stores.map(s=>({id:s.id,name:s.name,code:s.code})),columns:MONTHLY_EXPORT_COLUMNS,rows:[...networkRows,...storeRows],
+  summary:{stores:stores.length,networkProducts:networkRows.length,rows:networkRows.length+storeRows.length,currentSales:networkCurrent.summary.sales,comparisonSales:networkPrevious.summary.sales,previousSales:networkPrevious.summary.sales,currentTickets:networkCurrent.summary.tickets,comparisonTickets:networkPrevious.summary.tickets,previousTickets:networkPrevious.summary.tickets},
+  diagnostics:{catalogProducts:catalogItems.length,basketCurrentReady:storeResults.filter(x=>!!x.currentEvidence).length,basketComparisonReady:storeResults.filter(x=>!!x.previousEvidence).length,basketPreviousReady:storeResults.filter(x=>!!x.previousEvidence).length,basketErrors:storeResults.map(x=>({storeId:x.store.id,current:x.currentEvidenceError,comparison:x.previousEvidenceError})).filter(x=>x.current||x.comparison),checkedAt:new Date().toISOString()}
  }
 }
