@@ -48,6 +48,8 @@ async function start(){
     await import(analyticsAsset('/analytics/basket-direction.js'));
     await import(analyticsAsset('/analytics/loss-inventory.js'));
     await import(analyticsAsset('/analytics/detention-views.js'));
+    await import(analyticsAsset('/analytics/experience-navigation.js'));
+
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);
     if(Number(error?.status)===401||Number(error?.status)===403)return returnToStoreOps();
