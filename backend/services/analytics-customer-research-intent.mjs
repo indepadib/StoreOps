@@ -23,7 +23,7 @@ export async function customerResearchQuestion(stores,input,{read}){
    sections:[{title:'Base clients depuis ouverture',headline:'Date de démarrage officielle non certifiée dans StoreOps.',lines:['Source : D365 Loyalty Card / date d’adhésion, par unité commerciale.','Dédoublonnage entre magasins lorsque le compte client est disponible.','Le nombre de tickets identifiés n’est pas le nombre d’adhésions.']}],
    suggestedSection:'crm',sources:[{id:'LOYALTY',name:'D365 adhésions fidélité : lecture requise'}],context:period}
  }
- const cacheKey=analyticsCacheKey('customer-research-v1',[scope,period.start,period.end,period.compareStart,period.compareEnd]);
+ const cacheKey=analyticsCacheKey('customer-research-v2',[scope,period.start,period.end,period.compareStart,period.compareEnd]);
  const result=await read(cacheKey);
  if(!result){
   return{engine:'CUSTOMER_RESEARCH',status:'NEEDS_RESEARCH',providerDataSent:false,
@@ -31,7 +31,7 @@ export async function customerResearchQuestion(stores,input,{read}){
    sections:[{title:'Investigation à préparer',headline:'Deux fenêtres exactes, mêmes magasins, tickets identifiés et produits comparables.',lines:['Prix TTC réellement payé ≠ tarif catalogue.','Ruptures historiques et concurrence : données datées nécessaires pour conclure.','Les clients non revus ne sont pas nécessairement perdus.']}],
    suggestedSection:'crm',sources:[],context:period}
  }
- const c=result.customers||{},group=kind=>result.products?.filter(p=>p.group===kind)||[],priceRows=[...group('JUICE_ORANGE'),...group('CHICKEN')];
+ const c=result.customers||{},group=kind=>result.products?.filter(p=>p.group===kind)||[],priceRows=[...group('JUICE_ORANGE'),...group('CHICKEN')],journey=result.journey||{};
  const rows=priceRows.slice(0,12).map(x=>[x.productName||x.productNumber,
   money(x.previous.realizedPrice)+' → '+money(x.current.realizedPrice),
   pct(x.priceChangePct),n(x.exposedPreviousBuyers),n(x.returnedWithoutArticle),n(x.notSeenAgain),
