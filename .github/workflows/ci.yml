@@ -101,6 +101,10 @@ jobs:
         run: node backend/tests/manager-commercial-focus.mjs
       - name: Mobile scan and manual entry coverage test
         run: node backend/tests/mobile-dual-entry.mjs
+      - name: Mobile navigation, Network fallback and barcode recovery
+        run: |
+          node backend/tests/v2403-mobile-network-hotfix.mjs
+          node backend/tests/v242-mobile-operability.mjs
       - name: Stock signal priority contract test
         run: node backend/tests/stock-signals.mjs
       - name: Val Fleuri pilot operating profile test
