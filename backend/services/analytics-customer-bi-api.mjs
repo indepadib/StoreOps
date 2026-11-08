@@ -55,7 +55,7 @@ export async function handleCustomerBiApi({req,url,user}){
     readStoreBasketEvidence(s.id,{startDate:start,endDate:end})
    ]);return{previous,current}
   }));
-  const products=db.prepare("SELECT product_number AS productNumber,product_name AS productName FROM product_identity_cache WHERE product_name LIKE '%orange%' OR product_name LIKE '%ORANGE%' OR product_name LIKE '%poulet%' OR product_name LIKE '%POULET%' OR product_name LIKE '%chicken%' OR product_name LIKE '%CHICKEN%'").all();
+  let products=[];try{products=db.prepare("SELECT product_number AS productNumber,product_name AS productName FROM product_identity_cache WHERE product_name LIKE '%orange%' OR product_name LIKE '%ORANGE%' OR product_name LIKE '%poulet%' OR product_name LIKE '%POULET%' OR product_name LIKE '%chicken%' OR product_name LIKE '%CHICKEN%'").all()}catch{products=[]}
   const productNames=Object.fromEntries(products.filter(x=>x.productNumber&&x.productName).map(x=>[x.productNumber,x.productName]));
   const report=buildCustomerRetentionResearch({
    previousEvidence:combineBasketEvidence(perStore.map(x=>x.previous)),
