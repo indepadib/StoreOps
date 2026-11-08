@@ -12,6 +12,7 @@ import {renderQueryAnswer} from './analytics-query-executor.mjs';
 import {assistantFacts} from './analytics-assistant.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {semanticDefinitionAnswer} from './analytics-semantic-model.mjs';
+import {classifyCustomerResearchQuestion,customerResearchQuestion} from './analytics-customer-research-intent.mjs';
 const digest=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const clarification=(answer,extra={})=>({answer,engine:'QUERY_CLARIFICATION',providerDataSent:false,sources:[],...extra});
 export function queryPlannerRequest(question,previousPlan){
@@ -24,6 +25,13 @@ export function articleInvestigationRequired(input){return requiresArticleInvest
 export async function answerBusinessQuestion(stores,input,{allowedStores=stores,factsBuilder=assistantFacts,evidenceBuilder=queryEvidence,read=readAnalyticsCache,write=writeAnalyticsCache,planner=null,clock={},stockAnswer=queryStock}={}){
  const question=String(input.question||'').trim();if(input.preparationFailures!=null&&(!Array.isArray(input.preparationFailures)||input.preparationFailures.length>200||input.preparationFailures.some(x=>!x||!['sales','stock','history','baskets','pricing','suppliers','inventory'].includes(x.kind))))throw Object.assign(Error('Préparation invalide.'),{status:400});let previousPlan=null;
  const semantic=semanticDefinitionAnswer(question);if(semantic)return semantic;
+ const researchIntent=classifyCustomerResearchQuestion(question);
+ if(researchIntent){
+  const scopeHints=allowedStores.filter(s=>[s.id,s.name,s.code].some(name=>name&&normalize(question).includes(normalize(name))));
+  const selected=scopeHints.length===1?scopeHints:stores;
+  const requested=researchIntent.kind==='CUSTOMER_LIFETIME'?input:requestedPeriod(question,input,clock).input;
+  return customerResearchQuestion(selected,{...requested,question},{read});
+ }
  if(input.followUp?.plan){try{previousPlan=validateQueryPlan(input.followUp.plan)}catch{return clarification('Le contexte précédent n’est plus exploitable. Reformulez la question complète.')}}
  const continuation=/^(et|idem|pareil|aussi|seulement|uniquement|plutot|pour )/.test(normalize(question)),previousPeriod=input.followUp?.period;const effectiveInput=continuation&&previousPeriod&&!input.preparationScope?{...input,start:previousPeriod.start,end:previousPeriod.end,compareStart:previousPeriod.compareStart,compareEnd:previousPeriod.compareEnd,slices:undefined}:input;const period=requestedPeriod(question,effectiveInput,clock);if(period.clarification)return clarification(period.clarification);
  let plan=parseQuery(question,{previousPlan}),paid=false,plannerCached=false;
