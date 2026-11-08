@@ -75,4 +75,15 @@ assert.match(ui,/MAX_VISIBLE_WAIT_MS=90_000/,'foreground should not hold the use
 assert.match(ui,/fullExportStatus/,'progress must remain visible beyond toast duration');
 assert.match(html,/id="fullExportStatus"/,'Analytics shell must render an export progress region');
 
+
+const salesSource=readFileSync(new URL('../services/dynamics-sales.mjs',import.meta.url),'utf8');
+assert.match(service,/exportLean:true/,'monthly exports must use the lean sales projection');
+assert.match(salesSource,/export async function readStoreSalesRange\(storeId,\{startDate,endDate,force=false,exportLean=false\}/,'lean mode must be opt-in');
+assert.match(salesSource,/rangeNamespace=exportLean\?'sales-range-export-v1':'sales-range-v32'/,'lean export must be isolated from full dashboard caches');
+assert.match(salesSource,/if\(!exportLean\)c=await resolveMarginFields\(c\)/,'export must avoid unnecessary margin enrichment');
+assert.match(salesSource,/readMode:'EXPORT_LEAN'/,'export records must explicitly identify the lightweight source');
+assert.match(salesSource,/summary:\{sales:totalRaw.sales,tickets:totalRaw.tickets,units:totalRaw.units/,'lean export must reuse the canonical fiscal sales/ticket aggregation');
+assert.match(salesSource,/writeBatch=6/,'daily basket snapshot writes must be bounded');
+assert.match(salesSource,/dates.slice\(i,i\+8\).map/,'cached basket month reads must be concurrent but bounded');
+
 console.log('Analytics full period/comparison export contract passed.');
