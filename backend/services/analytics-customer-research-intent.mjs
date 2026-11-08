@@ -23,7 +23,7 @@ export async function customerResearchQuestion(stores,input,{read}){
    sections:[{title:'Base clients depuis ouverture',headline:'Date de démarrage officielle non certifiée dans StoreOps.',lines:['Source : D365 Loyalty Card / date d’adhésion, par unité commerciale.','Dédoublonnage entre magasins lorsque le compte client est disponible.','Le nombre de tickets identifiés n’est pas le nombre d’adhésions.']}],
    suggestedSection:'crm',sources:[{id:'LOYALTY',name:'D365 adhésions fidélité : lecture requise'}],context:period}
  }
- const cacheKey=analyticsCacheKey('customer-research-v1',[scope,period.start,period.end,period.compareStart,period.compareEnd]);
+ const cacheKey=analyticsCacheKey('customer-research-v2',[scope,period.start,period.end,period.compareStart,period.compareEnd]);
  const result=await read(cacheKey);
  if(!result){
   return{engine:'CUSTOMER_RESEARCH',status:'NEEDS_RESEARCH',providerDataSent:false,
@@ -31,11 +31,26 @@ export async function customerResearchQuestion(stores,input,{read}){
    sections:[{title:'Investigation à préparer',headline:'Deux fenêtres exactes, mêmes magasins, tickets identifiés et produits comparables.',lines:['Prix TTC réellement payé ≠ tarif catalogue.','Ruptures historiques et concurrence : données datées nécessaires pour conclure.','Les clients non revus ne sont pas nécessairement perdus.']}],
    suggestedSection:'crm',sources:[],context:period}
  }
- const c=result.customers||{},group=kind=>result.products?.filter(p=>p.group===kind)||[],priceRows=[...group('JUICE_ORANGE'),...group('CHICKEN')];
+ const c=result.customers||{},group=kind=>result.products?.filter(p=>p.group===kind)||[],priceRows=[...group('JUICE_ORANGE'),...group('CHICKEN')],journey=result.journey||{};
  const rows=priceRows.slice(0,12).map(x=>[x.productName||x.productNumber,
   money(x.previous.realizedPrice)+' → '+money(x.current.realizedPrice),
   pct(x.priceChangePct),n(x.exposedPreviousBuyers),n(x.returnedWithoutArticle),n(x.notSeenAgain),
   x.control?.status==='OBSERVATIONAL'?n(x.control.deltaPoints)+' pts':'Base insuffisante']);
+ const traced=(journey.insights||[]).map(x=>[x.title,
+  x.unit==='%'?pct(x.value):n(x.value)+' '+(x.unit||''),
+  x.text,x.next]);
+ const summary=journey.returning||{},visible=(journey.products||{});
+ const productTransitions=(visible.stoppedPurchases||[]).slice(0,12).map(x=>[
+  x.productName,x.productNumber,n(x.returnedButStoppedBuying),
+  n(x.returnedStoreAmongPriorBuyers),pct(x.stoppedBuyingAmongReturnersPct),
+  (x.newProductsBoughtInstead||[]).slice(0,2).map(y=>y.productName+' ('+y.clients+')').join('; ')||'Non déterminé'
+ ]);
+ const priceWatch=(visible.priceIncreases||[]).slice(0,12).map(x=>[
+  x.productName,x.productNumber,money(x.previous.price)+' → '+money(x.current.price),
+  pct(x.priceChangePct),n(x.previous.clients),pct(x.articleTicketChangePct),
+  n(x.returnedButStoppedBuying),n(x.notObservedAmongPriorBuyers)
+ ]);
+ const cohorts=(journey.cohorts||[]).map(x=>[x.label,n(x.previous),n(x.returned),pct(x.returnRatePct),n(x.notObserved)]);
  const sections=[
   {title:'Clients observés, première visite et rétention',headline:n(c.observedPrevious)+' clients identifiés auparavant · '+pct(c.returnRate)+' revus',
    columns:['Indicateur','Valeur'],rows:[['Non revus',n(c.notObserved)],['Vus une fois dans la période antérieure',n(c.oneVisitPrevious)],['Non revus parmi ces clients',n(c.oneVisitNotObserved)+' ('+pct(c.oneVisitNotObservedRate)+')'],['Habitués non revus',n(c.repeatNotObserved)],['Exposés à un prix réalisé en hausse, non revus',n(c.priceIncreaseExposedNotObserved)]],
@@ -47,8 +62,36 @@ export async function customerResearchQuestion(stores,input,{read}){
    rows:(result.diagnosis||[]).map(x=>[x.label,({OBSERVATIONAL_SIGNAL:'Signal observé',MEASURED:'Mesuré',SOURCE_REQUIRED:'Source manquante',HYPOTHESIS:'À vérifier',DESCRIPTIVE:'Descriptif',NOT_DEMONSTRATED:'Non démontré',OBSERVED:'Observé'}[x.state]||x.state),x.evidence]),
    lines:result.limitations||[]}
  ];
+ if(journey.version==='CUSTOMER_JOURNEY_V2'){
+  sections.unshift(
+   {title:'Ce qui explique réellement le changement observé',headline:'Indicateurs suivis des interprétations et vérifications nécessaires',
+    columns:['Constat','Mesure','Lecture prudente','À vérifier'],rows:traced,
+    lines:['Ce sont des constats descriptifs, pas des causes confirmées. Les facteurs prix, ruptures, assortiment, promotions et expérience peuvent se combiner.']},
+   {title:'Avant / après : exactement les mêmes clients',headline:n(summary.returned)+' clients identifiés revus dans les deux périodes',
+    columns:['Comportement','Avant','Après / évolution'],
+    rows:[['Nombre de visites',n(summary.visitsBefore),n(summary.visitsAfter)],
+      ['CA de ces clients',money(summary.spendBefore),money(summary.spendAfter)],
+      ['Panier moyen',money(summary.averageBasketBefore),money(summary.averageBasketAfter)+' ('+pct(summary.averageBasketChangePct)+')'],
+      ['Clients dont la fréquence recule',n(summary.returned),n(summary.frequencyDown)],
+      ['Clients au panier moyen en baisse >10 %',n(summary.returned),n(summary.basketDown)],
+      ['Clients ayant abandonné une référence',n(summary.returned),n(summary.ceasedAtLeastOneProduct)],
+      ['Clients ayant adopté une nouvelle référence',n(summary.returned),n(summary.boughtNewProduct)]],
+    lines:['Comparaison sur la population exactement commune aux deux fenêtres, sans mélange des nouveaux et des non-revus.']},
+   {title:'Articles que les clients ne rachètent plus',headline:'Toutes les références observées, pas uniquement le jus ou le poulet',
+    columns:['Article','Code','Revenus sans article','Acheteurs revenus','Abandon parmi revenus','Nouveaux achats associés'],
+    rows:productTransitions,lines:['Achats nouveaux associés ne démontrent pas une substitution ; vérifier les familles et prix au même format.']},
+   {title:'Hausses de prix à investiguer sur tout le catalogue',headline:'Prix payé comparable, hausse >=5 %, au moins 10 tickets par période',
+    columns:['Article','Code','Prix réalisé','Hausse','Acheteurs avant','Évol. tickets','Revenus sans','Non revus'],
+    rows:priceWatch,lines:['Prix réalisé incluant remises ≠ tarif catalogue. Il faut recouper prix officiel, calendrier promos, disponibilité et jour de changement.']},
+   {title:'Rétention et promotions selon profil de départ',
+    columns:['Segment client','Avant','Revenus','Taux de retour','Non revus'],rows:cohorts,
+    lines:['Segments non exclusifs ; différences descriptives non ajustées à l’ancienneté, la fréquence et au mix.']}
+  );
+ }
  return{engine:'CUSTOMER_RESEARCH',status:result.status,providerDataSent:false,
- answer:result.studyConclusion+' Fenêtres : '+period.compareStart+' → '+period.compareEnd+' puis '+period.start+' → '+period.end+'.',
+ answer:(journey.version==='CUSTOMER_JOURNEY_V2'?
+  'Analyse des mêmes clients, changements de panier, articles abandonnés, promotions et prix sur toutes les références : '+n(journey.evolution?.observedPrior)+' clients avant, '+n(journey.evolution?.returned)+' revus, '+n(journey.evolution?.nonObserved)+' non revus. '+n(journey.returning?.basketDown)+' clients revenus présentent un panier moyen en recul de plus de 10 %. Les hypothèses de prix, ruptures et offres doivent encore être départagées.':
+  result.studyConclusion)+' Fenêtres : '+period.compareStart+' → '+period.compareEnd+' puis '+period.start+' → '+period.end+'.',
  sections,scope:stores.map(s=>s.name).join(' + '),period,suggestedSection:'crm',
  sources:[{id:'D365',name:'Tickets identifiés · paniers / prix payés · fenêtres exactes'}],researchStatus:result.status,causal:false}
 }

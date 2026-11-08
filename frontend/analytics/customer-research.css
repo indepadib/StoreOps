@@ -45,3 +45,33 @@
 @media(max-width:650px){.customer-research{padding:15px;border-radius:18px}.customer-research-heading{flex-direction:column}.customer-research-heading button{width:100%}.customer-research-factors{grid-template-columns:1fr}.research-product-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:390px){.customer-research-metrics,.research-product-stats{grid-template-columns:1fr}}
 @media print{.customer-research-toolbar,#customerResearchRun{display:none!important}.customer-research{break-inside:avoid;box-shadow:none}.customer-research-panel{break-inside:avoid}}
+
+/* Customer Journey V2 — readable explanatory evidence, never dense KPI wallpaper. */
+.customer-journey-v2{margin-top:16px;display:grid;gap:13px}
+.customer-journey-section{margin:0}
+.customer-journey-insights{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.customer-journey-insight{background:linear-gradient(155deg,#fff,#f9fbfd);border:1px solid #e5eaf1;border-radius:14px;padding:15px;display:grid;gap:8px;align-content:start}
+.customer-journey-insight-title{font-size:12px;line-height:1.45;color:#536780;font-weight:700}
+.customer-journey-insight-value{font-size:22px;line-height:1.2;color:#243951;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.customer-journey-insight p{font-size:12px;line-height:1.65;color:#465c76;margin:0}
+.customer-journey-insight small{font-size:11px;line-height:1.6;color:#bf2054}
+.customer-journey-table-scroll{max-width:100%;overflow:auto;overscroll-behavior:contain;border:1px solid #e5eaf1;border-radius:12px;margin:12px 0}
+.customer-journey-table{width:100%;border-collapse:collapse;min-width:620px;font-size:11px;background:#fff}
+.customer-journey-table th{font-size:10px;background:#f3f6fa;color:#52627c;text-align:left;padding:12px;border-bottom:1px solid #e0e6ef;white-space:nowrap;font-weight:750;position:sticky;top:0}
+.customer-journey-table td{padding:10px 12px;border-bottom:1px solid #eef1f6;color:#495d76;line-height:1.55;font-variant-numeric:tabular-nums}
+.customer-journey-table .journey-first{font-weight:680;color:#20334f;min-width:140px}
+.customer-journey-table tr:hover td{background:#fcf8fa}
+.customer-journey-case{border:1px solid #e4e9f0;border-radius:12px;margin:9px 0;background:#fff;overflow:hidden}
+.customer-journey-case summary{cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;padding:13px 15px;color:#334a67;font-size:12px}
+.customer-journey-case summary:hover{background:#f8fafc}
+.customer-journey-case summary:focus-visible{outline:3px solid #d53270;outline-offset:-3px}
+.customer-journey-case summary strong{font-size:12px}
+.customer-journey-case summary span{color:#788aa2;font-size:11px}
+.customer-journey-case[open] summary{border-bottom:1px solid #edf0f5}
+.customer-journey-case-body{padding:13px 15px}
+.customer-journey-phase{font-size:10px;letter-spacing:.08em;color:#c02058;display:block;padding:12px 0 6px}
+.customer-journey-basket{padding:9px 12px;border:1px solid #e8edf3;border-radius:9px;margin:7px 0;background:#fbfcfe}
+.customer-journey-basket small{font-size:10px;color:#667991}
+.customer-journey-basket p{font-size:11px;color:#3f526c;line-height:1.65;margin:6px 0 0}
+@media(max-width:700px){.customer-journey-insights{grid-template-columns:1fr}.customer-journey-table{min-width:580px}.customer-journey-section{padding:13px}}
+@media print{.customer-journey-insight,.customer-journey-case{break-inside:avoid}}
