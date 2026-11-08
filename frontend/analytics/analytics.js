@@ -1075,7 +1075,7 @@
     $('#closeDrawer').addEventListener('click', closeDrawer);
     $('#drawerBackdrop').addEventListener('click', closeDrawer);
     $('#mobileFiltersBtn').addEventListener('click', () => {
-      document.body.classList.toggle('mobile-nav-open');
+      setMobileNavOpen(!document.body.classList.contains('mobile-nav-open'));
     });
 
     $$('[data-widget-toggle]').forEach(input => {
@@ -1106,11 +1106,21 @@
       toast('Vue locale réinitialisée');
     });
 
-    $$('.side-nav button:not(:disabled)').forEach(btn => {
+    $('.side-nav button:not(:disabled)').forEach(btn => {
       btn.addEventListener('click', () => {
         state.section = btn.dataset.section || 'overview';
         applySectionView();
-        document.body.classList.remove('mobile-nav-open');
+        setMobileNavOpen(false);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        refreshForPeriod(false);
+      });
+    });
+
+    $('[data-mobile-section]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        state.section = btn.dataset.mobileSection || 'overview';
+        applySectionView();
+        setMobileNavOpen(false);
         window.scrollTo({ top: 0, behavior: 'smooth' });
         refreshForPeriod(false);
       });
@@ -1242,16 +1252,21 @@
     }
   }
 
+  function setMobileNavOpen(open) {
+    document.body.classList.toggle('mobile-nav-open', !!open);
+    $('#mobileFiltersBtn')?.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+
   document.addEventListener('click', e => {
     if (!document.body.classList.contains('mobile-nav-open')) return;
     const sidebar = $('.sidebar');
     const trigger = $('#mobileFiltersBtn');
     if (sidebar?.contains(e.target) || trigger?.contains(e.target)) return;
-    document.body.classList.remove('mobile-nav-open');
+    setMobileNavOpen(false);
   });
 
   function openDrawer() {
-    document.body.classList.remove('mobile-nav-open');
+    setMobileNavOpen(false);
     loadSavedViews();
     $('#customizeDrawer').classList.add('open');
     $('#customizeDrawer').setAttribute('aria-hidden', 'false');
@@ -1306,8 +1321,13 @@
       bottomGrid.hidden = state.section !== 'overview' || !anyVisible;
     }
 
-    $$('.side-nav button[data-section]').forEach(btn => {
+    $('.side-nav button[data-section]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.section === state.section);
+    });
+    $('[data-mobile-section]').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mobileSection === state.section);
+      if (btn.dataset.mobileSection === state.section) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
     });
 
     const agg = aggregate();
