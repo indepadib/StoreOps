@@ -62,8 +62,22 @@ export async function handleCustomerBiApi({req,url,user}){
     readStoreBasketEvidence(s.id,{startDate:start,endDate:end})
    ]);return{previous,current}
   }));
-  let products=[];try{products=db.prepare("SELECT product_number AS productNumber,product_name AS productName FROM product_identity_cache WHERE product_name LIKE '%orange%' OR product_name LIKE '%ORANGE%' OR product_name LIKE '%poulet%' OR product_name LIKE '%POULET%' OR product_name LIKE '%chicken%' OR product_name LIKE '%CHICKEN%'").all()}catch{products=[]}
-  const productNames=Object.fromEntries(products.filter(x=>x.productNumber&&x.productName).map(x=>[x.productNumber,x.productName]));
+  // Resolve the actual SKUs seen in the whole study, not only a hard-coded
+  // orange/chicken text filter. Prioritize most frequently observed references.
+  const skuFrequency=new Map();
+  for(const item of perStore.flatMap(x=>[...(x.previous.baskets||[]),...(x.current.baskets||[])]).flatMap(b=>b.items||[])){
+   if(!item.productNumber)continue;
+   skuFrequency.set(item.productNumber,(skuFrequency.get(item.productNumber)||0)+1)
+  }
+  const observedSkus=[...skuFrequency].sort((a,b)=>b[1]-a[1]).slice(0,6000).map(x=>x[0]);
+  const productNames={};
+  try{
+   for(let i=0;i<observedSkus.length;i+=180){
+    const batch=observedSkus.slice(i,i+180),marks=batch.map(()=>'?').join(',');
+    const rows=db.prepare('SELECT product_number AS productNumber, product_name AS productName FROM product_identity_cache WHERE product_number IN ('+marks+')').all(...batch);
+    for(const row of rows)if(row.productName)productNames[row.productNumber]=row.productName
+   }
+  }catch{ /* A name cache outage must not falsify sales or prevent SKU analysis. */ }
   const previousEvidence=combineBasketEvidence(perStore.map(x=>x.previous));
   const currentEvidence=combineBasketEvidence(perStore.map(x=>x.current));
   for(const basket of [...(previousEvidence.baskets||[]),...(currentEvidence.baskets||[])])
