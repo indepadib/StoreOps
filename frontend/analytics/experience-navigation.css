@@ -1,0 +1,197 @@
+/* Retail Intelligence · Experience v1
+   Material only on navigation / chrome. Not on dense charts, reports or tables.
+   Inspired by Apple HIG motion and Emil Kowalski's restraint-first principles. */
+:root{
+ --ri-glass-bg:rgba(255,255,255,.80);
+ --ri-glass-stroke:rgba(255,255,255,.78);
+ --ri-glass-shadow:0 12px 42px rgba(22,34,58,.075),inset 0 1px rgba(255,255,255,.75);
+ --ri-ease-out:cubic-bezier(.23,1,.32,1);
+ --ri-tactile:140ms;
+ --ri-switch:220ms;
+}
+.ri-nav-group{display:grid;gap:3px;margin-bottom:11px;min-width:0}
+.ri-nav-label{color:#7989a2;padding:6px 14px 7px;font-size:9px;letter-spacing:.105em;font-weight:780}
+.side-nav .ri-nav-group>button{width:100%;min-width:0;display:flex;align-items:center}
+.side-nav .ri-nav-group>button:active{transform:scale(.985)}
+/* Executive journey dock */
+.ri-experience{
+  color:#1e2b40;margin:15px 0 21px;padding:19px 22px 15px;
+  border:1px solid rgba(221,228,237,.9);
+  border-radius:21px;
+  background:linear-gradient(138deg,rgba(255,255,255,.95),rgba(255,255,255,.81) 70%,rgba(253,245,250,.82));
+  box-shadow:var(--ri-glass-shadow);
+  position:relative;isolation:isolate;
+}
+.ri-experience::before{content:"";position:absolute;inset:0 0 auto;height:1px;border-radius:21px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.95) 50%,transparent);pointer-events:none}
+.ri-experience-top{display:flex;gap:16px 24px;align-items:center;justify-content:space-between}
+.ri-experience-copy{min-width:0;flex:1}
+.ri-eyebrow{font-size:9px;letter-spacing:.11em;color:#b52a5c;font-weight:800}
+.ri-experience h2{margin:5px 0 5px;letter-spacing:-.04em;font-size:clamp(21px,2.3vw,28px);font-weight:780;line-height:1.14;color:#15253c}
+.ri-experience-copy p{font-size:12px;line-height:1.55;color:#65758a;margin:0;max-width:640px}
+.ri-lens-control{display:flex;position:relative;flex:0 0 auto;align-items:center;gap:3px;background:rgba(231,236,243,.74);border:1px solid rgba(209,218,229,.62);padding:4px;border-radius:14px;max-width:100%}
+.ri-lens-control>button{border:1px solid transparent;border-radius:10px;min-height:38px;background:transparent;padding:9px 13px;color:#627189;font-size:11px;font-weight:740;cursor:pointer;white-space:nowrap;transition:background var(--ri-switch) var(--ri-ease-out),box-shadow var(--ri-switch) var(--ri-ease-out),color var(--ri-switch) ease,transform var(--ri-tactile) var(--ri-ease-out)}
+.ri-lens-control>.ri-lens-indicator{position:absolute;z-index:0;left:4px;top:4px;height:calc(100% - 8px);width:var(--ri-lens-width,33%);transform:translate3d(var(--ri-lens-x,0px),0,0);background:rgba(255,255,255,.96);border:1px solid rgba(255,255,255,.94);box-shadow:0 4px 13px rgba(38,49,74,.13),inset 0 1px rgba(255,255,255,.92);border-radius:10px;pointer-events:none;will-change:transform;transition:transform 260ms var(--ri-ease-out),width 260ms var(--ri-ease-out)}
+.ri-lens-control>button{position:relative;z-index:1}
+.ri-lens-control>button.is-active{background:transparent;color:#1b2942;box-shadow:none}
+.ri-lens-control>button:hover:not(.is-active){color:#293950;background:rgba(255,255,255,.45)}
+.ri-lens-control>button:active{transform:scale(.972)}
+.ri-experience-bottom{border-top:1px solid rgba(213,222,234,.75);margin-top:17px;padding-top:12px;display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:9px 18px}
+.ri-experience-actions{display:flex;align-items:center;flex-wrap:wrap;gap:7px;min-width:0}
+.ri-intent-chip{display:inline-flex;align-items:center;gap:7px;min-height:33px;border:1px solid #e0e5ef;border-radius:999px;background:rgba(255,255,255,.88);padding:7px 11px;font-size:11px;color:#42536d;font-weight:690;cursor:pointer;transition:transform var(--ri-tactile) var(--ri-ease-out),border-color var(--ri-switch),box-shadow var(--ri-switch)}
+.ri-intent-chip:before{content:"↗";color:#cd2e62;font-size:11px;font-weight:750}
+.ri-intent-chip:hover{border-color:#e7abc1;box-shadow:0 4px 13px rgba(169,34,82,.08)}
+.ri-intent-chip:active{transform:scale(.975)}
+#riExperienceModeHelp{font-size:10px;color:#7f8d9e;max-width:330px;line-height:1.5;margin:0}
+
+/* Progressive disclosure: no data is deleted, hidden controls remain accessible
+   through 'Explorer' and 'Toutes les données'. Never style [hidden] to display. */
+body[data-ri-mode="focus"] :is(
+ #crmIntelligence > .decision-grid:not(.crm-story-grid),
+ #crmIntelligence > .decision-table-wrap,
+ #crmIntelligence > .crm-table-wrap,
+ #customerResearchContent > .customer-research-panel,
+ #customerResearchContent > .customer-research-quality,
+ #customerResearch .customer-journey-section ~ .customer-journey-section,
+ #salesDiagnostic .decision-table-wrap,
+ #storeBenchmark .decision-table-wrap,
+ #productPerformance .decision-table-wrap,
+ #supplierIntelligence .decision-table-wrap,
+ #decisionStudio .studio-table
+){display:none!important}
+body[data-ri-mode="explore"] :is(
+ #crmIntelligence > .decision-table-wrap,
+ #crmIntelligence > .crm-table-wrap,
+ #salesDiagnostic .hourly-top-table
+){display:none!important}
+body[data-ri-mode="focus"] #customerResearch .customer-journey-v2 > .customer-research-metrics{margin-bottom:8px}
+body[data-ri-mode="focus"] #customerResearch .customer-journey-v2{gap:9px}
+body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:content}
+/* Clear opt-in advanced periods; preserve data state and comparison controls. */
+#filterbar[data-ri-filters="compact"] :is(.date-range-group,.comparison-group,.compare-date-group){display:none!important}
+.ri-filter-more{align-self:end;min-height:42px;border:1px solid #e0e5ec;background:rgba(255,255,255,.92);border-radius:11px;color:#4f6179;padding:10px 12px;cursor:pointer;font-size:11px;font-weight:740;white-space:nowrap;transition:background var(--ri-switch),transform var(--ri-tactile)}
+.ri-filter-more:before{content:"⚙";font-size:12px;margin-right:7px;color:#bd2e61}
+.ri-filter-more:hover{background:#fff;box-shadow:0 4px 13px rgba(12,26,49,.07)}
+.ri-filter-more:active{transform:scale(.98)}
+#filterbar[data-ri-filters="compact"] .active-period{max-width:100%;font-weight:650}
+
+/* Compact mobile actions: originals are moved, not cloned, retaining all exports. */
+.ri-tools{position:relative}
+.ri-tools>summary{list-style:none;display:grid;place-items:center;min-width:42px;min-height:40px;padding:0 8px;color:#fff;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.09);border-radius:11px;cursor:pointer;font-size:23px;font-weight:750;line-height:1}
+.ri-tools>summary::-webkit-details-marker{display:none}
+.ri-tools[open]>summary{border-color:rgba(244,124,169,.5);background:rgba(255,255,255,.16)}
+.ri-tools-menu{position:absolute;top:calc(100% + 10px);right:0;display:grid;gap:5px;width:min(278px,calc(100vw - 20px));padding:10px;background:rgba(253,254,255,.96);border:1px solid rgba(227,233,241,.96);border-radius:15px;box-shadow:0 17px 55px rgba(10,20,37,.22);z-index:70}
+.ri-tools:not([open])>.ri-tools-menu{display:none}
+.ri-tools-menu>button,.topbar .ri-tools-menu>button{display:block;width:100%;min-height:43px;margin:0;padding:11px 12px;text-align:left;border:1px solid transparent;border-radius:9px;background:transparent;color:#263951;font-size:12px;font-weight:720;white-space:normal}
+.ri-tools-menu>button:hover,.topbar .ri-tools-menu>button:hover{background:#f3f6fa;border-color:#e6ebf2;color:#1f2d46;box-shadow:none;transform:none}
+.ri-tools-menu>button:disabled{opacity:.42;cursor:not-allowed}
+.ri-tools[open] .ri-tools-menu{animation:ri-tools-in 150ms var(--ri-ease-out)}
+@keyframes ri-tools-in{from{opacity:.4;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:780px){
+ .topbar .topbar-actions{gap:6px}
+ .topbar{padding-inline:12px}
+ .topbar .ri-tools{display:block}
+ .product-subtitle{display:none}
+ .topbar .brand-block{min-width:0;gap:9px}
+ .topbar .product-name{font-size:14px}
+ .topbar .freshness{padding:9px;min-width:28px;min-height:37px;justify-content:center}
+ .topbar #freshnessText{position:absolute!important;inline-size:1px!important;block-size:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+ .topbar .mobile-menu-btn{width:39px;min-width:39px}
+ .topbar .mobile-menu-btn strong{display:none}
+}
+@media(max-width:390px){
+ .topbar .brand-symbol{width:32px;height:32px}
+ .topbar .product-name{font-size:13px}
+ .topbar-actions{gap:4px}
+ .topbar{padding-inline:9px}
+}
+
+/* Navigation action, desktop + mobile */
+.topbar .ri-finder-trigger{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(255,255,255,.13);background:rgba(255,255,255,.08);color:#eef3fa;min-height:39px;padding:9px 13px}
+.ri-finder-trigger>span{font-size:19px;line-height:0;font-weight:400}
+.ri-finder-trigger kbd{margin-left:5px;font:inherit;font-size:10px;color:#96a4b9;background:rgba(0,0,0,.15);padding:4px 6px;border:1px solid rgba(255,255,255,.09);border-radius:6px}
+.ri-finder-dialog{width:min(620px,calc(100vw - 28px));max-height:min(660px,calc(100dvh - 34px));padding:0;border:1px solid rgba(230,236,245,.95);border-radius:21px;box-shadow:0 30px 100px rgba(7,19,39,.27);color:#1c2a40;background:rgba(253,254,255,.96);overflow:hidden;overscroll-behavior:contain}
+.ri-finder-dialog::backdrop{background:rgba(10,18,31,.36);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+@keyframes ri-finder-enter{from{opacity:.6;transform:translateY(9px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+.ri-finder-dialog[open]{animation:ri-finder-enter 205ms var(--ri-ease-out) both}
+
+.ri-finder-head{padding:22px 21px 13px;display:flex;align-items:flex-start;gap:12px}
+.ri-finder-head>span{display:grid;place-items:center;width:39px;height:39px;flex-shrink:0;border:1px solid #f5c7d7;border-radius:12px;background:#fff2f7;color:#c32160;font-size:18px}
+.ri-finder-head h2{font-size:20px;letter-spacing:-.035em;margin:0 0 4px;line-height:1.15}
+.ri-finder-head p{font-size:12px;color:#74839a;margin:0;line-height:1.5}
+.ri-finder-search{display:block;padding:6px 19px 15px}
+#riFinderInput{width:100%;min-height:49px;border:1px solid #d8dfeb;border-radius:13px;background:rgba(245,248,252,.93);font:inherit;font-size:14px;color:#1c2b45;padding:12px 15px;outline:none;box-shadow:inset 0 1px 2px rgba(30,47,71,.025)}
+#riFinderInput:focus{border-color:#d65b83;box-shadow:0 0 0 4px rgba(210,47,101,.1)}
+.ri-finder-results{display:grid;gap:3px;padding:3px 12px 13px;max-height:435px;overflow:auto}
+.ri-finder-item{display:flex;align-items:center;gap:12px;width:100%;border:1px solid transparent;border-radius:12px;background:transparent;padding:10px;text-align:left;cursor:pointer;transition:background .14s ease}
+.ri-finder-item:hover,.ri-finder-item:focus-visible{background:#f3f6fa;border-color:#e3e9f1;outline:none}
+.ri-finder-item:active{background:#e9eff7}
+.ri-finder-icon{width:34px;height:34px;flex:0 0 34px;border:1px solid #e5eaf2;border-radius:10px;background:#fff;display:grid;place-items:center;color:#cd2b62;font-weight:750}
+.ri-finder-copy{display:grid;gap:3px;min-width:0}
+.ri-finder-copy strong{font-size:13px;color:#21324d;font-weight:730}
+.ri-finder-copy small{font-size:11px;line-height:1.4;color:#8290a3}
+.ri-finder-empty{margin:12px;color:#718298;font-size:12px}
+.ri-finder-footer{border-top:1px solid #e5eaf1;padding:12px 20px;font-size:10px;color:#8290a3;background:rgba(248,250,253,.95)}
+.sr-only{position:absolute!important;inline-size:1px!important;block-size:1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important}
+/* Glass is a material for navigational planes, never under analytical numbers. */
+@supports ((backdrop-filter:blur(14px)) or (-webkit-backdrop-filter:blur(14px))){
+ .ri-experience{background:linear-gradient(138deg,rgba(255,255,255,.83),rgba(255,255,255,.70));backdrop-filter:blur(17px) saturate(145%);-webkit-backdrop-filter:blur(17px) saturate(145%)}
+ .ri-finder-dialog{backdrop-filter:blur(24px) saturate(130%);-webkit-backdrop-filter:blur(24px) saturate(130%)}
+ .topbar{backdrop-filter:blur(20px) saturate(130%);-webkit-backdrop-filter:blur(20px) saturate(130%)}
+ #analyticsAssistant.analytics-assistant{background:rgba(255,255,255,.94);backdrop-filter:blur(20px) saturate(130%);-webkit-backdrop-filter:blur(20px) saturate(130%)}
+}
+@media(max-width:1100px){
+ .ri-experience-top{flex-wrap:wrap;align-items:flex-start}
+ .ri-lens-control{width:fit-content}
+ .topbar .ri-finder-trigger kbd{display:none}
+ .ri-experience-bottom{align-items:flex-start}
+}
+@media(max-width:700px){
+ .ri-experience{padding:15px 14px 13px;margin:11px 0 15px;border-radius:17px}
+ .ri-experience h2{font-size:23px}
+ .ri-experience-copy p{font-size:11px}
+ .ri-lens-control{width:100%;justify-content:space-between}
+ .ri-lens-control>button{flex:1 1 0;min-width:0;min-height:40px;padding:8px 6px;font-size:10px}
+ .ri-lens-control>.ri-lens-indicator{transition-duration:240ms}
+ .ri-experience-bottom{margin-top:13px;padding-top:11px;gap:9px}
+ .ri-intent-chip{font-size:10px;padding:7px 10px;min-height:35px}
+ #riExperienceModeHelp{width:100%;max-width:none}
+ #filterbar[data-ri-filters="compact"] .ri-filter-more{order:5}
+ .ri-finder-dialog{width:100vw;max-width:none;max-height:min(730px,calc(100dvh - 18px));margin:auto 0 0;border-radius:21px 21px 0 0;border-bottom:none}
+ .ri-finder-results{max-height:calc(100dvh - 250px)}
+ .ri-finder-head{padding:18px 16px 10px}
+ .ri-finder-search{padding:6px 14px 12px}
+ .ri-finder-footer{padding:11px 16px}
+ .topbar .ri-finder-trigger{padding:9px 11px;font-size:0;min-width:42px;min-height:40px;justify-content:center}
+ .topbar .ri-finder-trigger>span{font-size:23px}
+ .topbar .ri-finder-trigger kbd{display:none}
+}
+/* Large analytical surfaces should stay opaque; blur is for chrome, not the full canvas. */
+@media(max-width:780px){
+ #analyticsAssistant.analytics-assistant,#analyticsAssistant.analytics-assistant.expanded{
+  background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important
+ }
+ .ri-finder-dialog{background:#fff;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+ .ri-experience{background:rgba(255,255,255,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+}
+@media(min-width:781px){
+ #analyticsAssistant.analytics-assistant.expanded{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+/* Safety: no forced animation while browsing tables, charts or frequent buttons. */
+@media(hover:hover) and (pointer:fine){
+ .ri-intent-chip:hover,.ri-finder-trigger:hover{transform:translateY(-1px)}
+}
+:is(.ri-experience,.ri-finder-dialog) :is(button,input):focus-visible,
+.ri-filter-more:focus-visible{outline:3px solid #d83a71;outline-offset:2px}
+@media(prefers-reduced-motion:reduce){
+ .ri-experience *, .ri-finder-dialog *, .ri-filter-more{transition:none!important;animation:none!important}
+ .ri-lens-control>.ri-lens-indicator{transition:none!important}
+ .ri-finder-dialog[open]{animation:none!important}
+ .ri-tools[open] .ri-tools-menu{animation:none!important}
+ .ri-finder-dialog::backdrop{backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
+}
+@media(prefers-reduced-transparency:reduce),(prefers-contrast:more){
+ .ri-experience,.ri-finder-dialog,#analyticsAssistant.analytics-assistant{background:#fff!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;border-color:#b9c4d4!important}
+ .ri-lens-control{background:#e9edf4}
+ .ri-finder-dialog::backdrop{background:rgba(10,18,31,.8);backdrop-filter:none!important}
+}
+@media print{#riExperience,#riFinderTrigger,#riFilterMore,#riFinderDialog,.ri-nav-label{display:none!important}body[data-ri-mode="focus"] :is(#crmIntelligence > .decision-grid,#crmIntelligence > .decision-table-wrap,#salesDiagnostic .decision-table-wrap){display:revert!important}}
