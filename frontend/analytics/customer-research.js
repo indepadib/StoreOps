@@ -173,4 +173,4 @@ async function runCustomerBase(){
 $('customerBaseCancel')?.addEventListener('click',()=>baseController?.abort());
 $('customerResearchRun')?.addEventListener('click',runResearch);
 $('customerBaseRun')?.addEventListener('click',runCustomerBase);
-document.addEventListener('retail-intelligence:section',()=>{if(controller&&!running)controller.abort()});
+document.addEventListener('retail-intelligence:section',()=>{if(controller&&running)controller.abort()});
