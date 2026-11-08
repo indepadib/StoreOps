@@ -264,7 +264,14 @@ export async function readStoreBasketEvidence(storeId,{startDate,endDate,force=f
  const key=analyticsCacheKey('basket-evidence-v3',[storeId,startDate,endDate]);
  if(!force){const cached=await readAnalyticsCache(key);if(cached)return cached}
  if(days>1){
-  const parts=[];for(let n=0;n<days;n++){const date=nextDate(startDate,n),daily=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]));if(!daily)throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});parts.push(daily)}
+  // Cached daily baskets are independent reads. Fetch in small bounded groups
+  // instead of 31 sequential Postgres round-trips for each export period.
+  const dates=Array.from({length:days},(_,i)=>nextDate(startDate,i)),parts=[];
+  for(let i=0;i<dates.length;i+=8){
+   const group=await Promise.all(dates.slice(i,i+8).map(date=>readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]))));
+   if(group.some(daily=>!daily))throw Object.assign(new Error('Préparation des journées requise avant la comparaison.'),{status:409,code:'BASKET_PREPARATION_REQUIRED'});
+   parts.push(...group);
+  }
   return{storeId,baskets:parts.flatMap(x=>x.baskets||[]),rejectedIdentity:parts.reduce((n,x)=>n+(x.rejectedIdentity||0),0),checkedAt:parts.map(x=>x.checkedAt).filter(Boolean).sort()[0]||null};
  }
  const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},select=[...new Set([...Object.values(fields),...Object.values(retailParentIdentityFields),config.dynamics.dataAreaField].filter(Boolean))].join(',');
