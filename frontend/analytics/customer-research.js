@@ -1,3 +1,4 @@
+import {renderCustomerJourney} from './customer-journey-view.js';
 // Research panel: incremental loading keeps Dynamics calls out of synchronous
 // report generation and avoids multi-minute "infinite loading" states.
 const $=id=>document.getElementById(id);
@@ -33,6 +34,7 @@ function render(report){
  add(h,'strong',null,'Étude comparative · '+report.comparison.start+' → '+report.comparison.end+' / '+report.period.start+' → '+report.period.end);
  add(h,'small',null,'Tickets identifiés · '+report.coverage.storeIds.length+' magasin(s) · source '+report.source);
  content.append(h);
+ if(report.journey)renderCustomerJourney(content,report.journey);
  const metrics=node('div','customer-research-metrics'),c=report.customers;
  metrics.append(
   summaryCard('Clients identifiés précédemment',number(c.observedPrevious),'Dans la fenêtre de comparaison'),
