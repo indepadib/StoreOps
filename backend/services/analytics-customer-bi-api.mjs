@@ -23,7 +23,7 @@ export async function handleCustomerBiApi({req,url,user}){
  if(requestedIds.length){if(requestedIds.some(id=>!stores.some(s=>s.id===id)))return{status:403,data:{error:'Périmètre magasin interdit.'}};stores=stores.filter(s=>requestedIds.includes(s.id))}
  const excludedStores=stores.filter(s=>!salesIntegrationConfig(s.id).ready).map(s=>({...s,reason:'Connexion ventes non configurée'}));
  if(url.pathname.endsWith('/intelligence-scope'))return{status:200,data:{stores:stores.filter(s=>salesIntegrationConfig(s.id).ready),excludedStores}};
- if(url.pathname.includes('customer-intelligence')||url.pathname==='/api/analytics/customer-research'||url.pathname==='/api/analytics/customer-base'||url.pathname==='/api/analytics/customer-base/prepare'){
+ if(url.pathname.includes('customer-intelligence')||url.pathname==='/api/analytics/customer-research'){
   if(url.searchParams.get('storeId')&&url.searchParams.get('storeId')!=='ALL'&&excludedStores.length)return{status:422,data:{error:'Ce magasin ne dispose pas de connexion ventes configurée.'}};
   stores=stores.filter(s=>salesIntegrationConfig(s.id).ready);
  }
