@@ -8,7 +8,7 @@ export function classifyCustomerResearchQuestion(question){
  const lifetime=/depuis (?:l )?(?:ouverture|debut|lancement|creation)|toute (?:notre|la) base|base (?:de )?clients|combien.*recrut|cumul.*(?:adhesion|client|recrut)|historique.*(?:fidel|client)/.test(q);
  const pricing=/hausse|augmentation|prix|tarif|plus cher|cherte|effet prix/.test(q);
  const product=/orange|jus|poulet|chicken|produit|article/.test(q);
- const churn=/ne revien|ne reven|plus revu|non revu|perdu|perte.*client|parti|retour|retention|une seule fois|premiere fois|abandonn|plus maintenant|attrition|rupture|causes|raisons/.test(q);
+ const churn=/ne revien|ne reven|plus revu|non revu|perdu|perte.*client|parti|retour|retention|une seule fois|premiere fois|abandonn|plus maintenant|attrition|rupture|causes|raisons|frequentation/.test(q);
  if(lifetime&&customer)return{kind:'CUSTOMER_LIFETIME',aspects:['recrutement','base','historique']};
  if((pricing&&product&&(customer||churn))||(customer&&churn&&/(?:raison|cause|pourquoi|expliqu|une seule fois|premiere fois|ne revient plus|ne reviennent plus|plus maintenant|rupture|abandonn)/.test(q)))return{kind:'CUSTOMER_RETENTION_RESEARCH',aspects:[...(pricing?['price']:[]),...(product?['article']:[]),'retention','hypotheses']};
  return null
