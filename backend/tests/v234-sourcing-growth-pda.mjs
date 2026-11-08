@@ -56,7 +56,7 @@ assert.match(req,/supply_chain/);
 assert.match(reqApi,/canAccessWarehouse/);
 assert.match(req,/primaryVendorAccount/);
 assert.match(glovo,/privacyMode:'AVAILABILITY_ONLY'/);
-assert.match(glovo,/products=snapshot\.items\.map\(x=>\(\{sku:x\.sku,active:x\.active\}\)\)/);
+assert.match(glovo,/products=snapshot\.items\.map\(x=>\(\{sku:x\.sku,active:x\.active/,'Glovo payload must always carry sku + availability; optional price is allowed only by the newer guarded price-sync mode.');
 assert.doesNotMatch(glovo,/products=snapshot\.items\.map\(x=>\(\{[^}]*quantity/);
 assert.match(growthApi,/sell-through/);
 assert.match(growthApi,/cool-save/);
