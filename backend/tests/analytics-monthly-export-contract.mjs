@@ -41,10 +41,23 @@ assert.match(bootstrap,/monthly-sales-export\.js/,'complete export module must l
 assert.match(ui,/navigator\.share/,'iOS native share should be supported');
 assert.match(ui,/compareStart:state\.compareStart/,'frontend must send the comparison shown on Analytics');
 assert.match(ui,/compareEnd:state\.compareEnd/,'frontend must send the comparison shown on Analytics');
-assert.match(ui,/scope:'stores'/,'frontend must prepare each store separately to avoid one monolithic timeout');
-assert.match(ui,/scope:'network'/,'frontend must consolidate the network only after store caches are warm');
-assert.match(ui,/compact:'1'/,'frontend must request compact export rows');
-assert.match(ui,/'N\/D'/,'unavailable values must be explicit instead of blank');
-assert.match(ui,/StoreOps-Analytics-ventes-completes-PERIODE-COMPARAISON/,'filename must describe a generic period comparison');
+const jobs=readFileSync(new URL('../services/analytics-export-jobs.mjs',import.meta.url),'utf8');
+const background=readFileSync(new URL('../../netlify/functions/analytics-export-background.mts',import.meta.url),'utf8');
+const xlsx=readFileSync(new URL('../../frontend/analytics/xlsx-workbook.js',import.meta.url),'utf8');
+assert.match(ui,/scope:'all'/,'frontend must export network and stores with one logically consistent job');
+assert.match(ui,/createXlsxBlob/,'frontend must produce actual XLSX files');
+assert.match(ui,/sessionStorage/,'frontend should recover export jobs after browser navigation');
+assert.match(ui,/dataStatus/,'partial data must be explicitly marked');
+assert.match(ui,/StoreOps-Analytics-Ventes-/,'download name must describe selected period');
+assert.match(jobs,/canAccessStore/,'each job must be scoped to authorized stores');
+assert.match(jobs,/userId!==user.id/,'job results must only be available to their requester');
+assert.match(jobs,/analytics-export-background/,'jobs must dispatch background processing rather than HTTP 30s export');
+assert.match(background,/background:true/,'Netlify background mode must be enabled');
+assert.match(background,/exportPageKey/,'output must be split into bounded pages');
+assert.match(xlsx,/application\/vnd.openxmlformats-officedocument.spreadsheetml.sheet/,'export must be a real XLSX workbook');
+assert.match(service,/abc_class_n/,'product contribution should include ABC segmentation');
+assert.match(service,/ca_volume_effect/,'product mix decomposition must include volume effect');
+assert.match(service,/ca_price_effect/,'product mix decomposition must include price effect');
+assert.match(service,/const partners=new Map/,'basket association must use pre-indexed cooccurrence for performance');
 
 console.log('Analytics full period/comparison export contract passed.');
