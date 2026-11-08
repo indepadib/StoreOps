@@ -13,6 +13,7 @@ import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './an
 import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
 import { readMonthlySalesExport } from './analytics-monthly-export.mjs';
 import { handleAnalyticsExportJobApi } from './analytics-export-jobs.mjs';
+import { semanticPublicModel } from './analytics-semantic-model.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -49,6 +50,7 @@ function safeError(error){
 }
 
 export async function handleAnalyticsApi({ req, url, user }){
+  if(req.method==='GET'&&url.pathname==='/api/analytics/semantic-model')return{status:200,data:semanticPublicModel()};
   const exportJob=await handleAnalyticsExportJobApi({req,url,user});if(exportJob)return exportJob;
   const tools=await handleDecisionToolsApi({req,url,user});if(tools)return tools;
   const customerBi=await handleCustomerBiApi({req,url,user});if(customerBi)return customerBi;

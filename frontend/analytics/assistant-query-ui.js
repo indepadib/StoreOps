@@ -6,6 +6,19 @@ export function renderQueryResult(container,result,{onSuggestion,onScope}={}){
   for(const text of section.lines||[]){const p=document.createElement('p');p.textContent=text;details.appendChild(p)}
   if(section.export?.rows?.length){const b=document.createElement('button');b.type='button';b.textContent='Exporter ce résultat'+(section.export.limited?' (500 lignes)':'');b.onclick=()=>{const cell=v=>'"'+String(v??'').replace(/^[\s]*[=+@-]/,m=>"'"+m).replaceAll('"','""')+'"',csv=[section.export.columns,...section.export.rows].map(r=>r.map(cell).join(';')).join('\r\n'),url=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='storeops-agent-resultat.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)};details.appendChild(b)}for(const action of section.actions||[]){const p=document.createElement('p');p.textContent='Action à examiner : '+action;details.appendChild(p)}container.appendChild(details);
  }
+ if(result.semanticTrace?.length){
+  const details=document.createElement('details');details.className='assistant-method';const title=document.createElement('summary');
+  title.textContent='Sources & méthodes · '+result.semanticTrace.length+' indicateur(s)';details.appendChild(title);
+  for(const metric of result.semanticTrace){
+   const row=document.createElement('div');row.className='assistant-method-item';
+   const heading=document.createElement('strong');heading.textContent=metric.label;
+   const formula=document.createElement('p');formula.textContent=metric.formula+' · '+metric.unit;
+   const source=document.createElement('small');source.textContent='Source : '+metric.source+' · '+metric.availability;
+   const caution=document.createElement('small');caution.textContent=metric.warning||'À contrôler sur la période sélectionnée.';
+   row.append(heading,formula,source,caution);details.append(row)
+  }
+  container.append(details)
+ }
  if(result.suggestedScope){const b=document.createElement('button');b.type='button';b.textContent='Charger la période et les magasins demandés';b.onclick=()=>onScope?.(result.suggestedScope,result.originalQuestion);container.appendChild(b)}
  return true;
 }
