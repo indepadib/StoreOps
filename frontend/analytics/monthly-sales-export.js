@@ -16,7 +16,8 @@ function daysBetween(start,end){
 }
 function csvFrom(data){
  const columns=Array.isArray(data?.columns)?data.columns:[],rows=Array.isArray(data?.rows)?data.rows:[];
- return '\ufeff'+[columns.map(c=>c.label),...rows.map(row=>columns.map(c=>row[c.key]))].map(row=>row.map(safeCell).join(';')).join('\r\n');
+ const values=row=>Array.isArray(row)?row:columns.map(c=>row[c.key]);
+ return '\ufeff'+[columns.map(c=>c.label),...rows.map(values)].map(row=>row.map(safeCell).join(';')).join('\r\n');
 }
 async function saveCsv(text,filename){
  const blob=new Blob([text],{type:'text/csv;charset=utf-8'}),file=new File([blob],filename,{type:'text/csv;charset=utf-8'});
@@ -30,17 +31,42 @@ async function run(){
  if(!core||!button)return;
  const state=core.getState(),days=daysBetween(state.periodStart,state.periodEnd);
  if(!days||days>31){toast('Sélectionne une période de 1 à 31 jours pour l’export mensuel complet.');return}
- const stores=core.getSelectedStores(),ids=stores.map(s=>s.id).join(',');
- const old=button.innerHTML;button.disabled=true;button.textContent='Préparation du dataset…';
+ const stores=core.getSelectedStores();
+ if(!stores.length){toast('Sélectionne au moins un magasin.');return}
+ const old=button.innerHTML;button.disabled=true;button.textContent='Préparation de l’export…';
  try{
-  const params=new URLSearchParams({start:state.periodStart,end:state.periodEnd,compareStart:state.compareStart,compareEnd:state.compareEnd,comparisonMode:state.comparisonMode||'custom'});
-  if(ids)params.set('storeIds',ids);
-  const data=await core.api('/api/analytics/monthly-export?'+params.toString());
-  if(!data?.rows?.length)throw new Error(data?.message||'Aucune vente à exporter sur cette période.');
+  const base={start:state.periodStart,end:state.periodEnd,compareStart:state.compareStart,compareEnd:state.compareEnd,comparisonMode:state.comparisonMode||'custom',compact:'1'};
+  let columns=null,rows=[],basketReady=0,basketExpected=0;
+  for(let i=0;i<stores.length;i++){
+   const store=stores[i],params=new URLSearchParams({...base,storeIds:store.id,scope:'stores'});
+   button.textContent='Préparation '+(i+1)+'/'+stores.length+' · '+(store.code||store.name);
+   const part=await core.api('/api/analytics/monthly-export?'+params.toString());
+   if(!columns?.length&&part?.columns?.length)columns=part.columns;
+   rows.push(...(part?.rows||[]));
+   basketReady+=Number(part?.diagnostics?.basketCurrentReady||0)+Number(part?.diagnostics?.basketComparisonReady||0);
+   basketExpected+=2
+  }
+  let networkIncluded=false;
+  if(stores.length>1){
+   button.textContent='Consolidation réseau…';
+   try{
+    const params=new URLSearchParams({...base,storeIds:stores.map(s=>s.id).join(','),scope:'network'});
+    const network=await core.api('/api/analytics/monthly-export?'+params.toString());
+    if(!columns?.length&&network?.columns?.length)columns=network.columns;
+    rows=[...(network?.rows||[]),...rows];networkIncluded=(network?.rows||[]).length>0;
+    basketReady+=Number(network?.diagnostics?.basketCurrentReady||0)+Number(network?.diagnostics?.basketComparisonReady||0);
+    basketExpected+=4
+   }catch(error){console.warn('Network export consolidation skipped',error)}
+  }
+  if(!rows.length)throw new Error('Aucune vente à exporter sur cette période.');
+  const data={columns:columns||[],rows};
   button.textContent='Génération Excel…';
   const scope=stores.length===1?(stores[0].code||stores[0].id):'reseau';
   const result=await saveCsv(csvFrom(data),'StoreOps-Analytics-ventes-completes-PERIODE-COMPARAISON-'+scope+'-'+state.periodStart+'-'+state.periodEnd+'-vs-'+state.compareStart+'-'+state.compareEnd+'.csv');
-  if(result!=='CANCELLED')toast((data.summary?.rows||data.rows.length)+' lignes exportées · hiérarchie + comparaison active + paniers + poids CA.');
+  if(result!=='CANCELLED'){
+   const basketNote=basketExpected&&basketReady<basketExpected?' · certains indicateurs panier sont N/D':' · paniers disponibles';
+   toast(rows.length+' lignes exportées · détail magasin'+(networkIncluded?' + consolidation réseau':'')+' · comparaison active'+basketNote+'.')
+  }
  }catch(error){
   console.error('Full monthly sales export failed',error);
   toast(error?.message||'Impossible de générer l’export complet.');

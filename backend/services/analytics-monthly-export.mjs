@@ -1,5 +1,6 @@
 import {readStoreSalesRange,readStoreBasketEvidence} from './dynamics-sales.mjs';
 import {readAnalyticsCatalog} from './analytics-catalog.mjs';
+import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 
 const n=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
 const clean=v=>String(v??'').trim();
@@ -21,18 +22,18 @@ const COMPARISON_LABELS={
  custom:'Personnalisée'
 };
 function comparisonLabel(mode){return COMPARISON_LABELS[clean(mode)]||'Comparaison Analytics'}
-async function readBasketPeriod(storeId,{startDate,endDate,force=false}={}){
+async function readBasketPeriod(storeId,{startDate,endDate}={}){
  const days=daysBetween(startDate,endDate);
  if(!days||days<1||days>31)throw Object.assign(new Error('Fenêtre paniers : 1 à 31 jours.'),{status:400,code:'INVALID_RANGE'});
- if(!force){
-  try{return await readStoreBasketEvidence(storeId,{startDate,endDate,force:false})}
-  catch(error){if(error?.code!=='BASKET_PREPARATION_REQUIRED')throw error}
+ try{return await readStoreBasketEvidence(storeId,{startDate,endDate,force:false})}
+ catch(error){
+  // Do not rebuild up to 31 daily baskets during one export request. The public
+  // edge currently cuts long requests around 30 seconds. Sales-range reads already
+  // populate the daily basket cache when it is fresh; if it expired, keep the
+  // export usable and mark basket-only columns unavailable.
+  if(error?.code==='BASKET_PREPARATION_REQUIRED')throw Object.assign(new Error('Indicateurs panier non préparés pour cette période.'),{status:409,code:'BASKET_NOT_PREPARED'});
+  throw error
  }
- const dates=Array.from({length:days},(_,i)=>shiftDays(startDate,i)),concurrency=3;
- for(let i=0;i<dates.length;i+=concurrency){
-  await Promise.all(dates.slice(i,i+concurrency).map(date=>readStoreBasketEvidence(storeId,{startDate:date,endDate:date,force})))
- }
- return readStoreBasketEvidence(storeId,{startDate,endDate,force:false})
 }
 
 function quantityMap(row={}){
@@ -194,11 +195,23 @@ export const MONTHLY_EXPORT_COLUMNS=[
 ].map(([key,label])=>({key,label}));
 
 async function catalogForProducts(products=[]){
- const keys=[...new Set(products.map(clean).filter(Boolean))],items=[];
- for(let i=0;i<keys.length;i+=200){const part=await readAnalyticsCatalog(keys.slice(i,i+200));items.push(...(part.items||[]))}
- return items
+ const keys=[...new Set(products.map(clean).filter(Boolean))],batches=[];
+ for(let i=0;i<keys.length;i+=200)batches.push(keys.slice(i,i+200));
+ const results=new Array(batches.length),concurrency=3;
+ for(let i=0;i<batches.length;i+=concurrency){
+  await Promise.all(batches.slice(i,i+concurrency).map(async(part,offset)=>{
+   const sorted=[...part].sort(),cacheKey=analyticsCacheKey('monthly-export-catalog-v2',sorted);
+   let data=await readAnalyticsCache(cacheKey);
+   if(!data){
+    data=await readAnalyticsCatalog(part);
+    await writeAnalyticsCache(cacheKey,'monthly-export-catalog-v2',data,7*24*3600)
+   }
+   results[i+offset]=data.items||[]
+  }))
+ }
+ return results.flat()
 }
-export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false}={}){
+export async function readMonthlySalesExport(stores=[],{startDate,endDate,compareStartDate,compareEndDate,comparisonMode='custom',force=false,scope='all'}={}){
  const days=daysBetween(startDate,endDate),comparisonDays=daysBetween(compareStartDate,compareEndDate);
  if(!days||days<1||days>31)throw Object.assign(new Error('Export Analytics : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
  if(!comparisonDays||comparisonDays<1||comparisonDays>31)throw Object.assign(new Error('Export Analytics : la période de comparaison doit contenir 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_COMPARISON_RANGE'});
@@ -215,8 +228,9 @@ export async function readMonthlySalesExport(stores=[],{startDate,endDate,compar
  }
  const products=storeResults.flatMap(x=>[...(x.current.products||[]),...(x.previous.products||[])]).map(x=>x.key),catalogItems=await catalogForProducts(products),catalog=catalogMap(catalogItems);
  const networkCurrent=combineRanges(storeResults.map(x=>x.current)),networkPrevious=combineRanges(storeResults.map(x=>x.previous)),networkCurrentEvidence=combineEvidence(storeResults.map(x=>x.currentEvidence)),networkPreviousEvidence=combineEvidence(storeResults.map(x=>x.previousEvidence));
- const networkRows=buildScopeRows({scopeType:'NETWORK',storeName:'Réseau sélectionné',current:networkCurrent,previous:networkPrevious,currentEvidence:networkCurrentEvidence,previousEvidence:networkPreviousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode});
- const storeRows=storeResults.flatMap(x=>buildScopeRows({scopeType:'STORE',storeId:x.store.id,storeName:x.store.name,storeCode:x.store.code,current:x.current,previous:x.previous,currentEvidence:x.currentEvidence,previousEvidence:x.previousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode}));
+ const scopeMode=['network','stores'].includes(clean(scope).toLowerCase())?clean(scope).toLowerCase():'all';
+ const networkRows=scopeMode==='stores'?[]:buildScopeRows({scopeType:'NETWORK',storeName:'Réseau sélectionné',current:networkCurrent,previous:networkPrevious,currentEvidence:networkCurrentEvidence,previousEvidence:networkPreviousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode});
+ const storeRows=scopeMode==='network'?[]:storeResults.flatMap(x=>buildScopeRows({scopeType:'STORE',storeId:x.store.id,storeName:x.store.name,storeCode:x.store.code,current:x.current,previous:x.previous,currentEvidence:x.currentEvidence,previousEvidence:x.previousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode}));
  const comparisonType=clean(comparisonMode)||'custom';
  return{
   status:storeResults.every(x=>x.current.status==='READY'&&x.previous.status==='READY')?'READY':'PARTIAL',

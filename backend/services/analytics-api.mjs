@@ -100,15 +100,18 @@ export async function handleAnalyticsApi({ req, url, user }){
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/monthly-export'){
     const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))?clean(v):null;
-    const startDate=iso(url.searchParams.get('start')),endDate=iso(url.searchParams.get('end')),compareStartDate=iso(url.searchParams.get('compareStart')),compareEndDate=iso(url.searchParams.get('compareEnd')),comparisonMode=clean(url.searchParams.get('comparisonMode'))||'custom',force=url.searchParams.get('force')==='1';
+    const startDate=iso(url.searchParams.get('start')),endDate=iso(url.searchParams.get('end')),compareStartDate=iso(url.searchParams.get('compareStart')),compareEndDate=iso(url.searchParams.get('compareEnd')),comparisonMode=clean(url.searchParams.get('comparisonMode'))||'custom',force=url.searchParams.get('force')==='1',scope=clean(url.searchParams.get('scope')).toLowerCase()||'all',compact=url.searchParams.get('compact')==='1';
     if(!startDate||!endDate||!compareStartDate||!compareEndDate)return{status:400,data:{error:'start, end, compareStart et compareEnd requis au format YYYY-MM-DD.'}};
     const requestedIds=[...new Set((url.searchParams.get('storeIds')||'').split(',').map(clean).filter(Boolean))];
     const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
     const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
     if(!stores.length)return{status:200,data:{status:'UNAVAILABLE',period:{startDate,endDate},stores:[],columns:[],rows:[],message:'Aucun magasin accessible.'}};
-    try{return{status:200,data:await readMonthlySalesExport(stores,{startDate,endDate,compareStartDate,compareEndDate,comparisonMode,force})}}
-    catch(error){return{status:Number(error?.status)||500,data:{error:error?.message||'Export mensuel indisponible.',code:error?.code||'MONTHLY_EXPORT_FAILED'}}}
+    try{
+      const data=await readMonthlySalesExport(stores,{startDate,endDate,compareStartDate,compareEndDate,comparisonMode,force,scope});
+      if(!compact)return{status:200,data};
+      return{status:200,data:{...data,rowFormat:'ARRAY',rows:(data.rows||[]).map(row=>(data.columns||[]).map(column=>row[column.key]))}}
+    }catch(error){return{status:Number(error?.status)||500,data:{error:error?.message||'Export mensuel indisponible.',code:error?.code||'MONTHLY_EXPORT_FAILED'}}}
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/decision'){

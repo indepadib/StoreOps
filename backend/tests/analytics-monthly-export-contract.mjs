@@ -11,11 +11,16 @@ assert.match(api,/\/api\/analytics\/monthly-export/,'Analytics API must expose t
 assert.match(api,/compareStart/,'full export API must accept the active comparison start');
 assert.match(api,/compareEnd/,'full export API must accept the active comparison end');
 assert.match(api,/comparisonMode/,'full export API must preserve the Analytics comparison mode');
+assert.match(api,/compact/,'full export API must support compact rows to stay below response limits');
+assert.match(api,/scope/,'full export API must support store/network split requests');
 assert.match(service,/comparisonDays/,'full export must validate the comparison window');
 assert.doesNotMatch(service,/PREVIOUS_YEAR/,'full export must not force N-1');
 assert.doesNotMatch(service,/previousYearPeriod/,'full export must not calculate a hidden N-1 period');
-assert.match(service,/readBasketPeriod/,'full export must prepare missing basket evidence');
-assert.match(service,/BASKET_PREPARATION_REQUIRED/,'multi-day basket evidence must be warmed when absent');
+assert.match(service,/readBasketPeriod/,'full export must consume basket evidence when already prepared');
+assert.match(service,/BASKET_NOT_PREPARED/,'expired basket evidence must degrade gracefully instead of blocking the export');
+assert.doesNotMatch(service,/Promise\.all\(dates/,'full export must never rebuild 31 basket days synchronously');
+assert.match(service,/monthly-export-catalog-v2/,'catalog chunks must use persistent cache');
+assert.match(service,/concurrency=3/,'catalog chunks must be fetched with bounded concurrency');
 assert.match(service,/basketNumber/,'calculable basket metrics must use explicit zero rather than blank');
 assert.match(service,/comparison_type/,'each row must identify the comparison selected in Analytics');
 assert.match(service,/department_code/,'department hierarchy must be exported');
@@ -36,6 +41,9 @@ assert.match(bootstrap,/monthly-sales-export\.js/,'complete export module must l
 assert.match(ui,/navigator\.share/,'iOS native share should be supported');
 assert.match(ui,/compareStart:state\.compareStart/,'frontend must send the comparison shown on Analytics');
 assert.match(ui,/compareEnd:state\.compareEnd/,'frontend must send the comparison shown on Analytics');
+assert.match(ui,/scope:'stores'/,'frontend must prepare each store separately to avoid one monolithic timeout');
+assert.match(ui,/scope:'network'/,'frontend must consolidate the network only after store caches are warm');
+assert.match(ui,/compact:'1'/,'frontend must request compact export rows');
 assert.match(ui,/'N\/D'/,'unavailable values must be explicit instead of blank');
 assert.match(ui,/StoreOps-Analytics-ventes-completes-PERIODE-COMPARAISON/,'filename must describe a generic period comparison');
 
