@@ -1,8 +1,8 @@
 import type { Config } from '@netlify/functions';
 import { prepareAnalyticsRuntime } from './api.mts';
 import { analyticsCacheKey, readAnalyticsCacheFresh, writeAnalyticsCache } from '../../backend/services/analytics-persistent-cache.mjs';
-const exportJobKey=(id:string)=>analyticsCacheKey('monthly-export-job-v1',[id]);
-const exportPageKey=(id:string,index:number)=>analyticsCacheKey('monthly-export-job-page-v1',[id,index]);
+const exportJobKey=(id:string)=>analyticsCacheKey('monthly-export-job-v2',[id]);
+const exportPageKey=(id:string,index:number)=>analyticsCacheKey('monthly-export-job-page-v2',[id,index]);
 
 type ExportJob={id:string,status:string,userId:string,input:any,createdAt:string,updatedAt:string,progress:any,pages:number,[key:string]:any};
 const expirySeconds=21600;
@@ -21,7 +21,7 @@ export default async function processExport(request:Request){
   job={...job!,...patch,updatedAt:new Date().toISOString()};
   const phase=(patch.progress as any)?.phase;
   if(phase&&phase!==previous)console.info('Analytics export phase',job!.id,phase,'elapsed_s',Math.round((Date.now()-startedAt)/1000));
-  if(!await writeAnalyticsCache(key,'monthly-export-job-v1',job,expirySeconds))throw new Error('Unable to persist export progress');
+  if(!await writeAnalyticsCache(key,'monthly-export-job-v2',job,expirySeconds))throw new Error('Unable to persist export progress');
  };
  try{
   await update({status:'RUNNING',progress:{phase:'INITIALIZING',completed:0,total:job.input.stores.length}});
@@ -38,7 +38,7 @@ export default async function processExport(request:Request){
   await update({progress:{phase:'SAVING',completed:0,total:Math.max(1,Math.ceil(rows.length/pageSize))}});
   for(let i=0;i<rows.length;i+=pageSize){
    const page=rows.slice(i,i+pageSize).map((row:any)=>columns.map((col:any)=>row[col.key]??null));
-   if(!await writeAnalyticsCache(exportPageKey(jobId,Math.floor(i/pageSize)),'monthly-export-job-page-v1',page,expirySeconds))
+   if(!await writeAnalyticsCache(exportPageKey(jobId,Math.floor(i/pageSize)),'monthly-export-job-page-v2',page,expirySeconds))
     throw new Error('Could not save export page');
    await update({progress:{phase:'SAVING',completed:Math.floor(i/pageSize)+1,total:Math.ceil(rows.length/pageSize)}});
   }
