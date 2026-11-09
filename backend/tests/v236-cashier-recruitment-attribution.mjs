@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-process.env.STOREOPS_DB=`/tmp/storeops-v236-cashier-${process.pid}.db`;
+process.env.STOREOPS_DB=':memory:';
 const {attributeRecruitmentsToStaff,aggregateCashierRows}=await import('../services/dynamics-staff-performance.mjs');
 
 const rows=[
