@@ -58,6 +58,7 @@ jobs:
       - name: Analytics complete monthly N/N-1 export contract
         run: |
           node backend/tests/analytics-monthly-export-contract.mjs
+          node backend/tests/analytics-export-evidence-quality.mjs
           node backend/tests/analytics-xlsx-workbook.mjs
       - name: Sales parent tickets and fiscal inclusion
         run: |
