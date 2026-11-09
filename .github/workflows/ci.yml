@@ -29,7 +29,9 @@ jobs:
           while IFS= read -r file; do node --check "$file"; done < <(find backend frontend/js frontend/analytics -type f \( -name '*.mjs' -o -name '*.js' \) | sort)
           node --check frontend/sw.js
       - name: Customer account creation recruitment
-        run: node backend/tests/customer-creations.mjs
+        run: |
+          node backend/tests/customer-creations.mjs
+          node backend/tests/customer-creation-publication.mjs
       - name: Operational stock progressive reads
         run: node backend/tests/operational-stock.mjs
       - name: Analytics evidence and decision tools

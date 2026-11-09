@@ -54,7 +54,7 @@ export async function readCustomerCreations(stores,period={}, {mapping=customerC
  try{
   // Read account history before period filtering so a later duplicate never becomes a new account.
   // A future incremental source must preserve this earliest-creation invariant.
-  const result=await read(mapping.entity,{select:[mapping.idField,mapping.dateField,mapping.storeField,mapping.staffField].filter(Boolean).join(','),extra:'cross-company=true',pageSize:1000,maxRows:100000});
+  const result=await read(mapping.entity,{select:[mapping.idField,mapping.dateField,mapping.storeField,mapping.staffField].filter(Boolean).join(','),extra:'cross-company=true',pageSize:1000,maxRows:100000,strict:true});
   if(!Array.isArray(result?.value))return unavailable(stores,'INVALID_D365_RESPONSE');
   return reconcileCustomerCreations(result.value,stores,{...period,mapping,truncated:!!result.truncated});
  }catch(error){return unavailable(stores,'D365_ACCOUNT_READ_FAILED',{error:{code:error.code||'D365_ACCOUNT_READ_FAILED',message:error.message}})}

@@ -15,19 +15,50 @@ adhésion, une première vente ou une date de migration ne remplace jamais cette
 
 ## Accès réellement disponible
 
-Exécution de `node backend/scripts/audit-customer-creation.mjs` : BLOCKED,
+Premier contrôle local de `node backend/scripts/audit-customer-creation.mjs` : BLOCKED,
 `D365_ACCESS_NOT_CONFIGURED`, mode live désactivé et quatre variables absentes :
 `D365_BASE_URL`, `D365_TENANT_ID`, `D365_CLIENT_ID`, `D365_CLIENT_SECRET`.
 
-Aucune réponse D365 réelle ni métadonnée du tenant n'a donc été obtenue.
-La table physique des comptes clients, la Data Entity qui l'expose et son champ
-exact CreatedDateTime/CreatedOn ne sont PAS identifiés/certifiés dans cet audit.
-`CustomersV3` dans les tests est une fixture, pas une découverte du tenant.
+Ce premier contrôle est désormais complété par une lecture réelle autorisée le
+9 novembre 2026 à 16:27 UTC, via la configuration existante du site Netlify.
+OAuth et `/Metadata/DataEntities` fonctionnent avec l'accès réseau autorisé.
+Aucune valeur client ou clé n'est publiée dans cet audit.
+
+Résultats réels : `CustomersV3` (310 champs) et `Customers` (254 champs) sont
+lisibles, avec `CustomerAccount` et `PartyNumber`, sans champ de création observé.
+Les quatre requêtes explicites `$select=CustomerAccount,CreatedDateTime` ou
+`$select=CustomerAccount,CreatedOn` sur ces deux collections échouent en HTTP 400 :
+`Could not find a property named ...` sur les types `CustomerV3` et `Customer`.
+Il s'agit donc d'une absence démontrée de ces propriétés sur ces entités, pas
+d'une preuve d'absence de date dans la table physique.
+
+`AsyncCustomers` est lisible (54 champs), avec `StoreRecId`, `CustAccount` et
+`OnlineCustCreated`, sans champ de date de création observé. Ce n'est pas une
+source de création de compte certifiée. `AsyncCustomerV2` est vide dans le probe.
+`CustCustomerDetailV2Entity` et `CustCustomerDetailEntity` échouent à la lecture.
+La découverte est bornée aux 100 premiers candidats clients du connecteur :
+elle n'exclut pas une autre entité personnalisée du tenant.
+
+La table physique, son champ exact et sa publication restent à confirmer par
+l'administrateur D365 : exposer la véritable création du compte, son identité
+réseau, sa société et le magasin de création, avec historique et droits complets.
+`CustomersV3` reste une fixture synthétique dans les tests ; aucune configuration
+de production n'a été activée sur la seule base de son nom.
 
 Le code du connecteur expose `/Metadata/DataEntities` pour la découverte et
 `/data/{entité}` pour la lecture. Le script ajouté liste les candidats clients puis
 uniquement les noms des champs observés ; il ne publie aucun identifiant client.
-Ces chemins sont observés dans le code, pas testés contre D365 ici.
+Ces chemins ont été testés contre D365. Le script cible désormais les collections
+de comptes par défaut (`--all` pour élargir) et vérifie les deux champs par requête
+explicite sans afficher les valeurs renvoyées.
+
+## Durcissement de publication
+
+Les réponses de recrutement tardives d'une ancienne période ou d'un ancien magasin
+ne peuvent plus remplacer le périmètre courant. Le lecteur OData exige une
+collection valide à chaque page ; une réponse mal formée ou une pagination courte
+avec continuation non traitée bloque le chiffre, au lieu de certifier zéro ou
+un total partiel. Ces cas sont exécutés dans `customer-creation-publication.mjs`.
 
 ## Configuration après audit D365
 

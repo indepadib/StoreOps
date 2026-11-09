@@ -24,7 +24,7 @@ assert.equal(validCreationMapping({...mapping,dateField:'LoyaltyEnrollmentDate'}
 assert.equal(validCreationMapping({...mapping,entity:'RetailLoyaltyCardEntity'}),false);
 assert.equal(validCreationMapping({...mapping,verified:false}),false);
 assert.equal(validCreationMapping({...mapping,evidence:''}),false);
-let reads=0;const read=async(entity,q)=>{reads++;assert.equal(entity,'CustomersV3');assert.equal(q.filter,undefined);assert(!q.select.includes('Loyalty'));return {value:rows,truncated:false}};
+let reads=0;const read=async(entity,q)=>{reads++;assert.equal(entity,'CustomersV3');assert.equal(q.filter,undefined);assert.equal(q.strict,true);assert(!q.select.includes('Loyalty'));return {value:rows,truncated:false}};
 assert.equal((await readCustomerCreations(stores,period,{mapping,read,live:true})).recruitments,4);
 assert.equal((await readCustomerCreations(stores,period,{mapping:{...mapping,verified:false},read,live:true})).recruitments,null);assert.equal(reads,1);
 assert.equal((await readCustomerCreations(stores,period,{mapping,read,live:false})).recruitments,null);

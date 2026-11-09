@@ -13,6 +13,8 @@
     walletLoading: false,
     walletStores: [],
     recruitmentKey: null,
+    recruitmentRequest: 0,
+    recruitmentPendingKey: null,
     recruitmentLoading: false,
     recruitmentData: null
   };
@@ -33,23 +35,32 @@
   }
 
   function decisionData(){return window.RETAIL_DECISION_INTELLIGENCE?.getData?.()||null}
+  function recruitmentForScope(){
+    const scope=cashierScope(),prefix=`${scope.start}|${scope.end}|${scope.stores.map(s=>s.id).filter(Boolean).join(',')}|`;
+    return state.recruitmentKey?.startsWith(prefix)?state.recruitmentData:null;
+  }
   function recruitmentByStore(){
-    return new Map((state.recruitmentData?.stores||[]).map(x=>[x.storeId,x]))
+    return new Map((recruitmentForScope()?.stores||[]).map(x=>[x.storeId,x]))
   }
   function recruitmentTotals(){
-    const d=state.recruitmentData;if(!d||d.status!=='READY')return{recruitments:null,coverage:null};
+    const d=recruitmentForScope();if(!d||d.status!=='READY')return{recruitments:null,coverage:null};
     return{recruitments:safe(d.recruitments),coverage:d.coverage||null}
   }
   async function loadRecruitment(force=false,{includeStaff=false}={}){
-    const api=core();if(!api||state.recruitmentLoading)return;
+    const api=core();if(!api)return;
     const scope=cashierScope(),ids=scope.stores.map(s=>s.id).filter(Boolean),key=`${scope.start}|${scope.end}|${ids.join(',')}|${includeStaff?'staff':'total'}`;
     if(!force&&state.recruitmentKey===key&&state.recruitmentData){renderLoyalty();if(includeStaff)renderCashiers();return}
+    if(!force&&state.recruitmentLoading&&state.recruitmentPendingKey===key)return;
+    const request=++state.recruitmentRequest;
+    state.recruitmentPendingKey=key;
     state.recruitmentLoading=true;state.recruitmentData=null;
     try{
       const qs=new URLSearchParams({start:scope.start,end:scope.end,storeIds:ids.join(',')});if(includeStaff)qs.set('includeStaff','1');if(force)qs.set('force','1');
-      state.recruitmentData=await api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true});state.recruitmentKey=key;
-    }catch(error){state.recruitmentData={status:'UNAVAILABLE',error:{message:error?.message||'Recrutement indisponible'},stores:[]}}
-    finally{state.recruitmentLoading=false;renderLoyalty();if(includeStaff)renderCashiers()}
+      const data=await api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true});
+      if(request!==state.recruitmentRequest)return;
+      state.recruitmentData=data;state.recruitmentKey=key;
+    }catch(error){if(request===state.recruitmentRequest)state.recruitmentData={status:'UNAVAILABLE',error:{message:error?.message||'Recrutement indisponible'},stores:[]}}
+    finally{if(request===state.recruitmentRequest){state.recruitmentLoading=false;state.recruitmentPendingKey=null;renderLoyalty();if(includeStaff)renderCashiers()}}
   }
 
   function loyaltyAggregate() {
@@ -353,7 +364,7 @@
     for (const result of state.cashierStores) {
       if (!result.ok) continue;
       for (const row of result.data?.items || []) {
-        const creationStore=state.recruitmentData?.stores?.find(x=>x.storeId===result.store.id),staffRecruit=creationStore?.staff?.find(x=>String(x.staffId)===String(row.staffId)),recruitments=creationStore?.staffStatus==='READY'?(staffRecruit?.recruitments??0):null,item = { ...row, recruitments, recruitmentRateNonLoyalty:null, storeId: result.store.id, storeName: result.store.name };
+        const creationStore=recruitmentForScope()?.stores?.find(x=>x.storeId===result.store.id),staffRecruit=creationStore?.staff?.find(x=>String(x.staffId)===String(row.staffId)),recruitments=creationStore?.staffStatus==='READY'?(staffRecruit?.recruitments??0):null,item = { ...row, recruitments, recruitmentRateNonLoyalty:null, storeId: result.store.id, storeName: result.store.name };
         if (!q || [item.name,item.staffId,item.storeName].some(v=>String(v||'').toLowerCase().includes(q))) rows.push(item);
       }
     }
@@ -445,6 +456,9 @@
       loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:period', () => {
+      state.recruitmentRequest++;
+      state.recruitmentLoading = false;
+      state.recruitmentPendingKey = null;
       state.walletKey = null;
       state.cashierKey = null;
       state.recruitmentKey = null;
