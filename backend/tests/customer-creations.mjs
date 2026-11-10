@@ -15,6 +15,12 @@ assert.equal(reconcile(rows,[],period).recruitments,null);
 assert.equal(reconcile(rows,stores,{...period,truncated:true}).recruitments,null);
 assert.equal(reconcile([...rows,row('','2026-10-01T00:00:00Z')],stores,period).status,'UNAVAILABLE');
 assert.equal(reconcile([row('bad','2026-10-01')],stores,period).status,'UNAVAILABLE');
+for(const invalid of ['2026-02-30T12:00:00Z','2026-10-01T24:00:00Z','2026-10-01T12:00:00+01:99']){
+ const result=reconcile([row('bad',invalid)],stores,{...period,startDate:'2026-01-01',endDate:'2026-12-31'});
+ assert.equal(result.status,'UNAVAILABLE',`Impossible creation timestamp must block publication: ${invalid}`);
+ assert.equal(result.recruitments,null);
+}
+assert.equal(reconcile([row('leap','2024-02-29T23:30:00.123+01:00')],stores,{...period,startDate:'2024-02-01',endDate:'2024-02-29'}).recruitments,1);
 assert.equal(reconcile(rows,stores,{...period,startDate:'2026-02-30'}).status,'UNAVAILABLE');
 assert.equal(reconcile(rows,stores,{...period,mapping:{...mapping,timeZone:'invalid'}}).status,'UNAVAILABLE');
 r=reconcile([row('conflict','2026-10-01T00:00:00Z'),row('conflict','2026-10-01T00:00:00Z','002')],stores,period);

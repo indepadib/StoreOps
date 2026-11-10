@@ -23,7 +23,9 @@ export function reconcileCustomerCreations(rows,stores,{startDate,endDate,mappin
  const accounts=new Map();let duplicates=0,invalidRows=0;
  for(const row of rows){
   const id=clean(row[m.idField]),raw=clean(row[m.dateField]),stamp=Date.parse(raw);
-  if(!id||!/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/.test(raw)||!Number.isFinite(stamp)){invalidRows++;continue}
+  // Date.parse normalizes impossible dates (February 30) and 24:00 into another day.
+  // Reject them before period filtering; they must never become certified creations.
+  if(!id||!validDay(raw.slice(0,10))||!/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(raw)||!Number.isFinite(stamp)){invalidRows++;continue}
   const unit=clean(row[m.storeField]),staff=clean(row[m.staffField]),old=accounts.get(id);
   if(old){duplicates++;if(old.stamp<stamp)continue;if(old.stamp===stamp){if(old.unit!==unit)old.unit=null;if(old.staff!==staff)old.staff=null;continue}}
   accounts.set(id,{stamp,unit,staff});
