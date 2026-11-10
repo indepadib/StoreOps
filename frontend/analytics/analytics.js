@@ -1387,6 +1387,7 @@
     let rows=visibleTableRows();
     if(!rows.length)rows=decisionFallbackRows();
     if(!rows.length)return toast('Aucune donnÃ©e visible Ã  exporter');
+    if(['loyalty','cashiers'].includes(state.section))rows.push([],['Définition recrutement','Compte client réseau distinct créé réellement dans D365 sur la période ; date de carte exclue.'],['Couverture','N/A signifie source ou attribution non réconciliée ; jamais zéro.']);
     const scope=state.selectedStoreIds.length?state.selectedStoreIds.join('-'):'reseau';
     const result=await downloadCsv(`retail-intelligence-${state.section}-${scope}-${state.periodStart}-${state.periodEnd}.csv`,rows);
     if(!result?.cancelled)toast(result?.shared?'Export prÃªt Ã  partager':'Export de la vue gÃ©nÃ©rÃ©');

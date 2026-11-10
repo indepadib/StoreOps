@@ -49,8 +49,8 @@ assert.match(network,/calculateCustomerWeightedScore/);
 assert.match(network,/Customer & fidélité jusqu’à 25%/);
 assert.match(network,/CA réseau aujourd’hui/);
 assert.match(network,/Ruptures \/ proches/);
-assert.match(loyalty,/LoyaltyEnrollmentDate/);
-assert.match(loyalty,/OmOperatingUnitNumber/);
+assert.match(loyalty,/readCustomerCreations/);
+assert.doesNotMatch(loyalty,/LoyaltyEnrollmentDate/);
 assert.match(permissions,/canAccessWarehouse/);
 assert.match(permissions,/supply_chain/);
 

@@ -88,10 +88,10 @@ assert.equal(agent.engine,'CUSTOMER_RESEARCH','Complex question must not turn in
 const source=readFileSync(new URL('../services/analytics-customer-bi-api.mjs',import.meta.url),'utf8');
 assert.match(source,/customer-research-v2/);assert.match(source,/PREPARATION_REQUIRED/);
 assert.match(source,/customer-base\/prepare/);
-assert.match(source,/readStoreLoyaltyEnrollments/);
-assert.match(source,/openingDateCertified:false/,'Cumulative enrollments cannot claim certified opening dates');
+assert.match(source,/CUSTOMER_CREATION_HISTORY_RECONCILIATION_REQUIRED/);
+assert.doesNotMatch(source,/customer-enrollment-chunk-v1/,'Legacy card caches must not supply account creations');
 assert.match(source,/distinctRegisteredCustomers/);
-assert.match(source,/identityComplete/);
+assert.match(source,/enrollments:null/);
 const html=readFileSync(new URL('../../frontend/analytics/index.html',import.meta.url),'utf8');
 const js=readFileSync(new URL('../../frontend/analytics/customer-research.js',import.meta.url),'utf8');
 const bootstrap=readFileSync(new URL('../../frontend/analytics/bootstrap.js',import.meta.url),'utf8');

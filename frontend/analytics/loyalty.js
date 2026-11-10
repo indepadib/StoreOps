@@ -13,6 +13,8 @@
     walletLoading: false,
     walletStores: [],
     recruitmentKey: null,
+    recruitmentRequest: 0,
+    recruitmentPendingKey: null,
     recruitmentLoading: false,
     recruitmentData: null
   };
@@ -33,23 +35,32 @@
   }
 
   function decisionData(){return window.RETAIL_DECISION_INTELLIGENCE?.getData?.()||null}
+  function recruitmentForScope(){
+    const scope=cashierScope(),prefix=`${scope.start}|${scope.end}|${scope.stores.map(s=>s.id).filter(Boolean).join(',')}|`;
+    return state.recruitmentKey?.startsWith(prefix)?state.recruitmentData:null;
+  }
   function recruitmentByStore(){
-    return new Map((state.recruitmentData?.stores||[]).map(x=>[x.storeId,x]))
+    return new Map((recruitmentForScope()?.stores||[]).map(x=>[x.storeId,x]))
   }
   function recruitmentTotals(){
-    const d=state.recruitmentData;if(!d||d.status!=='READY')return{recruitments:null,coverage:null};
+    const d=recruitmentForScope();if(!d||d.status!=='READY')return{recruitments:null,coverage:null};
     return{recruitments:safe(d.recruitments),coverage:d.coverage||null}
   }
   async function loadRecruitment(force=false,{includeStaff=false}={}){
-    const api=core();if(!api||state.recruitmentLoading)return;
+    const api=core();if(!api)return;
     const scope=cashierScope(),ids=scope.stores.map(s=>s.id).filter(Boolean),key=`${scope.start}|${scope.end}|${ids.join(',')}|${includeStaff?'staff':'total'}`;
     if(!force&&state.recruitmentKey===key&&state.recruitmentData){renderLoyalty();if(includeStaff)renderCashiers();return}
-    state.recruitmentLoading=true;
+    if(!force&&state.recruitmentLoading&&state.recruitmentPendingKey===key)return;
+    const request=++state.recruitmentRequest;
+    state.recruitmentPendingKey=key;
+    state.recruitmentLoading=true;state.recruitmentData=null;
     try{
       const qs=new URLSearchParams({start:scope.start,end:scope.end,storeIds:ids.join(',')});if(includeStaff)qs.set('includeStaff','1');if(force)qs.set('force','1');
-      state.recruitmentData=await api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true});state.recruitmentKey=key;
-    }catch(error){state.recruitmentData={status:'UNAVAILABLE',error:{message:error?.message||'Recrutement indisponible'},stores:[]}}
-    finally{state.recruitmentLoading=false;renderLoyalty();if(includeStaff)renderCashiers()}
+      const data=await api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true});
+      if(request!==state.recruitmentRequest)return;
+      state.recruitmentData=data;state.recruitmentKey=key;
+    }catch(error){if(request===state.recruitmentRequest)state.recruitmentData={status:'UNAVAILABLE',error:{message:error?.message||'Recrutement indisponible'},stores:[]}}
+    finally{if(request===state.recruitmentRequest){state.recruitmentLoading=false;state.recruitmentPendingKey=null;renderLoyalty();if(includeStaff)renderCashiers()}}
   }
 
   function loyaltyAggregate() {
@@ -59,12 +70,12 @@
       const nonLoyaltySales=identifiedSales!=null?sales-identifiedSales:null,nonMemberTickets=identifiedTickets!=null?Math.max(0,tickets-identifiedTickets):null;
       const memberBasket=identifiedTickets>0?identifiedSales/identifiedTickets:null,nonMemberBasket=nonLoyaltySales!=null&&nonMemberTickets>0?nonLoyaltySales/nonMemberTickets:null,uplift=memberBasket!=null&&nonMemberBasket?((memberBasket/nonMemberBasket)-1)*100:null;
       const rt=recruitmentTotals(),recruitments=rt.recruitments,recruitmentRate=recruitments!=null&&nonMemberTickets!=null&&(nonMemberTickets+recruitments)>0?recruitments/(nonMemberTickets+recruitments)*100:null;
-      return{rows:d.stores||[],sales,tickets,identifiedSales,identifiedShare:safe(cur.identifiedSalesShare),identifiedTickets,identifiedTicketRate:safe(cur.identifiedTicketRate),recruitments,nonLoyaltyTickets:nonMemberTickets,recruitmentRate,memberBasket,nonMemberBasket,uplift,coverage:d.coverage?.currentStoresReady||0,identifiedCustomers:d.crm?.identifiedCustomers??null,repeatRate:d.crm?.repeatRate??null,frequentCustomers:d.crm?.frequentCustomers??null,averageVisitsPerCustomer:d.crm?.averageVisitsPerCustomer??null}
+      return{rows:d.stores||[],sales,tickets,identifiedSales,identifiedShare:safe(cur.identifiedSalesShare),identifiedTickets,identifiedTicketRate:safe(cur.identifiedTicketRate),recruitments,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:null,memberBasket,nonMemberBasket,uplift,coverage:d.coverage?.currentStoresReady||0,identifiedCustomers:d.crm?.identifiedCustomers??null,repeatRate:d.crm?.repeatRate??null,frequentCustomers:d.crm?.frequentCustomers??null,averageVisitsPerCustomer:d.crm?.averageVisitsPerCustomer??null}
     }
     const rows=pulseRows();let sales=0,identifiedSales=0,identifiedSalesKnown=0,tickets=0,identifiedTickets=0,identifiedTicketsKnown=0,recruitments=0,recruitmentsKnown=0,nonLoyaltyTickets=0,nonLoyaltyTicketsKnown=0;
     for(const {pulse} of rows){const k=pulse?.snapshot?.kpis||{};sales+=Number(k.netSales||0);tickets+=Number(k.tickets||0);if(k.identifiedSales!=null){identifiedSales+=Number(k.identifiedSales||0);identifiedSalesKnown++}if(k.identifiedTickets!=null){identifiedTickets+=Number(k.identifiedTickets||0);identifiedTicketsKnown++}if(k.recruitments!=null){recruitments+=Number(k.recruitments||0);recruitmentsKnown++}if(k.nonLoyaltyTickets!=null){nonLoyaltyTickets+=Number(k.nonLoyaltyTickets||0);nonLoyaltyTicketsKnown++}}
     const identifiedKnown=identifiedSalesKnown>0,ticketKnown=identifiedTicketsKnown>0,recruitmentKnown=recruitmentsKnown>0,nonLoyaltyKnown=nonLoyaltyTicketsKnown>0,nonLoyaltySales=identifiedKnown?sales-identifiedSales:null,memberBasket=ticketKnown&&identifiedTickets>0?identifiedSales/identifiedTickets:null,nonMemberTickets=nonLoyaltyKnown?nonLoyaltyTickets:(ticketKnown?Math.max(0,tickets-identifiedTickets):null),nonMemberBasket=nonLoyaltySales!=null&&nonMemberTickets>0?nonLoyaltySales/nonMemberTickets:null,uplift=memberBasket!=null&&nonMemberBasket?(memberBasket/nonMemberBasket-1)*100:null;
-    return{rows,sales,tickets,identifiedSales:identifiedKnown?identifiedSales:null,identifiedShare:identifiedKnown&&sales?identifiedSales/sales*100:null,identifiedTickets:ticketKnown?identifiedTickets:null,identifiedTicketRate:ticketKnown&&tickets?identifiedTickets/tickets*100:null,recruitments:recruitmentKnown?recruitments:null,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:recruitmentKnown&&nonMemberTickets>0?recruitments/nonMemberTickets*100:null,memberBasket,nonMemberBasket,uplift,coverage:rows.length,identifiedCustomers:null,repeatRate:null,frequentCustomers:null}
+    return{rows,sales,tickets,identifiedSales:identifiedKnown?identifiedSales:null,identifiedShare:identifiedKnown&&sales?identifiedSales/sales*100:null,identifiedTickets:ticketKnown?identifiedTickets:null,identifiedTicketRate:ticketKnown&&tickets?identifiedTickets/tickets*100:null,recruitments:recruitmentTotals().recruitments,nonLoyaltyTickets:nonMemberTickets,recruitmentRate:null,memberBasket,nonMemberBasket,uplift,coverage:rows.length,identifiedCustomers:null,repeatRate:null,frequentCustomers:null}
   }
 
   function aggregatePaymentMix(){
@@ -105,8 +116,8 @@
       ['Tickets fidélisés', api.number(a.identifiedTickets), a.identifiedTicketRate == null ? 'Taux N/A' : api.percent(a.identifiedTicketRate)],
       ['Clients identifiés', api.number(a.identifiedCustomers), a.repeatRate == null ? 'retour N/A' : api.percent(a.repeatRate)+' avec ≥2 visites'],
       ['Visites / client', api.number(a.averageVisitsPerCustomer,2), 'tickets identifiés / client'],
-      ['Recrutements', api.number(a.recruitments), state.recruitmentLoading?'calcul en cours':'nouveaux enrôlements période'],
-      ['Taux recrutement non-fid.', api.percent(a.recruitmentRate), 'recrutés / (tickets non identifiés + recrutés)'],
+      ['Recrutements', api.number(a.recruitments), state.recruitmentLoading?'calcul en cours':a.recruitments==null?'source création D365 à réconcilier':'créations de comptes D365 vérifiées'],
+      ['Taux recrutement non-fid.', api.percent(a.recruitmentRate), 'population éligible à réconcilier'],
       ['Panier membre', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs '+api.money(a.nonMemberBasket)],
       ['Uplift panier', api.percent(a.uplift), 'membre vs non-membre'],
       ['Burn Wallet', api.money(walletBurn,true), walletBurn==null?'source paiement en cours':api.number(walletTx)+' paiement(s) Wallet'],
@@ -148,7 +159,7 @@
           id:s.storeId,name:s.storeName,identifiedSales,
           identifiedShare:s.identifiedSalesShare,identifiedTickets,
           identifiedTicketRate:s.identifiedTicketRate,memberBasket,nonMemberBasket,
-          uplift:memberBasket!=null&&nonMemberBasket?((memberBasket/nonMemberBasket)-1)*100:null,recruitments,recruitmentRate,
+          uplift:memberBasket!=null&&nonMemberBasket?((memberBasket/nonMemberBasket)-1)*100:null,recruitments,recruitmentRate:null,
           walletBurn:wallet?.data?.status==='READY'?safe(wallet.data.burn):null,
           walletTransactions:wallet?.data?.status==='READY'?safe(wallet.data.walletTransactions):null
         };
@@ -159,7 +170,7 @@
         return {
           id:store.id,name:store.name,identifiedSales:safe(k.identifiedSales),identifiedShare:safe(k.identifiedSalesShare),
           identifiedTickets:safe(k.identifiedTickets),identifiedTicketRate:safe(k.identifiedTicketRate),
-          memberBasket:safe(k.identifiedAverageBasket),nonMemberBasket:safe(k.nonLoyaltyAverageBasket),uplift:safe(k.basketUpliftIdentified),recruitments:recruitment?.recruitments??safe(k.recruitments),recruitmentRate:safe(k.recruitmentRate),
+          memberBasket:safe(k.identifiedAverageBasket),nonMemberBasket:safe(k.nonLoyaltyAverageBasket),uplift:safe(k.basketUpliftIdentified),recruitments:recruitment?.recruitments??null,recruitmentRate:null,
           walletBurn:wallet?.data?.status==='READY'?safe(wallet.data.burn):null,
           walletTransactions:wallet?.data?.status==='READY'?safe(wallet.data.walletTransactions):null
         };
@@ -353,7 +364,7 @@
     for (const result of state.cashierStores) {
       if (!result.ok) continue;
       for (const row of result.data?.items || []) {
-        const staffRecruit=state.recruitmentData?.stores?.find(x=>x.storeId===result.store.id)?.staff?.find(x=>String(x.staffId)===String(row.staffId)),recruitments=staffRecruit?.recruitments??row.recruitments??null,nonLoyalty=Number(row.nonLoyaltyTickets||0),item = { ...row, recruitments, recruitmentRateNonLoyalty:recruitments!=null&&(nonLoyalty+Number(recruitments||0))>0?Number(recruitments)/(nonLoyalty+Number(recruitments||0))*100:row.recruitmentRateNonLoyalty, storeId: result.store.id, storeName: result.store.name };
+        const creationStore=recruitmentForScope()?.stores?.find(x=>x.storeId===result.store.id),staffRecruit=creationStore?.staff?.find(x=>String(x.staffId)===String(row.staffId)),recruitments=creationStore?.staffStatus==='READY'?(staffRecruit?.recruitments??0):null,item = { ...row, recruitments, recruitmentRateNonLoyalty:null, storeId: result.store.id, storeName: result.store.name };
         if (!q || [item.name,item.staffId,item.storeName].some(v=>String(v||'').toLowerCase().includes(q))) rows.push(item);
       }
     }
@@ -376,7 +387,7 @@
     const eligible = rows.filter(x=>x.rateEligible);
     const totalTickets = rows.reduce((s,x)=>s+Number(x.tickets||0),0);
     const totalRecruitmentsKnown=rows.some(x=>x.recruitments!=null);
-    const totalRecruitments = totalRecruitmentsKnown?rows.reduce((s,x)=>s+Number(x.recruitments||0),0):null;
+    const totalRecruitments = recruitmentTotals().recruitments;
     const weightedIdentification = totalTickets
       ? rows.reduce((s,x)=>s+Number(x.identifiedTickets||0),0)/totalTickets*100
       : null;
@@ -445,6 +456,9 @@
       loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:period', () => {
+      state.recruitmentRequest++;
+      state.recruitmentLoading = false;
+      state.recruitmentPendingKey = null;
       state.walletKey = null;
       state.cashierKey = null;
       state.recruitmentKey = null;

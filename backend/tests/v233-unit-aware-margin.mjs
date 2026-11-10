@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-process.env.STOREOPS_DB=`/tmp/storeops-margin-units-${process.pid}.db`;
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+process.env.STOREOPS_DB=join(tmpdir(),`storeops-margin-units-${process.pid}.db`);
 
 const {probeUnitAwareTransactionMargin}=await import('../services/transaction-margin.mjs');
 

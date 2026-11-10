@@ -32,6 +32,7 @@ export function articleInvestigationRequired(input){return requiresArticleInvest
 
 export async function answerBusinessQuestion(stores,input,{allowedStores=stores,factsBuilder=assistantFacts,evidenceBuilder=queryEvidence,read=readAnalyticsCache,write=writeAnalyticsCache,planner=null,clock={},stockAnswer=queryStock}={}){
  const question=String(input.question||'').trim();if(input.preparationFailures!=null&&(!Array.isArray(input.preparationFailures)||input.preparationFailures.length>200||input.preparationFailures.some(x=>!x||!['sales','stock','history','baskets','pricing','suppliers','inventory'].includes(x.kind))))throw Object.assign(Error('Préparation invalide.'),{status:400});let previousPlan=null;
+ if(/recrut|nouveaux?\s+(?:clients?|comptes?)|cr[eé]ation.{0,20}comptes?/i.test(question))return clarification('Recrutement : un compte client réseau distinct créé réellement dans D365 pendant la période. Le chiffre est indisponible tant que la source CreatedDateTime/CreatedOn et les créations ne sont pas réconciliées. Les dates de carte et d’adhésion sont exclues.',{engine:'CUSTOMER_CREATION_RECONCILIATION_REQUIRED',recruitments:null});
  const semantic=semanticDefinitionAnswer(question);if(semantic)return semantic;
  const researchIntent=classifyCustomerResearchQuestion(question);
  if(researchIntent){

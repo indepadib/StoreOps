@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+process.env.STOREOPS_DB=':memory:';
+const {reconcileCustomerCreations:reconcile,readCustomerCreations,validCreationMapping}=await import('../services/dynamics-customer-creations.mjs');
+const mapping={entity:'CustomersV3',idField:'CustomerAccount',dateField:'CreatedDateTime',storeField:'CreationStore',staffField:'CreatedByStaff',networkStoreIds:['A','B'],timeZone:'Africa/Casablanca',verified:true,evidence:'test fixture only'};
+const stores=[{id:'A',unit:'001'},{id:'B',unit:'002'}],period={startDate:'2026-10-01',endDate:'2026-10-31',mapping};
+const row=(id,date,unit='001',staff='S1')=>({CustomerAccount:id,CreatedDateTime:date,CreationStore:unit,CreatedByStaff:staff,LoyaltyEnrollmentDate:'2026-10-10'});
+const rows=[row('old','2026-09-20T12:00:00Z'),row('old','2026-10-20T12:00:00Z','002'),row('one','2026-10-01T00:00:00Z'),row('one','2026-10-01T00:00:00Z'),row('two','2026-10-05T00:00:00Z','002'),row('unknown','2026-10-06T00:00:00Z',''),row('boundary','2026-09-30T23:30:00Z'),row('november','2026-10-31T23:30:00Z')];
+let r=reconcile(rows,stores,period);
+assert.equal(r.recruitments,4);assert.equal(r.diagnostics.duplicates,2);assert.equal(r.unassignedRecruitments,1);
+assert.deepEqual(r.stores.map(s=>s.recruitments),[2,1]);assert.equal(r.stores[0].staff[0].recruitments,2);
+assert.equal(r.stores.reduce((n,s)=>n+s.recruitments,0)+r.unassignedRecruitments,r.recruitments);
+assert.equal(reconcile([],stores,period).recruitments,0);
+assert.equal(reconcile(rows,[stores[0]],period).recruitments,null);
+assert.equal(reconcile(rows,[],period).recruitments,null);
+assert.equal(reconcile(rows,stores,{...period,truncated:true}).recruitments,null);
+assert.equal(reconcile([...rows,row('','2026-10-01T00:00:00Z')],stores,period).status,'UNAVAILABLE');
+assert.equal(reconcile([row('bad','2026-10-01')],stores,period).status,'UNAVAILABLE');
+for(const invalid of ['2026-02-30T12:00:00Z','2026-10-01T24:00:00Z','2026-10-01T12:00:00+01:99']){
+ const result=reconcile([row('bad',invalid)],stores,{...period,startDate:'2026-01-01',endDate:'2026-12-31'});
+ assert.equal(result.status,'UNAVAILABLE',`Impossible creation timestamp must block publication: ${invalid}`);
+ assert.equal(result.recruitments,null);
+}
+assert.equal(reconcile([row('leap','2024-02-29T23:30:00.123+01:00')],stores,{...period,startDate:'2024-02-01',endDate:'2024-02-29'}).recruitments,1);
+assert.equal(reconcile(rows,stores,{...period,startDate:'2026-02-30'}).status,'UNAVAILABLE');
+assert.equal(reconcile(rows,stores,{...period,mapping:{...mapping,timeZone:'invalid'}}).status,'UNAVAILABLE');
+r=reconcile([row('conflict','2026-10-01T00:00:00Z'),row('conflict','2026-10-01T00:00:00Z','002')],stores,period);
+assert.equal(r.recruitments,1);assert.equal(r.unassignedRecruitments,1);assert.deepEqual(r.stores.map(s=>s.recruitments),[0,0]);
+r=reconcile(rows,[{id:'A',unit:'001'},{id:'B',unit:'001'}],period);assert.equal(r.coverage.attributionComplete,false);assert.equal(r.stores[0].recruitments,null);
+assert.equal(validCreationMapping({...mapping,dateField:'LoyaltyEnrollmentDate'}),false);
+assert.equal(validCreationMapping({...mapping,entity:'RetailLoyaltyCardEntity'}),false);
+assert.equal(validCreationMapping({...mapping,verified:false}),false);
+assert.equal(validCreationMapping({...mapping,evidence:''}),false);
+let reads=0;const read=async(entity,q)=>{reads++;assert.equal(entity,'CustomersV3');assert.equal(q.filter,undefined);assert.equal(q.strict,true);assert(!q.select.includes('Loyalty'));return {value:rows,truncated:false}};
+assert.equal((await readCustomerCreations(stores,period,{mapping,read,live:true})).recruitments,4);
+assert.equal((await readCustomerCreations(stores,period,{mapping:{...mapping,verified:false},read,live:true})).recruitments,null);assert.equal(reads,1);
+assert.equal((await readCustomerCreations(stores,period,{mapping,read,live:false})).recruitments,null);
+assert.equal((await readCustomerCreations(stores,period,{mapping,read:async()=>{throw Error('denied')},live:true})).coverage.complete,false);
+console.log('Customer creations: identity, earliest history, network attribution, timezone, coverage, mapping gate and read failures OK');
+
+const {readLoyaltyRange}=await import('../services/analytics-loyalty-range.mjs');
+assert.equal((await readLoyaltyRange([{id:'A'}],period)).recruitments,null);
+const {answerBusinessQuestion}=await import('../services/analytics-query-agent.mjs');
+const answer=await answerBusinessQuestion(stores,{question:'Combien de recrutements en octobre ?'},{read:async()=>({recruitments:2267}),factsBuilder:async()=>{throw Error('Legacy facts must never be read')}});
+assert.equal(answer.engine,'CUSTOMER_CREATION_RECONCILIATION_REQUIRED');assert.equal(answer.recruitments,null);
+console.log('Range and agent reject unverified/legacy recruitment data OK');
