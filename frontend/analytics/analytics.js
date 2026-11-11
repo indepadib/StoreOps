@@ -12,7 +12,7 @@
     pulses: [],
     selectedStore: 'ALL',
     selectedStoreIds: [],
-    section: ['reference','detention','sales','categories'].includes(new URLSearchParams(location.search).get('section')) ? new URLSearchParams(location.search).get('section') : 'overview',
+    section: ['reference','detention','sales','categories','replenishment'].includes(new URLSearchParams(location.search).get('section')) ? new URLSearchParams(location.search).get('section') : 'overview',
     periodPreset: '7d',
     periodStart: shiftDate(isoDate(new Date()), -6),
     periodEnd: isoDate(new Date()),
@@ -300,12 +300,12 @@
     const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','suppliers','crm','loyalty','cashiers']);
-    const snapshotSections = new Set(['inventory','promotions','reference','detention']);
+    const snapshotSections = new Set(['inventory','promotions','reference','detention','replenishment']);
     if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
       const scope = storeScopeLabel();
       if ($('#scopeLabel')) $('#scopeLabel').textContent = state.section==='reference'?'Référentiel société':scope;
-      const snapshotLabel=state.section==='reference'?'Référentiel articles · Dynamics':state.section==='detention'?'Stock actuel':state.section==='inventory'?'Journaux Dynamics sur la période':state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
+      const snapshotLabel=state.section==='reference'?'Référentiel articles · Dynamics':['detention','replenishment'].includes(state.section)?'Stock actuel':state.section==='inventory'?'Journaux Dynamics sur la période':state.section==='promotions'?`Promotions au ${formatDate(state.periodEnd)}`:'Analyse période';
       setFreshness('live', snapshotSections.has(state.section)?snapshotLabel:'Analyse période');
       document.dispatchEvent(new CustomEvent('retail-intelligence:period', { detail: { state, force, snapshotDate: state.periodEnd } }));
       state.loading = false;
@@ -435,6 +435,7 @@
         subtitle: 'Du département au SKU : poids, rang, évolution et concentration du chiffre d’affaires.'
       },
       reference: {eyebrow:'RÉFÉRENTIEL ARTICLES',title:'Une source commune pour les équipes',subtitle:'Informations article et prix traçables, exportables dans un format commun.'},
+      replenishment: {eyebrow:'APPROVISIONNEMENT',title:'Réapprovisionnement magasin',subtitle:'Calculer les besoins de plusieurs articles dans un magasin.'},
       detention: {eyebrow:'DÉTENTION',title:'Présence des articles en magasin et entrepôt',subtitle:'Stock actuel par article et catégorie ; les quantités inconnues restent identifiées.'},
       suppliers: {eyebrow:'FOURNISSEURS',title:'Ventes, disponibilité et service fournisseur',subtitle:'Comparer les ventes et les commandes ouvertes ; qualifier le service sur les lignes réellement contrôlées.'},
       crm: {
@@ -466,7 +467,7 @@
     const copy = sectionCopy[state.section] || sectionCopy.overview;
 
     $('#scopeLabel').textContent = state.section==='reference'?'Référentiel société':store ? store.name : `${agg.ready}/${agg.totalStores} magasins disponibles`;
-    $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':state.section==='detention'?'Image de stock actuelle':state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
+    $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':['detention','replenishment'].includes(state.section)?'Image de stock actuelle':state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
     $('#eyebrow').textContent = `${copy.eyebrow} · ${String(tenant.label || '').toUpperCase()}`;
     $('#pageTitle').textContent = copy.title;
     $('#pageSubtitle').textContent = copy.subtitle;
@@ -986,7 +987,7 @@
     const current = state.periodStart === state.periodEnd ? formatDate(state.periodEnd) : `${formatDate(state.periodStart)} → ${formatDate(state.periodEnd)}`;
     const compare = state.compareStart === state.compareEnd ? formatDate(state.compareEnd) : `${formatDate(state.compareStart)} → ${formatDate(state.compareEnd)}`;
     $('#periodSummary').textContent = `Période : ${current} · comparaison : ${compare}`;
-    if ($('#dateLabel')) $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':state.section==='detention'?'Image de stock actuelle':current;
+    if ($('#dateLabel')) $('#dateLabel').textContent = state.section==='reference'?'Données article actuelles':['detention','replenishment'].includes(state.section)?'Image de stock actuelle':current;
   }
 
   async function refreshForPeriod(force = false) {
@@ -1286,6 +1287,7 @@
     categories: ['productPerformance','decisionStudio'],
     reference: ['articleReference'],
     detention: ['customerBi','decisionStudio'],
+    replenishment: ['replenishment'],
     suppliers: ['supplierIntelligence','decisionStudio'],
     crm: ['crmIntelligence','decisionStudio'],
     inventory: ['inventory','decisionStudio'],
