@@ -3,6 +3,8 @@ import { odataGet, resolveStorePriceGroups } from './dynamics.mjs';
 import { odataGetAllBySkip } from './dynamics-query.mjs';
 import { getStoreSalesPriceContext } from './dynamics-price.mjs';
 
+import { isMarkdownOffer } from './markdown-offer.mjs';
+
 export const RETAIL_DISCOUNT_ENTITY='RetailDiscounts';
 export const RETAIL_DISCOUNT_LINE_ENTITY='RetailDiscountLines';
 export const RETAIL_DISCOUNT_PRICE_GROUP_ENTITY='RetailDiscountPriceGroups';
@@ -168,7 +170,7 @@ export async function getRetailPromotionsByItem(productNumber,{businessDate=null
   }
 
   const headerById=new Map(headers.map(x=>[x.OfferId,x]));
-  const promotions=offerIds.map(offerId=>{
+  const promotions=offerIds.filter(offerId=>!isMarkdownOffer(offerId,headerById.get(offerId)?.Name)).map(offerId=>{
     const header=headerById.get(offerId)||null,offerLines=lines.filter(x=>x.OfferId===offerId),line=offerLines[0]||null;
     const offerPriceGroups=groups.filter(x=>x.OfferId===offerId).map(x=>x.PriceGroupId).filter(Boolean);
     const mixGroup=mixGroups.find(x=>x.MixAndMatchOfferId===offerId&&(!line?.MixAndMatchLineGroup||x.MixAndMatchLineGroup===line.MixAndMatchLineGroup))||null;

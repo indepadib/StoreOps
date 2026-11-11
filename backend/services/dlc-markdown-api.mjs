@@ -1,6 +1,6 @@
 import { db } from '../db.mjs';
 import { canAccessStore, isPlatformAdmin } from './permissions.mjs';
-import { getStoreCommerceProduct } from './loss-api.mjs';
+import { getBaseSalesPriceByItem } from './dynamics-price.mjs';
 import {
  listMarkdownRecommendations,markdownDashboard,listMarkdownRules,upsertMarkdownRule,markdownPosProfiles,validatePosProfile,
  listPrinters,upsertPrinter,operationPreview,createMarkdownOperation,approveMarkdownOperation,createPrintJob,listPrintJobs,listMarkdownOperations,retryPrintJob,
@@ -15,8 +15,16 @@ function canExecute(user,storeId){return !!user&&(user.role==='ops_director'||is
 function requireExecute(user,storeId){if(!canExecute(user,storeId))throw Object.assign(new Error('Action DLC / étiquetage non autorisée pour ce profil.'),{status:403})}
 function requireDirector(user){if(!(user?.role==='ops_director'||isPlatformAdmin(user)))throw Object.assign(new Error('Configuration Markdown réservée à la Direction / administration.'),{status:403})}
 async function currentPrice(storeId,record){
- if(!record?.ean)return{price:null,product:null,error:'EAN absent'};
- try{const product=await getStoreCommerceProduct(storeId,record.ean);return{price:product?.price??null,product,error:product?.pricingError?.message||null}}catch(error){return{price:null,product:null,error:error?.message||String(error)}}
+ const item=clean(record?.product_number);
+ if(!item)return {price:null,product:null,error:'Code article absent'};
+ try{
+  const {mode,row}=await getBaseSalesPriceByItem(item);
+  const amount=row?.SalesPrice, quantity=Number(row?.SalesPriceQuantity??1);
+  if(mode!=='LIVE'||amount==null||amount===''||!Number.isFinite(Number(amount))||Number(amount)<=0||!Number.isFinite(quantity)||quantity<=0){
+   return {price:null,product:null,error:'Prix de base Dynamics indisponible'};
+  }
+  return {price:Number(amount)/quantity,error:null,product:{productNumber:item,ean:record.ean,name:record.product_name,retailUnit:row.SalesUnitSymbol||null}};
+ }catch(error){return {price:null,product:null,error:error.message};}
 }
 
 export async function handleDlcMarkdownApi({req,url,user}){
@@ -40,7 +48,7 @@ export async function handleDlcMarkdownApi({req,url,user}){
  p=route(path,'/api/dlc-markdown/:dlcId/preview');if(p&&req.method==='GET'){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(p.dlcId);if(!record)return{status:404,data:{error:'Lot DLC introuvable'}};
   requireStore(user,record.store_id);const live=await currentPrice(record.store_id,record),preview=operationPreview({dlcId:p.dlcId,markdownCode:url.searchParams.get('markdown')||null,originalPrice:live.price});
-  return{status:200,data:{...preview,priceSource:live.price==null?'UNAVAILABLE':'D365_COMMERCE',priceError:live.error,product:live.product?{productNumber:live.product.productNumber,ean:live.product.ean,name:live.product.name,retailUnit:live.product.retailUnit}:null}}
+  return{status:200,data:{...preview,priceSource:live.price==null?'UNAVAILABLE':'D365_BASE_PRICE',priceError:live.error,product:live.product?{productNumber:live.product.productNumber,ean:live.product.ean,name:live.product.name,retailUnit:live.product.retailUnit}:null}}
  }
  p=route(path,'/api/stores/:storeId/dlc-markdown/bulk-operations');if(p&&req.method==='POST'){
   requireExecute(user,p.storeId);const b=await body(req),items=Array.isArray(b.items)?b.items:[];
@@ -54,15 +62,15 @@ export async function handleDlcMarkdownApi({req,url,user}){
   }
   const operations=[];db.exec('BEGIN');
   try{
-   for(const x of prepared)operations.push(createMarkdownOperation({dlcId:x.item.dlcId,user,quantity:x.item.quantity,markdownCode:x.item.markdownCode,originalPrice:x.live.price,idempotencyKey:x.item.idempotencyKey}));
+   for(const x of prepared)operations.push(createMarkdownOperation({dlcId:x.item.dlcId,user,quantity:x.item.quantity,markdownCode:x.item.markdownCode,originalPrice:x.live.price,reason:x.item.reason??null,idempotencyKey:x.item.idempotencyKey}));
    db.exec('COMMIT');
   }catch(error){db.exec('ROLLBACK');throw error}
-  return{status:201,data:{operations,priceSources:prepared.map(x=>({dlcId:x.item.dlcId,priceSource:x.live.price==null?'UNAVAILABLE':'D365_COMMERCE',priceError:x.live.error}))}}
+  return{status:201,data:{operations,priceSources:prepared.map(x=>({dlcId:x.item.dlcId,priceSource:x.live.price==null?'UNAVAILABLE':'D365_BASE_PRICE',priceError:x.live.error}))}}
  }
  p=route(path,'/api/dlc-markdown/:dlcId/operations');if(p&&req.method==='POST'){
   const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(p.dlcId);if(!record)return{status:404,data:{error:'Lot DLC introuvable'}};
-  requireExecute(user,record.store_id);const b=await body(req),live=await currentPrice(record.store_id,record),op=createMarkdownOperation({dlcId:p.dlcId,user,quantity:b.quantity,markdownCode:b.markdownCode,originalPrice:live.price,idempotencyKey:b.idempotencyKey});
-  return{status:201,data:{operation:op,priceSource:live.price==null?'UNAVAILABLE':'D365_COMMERCE',priceError:live.error}}
+  requireExecute(user,record.store_id);const b=await body(req),live=await currentPrice(record.store_id,record),op=createMarkdownOperation({dlcId:p.dlcId,user,quantity:b.quantity,markdownCode:b.markdownCode,originalPrice:live.price,reason:b.reason??null,idempotencyKey:b.idempotencyKey});
+  return{status:201,data:{operation:op,priceSource:live.price==null?'UNAVAILABLE':'D365_BASE_PRICE',priceError:live.error}}
  }
  p=route(path,'/api/dlc-markdown/operations/:operationId/approve');if(p&&req.method==='POST'){return{status:200,data:approveMarkdownOperation({operationId:p.operationId,user})}}
  p=route(path,'/api/dlc-markdown/operations/:operationId/applied');if(p&&req.method==='POST'){
@@ -70,7 +78,7 @@ export async function handleDlcMarkdownApi({req,url,user}){
   requireExecute(user,op.store_id);return{status:200,data:confirmLabelsApplied({operationId:p.operationId,user})}
  }
  p=route(path,'/api/stores/:storeId/label-print-jobs');if(p&&req.method==='POST'){
-  requireExecute(user,p.storeId);const b=await body(req);return{status:201,data:createPrintJob({storeId:p.storeId,user,operationIds:b.operationIds||[],printerId:b.printerId||null,idempotencyKey:b.idempotencyKey||null})}
+  requireExecute(user,p.storeId);const b=await body(req);return{status:201,data:createPrintJob({storeId:p.storeId,user,operationIds:b.operationIds||[],printerId:b.printerId||null,reason:b.reason??null,idempotencyKey:b.idempotencyKey||null})}
  }
  p=route(path,'/api/label-print-jobs/:jobId/retry');if(p&&req.method==='POST'){
   const job=db.prepare('SELECT * FROM label_print_jobs WHERE id=?').get(p.jobId);if(!job)return{status:404,data:{error:'Job introuvable'}};

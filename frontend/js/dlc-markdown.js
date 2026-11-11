@@ -37,6 +37,7 @@ function recommendationCard(r){
   <div class="md-execution">
    <label>Quantité physique à étiqueter<input data-md-qty="${esc(r.id)}" type="number" min="1" step="1" max="${Math.max(0,Number(r.quantityToReview||0))}" value="${Math.max(0,Math.floor(Number(r.quantityToReview||0)))}"></label>
    <label>Niveau de démarque<select data-md-code="${esc(r.id)}" ${allowOverride?'':'disabled'}><option value="${esc(code)}">${esc(code)}${r.discountPercent!=null?' · -'+r.discountPercent+'%':''}</option>${allowOverride?['MD20','MD50'].filter(x=>x!==code).map(x=>`<option value="${x}">${x}</option>`).join(''):''}</select></label>
+   <label>Motif<select data-md-reason><option value="">Choisir</option><option value="CASSE">Casse</option><option value="FRAIS">Frais</option><option value="DATE_COURTE">Date courte</option></select></label>
    <button class="btn soft" data-md-preview="${esc(r.id)}">Prévisualiser</button>
   </div>
   <div class="md-pos-state ${p.ok?'ready':'blocked'}"><strong>${p.ok?'POS validé':'Impression verrouillée'}</strong><span>${esc(p.label)}. Le prix sera relu dans Dynamics au moment de la préparation.</span></div>
@@ -49,7 +50,7 @@ function labelPreview(data,r){
   <div class="md-label-preview ${theme}"><div class="md-discount">-${Math.round(Number(data.discountPercent||0))}%</div><strong>${esc(r.productName)}</strong><div><span class="old">${money(data.originalPrice)}</span><span class="new">${money(data.finalPrice??data.previewFinalPrice)}</span></div><div class="md-barcode-placeholder">${data.barcodeContent?barcodeSvg(data.barcodeContent):''}<strong>${esc(data.barcodeContent||'')}</strong></div></div>
   <div class="md-preview-meta">
    <strong>${ready?'Étiquette prête techniquement':'Impression bloquée'}</strong>
-   <p>${data.priceSource==='D365_COMMERCE'?'Prix relu depuis Dynamics Commerce.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'CODE128 prévu : scan en caisse à valider. Le nouveau prix affiché reste indicatif avant cette validation.'}</p>
+   <p>${data.priceSource==='D365_BASE_PRICE'?'Prix de base relu dans Dynamics.':'Prix Dynamics indisponible.'} ${data.posValidationState==='VALIDATED'?'Profil code-barres validé.':'CODE128 prévu : scan en caisse à valider. Le nouveau prix affiché reste indicatif avant cette validation.'}</p>
    <p>${printer?'Imprimante : '+esc(printer.name)+' · '+printer.media_width_mm+'×'+printer.media_height_mm+' mm.':'Aucune imprimante magasin configurée.'}</p>
    <button class="btn brand" data-md-print-one="${esc(r.id)}" ${ready&&printer?'':'disabled'}>Créer l’opération et imprimer</button>
   </div>
@@ -79,7 +80,7 @@ function rulesAdmin(){
    </div><button class="btn brand" id="mdSaveRule">Enregistrer la règle</button>
    <div class="md-rule-list">${rules.map(r=>`<div><strong>${esc(r.markdown_code)} · J-${r.days_before_expiry}</strong><span>${esc(r.scope_type)} ${esc(r.scope_value||'tous')} · ${esc(r.store_id||'réseau')} · priorité ${r.priority}</span></div>`).join('')||'<small>Aucune règle active : aucune démarque n’est inventée par défaut.</small>'}</div></section>
    <section><h4>Validation caisse</h4>${(workspace.posProfiles||[]).map(p=>`<div class="md-pos-admin"><strong>${esc(p.markdown_code)} · préfixe ${esc(p.prefix)}</strong><span>${p.validation_state==='VALIDATED'?'Validé · '+esc(p.symbology||''):'Test réel Store Commerce requis'}</span>${p.validation_state!=='VALIDATED'? `<input data-pos-note="${esc(p.markdown_code)}" placeholder="Preuve : caisse, date, résultat du scan"><button class="btn soft" data-pos-validate="${esc(p.markdown_code)}">Valider après test CODE128 réussi</button>`:''}</div>`).join('')}</section>
-   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="60 × 40 mm" disabled></div><div class="field"><label>Technologie</label><select id="mdPrinterProtocol"><option value="ZPL_BRIDGE" ${isRawbt(printer?.protocol)?'':'selected'}>ZPL · relais magasin (PC)</option><option value="ESCPOS_RAWBT" ${isRawbt(printer?.protocol)?'selected':''}>ESC/POS · RawBT Bluetooth (Android) · 203 dpi</option></select></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">RawBT : aucune clé bridge nécessaire. Associer la LNX3 sur chaque PDA et configurer RawBT en ESC/POS general, 203 dpi. Le relais PC reste disponible en choisissant son mode. Vérifier le format physique 60 × 40 mm et le scan caisse avant usage.</p></section>
+   <section><h4>Imprimante magasin</h4><div class="form-grid"><div class="field"><label>Nom</label><input id="mdPrinterName" value="${esc(printer?.name||'Imprimante DLC')}"></div><div class="field"><label>Clé bridge</label><input id="mdPrinterBridge" value="${esc(printer?.bridge_key||'')}" placeholder="Identifiant local du service d’impression"></div><div class="field"><label>Format</label><input value="50 × 30 mm" disabled></div><div class="field"><label>Technologie</label><select id="mdPrinterProtocol"><option value="ZPL_BRIDGE" ${isRawbt(printer?.protocol)?'':'selected'}>ZPL · relais magasin (PC)</option><option value="ESCPOS_RAWBT" ${isRawbt(printer?.protocol)?'selected':''}>ESC/POS · RawBT Bluetooth (Android) · 203 dpi</option></select></div></div><button class="btn brand" id="mdSavePrinter">Enregistrer comme imprimante par défaut</button><p class="small muted">RawBT : aucune clé bridge nécessaire. Associer la LNX3 sur chaque PDA et configurer RawBT en ESC/POS general, 203 dpi. Le relais PC reste disponible en choisissant son mode. Vérifier le format physique 50 × 30 mm et le scan caisse avant usage.</p></section>
   </div>
  </details>`
 }
@@ -90,7 +91,8 @@ function draw(){
   <div class="card"><strong>Tester l’imprimante sur ce PDA</strong><p class="small muted">Test Bluetooth RawBT sans prix ni code-barres de vente. Aucune validation caisse nécessaire pour ce test. L’impression des vraies étiquettes conserve ses contrôles.</p><button class="btn soft" id="mdRawbtTest">Préparer une étiquette test RawBT</button><a class="btn brand" id="mdRawbtTestLink" hidden>Ouvrir RawBT pour le test</a></div>
   ${renderKpis(workspace.dashboard||{})}
   ${alerts.length?`<div class="md-alert-strip">${alerts.slice(0,8).map(a=>`<span class="md-alert ${String(a.priority).toLowerCase()}"><strong>${esc(a.title)}</strong><small>${esc(a.details||'')}</small></span>`).join('')}</div>`:''}
-  <div class="network-section-title"><div><strong>À traiter maintenant</strong><span>Ordonné par date. La quantité affichée est une aide ; le comptage physique reste obligatoire.</span></div><span class="pill">${recs.filter(x=>x.status==='ACTION_REQUIRED').length} action(s)</span></div>
+  <div class="network-section-title"><div><strong>Étiquettes casse et frais</strong><span>Recherche un lot DLC par code interne ou EAN pour préparer ses étiquettes.</span></div></div>
+  <div class="field"><label for="mdArticleSearch">Code interne ou EAN</label><input id="mdArticleSearch" type="search" autocomplete="off" placeholder="Ex. HS-002345"><small id="mdSearchResult" aria-live="polite"></small></div>
   <div class="md-bulk-bar"><label><input type="checkbox" id="mdSelectAll"> Tout sélectionner</label><div><span id="mdSelectedCount">0 sélection</span><button class="btn brand" id="mdBulkPrint" disabled>Préparer & imprimer la sélection</button></div></div>\n  <div class="md-actions">${recs.map(recommendationCard).join('')||'<div class="card empty">Aucune action markdown pour ce magasin.</div>'}</div>
   <div class="grid g2 md-followup"><div class="card"><div class="row"><strong>Opérations & pose des étiquettes</strong><span class="pill">${(workspace.operations||[]).length}</span></div>${operationsBlock()}</div><div class="card"><div class="row"><strong>File d’impression</strong><span class="pill">${(workspace.jobs||[]).filter(j=>['PENDING','PRINTING','FAILED'].includes(j.status)).length}</span></div>${jobsBlock()}</div></div>
   ${rulesAdmin()}
@@ -108,7 +110,9 @@ async function printOne(id,previewData){
  if(isRawbt(printer?.protocol)&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
  if(!previewData.printReady||!printer)throw new Error("Prix, profil POS et imprimante doivent être validés avant impression.");
  if(!Number.isInteger(q)||q<=0)throw new Error("Le nombre d’étiquettes doit être un entier positif.");
- const key=crypto.randomUUID(),created=await api(`/api/dlc-markdown/${encodeURIComponent(id)}/operations`,{method:'POST',body:{quantity:q,markdownCode:code,idempotencyKey:'pda:'+key}});
+ const reason=card?.querySelector('[data-md-reason]')?.value;
+ if(!reason)throw new Error('Sélectionne un motif.');
+ const key=crypto.randomUUID(),created=await api(`/api/dlc-markdown/${encodeURIComponent(id)}/operations`,{method:'POST',body:{quantity:q,markdownCode:code,reason,idempotencyKey:'pda:'+key}});
  if(created.operation?.status==='PENDING_APPROVAL'){toast('Opération créée · approbation requise avant impression.');await reload();return}
  const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:[created.operation.id],printerId:printer.id,idempotencyKey:'print:'+key}});
  toast(isRawbt(printer.protocol)?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`${job.total_labels} étiquette(s) placée(s) en file d’impression.`);await reload()
@@ -116,26 +120,30 @@ async function printOne(id,previewData){
 function selectedRows(){
  return [...document.querySelectorAll('[data-md-select]:checked')].map(box=>{
   const id=box.dataset.mdSelect,card=document.querySelector(`[data-md-card="${CSS.escape(id)}"]`);
-  return{id,quantity:Number(card?.querySelector('[data-md-qty]')?.value||0),markdownCode:card?.querySelector('[data-md-code]')?.value||'',card}
+  return{id,quantity:Number(card?.querySelector('[data-md-qty]')?.value||0),markdownCode:card?.querySelector('[data-md-code]')?.value||'',reason:card?.querySelector('[data-md-reason]')?.value,card}
  })
 }
 function syncBulkState(){
- const rows=selectedRows(),count=document.getElementById('mdSelectedCount'),button=document.getElementById('mdBulkPrint'),all=document.getElementById('mdSelectAll'),eligible=[...document.querySelectorAll('[data-md-select]')];
+ const rows=selectedRows(),count=document.getElementById('mdSelectedCount'),button=document.getElementById('mdBulkPrint'),all=document.getElementById('mdSelectAll'),eligible=visibleSelectionBoxes();
  if(count)count.textContent=rows.length?`${rows.length} article(s) sélectionné(s)`:'0 sélection';
  if(button)button.disabled=!rows.length;
  if(all){all.checked=eligible.length>0&&rows.length===eligible.length;all.indeterminate=rows.length>0&&rows.length<eligible.length}
+}
+function visibleSelectionBoxes(){
+ return [...document.querySelectorAll('[data-md-select]')].filter(box=>box.closest('[data-md-card]').style.display!=='none');
 }
 async function bulkPrint(){
  const rows=selectedRows(),printer=activePrinter();if(!rows.length)throw new Error('Sélectionne au moins un article.');if(!printer)throw new Error('Aucune imprimante magasin configurée.');
  if(isRawbt(printer.protocol)&&!isAndroid())throw new Error('Impression RawBT disponible sur Android uniquement.');
  const prepared=[];
  for(const row of rows){
+  if(!row.reason)throw new Error('Sélectionne un motif pour chaque lot.');
   if(!Number.isInteger(row.quantity)||row.quantity<=0)throw new Error('Chaque quantité à imprimer doit être un nombre entier positif.');
   const p=await api(`/api/dlc-markdown/${encodeURIComponent(row.id)}/preview?markdown=${encodeURIComponent(row.markdownCode)}`);
   if(!p.printReady)throw new Error(`${workspace.recommendations.find(x=>x.id===row.id)?.productName||row.id} : prix ou profil POS non validé.`);
   prepared.push({...row,preview:p})
  }
- const batchKey=crypto.randomUUID(),created=await api(`/api/stores/${app.storeId}/dlc-markdown/bulk-operations`,{method:'POST',body:{items:prepared.map((x,i)=>({dlcId:x.id,quantity:x.quantity,markdownCode:x.markdownCode,idempotencyKey:`bulk:${batchKey}:${i}`}))}});
+ const batchKey=crypto.randomUUID(),created=await api(`/api/stores/${app.storeId}/dlc-markdown/bulk-operations`,{method:'POST',body:{items:prepared.map((x,i)=>({dlcId:x.id,quantity:x.quantity,markdownCode:x.markdownCode,reason:x.reason,idempotencyKey:`bulk:${batchKey}:${i}`}))}});
  const blocked=(created.operations||[]).filter(x=>x.status!=='APPROVED');if(blocked.length){toast(`${blocked.length} opération(s) attendent une approbation ; aucune impression groupée lancée.`);await reload();return}
  const job=await api(`/api/stores/${app.storeId}/label-print-jobs`,{method:'POST',body:{operationIds:(created.operations||[]).map(x=>x.id),printerId:printer.id,idempotencyKey:'bulk-print:'+batchKey}});
  toast(isRawbt(printer.protocol)?'Lot prêt : dans la file, touche Préparer sur ce PDA.':`Lot envoyé · ${job.total_labels} étiquette(s) pour ${prepared.length} article(s).`);await reload()
@@ -154,10 +162,23 @@ async function validatePos(code){
 async function savePrinter(){
  const name=document.getElementById('mdPrinterName').value.trim(),bridgeKey=document.getElementById('mdPrinterBridge').value.trim(),protocol=document.getElementById('mdPrinterProtocol').value;if(protocol==='ZPL_BRIDGE'&&!bridgeKey)throw new Error('Clé bridge obligatoire pour le relais magasin.');
  const existing=activePrinter();
- await api(`/api/stores/${app.storeId}/label-printers`,{method:'POST',body:{id:existing?.protocol===protocol?existing.id:null,name,bridgeKey,protocol,mediaWidthMm:60,mediaHeightMm:40,dpi:203,colorMode:'MONO_PRECOLORED',active:true,isDefault:true}});
+ await api(`/api/stores/${app.storeId}/label-printers`,{method:'POST',body:{id:existing?.protocol===protocol?existing.id:null,name,bridgeKey,protocol,mediaWidthMm:50,mediaHeightMm:30,dpi:203,colorMode:'MONO_PRECOLORED',active:true,isDefault:true}});
  toast('Imprimante magasin enregistrée.');await reload()
 }
 function bind(){
+ document.getElementById('mdArticleSearch')?.addEventListener('input',event=>{
+  const query=event.target.value.trim().toUpperCase();
+  let count=0;
+  for(const card of document.querySelectorAll('[data-md-card]')){
+   const record=workspace.recommendations.find(row=>row.id===card.dataset.mdCard);
+   const matches=!query||[record?.ean,record?.productNumber].some(value=>String(value||'').toUpperCase().includes(query));
+   card.style.display=matches?'':'none';
+   if(matches)count++;
+   else if(card.querySelector('[data-md-select]'))card.querySelector('[data-md-select]').checked=false;
+  }
+  syncBulkState();
+  document.getElementById('mdSearchResult').textContent=query?(count?`${count} lot(s) trouvé(s)`:'Aucun lot DLC pour ce code.') : '';
+ });
  document.getElementById('mdRawbtTest')?.addEventListener('click',()=>{try{if(!isAndroid())throw new Error('Test à lancer sur le PDA Android avec RawBT.');const link=document.getElementById('mdRawbtTestLink');link.href=rawbtLink(escposTestBytes());link.hidden=false;toast('Touche Ouvrir RawBT pour envoyer le test.');}catch(e){toast(e.message)}});
  document.querySelectorAll('[data-md-rawbt]').forEach(b=>b.addEventListener('click',async()=>{b.disabled=true;try{
   if(!isAndroid())throw new Error('Ouvre StoreOps sur le PDA Android équipé de RawBT.');
@@ -170,7 +191,7 @@ function bind(){
  for(const [attr,action,message] of [['confirm','confirm','Toutes les étiquettes sont-elles sorties correctement ?'],['failed','failed','Après contrôle physique, confirmer une sortie absente ou incomplète ? Une relance peut dupliquer les étiquettes déjà sorties.']])document.querySelectorAll(`[data-md-${attr}]`).forEach(b=>b.addEventListener('click',async()=>{if(!confirm(message))return;b.disabled=true;try{await api(`/api/label-print-jobs/${encodeURIComponent(b.dataset[attr==='confirm'?'mdConfirm':'mdFailed'])}/rawbt`,{method:'POST',body:{action,confirmed:true}});await reload()}catch(e){toast(e.message);b.disabled=false}}));
  document.getElementById('mdRefresh')?.addEventListener('click',()=>reload().catch(e=>toast(e.message)));
  document.querySelectorAll('[data-md-select]').forEach(x=>x.addEventListener('change',syncBulkState));
- document.getElementById('mdSelectAll')?.addEventListener('change',e=>{document.querySelectorAll('[data-md-select]').forEach(x=>x.checked=e.target.checked);syncBulkState()});
+ document.getElementById('mdSelectAll')?.addEventListener('change',e=>{visibleSelectionBoxes().forEach(x=>x.checked=e.target.checked);syncBulkState()});
  document.getElementById('mdBulkPrint')?.addEventListener('click',()=>bulkPrint().catch(e=>toast(e.message)));
  document.querySelectorAll('[data-md-preview]').forEach(b=>b.addEventListener('click',()=>preview(b.dataset.mdPreview)));
  document.querySelectorAll('[data-md-code]').forEach(s=>s.addEventListener('change',()=>{const host=document.querySelector(`[data-md-preview-host="${CSS.escape(s.dataset.mdCode)}"]`);if(host)host.innerHTML=''}));
