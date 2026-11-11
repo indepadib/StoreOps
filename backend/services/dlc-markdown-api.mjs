@@ -47,7 +47,7 @@ export async function handleDlcMarkdownApi({req,url,user}){
   const label=directLabel({productNumber,productName,basePrice:price,markdownCode});
   if(req.method==='GET')return {status:200,data:label};
   if(input.expectedPrice!==label.finalPrice)throw Object.assign(new Error('Le prix a changé. Vérifie le nouvel aperçu avant impression.'),{status:409});
-  const job=createDirectLabelJob({storeId:p.storeId,user,label,markdownCode,reason:input.reason,quantity:input.quantity,idempotencyKey:input.idempotencyKey});
+  const job=createDirectLabelJob({storeId:p.storeId,user,label,markdownCode,reason:input.reason,quantity:input.quantity,idempotencyKey:input.idempotencyKey,canOpenRawBt:input.canOpenRawBt!==false});
   const printer=listPrinters(p.storeId).find(x=>x.id===job.printer_id);
   return {status:201,data:{id:job.id,status:job.status,quantity:job.total_labels,mobile:printer?.protocol!=='ZPL_BRIDGE'}};
  }

@@ -363,7 +363,7 @@ export function directLabel({productNumber,productName,basePrice,markdownCode}){
  return {productNumber,productName,originalPrice:basePrice,finalPrice,discountPercent:profile.discount_percent,barcode:markdownBarcodeContent(markdownCode,productNumber)};
 }
 
-export function createDirectLabelJob({storeId,user,label,markdownCode,reason,quantity,idempotencyKey}){
+export function createDirectLabelJob({storeId,user,label,markdownCode,reason,quantity,idempotencyKey,canOpenRawBt=true}){
  if(!['CASSE','FRAIS'].includes(reason)||!Number.isInteger(quantity)||quantity<1||quantity>50||!clean(idempotencyKey))throw Object.assign(new Error('Choisis un motif et une quantité de 1 à 50.'),{status:400});
  const key=['direct',storeId,user.id,idempotencyKey].join('|');
  const existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);
@@ -371,6 +371,7 @@ export function createDirectLabelJob({storeId,user,label,markdownCode,reason,qua
  const printer=db.prepare('SELECT * FROM store_label_printers WHERE store_id=? AND active=1 ORDER BY is_default DESC,created_at LIMIT 1').get(storeId);
  if(!printer)throw Object.assign(new Error('Aucune imprimante active pour ce magasin.'),{status:409});
  const mobile=printer.protocol!=='ZPL_BRIDGE';
+ if(mobile&&!canOpenRawBt)throw Object.assign(new Error('Ouvre cette page sur le PDA Android pour imprimer avec RawBT.'),{status:409,code:'RAWBT_ANDROID_REQUIRED'});
  const fields={label_kind:markdownCode,product_name:label.productName,original_price:label.originalPrice,final_price:label.finalPrice,barcode_content:label.barcode,discount_percent:label.discountPercent};
  const bytes=mobile?Buffer.from(escposLabelBytes(fields)):null;
  if(mobile&&bytes.length*quantity>180000)throw Object.assign(new Error('Réduis la quantité pour imprimer sur RawBT.'),{status:409});
