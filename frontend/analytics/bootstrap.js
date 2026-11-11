@@ -48,6 +48,7 @@ async function start(){
     await import(analyticsAsset('/analytics/basket-direction.js'));
     await import(analyticsAsset('/analytics/loss-inventory.js'));
     await import(analyticsAsset('/analytics/detention-views.js'));
+    await import(analyticsAsset('/analytics/replenishment.js'));
     await import(analyticsAsset('/analytics/experience-navigation.js'));
 
   }catch(error){

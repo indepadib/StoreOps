@@ -2,7 +2,7 @@ import {readOperationalWarehouseStock} from './operational-stock.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 import {randomUUID} from 'node:crypto';
 import { config } from '../config.mjs';
-import { getProductByEan,odataGetAll,odataGet } from './dynamics.mjs';
+import { getProductByEan,getProductByReference,odataGetAll,odataGet } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
 import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
 
@@ -120,10 +120,10 @@ export async function getSupplyStockByProductNumber(storeId,productNumber){retur
 
 function safeError(error){return{code:error?.code||'D365_UNAVAILABLE',message:error?.message||'Dynamics indisponible'}}
 
-export async function getStoreProductByEan(storeId,ean){
+export async function getStoreProductByEan(storeId,ean,{allowReference=false}={}){
   let product=null,identityError=null,identityFallback=false;
   try{
-    product=await getProductByEan(ean);
+    product=await (allowReference?getProductByReference(ean):getProductByEan(ean));
     if(product)rememberProductIdentity(product,{liveSource:product.source||'D365'});
   }catch(error){
     identityError=safeError(error);noteProductIdentityFailure(ean,error);product=cachedProductByEan(ean);identityFallback=!!product;if(!product)throw error

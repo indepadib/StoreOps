@@ -18,7 +18,7 @@ export function recommendReplenishment(input={}){
  const promoFactor=Math.max(.1,num(input.promoFactor,1)),dayFactor=Math.max(.1,num(input.dayOfWeekFactor,1)),packSize=Math.max(.001,positive(input.packSize,1)||1),minOrderQty=Math.max(0,positive(input.minOrderQty,0));
  const adjustedVelocity=velocity===null?null:round3(velocity*promoFactor*dayFactor),coverDays=storeKnown&&adjustedVelocity&&adjustedVelocity>0?round3(Math.max(0,storeAvailable)/adjustedVelocity):null;
  const targetDays=round3(leadTimeDays+safetyDays),targetDemand=adjustedVelocity===null?null:round3(adjustedVelocity*targetDays),rawNeed=!storeKnown||targetDemand===null?null:round3(targetDemand-storeAvailable-confirmedInbound);
- let recommendedQty=rawNeed===null?null:Math.max(0,Math.ceil(Math.max(rawNeed,minOrderQty)/packSize)*packSize);recommendedQty=recommendedQty===null?null:round3(recommendedQty);
+ const recommendedQty=rawNeed===null?null:rawNeed<=0?0:round3(Math.ceil(Math.max(rawNeed,minOrderQty)/packSize)*packSize);
  let decision='OK',actionQty=0,reason='Stock suffisant pour la couverture cible.';
  if(!storeKnown){decision='NEED_STOCK_DATA';reason='Stock magasin indisponible : impossible de calculer une recommandation fiable.'}
  else if(storeAvailable<0){decision='CHECK_STOCK';reason='Stock négatif ou incohérent : contrôler le stock avant de commander.'}
