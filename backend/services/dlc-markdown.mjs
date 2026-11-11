@@ -305,7 +305,7 @@ export function markdownDashboard(storeId=null){
 }
 
 function computeFinalPrice(originalPrice,profile,previewOnly=false){
- const original=finite(originalPrice);if(original===null||(!previewOnly&&profile?.validation_state!=='VALIDATED'))return null;
+ const original=finite(originalPrice);if(original===null||original<=0||(!previewOnly&&profile?.validation_state!=='VALIDATED'))return null;
  if(profile.pricing_strategy!=='PERCENT_FROM_D365_PRICE')return null;
  return round(original*(1-Number(profile.discount_percent)/100),Number(profile.rounding_decimals)||0);
 }
@@ -315,10 +315,11 @@ export function operationPreview({dlcId,markdownCode=null,originalPrice=null}={}
  if(rec.status==='EXPIRED_WITHDRAW')throw Object.assign(new Error('Produit périmé : retrait obligatoire, démarque interdite.'),{status:409,code:'EXPIRED_MARKDOWN_BLOCKED'});
  const code=clean(markdownCode||rec.markdownCode).toUpperCase(),profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(code);
  if(!profile)throw Object.assign(new Error('Code markdown non configuré.'),{status:400});
- const barcode=markdownBarcodeContent(code,record.product_number),price=computeFinalPrice(originalPrice??record.unit_retail_value,profile);
- return{recommendation:rec,markdownCode:code,discountPercent:profile.discount_percent,barcodeContent:barcode,symbology:profile.symbology,posValidationState:profile.validation_state,originalPrice:finite(originalPrice??record.unit_retail_value),finalPrice:price,previewFinalPrice:computeFinalPrice(originalPrice??record.unit_retail_value,profile,true),priceValidationState:price===null?'UNVALIDATED':'VALIDATED_PROFILE_FROM_D365_BASE',printReady:profile.validation_state==='VALIDATED'&&!!profile.symbology&&price!==null};
+ const barcode=markdownBarcodeContent(code,record.product_number),price=computeFinalPrice(originalPrice,profile);
+ return{recommendation:rec,markdownCode:code,discountPercent:profile.discount_percent,barcodeContent:barcode,symbology:profile.symbology,posValidationState:profile.validation_state,originalPrice:finite(originalPrice)>0?finite(originalPrice):null,finalPrice:price,previewFinalPrice:computeFinalPrice(originalPrice,profile,true),priceValidationState:price===null?'UNVALIDATED':'VALIDATED_PROFILE_FROM_D365_BASE',printReady:profile.validation_state==='VALIDATED'&&!!profile.symbology&&price!==null};
 }
-export function createMarkdownOperation({dlcId,user,quantity,markdownCode=null,originalPrice=null,idempotencyKey=null}={}){
+export function createMarkdownOperation({dlcId,user,quantity,markdownCode=null,originalPrice=null,idempotencyKey=null,reason=null}={}){
+ if(reason!==null&&!['CASSE','FRAIS','DATE_COURTE'].includes(reason))throw Object.assign(new Error('Motif d’étiquetage invalide.'),{status:400});
  const record=db.prepare('SELECT * FROM dlc_records WHERE id=?').get(dlcId);if(!record)throw Object.assign(new Error('Lot DLC introuvable.'),{status:404});
  const rec=recommendationFromRecord(record,listMarkdownRules({activeOnly:true}));
  if(rec.status==='EXPIRED_WITHDRAW')throw Object.assign(new Error('Produit périmé : impression markdown interdite.'),{status:409,code:'EXPIRED_MARKDOWN_BLOCKED'});
@@ -330,12 +331,13 @@ export function createMarkdownOperation({dlcId,user,quantity,markdownCode=null,o
  const requestedRule=code===rec.markdownCode?rec.rule:listMarkdownRules({activeOnly:true}).find(r=>r.markdown_code===code&&matchRule(r,record));
  if(!requestedRule)throw Object.assign(new Error('Aucune règle active n’autorise ce niveau de démarque pour cet article.'),{status:409,code:'MARKDOWN_OVERRIDE_RULE_MISSING'});
  const preview=operationPreview({dlcId,markdownCode:code,originalPrice}),key=clean(idempotencyKey)||[dlcId,code,q,clean(user?.id),todayISO()].join('|');
+ if(preview.originalPrice===null)throw Object.assign(new Error('Prix de base Dynamics indisponible. Étiquette non préparée.'),{status:409,code:'MARKDOWN_BASE_PRICE_REQUIRED'});
  const existing=db.prepare('SELECT * FROM dlc_markdown_operations WHERE idempotency_key=?').get(key);if(existing)return existing;
  const status=requestedRule.action_mode==='APPROVAL'&&!isDirector(user)?'PENDING_APPROVAL':'APPROVED',id=uid('mdo');
  db.prepare("INSERT INTO dlc_markdown_operations(id,dlc_id,store_id,rule_id,markdown_code,discount_percent,quantity,original_price,final_price,price_validation_state,barcode_content,barcode_validation_state,status,idempotency_key,created_by,approved_by) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
   .run(id,dlcId,record.store_id,requestedRule.id,code,preview.discountPercent,q,preview.originalPrice,preview.finalPrice,preview.priceValidationState,preview.barcodeContent,preview.posValidationState==='VALIDATED'?'VALIDATED':'UNVALIDATED',status,key,user.id,status==='APPROVED'?user.id:null);
  db.prepare("UPDATE dlc_records SET last_physical_quantity=?,last_physical_confirmed_at=CURRENT_TIMESTAMP,last_physical_confirmed_by=? WHERE id=?").run(q,user.id,dlcId);
- audit({storeId:record.store_id,userId:user.id,action:'DLC_MARKDOWN_OPERATION_CREATED',entityType:'DLC_MARKDOWN_OPERATION',entityId:id,details:{dlcId,quantity:q,markdownCode:code,status,barcode:preview.barcodeContent,priceValidation:preview.priceValidationState}});
+ audit({storeId:record.store_id,userId:user.id,action:'DLC_MARKDOWN_OPERATION_CREATED',entityType:'DLC_MARKDOWN_OPERATION',entityId:id,details:{dlcId,quantity:q,markdownCode:code,reason,status,barcode:preview.barcodeContent,priceValidation:preview.priceValidationState}});
  return db.prepare('SELECT * FROM dlc_markdown_operations WHERE id=?').get(id);
 }
 export function approveMarkdownOperation({operationId,user}={}){
@@ -350,9 +352,8 @@ function zplEscape(value){return String(value??'').replace(/[\^~]/g,' ').replace
 function labelZpl(op,record,profile,printer){
  if(profile.symbology!=='CODE128')throw Object.assign(new Error('Symbologie POS non compatible avec le générateur ZPL.'),{status:409,code:'PRINT_SYMBOLOGY_UNSUPPORTED'});
  const width=Math.max(300,Math.round(Number(printer.media_width_mm||60)/25.4*Number(printer.dpi||203))),height=Math.max(200,Math.round(Number(printer.media_height_mm||40)/25.4*Number(printer.dpi||203)));
- const accent=op.markdown_code==='MD50'?'ROULEAU ROUGE':'ROULEAU JAUNE';
  const name=zplEscape(record.product_name).slice(0,34),expiry=zplEscape(record.expiry_date),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
- return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO18,14^A0N,34,34^FD-'+Math.round(op.discount_percent)+'%  '+accent+'^FS','^FO18,56^A0N,24,24^FD'+name+'^FS','^FO18,90^A0N,20,20^FDAncien '+oldPrice+' DH   NOUVEAU '+newPrice+' DH^FS','^FO24,120^BY2,2,62^BCN,62,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
+ return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO13,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO14,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO13,41^A0N,17,15^FB'+(width-26)+',2,2,L,0^FD'+name+'^FS','^FO13,84^A0N,15,14^FD'+oldPrice+' DH  >  '+newPrice+' DH^FS','^FO24,112^BY2,2,52^BCN,52,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
 }
 export function createPrintJob({storeId,user,operationIds=[],printerId=null,idempotencyKey=null}={}){
  const ids=[...new Set((operationIds||[]).map(clean).filter(Boolean))];if(!ids.length)throw Object.assign(new Error('Aucune opération à imprimer.'),{status:400});

@@ -13,7 +13,7 @@ export function escposLabelBytes(item){
  const percent=item.label_kind==='MD50'?50:item.label_kind==='MD20'?20:null;
  if(percent===null)throw new Error('Niveau de demarque inconnu.');
  const name=ascii(item.product_name).slice(0,64),nameLines=name.match(/.{1,32}/g)||[''];
- const large=[29,33,34],nameSize=[29,33,16],priceSize=[29,33,17],normal=[29,33,0],center=[27,97,1];
- const out=[...header,...center,...large,...bytes('-'+percent+'%\n'),...nameSize,...bytes(nameLines.join('\n')+'\n'),...normal,...crossedPriceRaster(item.original_price),10,...priceSize,...bytes(Number(item.final_price).toFixed(2)+' DH\n'),...normal,...barcodeRaster(code),...bytes(code+'\n\n')];
+ const bold=[27,69,1],regular=[27,69,0],discountSize=[29,33,17],normal=[29,33,0],center=[27,97,1];
+ const out=[...header,...center,...bold,...discountSize,...bytes('-'+percent+'%\n'),...regular,...normal,...bytes(nameLines.join('\n')+'\n'),...crossedPriceRaster(item.original_price),...bold,...bytes(Number(item.final_price).toFixed(2)+' DH\n'),...regular,...barcodeRaster(code,54),...bytes(code+'\n')];
  return Uint8Array.from(out);
 }

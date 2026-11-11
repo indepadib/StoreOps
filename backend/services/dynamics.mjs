@@ -1,4 +1,5 @@
 import { config } from '../config.mjs';
+import { isMarkdownOffer } from './markdown-offer.mjs';
 import { storeOperationalSettings } from './store-settings.mjs';
 
 const PRODUCTS = {
@@ -336,12 +337,13 @@ export async function getCommercialChanges(storeId,businessDate){
     const payload=await odataGet(headerEntity,{filter,select:'OfferId,Name,Status,ProcessingStatus,ValidFrom,ValidTo,PeriodicDiscountType,MixAndMatchDiscountType,MixAndMatchDealPrice,MixAndMatchNoOfLeastExpensiveLines,DiscountPercentValue',top:500,extra});
     headers.push(...(Array.isArray(payload?.value)?payload.value:[]));
   }
-  const pendingDiagnostics=headers.filter(h=>{
+  const commercialHeaders=headers.filter(h=>!isMarkdownOffer(h.OfferId,h.Name));
+  const pendingDiagnostics=commercialHeaders.filter(h=>{
     if(h?.Status!=='Enabled'||h?.ProcessingStatus==='Processed')return false;
     const from=dateOnly(h.ValidFrom),to=dateOnly(h.ValidTo);
     return (openBoundary(from)||from<=day)&&(openBoundary(to)||to>=day)
   }).map(h=>({sourceKey:`D365-PROMO-PROCESSING-${h.OfferId}-${day}`,actionType:'VERIFY',ean:`OFFER:${h.OfferId}`,productNumber:null,productName:h.Name||`Promotion ${h.OfferId}`,category:null,oldPrice:null,expectedPrice:null,promoLabel:`Promotion rattachée à Val Fleuri mais pas encore traitée par Commerce · ProcessingStatus: ${h.ProcessingStatus||'UNKNOWN'}`,signageAction:'VERIFY',priority:'HIGH',blockingOpening:false,storeId,priceGroups:[...(offerGroups.get(String(h.OfferId))||[])],retailChannelId:priceGroupContext.retailChannelId,source:'D365_RETAIL_PRICING_DIAGNOSTIC'}));
-  const eligibleHeaders=headers.filter(h=>activeOffer(h,day)||offerEndedRecently(h,day)),eligibleIds=[...new Set(eligibleHeaders.map(h=>String(h.OfferId||'').trim()).filter(Boolean))];
+  const eligibleHeaders=commercialHeaders.filter(h=>activeOffer(h,day)||offerEndedRecently(h,day)),eligibleIds=[...new Set(eligibleHeaders.map(h=>String(h.OfferId||'').trim()).filter(Boolean))];
   if(!eligibleIds.length)return pendingDiagnostics;
   const headerById=new Map(eligibleHeaders.map(h=>[String(h.OfferId),h]));
 
