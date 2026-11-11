@@ -1,6 +1,7 @@
 import{api,apiBlob}from'../api.js';
 import{app,canManageDlc,isDirector,isQualityAudit}from'../state.js';
 import{$,status,fmtDate,esc,toast}from'../ui.js';
+import{renderDlcMarkdownWorkspace}from'../dlc-markdown.js';
 
 
 let cfg=null,allItems=[],productPreview=null;
@@ -40,6 +41,11 @@ export async function renderDlc(){
     ${isDirector()?thresholdPanel():''}
   `;
   bindDlc();
+  const settings=document.createElement('details');
+  settings.className='card';
+  settings.innerHTML='<summary>Démarque des lots et réglages d’impression</summary><div id="dlcMarkdownContentLegacy"></div>';
+  settings.addEventListener('toggle',()=>{if(settings.open)renderDlcMarkdownWorkspace();});
+  $('#dlcContent').append(settings);
 
 }
 

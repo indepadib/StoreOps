@@ -16,7 +16,7 @@ const jobLabel=s=>({PENDING:'En attente imprimante',PRINTING:'Impression en cour
 const opLabel=s=>({PENDING_APPROVAL:'Approbation requise',APPROVED:'Prêt à imprimer',QUEUED:"File d'impression",PRINTING:'Impression',PRINTED:'Imprimé',APPLIED:'Étiquettes posées'}[s]||s||'—');
 
 function ensureCss(){if(document.getElementById('dlc-markdown-css'))return;const link=document.createElement('link');link.id='dlc-markdown-css';link.rel='stylesheet';link.href='/dlc-markdown.css?v=2405';document.head.appendChild(link)}
-function root(){return document.getElementById('dlcMarkdownContent')}
+function root(){return document.getElementById('dlcMarkdownContentLegacy')}
 function profile(code){return workspace?.posProfiles?.find(x=>x.markdown_code===code)||null}
 function activePrinter(){return (workspace?.printers||[]).find(x=>x.active&&x.is_default)||(workspace?.printers||[]).find(x=>x.active)||null}
 function posState(code){const p=profile(code);return p?.validation_state==='VALIDATED'?{ok:true,label:`${code} validé caisse · ${p.symbology}`}:{ok:false,label:`${code} en attente de test caisse réel`}}
