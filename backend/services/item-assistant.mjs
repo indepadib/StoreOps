@@ -62,7 +62,7 @@ function healthState(ctx,p,supply,velocity,index){
 }
 
 export async function buildItemAssistant({storeId,ean,businessDate=null}){
- const ctx=await buildPriceCheckContext({storeId,ean,businessDate:businessDate||undefined}),p=ctx.product,age=maxAgeHours(),index=assortmentIndex(storeId,{businessDate:ctx.businessDate,maxAgeHours:age}),membership=assortmentMembership(storeId,p.productNumber,{index}),taxonomy=productTaxonomy(p.productNumber),available=finiteOrNull(p.availableStock),availability=safeAvailability({storeId,productNumber:p.productNumber,availableQty:available,index,membership});
+ const ctx=await buildPriceCheckContext({storeId,ean,businessDate:businessDate||undefined,allowReference:true}),p=ctx.product,age=maxAgeHours(),index=assortmentIndex(storeId,{businessDate:ctx.businessDate,maxAgeHours:age}),membership=assortmentMembership(storeId,p.productNumber,{index}),taxonomy=productTaxonomy(p.productNumber),available=finiteOrNull(p.availableStock),availability=safeAvailability({storeId,productNumber:p.productNumber,availableQty:available,index,membership});
  let sourcing=await releasedProductSourcing(p.productNumber);
  let supply={warehouseId:supplyWarehouseForStore(storeId),source:sourcing.supplyMode==='WAREHOUSE'?'UNMAPPED_D365':'NOT_APPLICABLE',availableStock:null,physicalStock:null,mappingRequired:sourcing.supplyMode==='WAREHOUSE'};
  if(sourcing.supplyMode==='WAREHOUSE'){
@@ -78,7 +78,7 @@ export async function buildItemAssistant({storeId,ean,businessDate=null}){
  const primary=primaryAction({availability,ctx,membership,replenishment}),integrationHealth=healthState(ctx,p,supply,velocity,index),insight=operationalInsight({available,velocity,replenishment,price:ctx.expectedUnitPrice});
  return{
   storeId,businessDate:ctx.businessDate,ean:ctx.ean,
-  item:{productNumber:p.productNumber,name:p.name,category:p.category,unit:p.unit,source:p.source||null,identityFallback:!!p.identityFallback,cacheSyncedAt:p.cacheSyncedAt||null},
+  item:{productNumber:p.productNumber,name:p.name,category:p.category,unit:p.unit,inventoryUnit:p.inventoryUnit??null,source:p.source||null,identityFallback:!!p.identityFallback,cacheSyncedAt:p.cacheSyncedAt||null},
   pricing:{basePrice:ctx.basePrice?.price??null,expectedUnitPrice:ctx.expectedUnitPrice,pricingBasis:ctx.pricingBasis||null,tradeAgreements:ctx.tradeAgreements||null,promoLabel:ctx.promoLabel,promotionError:ctx.promotionError||null,priceGroup:ctx.priceGroup,priceGroups:ctx.priceGroups||[ctx.priceGroup].filter(Boolean),priceGroupContext:ctx.priceGroupContext||null,available:!ctx.integrationErrors?.pricing},
   storeStock:{warehouseId:p.warehouseId??null,physicalStock:finiteOrNull(p.stock),availableStock:available,reservedStock:finiteOrNull(p.reservedStock),incomingStock:finiteOrNull(p.onOrderStock),totalAvailableStock:finiteOrNull(p.totalAvailableStock),source:p.stockSource??null,mappingRequired:!!p.stockMappingRequired,unavailable:!!p.stockUnavailable,error:p.stockError||null,batches:p.batches||[]},
   supplyStock:supply,

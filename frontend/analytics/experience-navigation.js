@@ -16,6 +16,7 @@ const sections=[
  {id:'loyalty',label:'Fidélité',description:'Suivre l’identification, le recrutement et la valeur des clients.',search:'carte programme fidélité recrutement fidelise'},
  {id:'promotions',label:'Promotions',description:'Comprendre remises, effets sur les ventes et dépendance promotionnelle.',search:'promotions offres discount remises prix'},
  {id:'inventory',label:'Stock',description:'Contrôler disponibilité, immobilisation et risques opérationnels.',search:'stock rupture inventaire couverture'},
+ {id:'replenishment',label:'Réapprovisionnement',description:'Calculer une proposition de commande fournisseur ou de transfert entrepôt.',search:'commande fournisseur transfert entrepot stock po to'},
  {id:'detention',label:'Détention',description:'Comparer la présence des articles entre magasins et entrepôts.',search:'detention référencement magasin entrepot'},
  {id:'reference',label:'Référentiel articles',description:'Retrouver les caractéristiques et hiérarchies des produits.',search:'referentiel article fiche produit'},
  {id:'cashiers',label:'Caissiers',description:'Lire les performances et pratiques d’identification en caisse.',search:'caisse collaborateurs staff tickets'},
@@ -25,7 +26,7 @@ const navGroups=[
  ['PILOTAGE',['overview','sales','network']],
  ['COMMERCE',['categories','suppliers','promotions']],
  ['RELATION CLIENT',['crm','loyalty','cashiers']],
- ['EXÉCUTION & DONNÉES',['inventory','detention','reference']]
+ ['EXÉCUTION & DONNÉES',['inventory','detention','replenishment','reference']]
 ];
 const intents={
  overview:[['Comprendre les variations','Pourquoi le CA évolue-t-il ? Distingue le trafic et le panier moyen.'],['Analyser les clients','crm'],['Contrôler le réseau','network']],
