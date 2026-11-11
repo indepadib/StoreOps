@@ -1,18 +1,22 @@
-export function classifyProposal(data){
+import {calculateMinMax,mountMinMax} from './replenishment-minmax.js';
+
+export function classifyProposal(data,reviewDays=2){
  const {replenishment:plan,storeStock,merchandising}=data;
  if(merchandising?.assortment?.status!=='ASSORTED')return {title:'Assortiment à confirmer',quantity:null};
  if(storeStock?.unavailable||storeStock?.mappingRequired||!Number.isFinite(storeStock?.availableStock))return {title:'Stock magasin à vérifier',quantity:null};
  if(plan?.salesVelocity?.status!=='READY')return {title:'Ventes indisponibles',quantity:null};
  const unit=value=>String(value??'').trim().toUpperCase();
  if(plan.salesVelocity.saleRows>0&&(!unit(data.item?.inventoryUnit)||unit(plan.salesVelocity.quantityUnit)!==unit(data.item.inventoryUnit)))return {title:'Unités de vente et de stock à rapprocher',quantity:null};
- if(plan.decision==='OK')return {title:'Stock suffisant',quantity:null};
- if(['DIRECT_ORDER','REPLENISH','PARTIAL'].includes(plan.decision)&&!Number.isFinite(storeStock.incomingStock))return {title:'Arrivages à confirmer',quantity:null};
- if(plan.decision==='DIRECT_ORDER'&&!plan.inputs?.supplierAccount)return {title:'Fournisseur à confirmer',quantity:null};
- if(Number.isFinite(plan.actionQty)&&plan.actionQty>0){
-  if(plan.decision==='DIRECT_ORDER')return {title:'Proposition PO · commande fournisseur',quantity:plan.actionQty};
-  if(['REPLENISH','PARTIAL'].includes(plan.decision))return {title:plan.decision==='PARTIAL'?'Proposition TO · transfert partiel':'Proposition TO · transfert entrepôt',quantity:plan.actionQty};
- }
- return {title:plan.presentation?.title||'Besoin à vérifier',quantity:null};
+ if(plan.inputs?.supplyMode!=='WAREHOUSE')return {title:'Approvisionnement entrepôt à confirmer',quantity:null};
+ if(!Number.isFinite(storeStock.incomingStock))return {title:'Arrivages à confirmer',quantity:null};
+ if(storeStock.incomingStock>0)return {title:'Dates des arrivages à confirmer dans le calculateur',quantity:null};
+ if(!Number.isFinite(data.supplyStock?.availableStock))return {title:'Stock entrepôt indisponible',quantity:null};
+ if(!Number.isFinite(plan.metrics?.adjustedDailyVelocity))return {title:'Consommation moyenne indisponible',quantity:null};
+ if(!data.item?.inventoryUnit)return {title:'Unité de stock indisponible',quantity:null};
+ const {leadTimeDays,safetyDays,packSize}=plan.inputs;
+ const calculation=calculateMinMax({mode:'TO',usage:plan.metrics.adjustedDailyVelocity,leadDays:leadTimeDays,safetyDays,reviewDays,available:storeStock.availableStock,inbound:storeStock.incomingStock,pack:packSize,sourceAvailable:data.supplyStock.availableStock});
+ const title=calculation.quantity>0?(calculation.shortfall>0?'Proposition TO partielle':'Proposition TO · entrepôt vers magasin'):calculation.need>0?'Besoin magasin · entrepôt insuffisant':'Stock suffisant';
+ return {title,quantity:calculation.quantity||null,calculation};
 }
 
 export function parseReferences(value){
@@ -22,7 +26,7 @@ export function parseReferences(value){
  return codes;
 }
 
-export async function readShortlist(codes,read,{current=()=>true,progress=()=>{}}={}){
+export async function readShortlist(codes,read,{current=()=>true,progress=()=>{},reviewDays=2}={}){
  const rows=[],seen=new Set();
  for(const [index,code] of codes.entries()){
   if(!current())break;
@@ -31,15 +35,15 @@ export async function readShortlist(codes,read,{current=()=>true,progress=()=>{}
    const data=await read(code);
    if(!current())break;
    const sku=String(data.item.productNumber||code).toUpperCase();
-   if(!seen.has(sku)){seen.add(sku);rows.push({code,data,proposal:classifyProposal(data)});}
+   if(!seen.has(sku)){const proposal=classifyProposal(data,reviewDays);seen.add(sku);rows.push({code,data,proposal});}
   }catch(error){if(current())rows.push({code,error:error.message||'Lecture indisponible.'});}
  }
  return rows.sort((a,b)=>Number(b.proposal?.quantity!=null)-Number(a.proposal?.quantity!=null));
 }
 
 export function mountReplenishment(core,host){
- const form=host.querySelector('form'),store=form.elements.namedItem('store'),reference=form.elements.namedItem('reference');
- const status=host.querySelector('[role=status]'),result=host.querySelector('[data-replenishment-result]'),button=form.querySelector('button');
+ const form=host.querySelector('[data-replenishment-form]'),store=form.elements.namedItem('store'),reference=form.elements.namedItem('reference');
+ const status=host.querySelector('[data-replenishment-status]'),result=host.querySelector('[data-replenishment-result]'),button=form.querySelector('button');
  let revision=0;
  function clear(){revision++;status.textContent='';result.replaceChildren();button.disabled=false;}
  function syncStores(){
@@ -64,6 +68,7 @@ export function mountReplenishment(core,host){
    const codes=parseReferences(reference.value);
    const rows=await readShortlist(codes,code=>core.api(`/api/stores/${encodeURIComponent(storeId)}/item-assistant/${encodeURIComponent(code)}`,{noRetry:true}),{
     current:()=>token===revision,
+    reviewDays:Number(form.elements.namedItem('reviewDays').value),
     progress:(index,total,code)=>{status.textContent=`${index}/${total} · Lecture de ${code}…`;}
    });
    if(token!==revision)return;
@@ -73,7 +78,7 @@ export function mountReplenishment(core,host){
     const item=document.createElement('details');item.open=rows.length===1;
     const heading=document.createElement('summary');heading.textContent=`${data.item.name} · ${proposal.title}${proposal.quantity===null?'':` · ${core.number(proposal.quantity)} ${data.item.inventoryUnit||''}`}`;
    const values=document.createElement('dl');
-   const fields=[['Stock magasin',data.storeStock?.availableStock],['Arrivages',data.storeStock?.incomingStock],['Stock entrepôt',data.supplyStock?.availableStock],['Unité de stock',data.item.inventoryUnit],['Ventes moyennes sur 7 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales7:null],['Ventes moyennes sur 28 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales28:null],['Unité de vente observée',plan?.salesVelocity?.quantityUnit],['Couverture actuelle (jours)',proposal.quantity!==null?plan?.metrics?.coverDays:null],['Couverture cible (jours)',plan?.metrics?.targetDays],['Fournisseur',plan?.inputs?.supplierAccount]];
+   const fields=[['Stock magasin',data.storeStock?.availableStock],['Arrivages',data.storeStock?.incomingStock],['Stock entrepôt',data.supplyStock?.availableStock],['Unité de stock',data.item.inventoryUnit],['Ventes moyennes sur 7 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales7:null],['Ventes moyennes sur 28 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales28:null],['Consommation moyenne retenue',proposal.calculation?plan.metrics.adjustedDailyVelocity:null],['Délai de transfert (jours)',plan?.inputs?.leadTimeDays],['Minimum',proposal.calculation?.min],['Maximum',proposal.calculation?.max],['Stock avec arrivages',proposal.calculation?.position],['Besoin restant après transfert',proposal.calculation?.shortfall]];
    for(const [label,value] of fields){const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value==null?'Indisponible':typeof value==='number'?core.number(value):String(value);values.append(term,detail);}
     item.append(heading,values);result.append(item);
    }
@@ -89,4 +94,6 @@ export function mountReplenishment(core,host){
 if(typeof document!=='undefined'){
  const host=document.getElementById('replenishmentPanel');
  if(host&&window.RETAIL_INTELLIGENCE)mountReplenishment(window.RETAIL_INTELLIGENCE,host);
+ const calculator=document.getElementById('replenishmentCalculator');
+ if(calculator&&window.RETAIL_INTELLIGENCE)mountMinMax(calculator,window.RETAIL_INTELLIGENCE.number);
 }
