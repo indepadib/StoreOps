@@ -88,6 +88,7 @@ export async function renderManagerMore(){
       ${navCard('inventory','Faire un inventaire','Créer ou reprendre une session complète, tournante ou ciblée.','Session · périmètre dédié','data-inventory-mode="NEW"')}
       ${navCard('receipts','Réception','Contrôle qualité article par article.')}
       ${navCard('dlc','DLC / DDM','Contrôle article et alertes DLC.')}
+      ${navCard('markdownLabels','Étiquettes casse et frais','Recherche par article et impression des remises.')}
       ${navCard('handover','Passation','Sujets transmis entre équipes et journées.')}
       ${navCard('quality','Qualité','Contrôles ponctuels et historique.')}
       ${navCard('maintenance','Maintenance','Pannes et remises en service.')}
