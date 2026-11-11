@@ -1,10 +1,12 @@
 import { db } from '../db.mjs';
 import { canAccessStore, isPlatformAdmin } from './permissions.mjs';
 import { getBaseSalesPriceByItem } from './dynamics-price.mjs';
+import { getProductByEan } from './dynamics.mjs';
+import { productDataMany } from './product-data.mjs';
 import {
  listMarkdownRecommendations,markdownDashboard,listMarkdownRules,upsertMarkdownRule,markdownPosProfiles,validatePosProfile,
  listPrinters,upsertPrinter,operationPreview,createMarkdownOperation,approveMarkdownOperation,createPrintJob,listPrintJobs,listMarkdownOperations,retryPrintJob,
- confirmLabelsApplied,listMarkdownAlerts,claimPrintJob,completePrintJob,runMarkdownMonitor,mobilePrintJob
+ confirmLabelsApplied,listMarkdownAlerts,claimPrintJob,completePrintJob,runMarkdownMonitor,mobilePrintJob,directLabel,createDirectLabelJob
 } from './dlc-markdown.mjs';
 
 const clean=v=>String(v??'').trim();
@@ -29,6 +31,26 @@ async function currentPrice(storeId,record){
 
 export async function handleDlcMarkdownApi({req,url,user}){
  const path=url.pathname;let p;
+ p=route(path,'/api/stores/:storeId/direct-labels');
+ if(p&&['GET','POST'].includes(req.method)){
+  requireStore(user,p.storeId);
+  requireExecute(user,p.storeId);
+  const input=req.method==='POST'?await body(req):Object.fromEntries(url.searchParams);
+  const code=clean(input.code).toUpperCase(),markdownCode=clean(input.markdownCode);
+  if(!/^[A-Z0-9][A-Z0-9-]{0,39}$/.test(code)||!['MD20','MD50'].includes(markdownCode))throw Object.assign(new Error('Saisis un code article ou un EAN et choisis la remise.'),{status:400});
+  const scanned=/^\d{8,14}$/.test(code)?await getProductByEan(code):null;
+  const productNumber=scanned?.productNumber||code;
+  const ref=scanned?null:(await productDataMany([productNumber])).get(productNumber);
+  const productName=scanned?.name||ref?.productName;
+  if(!productName)throw Object.assign(new Error('Article introuvable dans Dynamics.'),{status:404});
+  const {price}=await currentPrice(p.storeId,{product_number:productNumber});
+  const label=directLabel({productNumber,productName,basePrice:price,markdownCode});
+  if(req.method==='GET')return {status:200,data:label};
+  if(input.expectedPrice!==label.finalPrice)throw Object.assign(new Error('Le prix a changé. Vérifie le nouvel aperçu avant impression.'),{status:409});
+  const job=createDirectLabelJob({storeId:p.storeId,user,label,markdownCode,reason:input.reason,quantity:input.quantity,idempotencyKey:input.idempotencyKey});
+  const printer=listPrinters(p.storeId).find(x=>x.id===job.printer_id);
+  return {status:201,data:{id:job.id,status:job.status,quantity:job.total_labels,mobile:printer?.protocol!=='ZPL_BRIDGE'}};
+ }
  p=route(path,'/api/stores/:storeId/dlc-markdown');if(p&&req.method==='GET'){
   requireStore(user,p.storeId);
   return{status:200,data:{dashboard:markdownDashboard(p.storeId),recommendations:listMarkdownRecommendations(p.storeId),alerts:listMarkdownAlerts(p.storeId),jobs:listPrintJobs(p.storeId,{limit:50}),operations:listMarkdownOperations(p.storeId,{limit:100}),printers:listPrinters(p.storeId),posProfiles:markdownPosProfiles()}}

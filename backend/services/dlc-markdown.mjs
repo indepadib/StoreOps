@@ -355,6 +355,32 @@ function labelZpl(op,record,profile,printer){
  const name=zplEscape(record.product_name).slice(0,34),expiry=zplEscape(record.expiry_date),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
  return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO13,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO14,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO13,41^A0N,17,15^FB'+(width-26)+',2,2,L,0^FD'+name+'^FS','^FO13,84^A0N,15,14^FD'+oldPrice+' DH  >  '+newPrice+' DH^FS','^FO24,112^BY2,2,52^BCN,52,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
 }
+export function directLabel({productNumber,productName,basePrice,markdownCode}){
+ const profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(markdownCode);
+ if(!profile||profile.validation_state!=='VALIDATED'||profile.symbology!=='CODE128')throw Object.assign(new Error('Cette remise doit être validée en caisse.'),{status:409});
+ const finalPrice=computeFinalPrice(basePrice,profile);
+ if(finalPrice===null)throw Object.assign(new Error('Prix de base Dynamics indisponible.'),{status:409});
+ return {productNumber,productName,originalPrice:basePrice,finalPrice,discountPercent:profile.discount_percent,barcode:markdownBarcodeContent(markdownCode,productNumber)};
+}
+
+export function createDirectLabelJob({storeId,user,label,markdownCode,reason,quantity,idempotencyKey}){
+ if(!['CASSE','FRAIS'].includes(reason)||!Number.isInteger(quantity)||quantity<1||quantity>50||!clean(idempotencyKey))throw Object.assign(new Error('Choisis un motif et une quantité de 1 à 50.'),{status:400});
+ const key=['direct',storeId,user.id,idempotencyKey].join('|');
+ const existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);
+ if(existing)return existing;
+ const printer=db.prepare('SELECT * FROM store_label_printers WHERE store_id=? AND active=1 ORDER BY is_default DESC,created_at LIMIT 1').get(storeId);
+ if(!printer)throw Object.assign(new Error('Aucune imprimante active pour ce magasin.'),{status:409});
+ const mobile=printer.protocol!=='ZPL_BRIDGE';
+ const fields={label_kind:markdownCode,product_name:label.productName,original_price:label.originalPrice,final_price:label.finalPrice,barcode_content:label.barcode,discount_percent:label.discountPercent};
+ const bytes=mobile?Buffer.from(escposLabelBytes(fields)):null;
+ if(mobile&&bytes.length*quantity>180000)throw Object.assign(new Error('Réduis la quantité pour imprimer sur RawBT.'),{status:409});
+ const payload=mobile?Buffer.concat(Array(quantity).fill(bytes)).toString('base64'):Array(quantity).fill(labelZpl(fields,fields,{symbology:'CODE128'},{...printer,media_width_mm:50,media_height_mm:30})).join('\n');
+ const id=uid('print');
+ db.prepare('INSERT INTO label_print_jobs(id,store_id,printer_id,idempotency_key,status,payload_format,payload,total_labels,created_by) VALUES(?,?,?,?,?,?,?,?,?)').run(id,storeId,printer.id,key,'PENDING',mobile?'ESCPOS_RASTER_BASE64':'ZPL',payload,quantity,user.id);
+ audit({storeId,userId:user.id,action:'DIRECT_LABEL_PRINT_JOB_CREATED',entityType:'LABEL_PRINT_JOB',entityId:id,details:{productNumber:label.productNumber,reason,quantity,markdownCode,originalPrice:label.originalPrice,finalPrice:label.finalPrice}});
+ return db.prepare('SELECT * FROM label_print_jobs WHERE id=?').get(id);
+}
+
 export function createPrintJob({storeId,user,operationIds=[],printerId=null,idempotencyKey=null}={}){
  const ids=[...new Set((operationIds||[]).map(clean).filter(Boolean))];if(!ids.length)throw Object.assign(new Error('Aucune opération à imprimer.'),{status:400});
  const key=clean(idempotencyKey)||['print',storeId,...[...ids].sort()].join('|'),existing=db.prepare('SELECT * FROM label_print_jobs WHERE idempotency_key=?').get(key);
