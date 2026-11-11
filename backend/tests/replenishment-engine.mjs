@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {recommendReplenishment,decisionPresentation,weightedDailyVelocity} from '../services/replenishment-engine.mjs';
-import {classifyProposal} from '../../frontend/analytics/replenishment.js';
+import {classifyProposal,parseReferences,readShortlist} from '../../frontend/analytics/replenishment.js';
 assert.equal(weightedDailyVelocity({dailySales7:10,dailySales28:6}),8.6);
 let r=recommendReplenishment({supplyMode:'WAREHOUSE',storeAvailable:3,supplyAvailable:31,confirmedInbound:0,dailySales7:11,dailySales28:9,leadTimeDays:1,safetyDays:1,packSize:6});
 assert.equal(r.decision,'REPLENISH');
@@ -31,4 +31,16 @@ assert.equal(classifyProposal({...proposal,item:{inventoryUnit:'G'}}).quantity,n
 assert.equal(classifyProposal({...proposal,storeStock:{availableStock:0,incomingStock:null}}).quantity,null);
 assert.equal(classifyProposal({...proposal,merchandising:{assortment:{status:'UNKNOWN'}}}).quantity,null);
 assert.equal(classifyProposal({...proposal,replenishment:{...proposal.replenishment,decision:'DIRECT_ORDER'}}).quantity,null);
+assert.deepEqual(parseReferences('hs-1, HS-1; 6110000000012\nHS-2'),['HS-1','6110000000012','HS-2']);
+assert.throws(()=>parseReferences(Array.from({length:11},(_,i)=>`HS-${i}`).join(' ')),/10 références/);
+const batch=await readShortlist(['UNKNOWN','EAN','HS-1'],async code=>{
+ if(code==='UNKNOWN')throw new Error('Article introuvable');
+ return {...proposal,item:{...proposal.item,productNumber:'HS-1'}};
+});
+assert.deepEqual(batch.map(row=>row.code),['EAN','UNKNOWN']);
+assert.equal(batch[0].proposal.quantity,6);
+assert.equal(batch[1].error,'Article introuvable');
+let active=true,attempts=0;
+assert.deepEqual(await readShortlist(['HS-1','HS-2'],async()=>{attempts++;active=false;return proposal;},{current:()=>active}),[]);
+assert.equal(attempts,1,'scope changes stop the batch and hide late results');
 console.log('StoreOps replenishment recommendation engine contract OK');

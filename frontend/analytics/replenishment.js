@@ -15,6 +15,28 @@ export function classifyProposal(data){
  return {title:plan.presentation?.title||'Besoin à vérifier',quantity:null};
 }
 
+export function parseReferences(value){
+ const codes=[...new Set(String(value).toUpperCase().split(/[\s,;]+/).filter(Boolean))];
+ if(!codes.length||codes.length>10)throw new Error('Saisis entre 1 et 10 références.');
+ if(codes.some(code=>!/^[A-Z0-9][A-Z0-9-]{0,39}$/.test(code)))throw new Error('Vérifie les codes internes ou EAN saisis.');
+ return codes;
+}
+
+export async function readShortlist(codes,read,{current=()=>true,progress=()=>{}}={}){
+ const rows=[],seen=new Set();
+ for(const [index,code] of codes.entries()){
+  if(!current())break;
+  progress(index+1,codes.length,code);
+  try{
+   const data=await read(code);
+   if(!current())break;
+   const sku=String(data.item.productNumber||code).toUpperCase();
+   if(!seen.has(sku)){seen.add(sku);rows.push({code,data,proposal:classifyProposal(data)});}
+  }catch(error){if(current())rows.push({code,error:error.message||'Lecture indisponible.'});}
+ }
+ return rows.sort((a,b)=>Number(b.proposal?.quantity!=null)-Number(a.proposal?.quantity!=null));
+}
+
 export function mountReplenishment(core,host){
  const form=host.querySelector('form'),store=form.elements.namedItem('store'),reference=form.elements.namedItem('reference');
  const status=host.querySelector('[role=status]'),result=host.querySelector('[data-replenishment-result]'),button=form.querySelector('button');
@@ -35,19 +57,29 @@ export function mountReplenishment(core,host){
  form.addEventListener('submit',async event=>{
   event.preventDefault();
   clear();
-  const token=revision,storeId=store.value,code=reference.value.trim();
-  if(!code||!core.getSelectedStores().some(s=>s.id===storeId))return;
-  button.disabled=true;status.textContent='Lecture du stock, des ventes et de l’assortiment…';
+  const token=revision,storeId=store.value;
+  if(!core.getSelectedStores().some(s=>s.id===storeId))return;
+  button.disabled=true;
   try{
-   const data=await core.api(`/api/stores/${encodeURIComponent(storeId)}/item-assistant/${encodeURIComponent(code)}`);
+   const codes=parseReferences(reference.value);
+   const rows=await readShortlist(codes,code=>core.api(`/api/stores/${encodeURIComponent(storeId)}/item-assistant/${encodeURIComponent(code)}`,{noRetry:true}),{
+    current:()=>token===revision,
+    progress:(index,total,code)=>{status.textContent=`${index}/${total} · Lecture de ${code}…`;}
+   });
    if(token!==revision)return;
-   const proposal=classifyProposal(data),plan=data.replenishment;
-   const heading=document.createElement('h3');heading.textContent=`${data.item.name} · ${proposal.title}`;
-   const summary=document.createElement('p');summary.textContent=proposal.quantity===null?'Vérifie les données ci-dessous.': `Quantité proposée : ${core.number(proposal.quantity)} ${data.item.inventoryUnit||''}`;
+   for(const row of rows){
+    if(row.error){const warning=document.createElement('p');warning.textContent=`${row.code} · ${row.error}`;result.append(warning);continue;}
+    const {data,proposal}=row,plan=data.replenishment;
+    const item=document.createElement('details');item.open=rows.length===1;
+    const heading=document.createElement('summary');heading.textContent=`${data.item.name} · ${proposal.title}${proposal.quantity===null?'':` · ${core.number(proposal.quantity)} ${data.item.inventoryUnit||''}`}`;
    const values=document.createElement('dl');
    const fields=[['Stock magasin',data.storeStock?.availableStock],['Arrivages',data.storeStock?.incomingStock],['Stock entrepôt',data.supplyStock?.availableStock],['Unité de stock',data.item.inventoryUnit],['Ventes moyennes sur 7 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales7:null],['Ventes moyennes sur 28 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales28:null],['Unité de vente observée',plan?.salesVelocity?.quantityUnit],['Couverture actuelle (jours)',proposal.quantity!==null?plan?.metrics?.coverDays:null],['Couverture cible (jours)',plan?.metrics?.targetDays],['Fournisseur',plan?.inputs?.supplierAccount]];
    for(const [label,value] of fields){const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value==null?'Indisponible':typeof value==='number'?core.number(value):String(value);values.append(term,detail);}
-   result.replaceChildren(heading,summary,values);status.textContent='';
+    item.append(heading,values);result.append(item);
+   }
+   const proposed=rows.filter(row=>row.proposal?.quantity!=null).length;
+   const unavailable=rows.filter(row=>row.error).length;
+   status.textContent=`${proposed} proposition(s) · ${rows.length-unavailable} article(s) analysé(s)${unavailable?` · ${unavailable} lecture(s) en échec`:''}`;
   }catch(error){if(token===revision)status.textContent=error.message||'Lecture indisponible.';}
   finally{if(token===revision)button.disabled=false;}
  });
