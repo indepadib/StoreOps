@@ -105,6 +105,12 @@ assert.throws(()=>mod.createDirectLabelJob({...directInput,reason:'OTHER'}),/mot
 const directClaim=mod.claimPrintJob({bridgeKey:'vf-test'});
 assert.equal(directClaim.id,directJob.id);
 assert.equal(mod.completePrintJob({jobId:directJob.id,bridgeKey:'vf-test',success:true}).status,'PRINTED');
+mod.upsertPrinter({storeId:'val-fleuri',user:admin,name:'PDA Test',protocol:'ESCPOS_RAWBT',isDefault:true});
+const mobile=mod.createDirectLabelJob({...directInput,idempotencyKey:'direct-mobile'});
+const prepared=mod.mobilePrintJob({jobId:mobile.id,user:admin,action:'prepare'});
+assert.equal(prepared.payload_format,'ESCPOS_RASTER_BASE64');
+assert.equal(prepared.total_labels,2);
+assert.equal(mod.mobilePrintJob({jobId:mobile.id,user:admin,action:'confirm',confirmed:true}).status,'PRINTED');
 db.close();
 rmSync(process.env.STOREOPS_DB,{force:true});
 console.log('V2.41 DLC markdown + print spooler contract: OK');

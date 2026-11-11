@@ -8,7 +8,7 @@ const source=readFileSync(new URL('../../frontend/js/dlc-markdown.js',import.met
 for(const director of [false,true]){
  const host={innerHTML:''},link={hidden:true};let clickTest;
  const button={addEventListener:(event,fn)=>{clickTest=fn}};
- const context=vm.createContext({app:{stores:[]},isDirector:()=>director,isQualityAudit:()=>false,isAndroid:()=>true,rawbtLink,escposTestBytes,toast:()=>{},esc:String,document:{getElementById:id=>id==='dlcMarkdownContent'?host:id==='mdRawbtTest'?button:id==='mdRawbtTestLink'?link:null,querySelectorAll:()=>[]}});
+ const context=vm.createContext({app:{stores:[]},isDirector:()=>director,isQualityAudit:()=>false,isAndroid:()=>true,rawbtLink,escposTestBytes,toast:()=>{},esc:String,document:{getElementById:id=>id==='dlcMarkdownContentLegacy'?host:id==='mdRawbtTest'?button:id==='mdRawbtTestLink'?link:null,querySelectorAll:()=>[]}});
  vm.runInContext(source+"\nworkspace={recommendations:[],alerts:[],printers:[],posProfiles:[],operations:[],jobs:[]};draw();",context);
  assert.equal((host.innerHTML.match(/id="mdRawbtTest"/g)||[]).length,1);
  assert.ok(host.innerHTML.includes('Aucune validation caisse nécessaire pour ce test'));
