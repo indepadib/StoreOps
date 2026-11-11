@@ -435,7 +435,7 @@
         subtitle: 'Du département au SKU : poids, rang, évolution et concentration du chiffre d’affaires.'
       },
       reference: {eyebrow:'RÉFÉRENTIEL ARTICLES',title:'Une source commune pour les équipes',subtitle:'Informations article et prix traçables, exportables dans un format commun.'},
-      replenishment: {eyebrow:'APPROVISIONNEMENT',title:'Réapprovisionnement magasin',subtitle:'Calculer les besoins de plusieurs articles dans un magasin.'},
+      replenishment: {eyebrow:'APPROVISIONNEMENT',title:'Réapprovisionnement magasin',subtitle:'Générer un projet PO entrepôt ou TO magasin.'},
       detention: {eyebrow:'DÉTENTION',title:'Présence des articles en magasin et entrepôt',subtitle:'Stock actuel par article et catégorie ; les quantités inconnues restent identifiées.'},
       suppliers: {eyebrow:'FOURNISSEURS',title:'Ventes, disponibilité et service fournisseur',subtitle:'Comparer les ventes et les commandes ouvertes ; qualifier le service sur les lignes réellement contrôlées.'},
       crm: {

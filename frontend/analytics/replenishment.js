@@ -1,99 +1,134 @@
-import {calculateMinMax,mountMinMax} from './replenishment-minmax.js';
+const apiPath='/api/analytics/replenishment';
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const tableColumns=[['sku','Code'],['name','Article'],['quantity','Qté proposée'],['unit','Unité'],['available','Disponible'],['inbound','Arrivages'],['usage','Consommation / jour'],['leadDays','Délai (j)'],['min','Min'],['max','Max'],['shortfall','Reste à couvrir']];
 
-export function classifyProposal(data,reviewDays=2){
- const {replenishment:plan,storeStock,merchandising}=data;
- if(merchandising?.assortment?.status!=='ASSORTED')return {title:'Assortiment à confirmer',quantity:null};
- if(storeStock?.unavailable||storeStock?.mappingRequired||!Number.isFinite(storeStock?.availableStock))return {title:'Stock magasin à vérifier',quantity:null};
- if(plan?.salesVelocity?.status!=='READY')return {title:'Ventes indisponibles',quantity:null};
- const unit=value=>String(value??'').trim().toUpperCase();
- if(plan.salesVelocity.saleRows>0&&(!unit(data.item?.inventoryUnit)||unit(plan.salesVelocity.quantityUnit)!==unit(data.item.inventoryUnit)))return {title:'Unités de vente et de stock à rapprocher',quantity:null};
- if(plan.inputs?.supplyMode!=='WAREHOUSE')return {title:'Approvisionnement entrepôt à confirmer',quantity:null};
- if(!Number.isFinite(storeStock.incomingStock))return {title:'Arrivages à confirmer',quantity:null};
- if(storeStock.incomingStock>0)return {title:'Dates des arrivages à confirmer dans le calculateur',quantity:null};
- if(!Number.isFinite(data.supplyStock?.availableStock))return {title:'Stock entrepôt indisponible',quantity:null};
- if(!Number.isFinite(plan.metrics?.adjustedDailyVelocity))return {title:'Consommation moyenne indisponible',quantity:null};
- if(!data.item?.inventoryUnit)return {title:'Unité de stock indisponible',quantity:null};
- const {leadTimeDays,safetyDays,packSize}=plan.inputs;
- const calculation=calculateMinMax({mode:'TO',usage:plan.metrics.adjustedDailyVelocity,leadDays:leadTimeDays,safetyDays,reviewDays,available:storeStock.availableStock,inbound:storeStock.incomingStock,pack:packSize,sourceAvailable:data.supplyStock.availableStock});
- const title=calculation.quantity>0?(calculation.shortfall>0?'Proposition TO partielle':'Proposition TO · entrepôt vers magasin'):calculation.need>0?'Besoin magasin · entrepôt insuffisant':'Stock suffisant';
- return {title,quantity:calculation.quantity||null,calculation};
+function element(tag,text,className){
+ const node=document.createElement(tag);
+ if(text!=null)node.textContent=text;
+ if(className)node.className=className;
+ return node;
 }
 
-export function parseReferences(value){
- const codes=[...new Set(String(value).toUpperCase().split(/[\s,;]+/).filter(Boolean))];
- if(!codes.length||codes.length>10)throw new Error('Saisis entre 1 et 10 références.');
- if(codes.some(code=>!/^[A-Z0-9][A-Z0-9-]{0,39}$/.test(code)))throw new Error('Vérifie les codes internes ou EAN saisis.');
- return codes;
+function csvCell(value){
+ const text=String(value??'');
+ return '"'+(/^[\s]*[=+\-@]/.test(text)&&typeof value!=='number'?"'":'')+text.replaceAll('"','""')+'"';
 }
 
-export async function readShortlist(codes,read,{current=()=>true,progress=()=>{},reviewDays=2}={}){
- const rows=[],seen=new Set();
- for(const [index,code] of codes.entries()){
-  if(!current())break;
-  progress(index+1,codes.length,code);
-  try{
-   const data=await read(code);
-   if(!current())break;
-   const sku=String(data.item.productNumber||code).toUpperCase();
-   if(!seen.has(sku)){const proposal=classifyProposal(data,reviewDays);seen.add(sku);rows.push({code,data,proposal});}
-  }catch(error){if(current())rows.push({code,error:error.message||'Lecture indisponible.'});}
+function download(summary,rows){
+ const columns=[['supplier','Fournisseur'],['warehouse','Entrepôt'],['destination','Dépôt destination'],['store','Magasin'],...tableColumns,['leadSource','Source du délai'],['pack','Colisage']];
+ const text=[columns.map(([,label])=>csvCell(label)).join(';'),...rows.map(row=>columns.map(([key])=>csvCell(row[key])).join(';'))].join('\r\n');
+ const url=URL.createObjectURL(new Blob(['\uFEFF',text],{type:'text/csv;charset=utf-8'}));
+ const link=element('a');link.href=url;link.download=`Proposition-${summary.mode}-${summary.end}.csv`;
+ document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+function renderTable(rows,number){
+ const wrapper=element('div',null,'table-wrap repl-table');
+ const table=element('table'),head=element('thead'),headRow=element('tr'),body=element('tbody');
+ for(const [,label] of tableColumns){const th=element('th',label);th.scope='col';headRow.append(th);}
+ head.append(headRow);
+ for(const row of rows){
+  const tr=element('tr');
+  for(const [key] of tableColumns){const value=row[key];tr.append(element('td',value==null?'—':typeof value==='number'?number(value):value,key==='quantity'?'repl-quantity':null));}
+  body.append(tr);
  }
- return rows.sort((a,b)=>Number(b.proposal?.quantity!=null)-Number(a.proposal?.quantity!=null));
+ table.append(head,body);wrapper.append(table);return wrapper;
+}
+
+function renderResult(result,summary,rows,number){
+ const proposed=rows.filter(row=>row.status==='PROPOSED'),blocked=rows.filter(row=>row.status==='BLOCKED');
+ const title=summary.mode==='PO'?`Projets PO · ${summary.warehouse}`:`Projet TO · ${summary.warehouse} → ${summary.store}`;
+ const heading=element('div',null,'repl-result-heading');heading.append(element('h3',title));
+ if(proposed.length){const exportButton=element('button','Exporter les propositions','primary');exportButton.type='button';exportButton.onclick=()=>download(summary,proposed);heading.append(exportButton);}
+ const facts=element('div',null,'repl-facts');
+ for(const [label,count] of [['Références examinées',summary.examined],['Lignes proposées',proposed.length],['À vérifier',blocked.length]]){
+  const card=element('div',null,'repl-fact');card.append(element('strong',number(count)),element('span',label));facts.append(card);
+ }
+ result.replaceChildren(heading,facts,element('p',`${summary.demandBasis} · ${summary.start} au ${summary.end}.`,'repl-source'));
+ if(!proposed.length)result.append(element('p',blocked.length?'Aucune ligne chiffrée. Consulte les références à vérifier.':'Aucun besoin détecté sur les références examinées.','repl-empty'));
+ const groups=new Map();
+ for(const row of proposed){const key=summary.mode==='PO'?row.supplier:summary.store;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
+ for(const [key,items] of groups){
+  const details=element('details',null,'repl-group');details.open=groups.size===1;
+  const label=summary.mode==='PO'?`Fournisseur ${key}`:key;
+  const content=element('div');
+  function showLines(){
+   if(!details.open||content.childElementCount)return;
+   let count=0;
+   function appendPage(){
+    const next=items.slice(count,count+50);count+=next.length;
+    const more=content.querySelector('button');if(more)more.remove();
+    content.append(renderTable(next,number));
+    if(count<items.length){const button=element('button','Afficher 50 lignes de plus','primary');button.type='button';button.onclick=appendPage;content.append(button);}
+   }
+   appendPage();
+  }
+  details.addEventListener('toggle',showLines);
+  details.append(element('summary',`${label} · ${items.length} ligne(s)`),content);result.append(details);showLines();
+ }
+ if(blocked.length){
+  const details=element('details',null,'repl-group repl-blocked'),list=element('ul');details.open=!proposed.length;
+  for(const row of blocked)list.append(element('li',`${row.sku} · ${row.name} — ${row.reason}`));
+  details.append(element('summary',`${blocked.length} référence(s) à vérifier`),list);result.append(details);
+ }
 }
 
 export function mountReplenishment(core,host){
- const form=host.querySelector('[data-replenishment-form]'),store=form.elements.namedItem('store'),reference=form.elements.namedItem('reference');
- const status=host.querySelector('[data-replenishment-status]'),result=host.querySelector('[data-replenishment-result]'),button=form.querySelector('button');
- let revision=0;
- function clear(){revision++;status.textContent='';result.replaceChildren();button.disabled=false;}
- function syncStores(){
-  const previous=store.value;
-  const stores=core.getSelectedStores();
-  const option=document.createElement('option');option.value='';option.textContent='Choisir un magasin';
-  const choices=stores.map(({id,name})=>{const item=document.createElement('option');item.value=id;item.textContent=name;return item;});
-  store.replaceChildren(option,...choices);
-  store.value=stores.length===1?stores[0].id:stores.some(s=>s.id===previous)?previous:'';
-  clear();
+ const form=host.querySelector('form'),scope=form.elements.namedItem('scope');
+ const status=host.querySelector('[role=status]'),result=host.querySelector('[data-repl-result]'),button=form.querySelector('button');
+ const modes=[...host.querySelectorAll('[data-mode]')];
+ let mode='TO',scopes=null,generation=0;
+ function reset(){generation++;status.textContent='';result.replaceChildren();button.disabled=!scope.value;}
+ function setScope(){
+  const previous=scope.value;
+  const options=mode==='TO'?(scopes?.stores||[]).map(s=>[s.id,s.name]):(scopes?.warehouses||[]).map(id=>[id,id]);
+  host.querySelector('[data-scope-label]').textContent=mode==='TO'?'Magasin de destination':'Entrepôt à réapprovisionner';
+  const placeholder=element('option',mode==='TO'?'Choisir un magasin':'Choisir un entrepôt');placeholder.value='';
+  scope.replaceChildren(placeholder,...options.map(([id,name])=>{const option=element('option',name);option.value=id;return option;}));
+  scope.value=options.some(([id])=>id===previous)?previous:options.length===1?options[0][0]:'';
+  button.textContent=`Générer le ${mode}`;reset();
+  if(scopes&&!options.length)status.textContent=mode==='PO'?'L’achat entrepôt est accessible aux profils Direction ou Supply.':'Aucun magasin autorisé avec un entrepôt associé.';
  }
- document.addEventListener('retail-intelligence:period',syncStores);
- document.addEventListener('retail-intelligence:data',syncStores);
- form.addEventListener('input',clear);
- form.addEventListener('submit',async event=>{
-  event.preventDefault();
-  clear();
-  const token=revision,storeId=store.value;
-  if(!core.getSelectedStores().some(s=>s.id===storeId))return;
-  button.disabled=true;
+ modes.forEach(control=>control.onclick=()=>{mode=control.dataset.mode;modes.forEach(x=>x.setAttribute('aria-pressed',String(x===control)));setScope();});
+ scope.onchange=reset;
+ async function loadScopes(){
+  if(scopes)return;
+  try{scopes=await core.api(apiPath+'/scopes',{noRetry:true});setScope();}
+  catch(error){status.textContent=error.message;}
+ }
+ document.addEventListener('retail-intelligence:section',event=>{if(event.detail?.section==='replenishment')loadScopes();});
+ if(core.getState().section==='replenishment')loadScopes();
+ form.onsubmit=async event=>{
+  event.preventDefault();reset();
+  const token=generation,selected=scope.value;
+  if(!selected)return;
+  button.disabled=true;status.textContent='Préparation de la proposition…';
   try{
-   const codes=parseReferences(reference.value);
-   const rows=await readShortlist(codes,code=>core.api(`/api/stores/${encodeURIComponent(storeId)}/item-assistant/${encodeURIComponent(code)}`,{noRetry:true}),{
-    current:()=>token===revision,
-    reviewDays:Number(form.elements.namedItem('reviewDays').value),
-    progress:(index,total,code)=>{status.textContent=`${index}/${total} · Lecture de ${code}…`;}
-   });
-   if(token!==revision)return;
-   for(const row of rows){
-    if(row.error){const warning=document.createElement('p');warning.textContent=`${row.code} · ${row.error}`;result.append(warning);continue;}
-    const {data,proposal}=row,plan=data.replenishment;
-    const item=document.createElement('details');item.open=rows.length===1;
-    const heading=document.createElement('summary');heading.textContent=`${data.item.name} · ${proposal.title}${proposal.quantity===null?'':` · ${core.number(proposal.quantity)} ${data.item.inventoryUnit||''}`}`;
-   const values=document.createElement('dl');
-   const fields=[['Stock magasin',data.storeStock?.availableStock],['Arrivages',data.storeStock?.incomingStock],['Stock entrepôt',data.supplyStock?.availableStock],['Unité de stock',data.item.inventoryUnit],['Ventes moyennes sur 7 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales7:null],['Ventes moyennes sur 28 jours',plan?.salesVelocity?.quantityUnit?plan.salesVelocity.dailySales28:null],['Consommation moyenne retenue',proposal.calculation?plan.metrics.adjustedDailyVelocity:null],['Délai de transfert (jours)',plan?.inputs?.leadTimeDays],['Minimum',proposal.calculation?.min],['Maximum',proposal.calculation?.max],['Stock avec arrivages',proposal.calculation?.position],['Besoin restant après transfert',proposal.calculation?.shortfall]];
-   for(const [label,value] of fields){const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value==null?'Indisponible':typeof value==='number'?core.number(value):String(value);values.append(term,detail);}
-    item.append(heading,values);result.append(item);
+   const query=new URLSearchParams({mode,scope:selected});
+   const {jobId}=await core.api(`${apiPath}/jobs?${query}`,{method:'POST',noRetry:true});
+   const path=`${apiPath}/jobs/${encodeURIComponent(jobId)}`;
+   for(let count=0;count<240&&token===generation;count++){
+    const job=await core.api(path,{noRetry:true});
+    if(token!==generation)return;
+    if(job.status==='FAILED')throw new Error(job.message);
+    if(job.status==='READY'){
+     const rows=[];
+     for(let page=0;page<job.pages;page++){
+      const data=await core.api(`${path}/pages/${page}`,{noRetry:true});
+      if(token!==generation)return;
+      rows.push(...data.rows);
+     }
+     renderResult(result,job.summary,rows,core.number);status.textContent='';return;
+    }
+    status.textContent=job.progress?.label||'En attente de préparation…';
+    await sleep(4000);
    }
-   const proposed=rows.filter(row=>row.proposal?.quantity!=null).length;
-   const unavailable=rows.filter(row=>row.error).length;
-   status.textContent=`${proposed} proposition(s) · ${rows.length-unavailable} article(s) analysé(s)${unavailable?` · ${unavailable} lecture(s) en échec`:''}`;
-  }catch(error){if(token===revision)status.textContent=error.message||'Lecture indisponible.';}
-  finally{if(token===revision)button.disabled=false;}
- });
- syncStores();
+   if(token===generation)status.textContent='La préparation prend plus de temps que prévu. Relance pour retrouver la demande en cours.';
+  }catch(error){if(token===generation)status.textContent=error.message||'Préparation indisponible.';}
+  finally{if(token===generation)button.disabled=false;}
+ };
+ setScope();
 }
 
-if(typeof document!=='undefined'){
- const host=document.getElementById('replenishmentPanel');
- if(host&&window.RETAIL_INTELLIGENCE)mountReplenishment(window.RETAIL_INTELLIGENCE,host);
- const calculator=document.getElementById('replenishmentCalculator');
- if(calculator&&window.RETAIL_INTELLIGENCE)mountMinMax(calculator,window.RETAIL_INTELLIGENCE.number);
-}
+const host=document.getElementById('replenishmentPanel');
+if(host&&window.RETAIL_INTELLIGENCE)mountReplenishment(window.RETAIL_INTELLIGENCE,host);

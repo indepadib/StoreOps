@@ -108,11 +108,11 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
  if(!force)stockSnapshotInflight.set(cacheKey,task);try{return await task}finally{if(!force&&stockSnapshotInflight.get(cacheKey)===task)stockSnapshotInflight.delete(cacheKey)}
 }
 export async function getStoreStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(mappedWarehouseForStore(storeId),productNumber,{mappingType:'STORE'})}
-export async function readWarehouseStockSnapshot(warehouseId){
+export async function readWarehouseStockSnapshot(warehouseId,{strict=false}={}){
  if(!warehouseId||!stockLive())return{status:'UNAVAILABLE',complete:false,warehouseId,items:[]};
  const f=stockFields(),filters=[`${f.warehouse} eq '${escapeOData(warehouseId)}'`];
  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
- const result=await odataGetAll(stockEntity(),{filter:filters.join(' and '),select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),extra:'cross-company=true',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
+ const result=await odataGetAll(stockEntity(),{filter:filters.join(' and '),select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),extra:'cross-company=true',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows,strict});
  const items=new Map();for(const row of result.value){const sku=clean(row[f.item]);if(!sku)continue;const x=items.get(sku)||{productNumber:sku,onHandQuantity:0,availableOnHandQuantity:0};for(const [name,field] of [['onHandQuantity',f.onHand],['availableOnHandQuantity',f.availableOnHand]]){const v=row[field];if(v==null||v===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}items.set(sku,x)}
  return{status:result.truncated?'TRUNCATED':'READY',complete:!result.truncated,warehouseId,items:[...items.values()],checkedAt:new Date().toISOString(),source:`D365/${stockEntity()}`};
 }

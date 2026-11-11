@@ -89,6 +89,11 @@ assert.equal(toSnapshot.items[0].warehouseId,'FRP0001');
 assert.equal(toSnapshot.items[0].lines.length,1);
 assert.equal(toSnapshot.items[0].lines[0].remainingQty,10);
 assert.equal(toSnapshot.items[0].lines[0].productName,'Article transfert');
+const plannedTO=await receiving.listExpectedTransferOrders('val-fleuri',{businessDate:'2026-11-11',planning:true});
+assert.equal(plannedTO.items[0].lines[0].planningRemaining,10);
+assert.equal(plannedTO.items[0].lines[0].planningDate,'2026-09-11');
+const plannedPO=await receiving.listExpectedPurchaseOrders('val-fleuri',{businessDate:'2026-11-11',planningWarehouse:'FRP0001'});
+assert.equal(plannedPO.items[0].lines[0].planningDate,null,'requested dates are not confirmed dates');
 
 const toSync=await receiving.syncExpectedTransferOrdersFromDynamics('val-fleuri',{businessDate:'2026-09-10'});
 assert.equal(toSync.synced,true);
@@ -97,8 +102,8 @@ const toReceipt=db.prepare(`SELECT * FROM receipts WHERE po_number='TO-100'`).ge
 assert.equal(toReceipt.document_type,'TO');
 assert.equal(toReceipt.source_origin,'LVE Lakhya');
 assert.equal(toReceipt.source_destination,'FRP0001');
-const poOnly=receiving.listReceiptsForStore('val-fleuri',{documentType:'PO'});
-const toOnly=receiving.listReceiptsForStore('val-fleuri',{documentType:'TO'});
+const poOnly=receiving.listReceiptsForStore('val-fleuri',{documentType:'PO',businessDate:'2026-09-10'});
+const toOnly=receiving.listReceiptsForStore('val-fleuri',{documentType:'TO',businessDate:'2026-09-10'});
 assert(poOnly.every(x=>x.document_type==='PO'));
 assert(toOnly.every(x=>x.document_type==='TO'));
 assert(poOnly.some(x=>x.po_number==='PO-100'));
