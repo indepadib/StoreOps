@@ -69,7 +69,7 @@ function validateSettlement(input){
   amountMad:centsAsMAD(moneyCents(input.amountMad)),note:clean(input.note,1000)};
 }
 async function listClaims(db){
- const [claimData,receipts]=await Promise.all([
+ const [claimData,receipts,totals]=await Promise.all([
   db.pool.query(
    "SELECT c.id,c.contract_id,c.entity_code,c.period_from::text AS period_from,c.period_to::text AS period_to,"+
    "c.claimed_mad::text AS claimed_mad,c.claim_reference,c.source_reference,c.note,c.status,c.created_by,"+
@@ -84,25 +84,24 @@ async function listClaims(db){
    "ORDER BY c.updated_at DESC LIMIT 300"
   ),
   db.pool.query("SELECT id,claim_id,kind,amount_mad::text AS amount_mad,evidence_reference,evidence_date::text AS evidence_date,created_by,created_at "+
-   "FROM hs_buying.rebate_settlements ORDER BY created_at DESC LIMIT 500")
+   "FROM hs_buying.rebate_settlements ORDER BY created_at DESC LIMIT 500"),
+  db.pool.query("SELECT count(*) FILTER (WHERE c.status<>'DRAFT')::int AS claim_count,"+
+   "COALESCE(SUM(CASE WHEN c.status<>'DRAFT' THEN c.claimed_mad ELSE 0 END),0)::text AS claimed,"+
+   "COALESCE(SUM(CASE WHEN c.status<>'DRAFT' THEN COALESCE(r.total,0) ELSE 0 END),0)::text AS received,"+
+   "COALESCE(SUM(CASE WHEN c.status<>'DRAFT' THEN GREATEST(c.claimed_mad-COALESCE(r.total,0),0) ELSE 0 END),0)::text AS outstanding "+
+   "FROM hs_buying.rebate_claims c LEFT JOIN (SELECT claim_id,SUM(amount_mad) AS total "+
+   "FROM hs_buying.rebate_settlements GROUP BY claim_id) r ON r.claim_id=c.id")
  ]);
  const items=claimData.rows.map(x=>{
   const outstanding=centsFromDB(x.claimed_mad)-centsFromDB(x.received_mad);
   return{...x,outstanding_mad:centsAsMAD(outstanding>0n?outstanding:0n)};
  });
- let claimed=0n,received=0n,open=0n;
- for(const r of items){
-  // Draft values are not supplier claims; booked financial figures remain elsewhere.
-  if(r.status==='DRAFT')continue;
-  claimed+=centsFromDB(r.claimed_mad);
-  received+=centsFromDB(r.received_mad);
-  open+=centsFromDB(r.outstanding_mad);
- }
+ const all=totals.rows[0]||{};
  return response({items,settlements:receipts.rows,
-  summary:{claimCount:items.filter(x=>x.status!=='DRAFT').length,
-    submittedMad:centsAsMAD(claimed),receivedDocumentedMad:centsAsMAD(received),
-    outstandingMad:centsAsMAD(open),source:'MANUALLY_DECLARED',
-    certified:false,erpPosted:false,bankReconciled:false},
+  summary:{claimCount:all.claim_count||0,
+    submittedMad:all.claimed||'0.00',receivedDocumentedMad:all.received||'0.00',
+    outstandingMad:all.outstanding||'0.00',source:'MANUALLY_DECLARED',
+    certified:false,erpPosted:false,bankReconciled:false,partialList:items.length===300},
   source:'H&S private audit ledger',certified:false});
 }
 async function createClaim(req,db,user){
