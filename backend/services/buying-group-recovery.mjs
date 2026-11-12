@@ -130,7 +130,9 @@ async function createClaim(req,db,user){
  return response({item:saved},201);
 }
 async function changeState(req,db,user,id){
- const input=await parse(req),next=clean(input.status,16).toUpperCase();
+ const input=await parse(req),next=clean(input.status,16).toUpperCase(),
+  evidenceReference=clean(input.evidenceReference,220);
+ if(evidenceReference.length<4)throw error('Une référence de preuve du changement de statut est obligatoire.');
  if(!STATES.has(next))throw error('Statut inconnu.');
  const item=await tx(db,async c=>{
   const found=await c.query('SELECT id,status,claimed_mad::text AS claimed_mad FROM hs_buying.rebate_claims WHERE id=$1 FOR UPDATE',[id]);
@@ -148,7 +150,8 @@ async function changeState(req,db,user,id){
    "acknowledged_at=CASE WHEN $2='ACKNOWLEDGED' THEN now() ELSE acknowledged_at END,"+
    "closed_at=CASE WHEN $2='CLOSED' THEN now() ELSE closed_at END WHERE id=$1 RETURNING id,status",
    [id,next,user.id]);
-  await audit(c,user,'RFA_CLAIM_STATUS_CHANGED','rebate_claim',id,{previous:claim.status,next,documentedMad:centsAsMAD(documented)});
+  await audit(c,user,'RFA_CLAIM_STATUS_CHANGED','rebate_claim',id,
+   {previous:claim.status,next,documentedMad:centsAsMAD(documented),evidenceReference});
   return updated.rows[0];
  });
  return response({item});
