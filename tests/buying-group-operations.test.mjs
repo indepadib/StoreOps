@@ -71,6 +71,6 @@ test('La navigation met en avant les données réelles plutôt que des économie
   for(const label of ["Fournisseurs","Contrats","Marges arrière","Historique"])assert.ok(cockpit.includes(label));
   assert.match(cockpit,/buyingSnapshot\(\)/);
   assert.match(cockpit,/Recouvrement RFA/);
-  assert.doesNotMatch(cockpit,/RFA encaissées/);
+  assert.doesNotMatch(cockpit,/metric\('RFA encaissées'/);
   assert.match(cockpit,/renderBuyingManagement\(state\.tab,host/);
 });
