@@ -42,17 +42,21 @@ function proofRows(id){
  '<p>Aucun avoir, virement ou justificatif de compensation enregistré.</p>')+'</div>';
 }
 function actions(item){
- const allowed=transitions[item.status]||[];
- if(item.status==='DRAFT')return '<button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="SUBMITTED" class="hrr-primary">Déclarer la réclamation envoyée</button>';
- if(item.status==='SUBMITTED')return '<div class="hrr-actions"><button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="ACKNOWLEDGED" class="hrr-primary">Accord fournisseur reçu</button>'+
- '<button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="DISPUTED">Signaler un litige</button></div>';
- if(item.status==='DISPUTED')return '<button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="SUBMITTED">Relancer la réclamation</button>';
- if(item.status==='ACKNOWLEDGED')return '<div class="hrr-actions"><button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="CLOSED" class="hrr-primary">Clôturer si montants justifiés</button>'+
- '<button type="button" data-hrr-transition="'+esc(item.id)+'" data-hrr-status="DISPUTED">Contestation</button></div>';
- return '<span class="hrr-fine">Dossier clôturé sur justificatifs déclarés. Vérifier le lettrage comptable dans le SI financier.</span>';
+ if(item.status==='CLOSED')
+  return '<span class="hrr-fine">Dossier clôturé sur justificatifs déclarés. Vérifier le lettrage comptable dans le SI financier.</span>';
+ const options=(transitions[item.status]||[]).map(status=>[status,{
+   SUBMITTED:'Réclamation envoyée',ACKNOWLEDGED:'Accord fournisseur reçu',
+   DISPUTED:'Signaler une contestation',CLOSED:'Clôturer sur justificatifs'
+ }[status]||status]);
+ return '<form data-hrr-status-form="'+esc(item.id)+'" class="hrr-status-form">'+
+ '<label><span>Prochaine étape du dossier</span><select name="status" required>'+opts(options)+'</select></label>'+
+ '<label><span>Référence de preuve de cette étape</span>'+
+ '<input name="evidenceReference" minlength="4" maxlength="220" required '+
+ 'placeholder="Email fournisseur, accusé de réception, référence de litige…"></label>'+
+ '<button type="submit" class="hrr-primary">Enregistrer le changement de statut</button>'+
+ '<p class="hrr-fine">La validation interne n’atteste ni une acceptation réelle du fournisseur ni un règlement bancaire.</p></form>';
 }
 function detail(item){
- const received=Number(item.received_mad||0);
  return '<section class="hrr-detail"><div class="hrr-detail-grid"><div><small>Montant réclamé</small><strong>'+fmt(item.claimed_mad)+'</strong></div>'+
  '<div><small>Pièces déclarées</small><strong>'+fmt(item.received_mad)+'</strong></div>'+
  '<div><small>Reste à justifier</small><strong>'+fmt(item.outstanding_mad)+'</strong></div></div>'+
@@ -131,10 +135,12 @@ export async function renderRebateRecovery(root,{force=false}={}){
   state.selectedId=state.selectedId===button.dataset.hrrOpen?null:button.dataset.hrrOpen;
   renderRebateRecovery(root);
  }));
- root.querySelectorAll('[data-hrr-transition]').forEach(button=>button.addEventListener('click',async()=>{
-  if(button.dataset.hrrStatus==='CLOSED'&&!confirm('Confirmer que les pièces déclarées couvrent le montant réclamé ? Cette action ne valide pas le lettrage bancaire.'))return;
-  state.selectedId=button.dataset.hrrTransition;
-  await mutate(root,'/api/buying-group/recovery/claims/'+encodeURIComponent(button.dataset.hrrTransition)+'/status',{status:button.dataset.hrrStatus});
+ root.querySelectorAll('[data-hrr-status-form]').forEach(form=>form.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const input=Object.fromEntries(new FormData(form).entries());
+  if(input.status==='CLOSED'&&!confirm('Clôturer ce dossier sur les seules preuves déclarées ? Cela ne constitue pas un rapprochement bancaire.'))return;
+  state.selectedId=form.dataset.hrrStatusForm;
+  await mutate(root,'/api/buying-group/recovery/claims/'+encodeURIComponent(form.dataset.hrrStatusForm)+'/status',input);
  }));
  root.querySelectorAll('[data-hrr-proof]').forEach(form=>form.addEventListener('submit',async e=>{
   e.preventDefault();
