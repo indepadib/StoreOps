@@ -116,7 +116,7 @@ test('Recovery UI stays within StoreOps, uses zero invented example data and acc
   nav=read('frontend/js/pages/buying-group.js'),
   theme=read('frontend/centrale-achat/hs-procurement-blue.css'),
   html=read('frontend/centrale-achat/index.html');
- assert.match(src,/Recouvrement/);
+ assert.match(src,/Registre de recouvrement/);
  assert.match(src,/sourceReference/);
  assert.match(src,/evidenceReference/);
  assert.match(src,/new FormData/);
