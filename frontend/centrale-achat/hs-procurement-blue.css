@@ -1,0 +1,153 @@
+/* H&S Buying Group | Procurement Blue — restrained B2B operational UI.
+   The main product uses these tokens consistently without modifying StoreOps. */
+:root {
+ --hs-ink:#142b49; --hs-muted:#62758b; --hs-blue:#245fa9; --hs-blue-dark:#103b70;
+ --hs-blue-light:#eaf2fb; --hs-border:#dce6f1; --hs-canvas:#f5f7fa;
+ --hs-paper:#ffffff; --hs-success:#176747; --hs-alert:#895f24;
+ color:var(--hs-ink);background:var(--hs-canvas);
+}
+body{background:var(--hs-canvas);color:var(--hs-ink)}
+.buying-shell-head{min-height:72px;border-bottom:1px solid var(--hs-border);box-shadow:0 2px 18px #112c4b08;background:#fff}
+.buying-brand{color:var(--hs-ink)}
+.buying-brand-symbol{background:#102f59;border-radius:10px;font-weight:800}
+.buying-brand-symbol span{color:#a4cdff}
+.buying-brand strong{letter-spacing:-.025em}
+.buying-brand small{color:#7890a8;letter-spacing:.07em}
+.buying-shell-nav a{background:#f7f9fc;color:var(--hs-blue-dark);border-color:#dce6f1}
+.buying-shell-nav a:hover{background:var(--hs-blue-light)}
+.buying-session{color:#667c94}
+.buying-shell-main{background:var(--hs-canvas)}
+.buying-shell-gate,.buying-shell-loading{border-color:var(--hs-border);box-shadow:0 12px 50px #112c4b0c}
+.buying-ring{border-color:#d9e7f7;border-top-color:var(--hs-blue)}
+.buying-footer{background:#f5f7fa;color:#76879c;border-top:1px solid var(--hs-border)}
+.buying-skip{position:fixed;top:-90px;left:16px;z-index:9999;background:#103b70;color:#fff;padding:12px 15px;border-radius:8px}
+.buying-skip:focus-visible{top:12px}
+#buyingGroupContent{font-family:Inter,"Segoe UI",Arial,sans-serif;color:var(--hs-ink)}
+#buyingGroupContent .bg-app{border-radius:0;min-height:70vh;background:var(--hs-canvas);padding-bottom:48px}
+#buyingGroupContent .bg-hero{background:#102f59;color:#fff;padding:30px clamp(20px,4vw,56px) 33px}
+#buyingGroupContent .bg-hero-glow{display:none}
+#buyingGroupContent .bg-hero-layout{align-items:center;gap:24px}
+#buyingGroupContent .bg-hero h2{font-size:clamp(29px,3.4vw,49px)!important;margin:10px 0 12px;font-weight:740;letter-spacing:-.045em;line-height:1.05}
+#buyingGroupContent .bg-hero h2 em{color:#a4d3ff}
+#buyingGroupContent .bg-hero p{color:#c9d9ee;font-size:13px;max-width:690px}
+#buyingGroupContent .bg-hero-side{background:#ffffff0b;border:1px solid #ffffff27;border-radius:13px;padding:16px}
+#buyingGroupContent .bg-hero-side small{color:#d2dfec}
+#buyingGroupContent .bg-hero-side>span{color:#afcae7}
+#buyingGroupContent .bg-hero-chips{margin-top:18px}
+#buyingGroupContent .bg-hero .bg-badge{background:#ffffff14;border:1px solid #ffffff24;color:#eef7ff;border-radius:6px}
+#buyingGroupContent .bg-hero-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+#buyingGroupContent .bg-hero-actions button{cursor:pointer;font-size:12px;font-weight:780;padding:10px 14px;border:1px solid #94b9e4;border-radius:8px;background:#ffffff11;color:#fff}
+#buyingGroupContent .bg-hero-actions button:first-child{background:#fff;color:#174478;border-color:#fff}
+#buyingGroupContent .bg-hero-actions button:hover{background:#e8f2fd;color:#123b70}
+#buyingGroupContent .bg-toolbar{background:#fff;border-bottom:1px solid var(--hs-border);padding:9px clamp(16px,3vw,50px);align-items:center}
+#buyingGroupContent .bg-tabs{flex-wrap:wrap;gap:4px;overflow:visible}
+#buyingGroupContent .bg-tabs button{padding:10px 12px;border:1px solid transparent;border-radius:8px;font-size:12px;font-weight:730;color:#667c93;cursor:pointer;white-space:nowrap}
+#buyingGroupContent .bg-tabs button:hover{background:#edf4fc;color:#245fa9}
+#buyingGroupContent .bg-tabs button.active{background:#e8f2ff;color:#104983;border-color:#bed6f0;box-shadow:none}
+#buyingGroupContent .bg-environment{font-size:10px;letter-spacing:0;color:#7e92a6}
+#buyingGroupContent .bg-content{padding:28px clamp(18px,3vw,50px);max-width:1700px}
+#buyingGroupContent .bg-section-title{margin:0 0 20px}
+#buyingGroupContent .bg-section-title h3{font-size:clamp(23px,2.3vw,33px)!important;color:#173654}
+#buyingGroupContent .bg-eyebrow{color:#607d9b;letter-spacing:.09em!important}
+#buyingGroupContent .bg-panel,#buyingGroupContent .hsm-contract,#buyingGroupContent .hsi-import,#buyingGroupContent .hsp-contract-head{border-radius:12px;box-shadow:none}
+#buyingGroupContent .bg-panel{border:1px solid var(--hs-border);background:#fff}
+#buyingGroupContent .bg-panel h3,#buyingGroupContent .bg-panel h4{color:#183955}
+#buyingGroupContent .bg-metric{border:1px solid var(--hs-border);border-radius:11px;box-shadow:none;min-height:135px}
+#buyingGroupContent .bg-metric strong{color:#173654;font-size:30px}
+#buyingGroupContent .bg-metric-top span{color:#61748c}
+#buyingGroupContent .bg-btn-primary,#buyingGroupContent .hsm-primary,
+#buyingGroupContent .hrr-primary{background:#245fa9!important;color:#fff!important;border-color:#245fa9!important;border-radius:8px}
+#buyingGroupContent .bg-btn-primary:hover,#buyingGroupContent .hsm-primary:hover,
+#buyingGroupContent .hrr-primary:hover{background:#194e91!important;border-color:#194e91!important}
+#buyingGroupContent .hsm-quiet,#buyingGroupContent .bg-btn-outline{background:#f1f6fc;color:#245b93;border-color:#cbddeb}
+#buyingGroupContent .hsm-field>span,#buyingGroupContent .hsm-form label>span{color:#506b89}
+#buyingGroupContent input:focus-visible,#buyingGroupContent select:focus-visible,
+#buyingGroupContent textarea:focus-visible,#buyingGroupContent button:focus-visible,
+#buyingGroupContent a:focus-visible{outline:3px solid #71aaff!important;outline-offset:2px}
+#buyingGroupContent input[type=checkbox]{accent-color:#245fa9}
+#buyingGroupContent .bg-progress-step>i{color:#245fa9}
+#buyingGroupContent .bg-action-row:hover{background:#f1f6fd}
+#buyingGroupContent .bg-action-icon{color:#235e9c;background:#eaf2fb}
+#buyingGroupContent .hsm-heading h4{color:#183b5d}
+#buyingGroupContent .hsp-contract-head{background:#143b69}
+#buyingGroupContent .hsp-contract-head .bg-eyebrow{color:#bcd9f4}
+#buyingGroupContent .hsp-progress-item.is-done .hsp-progress-number{background:#245fa9;border-color:#245fa9}
+#buyingGroupContent .hsp-progress-item.is-done:before{background:#7bafe4}
+#buyingGroupContent .hsp-progress-item.is-current .hsp-progress-number{box-shadow:0 0 0 4px #d8eaff}
+#buyingGroupContent .hsp-notice,#buyingGroupContent .hsi-warning{border-radius:8px}
+#buyingGroupContent #hsiIntakeHost .hsi-import{background:#f1f6fd;border-color:#cfdeed}
+#buyingGroupContent #hsiIntakeHost .hsi-import-head h3{color:#173b66}
+#buyingGroupContent #hsiIntakeHost .hsi-drop{border-color:#a7c5e7;background:#fff}
+#buyingGroupContent #hsiIntakeHost .hsi-drop:hover,#buyingGroupContent #hsiIntakeHost .hsi-drop.dragging{background:#e9f3ff;border-color:#2675ba}
+#buyingGroupContent #hsiIntakeHost .hsi-drop-icon{color:#2463a8}
+#buyingGroupContent #hsiIntakeHost .hsi-drop strong{color:#1a4a7d}
+#buyingGroupContent #hsiIntakeHost .hsi-import-details>span{background:#e4effb;color:#35618f}
+#buyingGroupContent #hsiIntakeHost .hsi-document-row.selected{background:#eaf3fd;border-color:#9bbfe6}
+#buyingGroupContent #hsiIntakeHost .hsi-document-icon{background:#e8f2fd;color:#27609c}
+#buyingGroupContent #hsiIntakeHost .hsm-field input:focus-visible{outline:3px solid #71aaff;outline-offset:2px}
+#buyingGroupContent .hqr-quality,#buyingGroupContent .hqr-section{border-color:#d8e4ef}
+#buyingGroupContent .hqr-topic.hqr-mentioned>strong{background:#eaf2fc;color:#285889}
+#buyingGroupContent .hqr-source{background:#f3f7fc;border-left-color:#8cb8e3}
+#buyingGroupContent .hsq-spinner{border-color:#c8ddf3;border-top-color:#245fa9}
+#buyingGroupContent .hsq-progress,#buyingGroupContent .hsq-complete{background:#eaf3ff;border-color:#c9dbf0;color:#1d5688}
+/* RFA collection workspace */
+#buyingGroupContent .hrr{display:flex;flex-direction:column;gap:18px;color:#17334f}
+#buyingGroupContent .hrr-intro{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+#buyingGroupContent .hrr-kicker{font-size:10px;letter-spacing:.11em;color:#2f669b;font-weight:850}
+#buyingGroupContent .hrr-intro h3{font-size:clamp(24px,2.8vw,36px);letter-spacing:-.035em;margin:8px 0;color:#133956}
+#buyingGroupContent .hrr-intro p{font-size:13px;line-height:1.6;color:#6b7c90;margin:0}
+#buyingGroupContent .hrr-readonly{padding:9px 12px;border:1px solid #cddfed;background:#edf5fd;color:#2c608d;border-radius:8px;font-size:11px;font-weight:800}
+#buyingGroupContent .hrr-ledger-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+#buyingGroupContent .hrr-ledger-kpis>div{padding:19px 18px;border:1px solid #dce6f1;background:#fff;border-radius:11px;display:flex;flex-direction:column;gap:9px;min-width:0}
+#buyingGroupContent .hrr-ledger-kpis small{font-size:11px;font-weight:780;color:#59708a}
+#buyingGroupContent .hrr-ledger-kpis strong{font-size:clamp(18px,2.2vw,27px);color:#143e6a;letter-spacing:-.035em;overflow-wrap:anywhere}
+#buyingGroupContent .hrr-ledger-kpis span{font-size:10px;color:#91a0b2}
+#buyingGroupContent .hrr-layout{display:grid;grid-template-columns:minmax(300px,.78fr) minmax(0,1.22fr);gap:14px;align-items:start}
+#buyingGroupContent .hrr-panel{padding:20px}
+#buyingGroupContent .hrr-panel-title{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:17px}
+#buyingGroupContent .hrr-panel-title h4{font-size:17px;margin:0 0 6px}
+#buyingGroupContent .hrr-panel-title p{font-size:11px;line-height:1.55;margin:0;color:#76889a}
+#buyingGroupContent .hrr-form,#buyingGroupContent .hrr-status-form{display:flex;flex-direction:column;gap:12px}
+#buyingGroupContent .hrr-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+#buyingGroupContent .hrr :is(.hrr-form,.hrr-filter,.hrr-status-form)>label,
+#buyingGroupContent .hrr-form-grid>label{display:flex;flex-direction:column;gap:6px;min-width:0;font-size:11px;font-weight:790;color:#526c86}
+#buyingGroupContent .hrr :is(input,select,textarea){font:inherit;font-size:12px;min-width:0;max-width:100%;border:1px solid #ceddea;border-radius:8px;padding:10px 12px;min-height:41px;background:#fff;color:#193c5d}
+#buyingGroupContent .hrr-form-grid :is(input,select){width:100%}
+#buyingGroupContent .hrr textarea{min-height:64px;resize:vertical}
+#buyingGroupContent .hrr-primary{cursor:pointer;min-height:42px;padding:10px 14px;font-weight:820;font-size:12px}
+#buyingGroupContent .hrr-fine{font-size:10px;line-height:1.6;color:#7d8fa4;margin:0}
+#buyingGroupContent .hrr-warning,#buyingGroupContent .hrr-error{background:#fff8ed;border:1px solid #f0dfbb;border-radius:9px;padding:13px;font-size:12px;line-height:1.65;color:#845d24}
+#buyingGroupContent .hrr-success{background:#e9f6ee;border:1px solid #bde5cb;color:#176747;padding:13px;border-radius:9px;font-size:12px}
+#buyingGroupContent .hrr-claims{display:flex;flex-direction:column;gap:10px}
+#buyingGroupContent .hrr-claim{border:1px solid #dce6f0;background:#fff;border-radius:10px;overflow:hidden}
+#buyingGroupContent .hrr-claim-trigger{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:15px;background:#fff;border:0;width:100%;padding:14px 15px;text-align:left}
+#buyingGroupContent .hrr-claim-trigger:hover{background:#f3f8fd}
+#buyingGroupContent .hrr-claim-trigger>span{display:flex;flex-direction:column;gap:6px;min-width:0}
+#buyingGroupContent .hrr-claim-trigger strong{font-size:12px;color:#163b5c;overflow-wrap:anywhere}
+#buyingGroupContent .hrr-claim-trigger small{font-size:10px;color:#8294a6;line-height:1.5}
+#buyingGroupContent .hrr-claim-money{align-items:flex-end;white-space:nowrap}
+#buyingGroupContent .hrr-status{background:#eaf2fc;color:#235c92;padding:6px 9px;border-radius:6px}
+#buyingGroupContent .hrr-status-DISPUTED{background:#fff1e3;color:#946226}
+#buyingGroupContent .hrr-status-CLOSED{background:#e6f6ed;color:#176747}
+#buyingGroupContent .hrr-detail{padding:17px;border-top:1px solid #dce7f2;background:#fbfcfe;display:flex;flex-direction:column;gap:13px}
+#buyingGroupContent .hrr-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+#buyingGroupContent .hrr-detail-grid>div{padding:11px;background:#edf4fc;border-radius:8px;display:flex;flex-direction:column;gap:7px}
+#buyingGroupContent .hrr-detail-grid small{font-size:10px;color:#6b829b}
+#buyingGroupContent .hrr-detail-grid strong{font-size:13px;color:#174778;overflow-wrap:anywhere}
+#buyingGroupContent .hrr-evidence,#buyingGroupContent .hrr-note{font-size:11px;color:#6d8298;line-height:1.6;overflow-wrap:anywhere;margin:0}
+#buyingGroupContent .hrr-proof-list{border:1px solid #e0e8f1;background:#fff;border-radius:9px;padding:13px}
+#buyingGroupContent .hrr-proof-list>strong{font-size:12px;color:#214b78}
+#buyingGroupContent .hrr-proof-list>p{font-size:11px;color:#8295a6}
+#buyingGroupContent .hrr-proof{display:flex;justify-content:space-between;align-items:center;gap:12px;border-bottom:1px solid #edf1f5;padding:10px 0;font-size:11px;color:#617b94}
+#buyingGroupContent .hrr-proof:last-child{border-bottom:0}
+#buyingGroupContent .hrr-proof strong{color:#1d578e}
+#buyingGroupContent .hrr-status-form,#buyingGroupContent .hrr-proof-form{background:#f3f7fc;padding:13px;border:1px solid #dce7f2;border-radius:9px}
+#buyingGroupContent .hrr-proof-form h4{font-size:13px;margin:0}
+#buyingGroupContent .hrr-proof-form p{font-size:11px;color:#758ba1;line-height:1.5;margin:0}
+#buyingGroupContent .hrr-empty{border:1px dashed #d0e1f1;background:#f8fbff;padding:28px;border-radius:10px;text-align:center}
+#buyingGroupContent .hrr-empty strong{font-size:13px;color:#215486}
+#buyingGroupContent .hrr-empty p{font-size:11px;color:#7188a0;line-height:1.5}
+@media(max-width:1100px){#buyingGroupContent .hrr-layout{grid-template-columns:1fr}#buyingGroupContent .hrr-ledger-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:720px){#buyingGroupContent .bg-hero{padding:24px 18px}#buyingGroupContent .bg-hero-side{display:none}#buyingGroupContent .bg-toolbar{padding:9px 14px}#buyingGroupContent .bg-tabs{flex-wrap:nowrap;overflow-x:auto}#buyingGroupContent .bg-tabs button{padding:10px 11px}#buyingGroupContent .bg-content{padding:18px 13px}#buyingGroupContent .hrr-claim-trigger{flex-wrap:wrap}#buyingGroupContent .hrr-claim-money{align-items:flex-start}#buyingGroupContent .hrr-detail-grid{grid-template-columns:1fr}}
+@media(max-width:540px){#buyingGroupContent .hrr-form-grid,#buyingGroupContent .hrr-ledger-kpis{grid-template-columns:1fr}}
+@media(prefers-reduced-motion:reduce){#buyingGroupContent .hsq-spinner{animation:none}}
