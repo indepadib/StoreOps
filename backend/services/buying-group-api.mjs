@@ -209,6 +209,10 @@ async function auditLog(db){
 export async function serveBuyingGroup(req,db,user){
   const path=new URL(req.url).pathname,method=req.method;
   try{
+    if(path==='/api/buying-group/recovery/claims'||path.startsWith('/api/buying-group/recovery/claims/')){
+      const {serveRebateRecovery}=await import('./buying-group-recovery.mjs');
+      return await serveRebateRecovery(req,db,user);
+    }
     const intakeAnalysis=path.match(/^\/api\/buying-group\/intakes\/([0-9a-f-]+)\/analyze$/i);
     const contractAnalysis=path.match(/^\/api\/buying-group\/contracts\/([0-9a-f-]+)\/analyze$/i);
     if(method==='POST'&&(intakeAnalysis||contractAnalysis)){
