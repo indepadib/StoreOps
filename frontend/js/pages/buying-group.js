@@ -35,7 +35,7 @@ const badge=(name,kind='neutral')=>'<span class="bg-badge '+kind+'">'+e(name)+'<
 function header(){
   const store=currentStore();
   return '<div class="bg-hero"><div class="bg-hero-glow"></div><div class="bg-overline">H&S · BUYING GROUP OS <span> / </span> PROCUREMENT INTELLIGENCE</div>'+
-  '<div class="bg-hero-layout"><div><h2>Des accords maîtrisés.<br><em>Des remises récupérées.</em></h2><p>Contrats fournisseurs, clauses vérifiées, demandes de RFA et preuves de règlement — dans un même espace de pilotage.</p>'+
+  '<div class="bg-hero-layout"><div><h1>Des accords maîtrisés.<br><em>Des remises récupérées.</em></h1><p>Contrats fournisseurs, clauses vérifiées, demandes de RFA et preuves de règlement — dans un même espace de pilotage.</p>'+
   '<div class="bg-hero-chips">'+badge('Données H&S privées','light')+badge('Accès Direction','light')+badge('Aucune écriture ERP','light')+'</div>'+ 
   '<div class="bg-hero-actions"><button data-bg-tab="workflow" type="button">Importer un contrat</button>'+ 
   '<button data-bg-tab="recovery" type="button">Suivre les RFA</button>'+ 
