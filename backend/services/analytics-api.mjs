@@ -1,4 +1,5 @@
 import {handleDecisionToolsApi} from './analytics-decision-tools-api.mjs';
+import {handleReplenishmentApi} from './analytics-replenishment-api.mjs';
 import { db, uid } from '../db.mjs';
 import {handleCustomerBiApi} from './analytics-customer-bi-api.mjs';
 import { canAccessStore } from './permissions.mjs';
@@ -50,6 +51,7 @@ function safeError(error){
 }
 
 export async function handleAnalyticsApi({ req, url, user }){
+  const replenishment=await handleReplenishmentApi({req,url,user});if(replenishment)return replenishment;
   if(req.method==='GET'&&url.pathname==='/api/analytics/semantic-model')return{status:200,data:semanticPublicModel()};
   const exportJob=await handleAnalyticsExportJobApi({req,url,user});if(exportJob)return exportJob;
   const tools=await handleDecisionToolsApi({req,url,user});if(tools)return tools;

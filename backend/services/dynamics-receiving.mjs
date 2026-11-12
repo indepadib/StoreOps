@@ -194,7 +194,7 @@ async function purchaseOrderLinesForWarehouse(warehouseId){
  throw Object.assign(new Error(`Aucun champ warehouse exploitable n’a permis de lire les PO de ${warehouseId}.`),{status:503,code:'D365_RECEIVING_WAREHOUSE_FIELD_UNRESOLVED',details:{warehouseId,entity:c.lineEntity,attemptedFields:warehouseCandidates,sampleWarehouseFields:sampleKeys,attempts:attempts.slice(-8)}})
 }
 
-async function openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate){
+async function openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate,{includeOld=false}={}){
  const c=receiving(),cutoff=oneMonthAgoISO(businessDate),warehouseCandidates=unique([c.headerWarehouseField,'DefaultReceivingWarehouseId','ReplenishmentWarehouseId','ReceivingWarehouseId','WarehouseId']),attempts=[];
  if(!c.headerEntity)throw Object.assign(new Error('D365_PO_HEADER_ENTITY non configuré.'),{status:503,code:'D365_RECEIVING_HEADER_MAPPING_REQUIRED'});
  for(const warehouseField of warehouseCandidates){
@@ -205,11 +205,11 @@ async function openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate){
   for(const candidate of filters){
    const filter=withCompany([`${warehouseField} eq '${esc(warehouseId)}'`,candidate.value].filter(Boolean).join(' and '));
    try{
-    const payload=await odataGetAll(c.headerEntity,{filter,pageSize:200,maxRows:5000,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[];
+    const payload=await odataGetAll(c.headerEntity,{filter,pageSize:200,maxRows:5000,extra:extraCompany(),strict:includeOld}),raw=Array.isArray(payload?.value)?payload.value:[];
     const open=raw.filter(row=>openPoStatus(field(row,c.headerStatusField,['PurchaseOrderStatus']))),recent=[],old=[];
     for(const row of open){
      const created=dateOnly(field(row,c.creationDateField,['AccountingDate','CreatedDateTime','PurchaseOrderCreationDate']));
-     (created&&created<cutoff?old:recent).push(row)
+     (!includeOld&&created&&created<cutoff?old:recent).push(row)
     }
     return{value:recent,rowCount:recent.length,pages:payload.pages||1,truncated:!!payload.truncated,warehouseField,serverOpenFilter:candidate.kind==='PURCH_STATUS_ENUM',openFilterKind:candidate.kind,hiddenOldPo:old.length,cutoff,attempts}
    }catch(error){attempts.push({warehouseField,openFilterKind:candidate.kind,code:error?.code||'D365_PO_HEADER_FILTER_FAILED',message:error?.message||String(error)})}
@@ -218,7 +218,7 @@ async function openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate){
  throw Object.assign(new Error(`Lecture des en-têtes PO ouverts de ${warehouseId} impossible.`),{status:503,code:'D365_RECEIVING_HEADER_READ_FAILED',details:{warehouseId,attempts}})
 }
 
-async function purchaseOrderLinesForOrders(poNumbers){
+async function purchaseOrderLinesForOrders(poNumbers,{strict=false}={}){
  const c=receiving(),parts=chunks(poNumbers,20),attempts=[];
  if(!poNumbers.length)return{value:[],rowCount:0,pages:0,truncated:false,attempts};
  const settled=await Promise.allSettled(parts.map(async part=>{
@@ -229,7 +229,7 @@ async function purchaseOrderLinesForOrders(poNumbers){
   let lastError=null;
   for(const candidate of filters){
    try{
-    const payload=await odataGetAll(c.lineEntity,{filter:candidate.value,pageSize:Math.max(100,Math.min(1000,Number(c.pageSize)||250)),maxRows:5000,extra:extraCompany()});
+    const payload=await odataGetAll(c.lineEntity,{filter:candidate.value,pageSize:Math.max(100,Math.min(1000,Number(c.pageSize)||250)),maxRows:5000,extra:extraCompany(),strict});
     return{value:(payload.value||[]).filter(row=>purchaseLineOpen(row,c)),pages:payload.pages||1,truncated:!!payload.truncated,filterKind:candidate.kind}
    }catch(error){lastError=error;attempts.push({orders:part,filterKind:candidate.kind,code:error?.code||'D365_PO_LINE_FILTER_FAILED',message:error?.message||String(error)})}
   }
@@ -252,12 +252,12 @@ async function purchaseOrderHeaders(poNumbers){
  return{value:rows,rowCount:rows.length,pages:parts.length,truncated:poNumbers.length>limit||errors.length>0,skipped:false,error:errors.length?{code:'D365_RECEIVING_HEADER_PARTIAL',message:`${errors.length} lot(s) d’en-têtes PO n’ont pas pu être lus.`,errors}:null};
 }
 
-export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO()}={}){
- const c=receiving(),storeSettings=storeOperationalSettings(storeId),warehouseId=clean(storeSettings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId]);
+export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(),planningWarehouse=null}={}){
+ const c=receiving(),storeSettings=storeOperationalSettings(storeId),warehouseId=clean(planningWarehouse||storeSettings?.storeWarehouseId||config.dynamics.stock?.storeWarehouses?.[storeId]);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',storeId,warehouseId:warehouseId||null,businessDate,items:[],diagnostics:{liveRequested:false,code:config.realOnly?'D365_RECEIVING_NOT_CONNECTED':null}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
- const startedAt=Date.now(),headerPayload=await openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate),headers=headerPayload.value||[];
- const poNumbers=unique(headers.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),linePayload=await purchaseOrderLinesForOrders(poNumbers),lines=linePayload.value||[];
+ const startedAt=Date.now(),headerPayload=await openPurchaseOrderHeadersForWarehouse(warehouseId,businessDate,{includeOld:!!planningWarehouse}),headers=headerPayload.value||[];
+ const poNumbers=unique(headers.map(row=>field(row,c.purchaseOrderField,['PurchaseOrderNumber']))),linePayload=await purchaseOrderLinesForOrders(poNumbers,{strict:!!planningWarehouse}),lines=linePayload.value||[];
  const headerByPo=new Map(headers.map(row=>[clean(field(row,c.purchaseOrderField,['PurchaseOrderNumber'])),row]));
  const cutoff=headerPayload.cutoff||oneMonthAgoISO(businessDate);let hiddenOld=headerPayload.hiddenOldPo||0,hiddenClosed=0;
  let items=poNumbers.map(poNumber=>{
@@ -269,17 +269,17 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
   const vendorName=clean(field(header,c.vendorNameField,['PurchaseOrderName','VendorName','OrderVendorName']))||vendorAccount||'Fournisseur';
   const createdDate=dateOnly(field(header,c.creationDateField,['AccountingDate','CreatedDateTime','PurchaseOrderCreationDate']))||null;
   if(!openPoStatus(sourceStatus)){hiddenClosed++;return null}
-  if(createdDate&&createdDate<cutoff){hiddenOld++;return null}
+  if(!planningWarehouse&&createdDate&&createdDate<cutoff){hiddenOld++;return null}
   return{
    poNumber,vendor:vendorName,vendorName,vendorAccount,createdDate,creationDateSource:createdDate?(c.creationDateField||'AccountingDate'):null,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:poLines.map(row=>{
     const productNumber=clean(field(row,c.productField,['ProductNumber','ItemNumber'])),ean=clean(field(row,c.barcodeField,['Barcode'])),category=clean(field(row,c.categoryField,['ProcurementProductCategoryName']))||'Autre';
-    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,lineStatus:clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus']))||null,receivedQty:c.receivedQtyField?finite(field(row,c.receivedQtyField,[])):null,remainingQty:remainingFor(row,c),remainingSource:remainingFor(row,c)==null?'UNAVAILABLE':'D365',unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
+    return{sourceLineNumber:clean(field(row,c.lineNumberField,['LineNumber','PurchaseOrderLineNumber']))||productNumber,productNumber,ean,productName:clean(field(row,c.descriptionField,['LineDescription','ProductName']))||productNumber||'Article',category,orderedQty:finite(field(row,c.orderedQtyField,['OrderedPurchaseQuantity']))??0,lineStatus:clean(field(row,c.lineStatusField,['PurchaseOrderLineStatus']))||null,receivedQty:c.receivedQtyField?finite(field(row,c.receivedQtyField,[])):null,remainingQty:remainingFor(row,c),remainingSource:remainingFor(row,c)==null?'UNAVAILABLE':'D365',unit:clean(field(row,c.unitField,['PurchaseUnitSymbol']))||null,requestedDeliveryDate:dateOnly(field(row,c.lineDateField,['RequestedDeliveryDate','ExpectedDeliveryDate']))||eta,planningDate:dateOnly(row.ConfirmedDeliveryDate)||dateOnly(header.ConfirmedDeliveryDate)||null,warehouseId:clean(field(row,c.warehouseField,['ReceivingWarehouseId']))||warehouseId,temperatureRequired:temperatureRequired(category)};
    })
   };
  }).filter(Boolean);
  const profileSkus=unique(items.flatMap(po=>po.lines||[]).map(line=>line.productNumber)).slice(0,240);
- if(profileSkus.length){
+ if(profileSkus.length&&!planningWarehouse){
   try{
    const identities=await releasedProductSourcingMany(profileSkus);
    items=items.map(po=>({...po,lines:(po.lines||[]).map(line=>{const identity=identities.get(clean(line.productNumber));if(!identity)return line;const genericName=!clean(line.productName)||clean(line.productName)===clean(line.productNumber)||/^article(?:\s|$)/i.test(clean(line.productName)),rayon=[identity.rayonLabel,identity.retailScope].filter(Boolean).join(' · ');return{...line,productName:genericName&&identity.productName?identity.productName:line.productName,category:rayon||line.category||'Autre',rayonCode:identity.rayonCode||null,rayonLabel:identity.rayonLabel||null,retailScope:identity.retailScope||null,supplyMode:identity.supplyMode||null}})}))
@@ -290,13 +290,15 @@ export async function listExpectedPurchaseOrders(storeId,{businessDate=todayISO(
 }
 
 
-async function transferHeadersForWarehouse(warehouseId){
+async function transferHeadersForWarehouse(warehouseId,{planning=false}={}){
  const t=transferReceiving(),top=Math.max(50,Math.min(t.maxRows||10000,Number(process.env.D365_TO_HEADER_TOP)||500));
  const base=`${t.toWarehouseField} eq '${esc(warehouseId)}'`,company=withCompany(base),attempts=[];
  for(const filter of [withCompany(`${base} and ${t.statusField} ne 'Received'`),company]){
   try{
-   const payload=await odataGet(t.headerEntity,{filter,top,extra:extraCompany()}),raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(r=>clean(r?.[t.statusField]).toUpperCase()!=='RECEIVED');
-   return{value:rows,rowCount:rows.length,truncated:raw.length>=top,top,attempts}
+   const payload=await odataGet(t.headerEntity,{filter,top,extra:extraCompany()});
+   if(planning&&!Array.isArray(payload?.value))throw new Error('En-têtes TO incomplets');
+   const raw=Array.isArray(payload?.value)?payload.value:[],rows=raw.filter(r=>!/(RECEIVED|CANCEL|CLOSED)/.test(clean(r?.[t.statusField]).toUpperCase()));
+   return{value:rows,rowCount:rows.length,truncated:raw.length>=top||!!payload?.['@odata.nextLink'],top,attempts}
   }catch(error){attempts.push({filter,code:error?.code||'D365_TO_HEADER_FILTER_FAILED',message:error?.message||String(error)})}
  }
  throw Object.assign(new Error(`Lecture des TO à destination de ${warehouseId} impossible.`),{status:503,code:'D365_TO_HEADER_READ_FAILED',details:{warehouseId,entity:t.headerEntity,attempts}})
@@ -306,20 +308,21 @@ function transferRemaining(row,t){
  const ordered=finite(row?.[t.transferQtyField])??0,received=finite(row?.[t.receivedQtyField])??0;
  return Math.max(0,ordered-received)
 }
-async function transferLinesForOrders(orderNumbers){
+async function transferLinesForOrders(orderNumbers,{planning=false}={}){
+ let missingBatches=0;
  const t=transferReceiving(),all=[],attempts=[];let truncated=false;
  for(const batch of chunks(orderNumbers,20)){
   const base=orFilter(t.numberField,batch);
   let payload=null;
-  for(const filter of [withCompany(`${base} and ${t.remainingQtyField} gt 0`),withCompany(base)]){
+  for(const filter of planning?[withCompany(base)]:[withCompany(`${base} and ${t.remainingQtyField} gt 0`),withCompany(base)]){
    try{payload=await odataGet(t.lineEntity,{filter,top:Math.max(100,Math.min(t.maxRows||10000,2000)),extra:extraCompany()});break}
    catch(error){attempts.push({filter,code:error?.code||'D365_TO_LINE_FILTER_FAILED',message:error?.message||String(error)})}
   }
-  if(!payload)continue;
-  const raw=Array.isArray(payload.value)?payload.value:[];if(raw.length>=Math.max(100,Math.min(t.maxRows||10000,2000)))truncated=true;
-  all.push(...raw.filter(row=>transferRemaining(row,t)>0))
+  if(!Array.isArray(payload?.value)){missingBatches++;continue;}
+  const raw=payload.value;if(raw.length>=Math.max(100,Math.min(t.maxRows||10000,2000))||payload['@odata.nextLink'])truncated=true;
+  all.push(...raw.filter(row=>planning?finite(row?.[t.remainingQtyField])!==0:transferRemaining(row,t)>0))
  }
- return{value:all,rowCount:all.length,truncated,attempts}
+ return{value:all,rowCount:all.length,truncated:truncated||missingBatches>0,attempts}
 }
 async function transferProductNames(itemNumbers){
  const entity=config.dynamics.entities?.basePrice||'ReleasedProductsV2',numberField='ItemNumber',nameField='ProductName',map=new Map(),parts=chunks(itemNumbers,20);
@@ -327,20 +330,22 @@ async function transferProductNames(itemNumbers){
  for(const result of settled)if(result.status==='fulfilled')for(const row of result.value?.value||[])map.set(clean(row[numberField]),clean(row[nameField]));
  return map
 }
-export async function listExpectedTransferOrders(storeId,{businessDate=todayISO()}={}){
+export async function listExpectedTransferOrders(storeId,{businessDate=todayISO(),planning=false}={}){
  const t=transferReceiving(),warehouseId=storeWarehouse(storeId);
  if(!isD365ReadLive('receiving'))return{mode:config.realOnly?'UNAVAILABLE':'SIMULATED',source:config.realOnly?'UNMAPPED':'STOREOPS',documentType:'TO',storeId,warehouseId,businessDate,items:[],diagnostics:{liveRequested:false}};
  if(!warehouseId)return{mode:'LIVE_UNMAPPED',source:'D365',documentType:'TO',storeId,warehouseId:null,businessDate,items:[],diagnostics:{liveRequested:true,code:'D365_STORE_WAREHOUSE_NOT_MAPPED'}};
- const startedAt=Date.now(),headersPayload=await transferHeadersForWarehouse(warehouseId),allHeaders=headersPayload.value||[],cutoff=oneMonthAgoISO(businessDate),headers=allHeaders.filter(h=>{const d=dateOnly(h?.[t.headerDateField]);return !d||d>=cutoff}),hiddenOldTo=allHeaders.length-headers.length,numbers=unique(headers.map(r=>r?.[t.numberField]));
- const linesPayload=await transferLinesForOrders(numbers),lines=linesPayload.value||[],withLines=new Set(lines.map(r=>clean(r?.[t.numberField]))),activeHeaders=headers.filter(h=>withLines.has(clean(h?.[t.numberField])));
- const itemNumbers=unique(lines.map(r=>r?.[t.productField])),profiles=await releasedProductSourcingMany(itemNumbers).catch(()=>new Map());
+ const startedAt=Date.now(),headersPayload=await transferHeadersForWarehouse(warehouseId,{planning}),allHeaders=headersPayload.value||[],cutoff=oneMonthAgoISO(businessDate),headers=planning?allHeaders:allHeaders.filter(h=>{const d=dateOnly(h?.[t.headerDateField]);return !d||d>=cutoff}),hiddenOldTo=allHeaders.length-headers.length,numbers=unique(headers.map(r=>r?.[t.numberField]));
+ const linesPayload=await transferLinesForOrders(numbers,{planning}),lines=linesPayload.value||[],withLines=new Set(lines.map(r=>clean(r?.[t.numberField]))),activeHeaders=headers.filter(h=>withLines.has(clean(h?.[t.numberField])));
+ const itemNumbers=unique(lines.map(r=>r?.[t.productField])),profiles=planning?new Map():await releasedProductSourcingMany(itemNumbers).catch(()=>new Map());
+ const missingNames=planning?[]:itemNumbers.filter(sku=>!profiles.get(sku)?.productName||profiles.get(sku).productName===sku);
+ const names=missingNames.length?await transferProductNames(missingNames):new Map();
  const items=activeHeaders.map(header=>{
   const number=clean(header?.[t.numberField]),orderLines=lines.filter(r=>clean(r?.[t.numberField])===number),origin=clean(header?.[t.fromWarehouseField])||'Origine D365',eta=dateOnly(header?.[t.headerDateField])||businessDate,sourceStatus=clean(header?.[t.statusField])||'Open';
   return{
    documentType:'TO',poNumber:number,documentNumber:number,vendor:origin,vendorAccount:null,origin,eta,status:'EXPECTED',source:'D365',sourceStatus,warehouseId,
    lines:orderLines.map(row=>{
     const productNumber=clean(row?.[t.productField]),remaining=transferRemaining(row,t),ordered=finite(row?.[t.transferQtyField])??0,received=finite(row?.[t.receivedQtyField])??0;
-    const profile=profiles.get(productNumber)||null,rayon=[profile?.rayonLabel,profile?.retailScope].filter(Boolean).join(' · ');return{sourceLineNumber:clean(row?.[t.lineNumberField])||productNumber,productNumber,ean:productNumber,productName:profile?.productName||productNumber||'Article',category:rayon||'Autre',rayonCode:profile?.rayonCode||null,rayonLabel:profile?.rayonLabel||null,retailScope:profile?.retailScope||null,supplyMode:profile?.supplyMode||null,orderedQty:ordered,receivedQty:received,remainingQty:remaining,unit:clean(row?.[t.unitField])||profile?.inventoryUnit||null,requestedDeliveryDate:dateOnly(row?.[t.lineDateField])||eta,warehouseId,temperatureRequired:0}
+    const profile=profiles.get(productNumber)||null,rayon=[profile?.rayonLabel,profile?.retailScope].filter(Boolean).join(' · ');return{sourceLineNumber:clean(row?.[t.lineNumberField])||productNumber,productNumber,ean:productNumber,productName:names.get(productNumber)||profile?.productName||productNumber||'Article',category:rayon||'Autre',rayonCode:profile?.rayonCode||null,rayonLabel:profile?.rayonLabel||null,retailScope:profile?.retailScope||null,supplyMode:profile?.supplyMode||null,orderedQty:ordered,receivedQty:received,remainingQty:remaining,unit:clean(row?.[t.unitField])||profile?.inventoryUnit||null,requestedDeliveryDate:dateOnly(row?.[t.lineDateField])||eta,planningDate:dateOnly(row?.[t.lineDateField])||dateOnly(header?.[t.headerDateField])||null,planningRemaining:finite(row?.[t.remainingQtyField]),warehouseId,temperatureRequired:0}
    })
   }
  });
@@ -425,9 +430,9 @@ export async function syncExpectedTransferOrdersFromDynamics(storeId,{businessDa
  return{...snapshot,synced:true,partial:!authoritative,authoritative,created,updated,lineCreated,lineUpdated,readiness:transferReceivingStateForStore(storeId)}
 }
 
-export function listReceiptsForStore(storeId,{documentType='PO'}={}){
+export function listReceiptsForStore(storeId,{documentType='PO',businessDate=todayISO()}={}){
  ensureReceivingStorage();
- const type=clean(documentType).toUpperCase(),whereType=type==='ALL'?'':' AND document_type=?',args=type==='ALL'?[storeId]:[storeId,type],cutoff=oneMonthAgoISO(todayISO());
+ const type=clean(documentType).toUpperCase(),whereType=type==='ALL'?'':' AND document_type=?',args=type==='ALL'?[storeId]:[storeId,type],cutoff=oneMonthAgoISO(businessDate);
  const receipts=db.prepare(`SELECT * FROM receipts WHERE store_id=?${whereType}
   AND (document_type<>'PO' OR source<>'D365' OR COALESCE(source_created_date,eta)>=?)
   AND (source<>'D365' OR source_status IS NULL OR source_status<>'NOT_OPEN' OR status='POSTED' OR EXISTS(SELECT 1 FROM receipt_lines rl WHERE rl.receipt_id=receipts.id AND rl.quality_control_id IS NOT NULL))

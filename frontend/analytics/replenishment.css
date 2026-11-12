@@ -1,0 +1,17 @@
+.repl-panel{background:#fff;border:1px solid #dce5ef;border-radius:22px;padding:clamp(16px,3vw,32px);color:#15283e;box-shadow:0 12px 36px #1a2d4710}
+.repl-panel[hidden]{display:none}
+.repl-heading{margin-bottom:22px}.repl-heading h2,.repl-result-heading h3{margin:0;color:#15283e;line-height:1.2}
+.repl-heading p,.repl-source,.repl-status{color:#496178;margin:8px 0 0}
+.repl-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:18px}
+.repl-modes button{display:grid;gap:5px;text-align:left;padding:16px;border:1px solid #dce5ef;border-radius:14px;background:#f7f9fc;color:#15283e;cursor:pointer}
+.repl-modes button[aria-pressed=true]{border-color:#b20948;background:#fff0f5;box-shadow:inset 0 0 0 1px #b20948}
+.repl-modes span{font-size:.875rem;color:#496178}.repl-modes strong{font-size:1rem}
+.repl-generate{display:flex;flex-wrap:wrap;align-items:end;gap:12px}.repl-generate label{display:grid;gap:6px;min-width:min(260px,100%);flex:1;font-weight:650}
+.repl-generate select,.repl-generate button{min-height:44px}.repl-generate select{width:100%;border:1px solid #bdcddd;border-radius:10px;background:#fff;color:#15283e;padding:8px 12px;font:inherit}
+.repl-status:not(:empty){margin:16px 0;padding:12px;border-radius:10px;background:#f0f5fa}
+.repl-result-heading{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:24px 0 12px}
+.repl-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.repl-fact{display:grid;gap:4px;border-radius:12px;background:#f3f6fa;padding:12px}.repl-fact strong{font-size:1.35rem}.repl-fact span{font-size:.82rem;color:#496178}
+.repl-group{border:1px solid #dce5ef;border-radius:12px;margin-top:12px;overflow:hidden}.repl-group summary{padding:12px 14px;font-weight:700;cursor:pointer}.repl-blocked ul{padding:0 24px 12px 36px;margin:0}.repl-blocked li{margin:6px 0}
+.repl-table{overflow-x:auto}.repl-table table{width:100%;border-collapse:collapse}.repl-table th,.repl-table td{border-top:1px solid #e7edf4;text-align:left;padding:8px 10px;white-space:nowrap}.repl-table th{background:#f7f9fc;color:#496178;font-size:.8rem}.repl-quantity{font-weight:750;color:#a30842}
+.repl-panel button:focus-visible,.repl-panel select:focus-visible,.repl-panel summary:focus-visible{outline:2px solid #a30842;outline-offset:2px}.repl-panel button:disabled{opacity:.55;cursor:default}
+@media(max-width:520px){.repl-modes{gap:8px}.repl-modes button{padding:10px}.repl-generate button{width:100%}.repl-fact{padding:8px}}

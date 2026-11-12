@@ -20,29 +20,3 @@ export function calculateMinMax(input){
  const quantity=capped>=minimum?capped:0;
  return {min,max,position,need,requested,quantity,shortfall:precision(Math.max(0,need-quantity)),after:precision(position+quantity),aboveMax:precision(Math.max(0,position+quantity-max))};
 }
-
-export function mountMinMax(host,number){
- const form=host.querySelector('form'),output=host.querySelector('output');
- const mode=form.elements.namedItem('mode'),supply=form.elements.namedItem('sourceAvailable');
- function update(){
-  const transfer=mode.value==='TO';
-  supply.disabled=!transfer;supply.required=transfer;
-  host.querySelector('[data-warehouse-source]').hidden=!transfer;
-  host.querySelector('[data-destination]').textContent=transfer?'Stock disponible au magasin':'Stock disponible à l’entrepôt';
-  host.querySelector('[data-usage]').textContent=transfer?'Consommation moyenne du magasin par jour':'Sorties moyennes de l’entrepôt par jour';
-  host.querySelector('[data-lead]').textContent=transfer?'Délai du transfert en jours':'Délai fournisseur en jours';
-  output.textContent='';
- }
- form.addEventListener('input',update);
- form.addEventListener('submit',event=>{
-  event.preventDefault();
-  try{
-   const input=Object.fromEntries(new FormData(form)),r=calculateMinMax(input);
-   const action=input.mode==='PO'?'PO fournisseur → entrepôt':'TO entrepôt → magasin';
-   const recommendation=r.quantity>0?`${action} : ${number(r.quantity)} ${input.unit.trim()}.`:r.need>0?'Besoin à couvrir. Stock source ou colisage insuffisant.':'Stock suffisant selon les seuils saisis.';
-   const exception=r.shortfall>0?` Reste à couvrir : ${number(r.shortfall)}.`:r.aboveMax>0&&r.quantity>0?` Dépassement du maximum lié au minimum de commande ou au colisage : ${number(r.aboveMax)}.`:'';
-   output.textContent=`${recommendation} Min ${number(r.min)} · Max ${number(r.max)} · Stock avec arrivages ${number(r.position)} · Stock après proposition ${number(r.after)}.${exception}`;
-  }catch(error){output.textContent=error.message;}
- });
- update();
-}

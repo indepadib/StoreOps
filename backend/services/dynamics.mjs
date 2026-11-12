@@ -136,13 +136,14 @@ export async function odataGet(entity,{filter='',select='',top=50,extra=''}={}){
   return d365Fetch(`/data/${encodeURIComponent(entity)}${suffix?'?'+suffix:''}`);
 }
 
-export async function odataGetAll(entity,{filter='',select='',extra='',pageSize=null,maxRows=null}={}){
+export async function odataGetAll(entity,{filter='',select='',extra='',pageSize=null,maxRows=null,strict=false}={}){
   const size=Math.max(1,Math.min(2000,Number(pageSize)||config.dynamics.odataPageSize||500));
   const cap=Math.max(size,Math.min(100000,Number(maxRows)||config.dynamics.odataMaxRows||25000));
   const rows=[];let skip=0,pages=0;
   while(rows.length<cap){
     const top=Math.min(size,cap-rows.length),pageExtra=[String(extra||'').trim(),`$skip=${skip}`].filter(Boolean).join('&');
     const payload=await odataGet(entity,{filter,select,top,extra:pageExtra}),page=Array.isArray(payload?.value)?payload.value:[];
+    if(strict&&(!Array.isArray(payload?.value)||(page.length<top&&payload['@odata.nextLink'])))throw Object.assign(new Error('Lecture OData incomplète.'),{code:'D365_INCOMPLETE_COLLECTION'});
     pages+=1;if(!page.length)break;
     rows.push(...page.slice(0,cap-rows.length));skip+=page.length;
     if(page.length<top)break;
