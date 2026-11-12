@@ -1,0 +1,30 @@
+# Audit décisionnel StoreOps et StoreOps Analytics
+
+Audit initial du code livré au 12 novembre 2026. Les preuves portent sur les écrans, le routage, les libellés et les calculs repérables dans le dépôt. Les données réelles, les temps de réponse à 90 jours, les droits par profil et les usages terrain demandent une validation distincte.
+
+## Décisions et parcours
+
+| Métier | Décision | Constat et preuve | Critère de recette |
+| --- | --- | --- | --- |
+| Direction générale | Identifier les magasins et familles qui expliquent le recul du CA | Vue exécutive, Ventes et Réseau exposent des lectures distinctes. Le comparatif est porté par le filtre général, et le détail article a aussi ses propres filtres dans Ventes. | Partir du CA réseau, ouvrir la contribution magasin puis catégorie, retrouver le même périmètre dans le détail et l’export. Le CA magasin/jour est rapproché avec Retail & Commerce. |
+| Direction achats | Prioriser les fournisseurs et arbitrer service, marge et stock | Le taux de service est en bas de Fournisseurs et affiche N/A si la couverture des réceptions est insuffisante. La décision d’achat se prépare dans Réapprovisionnement. | Depuis le fournisseur, consulter la couverture, le détail commandé/reçu et la fenêtre de mesure, puis retrouver les propositions PO du même périmètre. Les commandes ouvertes et reliquats sont distingués. |
+| Acheteur / approvisionnement | Préparer un PO fournisseur vers entrepôt ou un TO entrepôt vers magasin | La page calcule une proposition et fournit un CSV. L’assortiment vient de l’historique de Détention. La demande entrepôt est estimée à partir des ventes magasin et les articles dont la preuve manque sont bloqués. | Sur un jeu validé, rapprocher les lignes, l’unité, le délai, les colis, le stock et les arrivages. Chaque exclusion ou quantité plafonnée est explicable. |
+| Exploitation magasin | Distinguer rupture, stock négatif, faible rotation et invendu avant d’agir | Stock, Détention et Réapprovisionnement sont des entrées séparées. La Détention expose plusieurs dénominateurs, dont réception historique et référentiel global. Un stock actuel et des ventes sur une période décrivent deux horloges. | Partir d’une liste de références à traiter. Pour chaque ligne, voir la période des ventes, la date du stock, la provenance et l’action justifiée. Tester la définition d’invendu et de faible rotation avec le métier. |
+| Category manager | Diagnostiquer une baisse de catégorie et décider sur assortiment, prix ou volume | Produits & catégories, le référentiel et le contexte prix de Ventes portent chacun une partie du diagnostic. La hiérarchie, la quantité et l’unité doivent suivre la référence d’un écran à l’autre. | À partir d’un article ou d’un rayon, retrouver l’EAN, les niveaux D365, les quantités dans l’unité de vente, le prix payé, la promotion et la marge disponible avec couverture. |
+| Marketing | Déterminer quelles offres méritent d’être reconduites | Promotions expose les ventes et remises, et Clients & CRM porte le parcours avant/après. Le produit distingue déjà signal observé et causalité. | Partir d’une offre, retrouver période, magasins, produits et comparaison. Séparer ventes sous promotion, écart observé et impact causal lorsque mesurable. |
+| Fidélité | Mesurer acquisition, identification et retour des clients | Le libellé Recrutements est alimenté par une agrégation issue de cartes et de LoyaltyEnrollmentDate. Le code ne prouve ni la date de création du compte ni la déduplication réseau. | Vérifier la source D365 de création de compte et son magasin d’origine. Un compte réseau compte une fois. Présenter une valeur indisponible tant que la preuve manque, y compris dans l’export, le compagnon et les supports. |
+| Responsable terrain | Transformer l’analyse en tâche magasin | Analytics permet de lire les signaux et de produire une proposition. StoreOps possède des parcours distincts de réception, inventaire et pertes. La continuité entre signal et résolution reste à vérifier avec un profil magasin. | Pour chaque action prioritaire, partir du magasin et de l’article, ouvrir le parcours opérationnel autorisé et pouvoir constater la résolution. |
+
+## Priorités de mise en œuvre
+
+1. **P0 · Intégrité des décisions.** Suspendre le recrutement présenté comme création de compte tant que la source est non certifiée. Rapprocher le CA magasin/jour, les unités g/kg et les marges sur un jeu commun. Vérifier le temps total de recherche et d’export sur 90 jours avec un et plusieurs magasins. Le code d’export prévoit 90 secondes d’attente visible, ce qui ne constitue pas une mesure de performance.
+2. **P1 · Retrouver une donnée.** La recherche globale propose des accès directs aux indicateurs et tableaux. Valider sur des recherches terrain, notamment taux de service, CA par magasin, EAN, paniers avant/après, puis mesurer le temps et les clics jusqu’au bon résultat. Étendre aux liens entre pages en conservant magasin, période, comparaison et article lorsque compatibles.
+3. **P1 · Décider et exécuter.** Rapprocher Fournisseurs, Stock, Détention et Réapprovisionnement autour des écarts à traiter. Expliciter la couverture réception du taux de service, puis construire les listes invendu et rotation avec période, seuil, stock observable et motifs.
+4. **P2 · Compagnon et pilotage.** Traiter les intentions avec des liens et sources vérifiables. Pour chaque réponse, afficher magasin, période, définition, couverture et action possible. Recetter les réponses avec les mêmes scénarios et totaux que les écrans et exports.
+
+## Repères dans le code
+
+- Navigation et widgets · frontend/analytics/experience-navigation.js, frontend/analytics/analytics.js et frontend/analytics/index.html.
+- Fidélité · frontend/analytics/loyalty.js, backend/services/analytics-loyalty-range.mjs et backend/services/dynamics-loyalty.mjs.
+- Détention et PO/TO · frontend/analytics/detention-metrics.js, backend/services/analytics-receipt-history.mjs et backend/services/analytics-replenishment-orders.mjs.
+- Export et exploitation · frontend/analytics/monthly-sales-export.js et frontend/js/pages/manager-home.js.

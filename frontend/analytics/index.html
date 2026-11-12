@@ -43,7 +43,7 @@
         <span class="status-dot"></span>
         <span id="freshnessText">Connexion…</span>
       </div>
-      <button class="ghost-btn ri-finder-trigger" id="riFinderTrigger" type="button" aria-haspopup="dialog" aria-controls="riFinderDialog"><span aria-hidden="true">⌕</span> Explorer <kbd>⌘ K</kbd></button>
+      <button class="ghost-btn ri-finder-trigger" id="riFinderTrigger" aria-label="Trouver un indicateur ou une analyse" type="button" aria-haspopup="dialog" aria-controls="riFinderDialog"><span aria-hidden="true">⌕</span> Trouver une donnée <kbd>⌘ K</kbd></button>
       <button class="ghost-btn" id="customizeBtn">Vue</button>
       <button class="ghost-btn" id="fullExportBtn" title="Ventes complètes, hiérarchie, comparaison active, poids CA et présence panier">Export complet période/comparaison</button>
       <button class="primary-btn" id="exportBtn">Exporter <span aria-hidden="true">↗</span></button>
@@ -54,7 +54,7 @@
 
   <dialog id="riFinderDialog" class="ri-finder-dialog" aria-labelledby="riFinderTitle">
     <div class="ri-finder-head"><span aria-hidden="true">✦</span><div><h2 id="riFinderTitle">Où veux-tu aller ?</h2><p>Retrouver une analyse ou poser une question métier.</p></div></div>
-    <label class="ri-finder-search"><span class="sr-only">Rechercher une analyse</span><input id="riFinderInput" type="search" autocomplete="off" placeholder="Clients, ruptures, prix, magasins, panier…" aria-controls="riFinderResults"></label>
+    <label class="ri-finder-search"><span class="sr-only">Rechercher une analyse</span><input id="riFinderInput" type="search" autocomplete="off" placeholder="CA magasin, taux de service, prix, fidélité…" aria-controls="riFinderResults"></label>
     <div id="riFinderResults" class="ri-finder-results" aria-live="polite"></div>
     <footer class="ri-finder-footer">Entrée : ouvrir · Échap : fermer · Ctrl/⌘ + K : recherche rapide</footer>
   </dialog>
