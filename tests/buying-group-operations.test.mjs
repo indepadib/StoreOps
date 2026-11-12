@@ -70,6 +70,7 @@ test('Le parcours permet la saisie contractuelle et les actions privées',()=>{
 test('La navigation met en avant les données réelles plutôt que des économies fictives',()=>{
   for(const label of ["Fournisseurs","Contrats","Marges arrière","Historique"])assert.ok(cockpit.includes(label));
   assert.match(cockpit,/buyingSnapshot\(\)/);
-  assert.match(cockpit,/RFA encaissées','—'/);
+  assert.match(cockpit,/Recouvrement RFA/);
+  assert.doesNotMatch(cockpit,/RFA encaissées/);
   assert.match(cockpit,/renderBuyingManagement\(state\.tab,host/);
 });
