@@ -44,7 +44,7 @@ function renderResult(result,summary,rows,number){
  for(const [label,count] of [['Références examinées',summary.examined],['Lignes proposées',proposed.length],['À vérifier',blocked.length]]){
   const card=element('div',null,'repl-fact');card.append(element('strong',number(count)),element('span',label));facts.append(card);
  }
- result.replaceChildren(heading,facts,element('p',`${summary.demandBasis} · ${summary.start} au ${summary.end}.`,'repl-source'));
+ result.replaceChildren(heading,facts,element('p',[summary.assortmentBasis,`${summary.demandBasis} · ${summary.start} au ${summary.end}.`].filter(Boolean).join(' · '),'repl-source'));
  if(!proposed.length)result.append(element('p',blocked.length?'Aucune ligne chiffrée. Consulte les références à vérifier.':'Aucun besoin détecté sur les références examinées.','repl-empty'));
  const groups=new Map();
  for(const row of proposed){const key=summary.mode==='PO'?row.supplier:summary.store;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}

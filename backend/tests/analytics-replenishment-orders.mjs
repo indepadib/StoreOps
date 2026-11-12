@@ -16,7 +16,7 @@ const readyStock=items=>({status:'READY',complete:true,items});
 const calls=[];
 const sources={
  readSales:async id=>{calls.push(id);return {status:'READY',days:28,products:products.map(key=>({key,label:key,units:280,quantityByUnit:{PC:280}}))};},
- readAssortment:()=>({status:'READY',included:new Set(products)}),
+ readHistory:async()=>({complete:true,products:products.map(productNumber=>({productNumber}))}),
  readWarehouse:async()=>readyStock(products.map(productNumber=>({productNumber,availableOnHandQuantity:12}))),
  readStore:async()=>readyStock([]),
  readPO:async()=>({mode:'LIVE',diagnostics:{authoritative:true},items:[]}),
@@ -36,4 +36,13 @@ assert.equal(missingDates.rows.length,135);assert.equal(missingDates.blocked[0].
 const missingLead=await generateReplenishmentOrder({mode:'PO',warehouse:'DC',stores},{...sources,readLeadDays:()=>new Map()});
 assert.equal(missingLead.rows.length,0);assert.equal(missingLead.blocked.length,136);
 await assert.rejects(generateReplenishmentOrder({mode:'PO',warehouse:'DC',stores},{...sources,readSales:async()=>({status:'TRUNCATED'})}),{code:'REPLENISHMENT_INCOMPLETE'});
+const historical=await generateReplenishmentOrder({mode:'PO',warehouse:'DC',stores},{
+ ...sources,
+ readHistory:async shop=>({complete:true,products:(shop.id==='a'?['hs-0','SANS-VENTE']:['HS-2']).map(productNumber=>({productNumber}))}),
+});
+assert.equal(historical.examined,3,'previously received items remain in the historical assortment even without sales');
+assert.deepEqual(historical.rows.map(row=>[row.sku,row.usage]),[['HS-0',10],['HS-2',10]],'only sales in the receiving store count towards the warehouse demand');
+await assert.rejects(generateReplenishmentOrder({mode:'TO',warehouse:'DC',stores:[stores[0]]},{
+ ...sources,readHistory:async()=>({complete:false,products:[{productNumber:'HS-0'}]}),
+}),{code:'REPLENISHMENT_INCOMPLETE',message:/Détention incomplet/});
 console.log('PASS whole-scope PO/TO, network demand, warehouse stock cap, dated inbound and missing data gates');
