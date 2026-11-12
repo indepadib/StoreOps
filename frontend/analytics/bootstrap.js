@@ -4,7 +4,7 @@ import { ensureAccessToken, ensureLocalSession } from '/js/auth.js';
 
 function showBootFailure(message){
   const root=document.querySelector('#analyticsContent')||document.querySelector('main');
-  if(root)root.innerHTML=`<section class="empty-product"><div class="empty-icon">!</div><h1>Retail Intelligence indisponible</h1><p>${String(message||'Erreur de démarrage').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</p></section>`;
+  if(root)root.insertAdjacentHTML('afterbegin',`<section class="empty-product"><div class="empty-icon">!</div><h1>Retail Intelligence indisponible</h1><p>${String(message||'Erreur de démarrage').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</p></section>`);
 }
 
 function returnToStoreOps(){
@@ -12,7 +12,8 @@ function returnToStoreOps(){
   location.assign('/');
 }
 
-const analyticsAsset=path=>`${path}?v=${encodeURIComponent(window.RETAIL_INTELLIGENCE_BUILD||'dev')}`;
+const build=new URL(import.meta.url).searchParams.get('v')||'dev';
+const analyticsAsset=path=>`${path}?v=${encodeURIComponent(build)}`;
 
 async function start(){
   try{

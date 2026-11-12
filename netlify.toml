@@ -83,6 +83,21 @@
 
 # Independent Buying Group: always revalidate its authentication bootstrap.
 [[headers]]
+  for = "/analytics"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
+  for = "/analytics/"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
+  for = "/analytics/index.html"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+
+[[headers]]
   for = "/centrale-achat/*"
   [headers.values]
     Cache-Control = "no-cache, max-age=0, must-revalidate"
