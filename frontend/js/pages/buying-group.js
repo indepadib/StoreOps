@@ -35,8 +35,11 @@ const badge=(name,kind='neutral')=>'<span class="bg-badge '+kind+'">'+e(name)+'<
 function header(){
   const store=currentStore();
   return '<div class="bg-hero"><div class="bg-hero-glow"></div><div class="bg-overline">H&S · BUYING GROUP OS <span> / </span> PROCUREMENT INTELLIGENCE</div>'+
-  '<div class="bg-hero-layout"><div><h2>Vos contrats.<br><em>Des décisions suivies.</em></h2><p>Déposer, lire, vérifier, approuver et suivre les accords fournisseurs Groupe — des actions concrètes, avec leurs preuves.</p>'+
-  '<div class="bg-hero-chips">'+badge('Pilote StoreOps','light')+badge('Accès Direction','light')+badge('Lecture seule D365','light')+'</div></div>'+
+  '<div class="bg-hero-layout"><div><h2>Des accords maîtrisés.<br><em>Des remises récupérées.</em></h2><p>Contrats fournisseurs, clauses vérifiées, demandes de RFA et preuves de règlement — dans un même espace de pilotage.</p>'+
+  '<div class="bg-hero-chips">'+badge('Données H&S privées','light')+badge('Accès Direction','light')+badge('Aucune écriture ERP','light')+'</div>'+ 
+  '<div class="bg-hero-actions"><button data-bg-tab="workflow" type="button">Importer un contrat</button>'+ 
+  '<button data-bg-tab="recovery" type="button">Suivre les RFA</button>'+ 
+  '<button data-bg-tab="process" type="button">Voir les échéances</button></div></div>'+
   '<div class="bg-hero-side"><span>CONTEXTE DE CONNEXION</span><strong>'+e(app.user?.name||'Direction')+'</strong>'+
   '<small>'+e(store?.name||'Magasin non sélectionné')+' · '+e(app.authMode||'—')+'</small><div class="bg-hero-side-line"></div>'+
   '<small>Contrats H&S persistants · consolidations D365 non connectées</small></div></div></div>';
