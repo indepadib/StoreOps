@@ -3,7 +3,7 @@ import {db} from '../db.mjs';
 import {readStoreSalesRange} from './dynamics-sales.mjs';
 import {readStoreStockSnapshot,readWarehouseStockSnapshot} from './dynamics-stock.mjs';
 import {listExpectedPurchaseOrders,listExpectedTransferOrders} from './dynamics-receiving.mjs';
-import {assortmentIndex} from './assortment-resolver.mjs';
+import {prepareReceiptHistory,readReceiptHistory} from './analytics-receipt-history.mjs';
 import {productTaxonomy} from './assortment.mjs';
 import {releasedProductSourcingMany} from './released-product-sourcing.mjs';
 import {listReplenishmentRules,resolveReplenishmentPolicy} from './replenishment-policy.mjs';
@@ -74,22 +74,46 @@ function observedSupplierLeadDays(warehouse,day){
  return new Map([...samples].filter(([,values])=>values.length>=3).map(([supplier,values])=>[supplier,values.sort((a,b)=>a-b)[Math.floor(values.length/2)]]));
 }
 
-export async function generateReplenishmentOrder(input,{progress=(_label,_completed,_total)=>{},readSales=readStoreSalesRange,readAssortment=assortmentIndex,readWarehouse=readWarehouseStockSnapshot,readStore=fullStoreStock,readPO=listExpectedPurchaseOrders,readTO=listExpectedTransferOrders,readReferences=releasedProductSourcingMany,readRules=listReplenishmentRules,readTaxonomy=productTaxonomy,readLeadDays=observedSupplierLeadDays}={}){
+async function historicalAssortment(shop,progress){
+ let history=await readReceiptHistory(shop.id,'store');
+ if(history.complete)return history;
+ let cursor=0,snapshot=null;
+ try{
+  do{
+   const page=await prepareReceiptHistory(shop.id,{kind:'store',cursor,snapshot});
+   snapshot=page.snapshot;
+   cursor=page.nextCursor;
+   if(cursor!=null)await progress(`Historique Détention · ${shop.name} · ${page.scanned} lignes lues`);
+  }while(cursor!=null);
+  history=await readReceiptHistory(shop.id,'store');
+ }catch(error){
+  console.error('Replenishment receipt history preparation failed',shop.id,error);
+  throw sourceError(`Historique de réceptions Détention indisponible pour ${shop.name}.`);
+ }
+ return history;
+}
+
+export async function generateReplenishmentOrder(input,{progress=(_label,_completed,_total)=>{},readSales=readStoreSalesRange,readHistory=historicalAssortment,readWarehouse=readWarehouseStockSnapshot,readStore=fullStoreStock,readPO=listExpectedPurchaseOrders,readTO=listExpectedTransferOrders,readReferences=releasedProductSourcingMany,readRules=listReplenishmentRules,readTaxonomy=productTaxonomy,readLeadDays=observedSupplierLeadDays}={}){
  const {mode,stores,warehouse}=input;
  const day=businessDay(),end=shift(day,-1),start=shift(end,-27),store=stores[0];
  const demand=new Map();
  const incoming=new Map();
  for(const [index,shop] of stores.entries()){
+  await progress(`Historique Détention · ${shop.name}`,index,stores.length);
+  const history=await readHistory(shop,label=>progress(label,index,stores.length));
+  if(history.complete!==true||!Array.isArray(history.products)){
+   const detail=history.issues?.map(issue=>issue.reason).filter(Boolean).join(' ; ');
+   throw sourceError(`Historique de réceptions Détention incomplet pour ${shop.name}.${detail?' '+detail:''}`);
+  }
+  const assortment=new Set(history.products.map(product=>clean(product.productNumber)).filter(Boolean));
+  for(const sku of assortment)if(!demand.has(sku))demand.set(sku,[]);
+  if(!assortment.size)continue;
   await progress(`Lecture des ventes · ${shop.name}`,index,stores.length);
   const sales=await readSales(shop.id,{startDate:start,endDate:end,exportLean:true});
   if(sales.status!=='READY'||sales.diagnostics?.truncated||sales.days!==28)throw sourceError(`Historique de ventes incomplet pour ${shop.name}.`);
-  const assortment=readAssortment(shop.id,{businessDate:day,maxAgeHours:36});
-  if(assortment.status!=='READY'||!assortment.included?.size)throw sourceError(`Assortiment à synchroniser pour ${shop.name}.`);
   for(const row of sales.products){
    const sku=clean(row.key);
-   if(!sku||!assortment.included.has(sku))continue;
-   if(!demand.has(sku))demand.set(sku,[]);
-   demand.get(sku).push(row);
+   if(assortment.has(sku))demand.get(sku).push(row);
   }
  }
  await progress('Lecture des stocks et commandes ouvertes',0,1);
@@ -106,7 +130,7 @@ export async function generateReplenishmentOrder(input,{progress=(_label,_comple
   if(!incoming.has(sku))incoming.set(sku,[]);
   incoming.get(sku).push(line);
  }
- const rows=[],blocked=[],codes=[...demand.keys()];
+ const rows=[],blocked=[],codes=[...demand.keys()].filter(sku=>demand.get(sku).length);
  const rules=readRules({storeId:mode==='TO'?store.id:null});
  const observedLead=mode==='PO'?readLeadDays(warehouse,day):new Map();
  const reviewDays=mode==='PO'?3:2;
@@ -141,5 +165,5 @@ export async function generateReplenishmentOrder(input,{progress=(_label,_comple
   }
  }
  rows.sort((a,b)=>String(a.supplier||'').localeCompare(String(b.supplier||''))||a.sku.localeCompare(b.sku));
- return {mode,warehouse,store:mode==='TO'?store.name:null,stores:stores.map(s=>s.name),start,end,reviewDays,rows,blocked,examined:codes.length,demandBasis:mode==='PO'?'Consommation estimée par les ventes des magasins desservis':'Ventes magasin sur 28 jours clos'};
+ return {mode,warehouse,store:mode==='TO'?store.name:null,stores:stores.map(s=>s.name),start,end,reviewDays,rows,blocked,examined:demand.size,assortmentBasis:'Détention · références déjà réceptionnées en magasin',demandBasis:mode==='PO'?'Consommation estimée par les ventes des magasins desservis':'Ventes magasin sur 28 jours clos'};
 }
