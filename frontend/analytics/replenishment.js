@@ -74,15 +74,18 @@ function renderResult(result,summary,rows,number){
 }
 
 export function mountReplenishment(core,host){
- const form=host.querySelector('form'),scope=form.elements.namedItem('scope');
- const status=host.querySelector('[role=status]'),result=host.querySelector('[data-repl-result]'),button=form.querySelector('button');
+ const form=host.querySelector('form[data-repl-order]');
+ const scope=form?.elements.namedItem('scope');
+ const status=host.querySelector('[role=status]'),result=host.querySelector('[data-repl-result]'),button=form?.querySelector('button[type=submit]');
+ const scopeLabel=host.querySelector('[data-scope-label]');
+ if(!scope||!status||!result||!button||!scopeLabel)return;
  const modes=[...host.querySelectorAll('[data-mode]')];
  let mode='TO',scopes=null,generation=0;
  function reset(){generation++;status.textContent='';result.replaceChildren();button.disabled=!scope.value;}
  function setScope(){
   const previous=scope.value;
   const options=mode==='TO'?(scopes?.stores||[]).map(s=>[s.id,s.name]):(scopes?.warehouses||[]).map(id=>[id,id]);
-  host.querySelector('[data-scope-label]').textContent=mode==='TO'?'Magasin de destination':'Entrepôt à réapprovisionner';
+  scopeLabel.textContent=mode==='TO'?'Magasin de destination':'Entrepôt à réapprovisionner';
   const placeholder=element('option',mode==='TO'?'Choisir un magasin':'Choisir un entrepôt');placeholder.value='';
   scope.replaceChildren(placeholder,...options.map(([id,name])=>{const option=element('option',name);option.value=id;return option;}));
   scope.value=options.some(([id])=>id===previous)?previous:options.length===1?options[0][0]:'';

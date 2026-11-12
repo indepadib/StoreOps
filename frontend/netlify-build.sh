@@ -33,7 +33,7 @@ const fs=require('fs');
 const file='analytics/index.html';
 const build=String(process.env.COMMIT_REF||process.env.DEPLOY_ID||process.env.STOREOPS_RELEASE_BUILD||'dev').slice(0,12);
 let html=fs.readFileSync(file,'utf8');
-html=html.replace(/(href|src)="(\/analytics\/[^"?]+\.(?:css|js))(?:\?v=[^"]+)?"/g,(m,attr,url)=>`${attr}="${url}?v=${build}"`);
+html=html.replace(/(href|src)="(\/analytics\/[^"?]+\.(?:css|js)|\/analytics-runtime-config\.js)(?:\?v=[^"]+)?"/g,(m,attr,url)=>`${attr}="${url}?v=${build}"`);
 fs.writeFileSync(file,html);
 NODE
 
