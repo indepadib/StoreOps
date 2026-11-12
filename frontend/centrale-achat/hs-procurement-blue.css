@@ -28,7 +28,7 @@ body{background:var(--hs-canvas);color:var(--hs-ink)}
 #buyingGroupContent .bg-hero-glow{display:none}
 #buyingGroupContent .bg-hero-layout{align-items:center;gap:24px}
 #buyingGroupContent .bg-hero h1{font-size:clamp(29px,3.4vw,49px)!important;margin:10px 0 12px;font-weight:740;letter-spacing:-.045em;line-height:1.05}
-#buyingGroupContent .bg-hero h2 em{color:#a4d3ff}
+#buyingGroupContent .bg-hero h1 em{color:#a4d3ff;font-style:normal}
 #buyingGroupContent .bg-hero p{color:#c9d9ee;font-size:13px;max-width:690px}
 #buyingGroupContent .bg-hero-side{background:#ffffff0b;border:1px solid #ffffff27;border-radius:13px;padding:16px}
 #buyingGroupContent .bg-hero-side small{color:#d2dfec}
