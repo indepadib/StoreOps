@@ -3,8 +3,9 @@ import { app, currentStore, isDirector } from '../state.js';
 import {renderBuyingManagement,loadBuyingManagement,buyingSnapshot} from './buying-group-management.js';
 import {renderPurchaseEvidence,loadPurchaseEvidence,purchaseSnapshot} from './buying-group-purchases.js';
 import {renderWorkflow} from './buying-group-workflows.js';
+import {renderRebateRecovery} from './buying-group-recovery.js';
 
-const PLATFORM_URL='https://hs-buying-group-os.vercel.app';
+// All operative contract workflows remain on the authenticated StoreOps domain.
 const tabs=[
   {id:'workflow',label:'Lire & valider un contrat'},
   {id:'process',label:'Processus & actions'},
@@ -14,6 +15,7 @@ const tabs=[
   {id:'rebates',label:'Marges arrière'},
   {id:'purchases',label:'Journal d’achats'},
   {id:'reconcile',label:'Rapprochement RFA'},
+  {id:'recovery',label:'Recouvrement RFA'},
   {id:'dynamics',label:'Dynamics 365'},
   {id:'audit',label:'Historique'}
 ];
@@ -47,12 +49,13 @@ function overview(){
   metric('Contrats actifs',live?.contracts?.active??'—','Brouillons : '+(live?.contracts?.drafts??'—'),'◇')+
   metric('Pièces contractuelles',live?.documents??'—','PDF et DOCX versionnés','↗')+
   metric('Achats importés',purchase?.total?.line_count??'—','Lignes comptables déclarées','↗')+
-  metric('RFA encaissées','—','À rapprocher des factures D365','✓')+
+  metric('Recouvrement RFA','Suivre','Réclamations, avoirs et soldes déclarés','✓')+
   '</div><div class="bg-workspace">'+
   '<div class="bg-panel bg-priority"><span class="bg-eyebrow">LES PROCHAINES DÉCISIONS</span><h3>De la donnée à l’action</h3>'+
   '<button class="bg-action-row" data-bg-tab="contracts"><span class="bg-action-icon">01</span><span><strong>Structurer les accords fournisseurs</strong><small>Contrats Groupe, annexes enseignes, RFA et échéances</small></span><span>↗</span></button>'+
   '<button class="bg-action-row" data-bg-tab="workflow"><span class="bg-action-icon">02</span><span><strong>Lire et valider un contrat</strong><small>Extraction PDF, preuves, revue, approbation indépendante</small></span><span>↗</span></button>'+
-  '<button class="bg-action-row" data-bg-tab="process"><span class="bg-action-icon">03</span><span><strong>Exécuter les obligations et échéances</strong><small>Approbations en attente, échéances proches, tâches en retard</small></span><span>↗</span></button>'+
+  '<button class="bg-action-row" data-bg-tab="process"><span class="bg-action-icon">03</span><span><strong>Exécuter les obligations et échéances</strong><small>Approbations en attente, échéances proches, tâches en retard</small></span><span>↗</span></button>'+ 
+  '<button class="bg-action-row" data-bg-tab="recovery"><span class="bg-action-icon">04</span><span><strong>Recouvrer les RFA fournisseurs</strong><small>Réclamations, avoirs, preuves et solde restant</small></span><span>↗</span></button>'+
   '</div><div class="bg-panel bg-strategy"><span class="bg-eyebrow">ARCHITECTURE</span><h3>Autonome dès sa conception.</h3>'+
   '<p>Nous réutilisons la session et les API StoreOps, mais conservons le futur référentiel contrats et les règles financières dans un domaine métier séparé.</p>'+
   '<div class="bg-progress-step"><i>01</i><span>Connexion et navigation StoreOps</span>'+badge('Pilote','success')+'</div>'+
@@ -110,8 +113,8 @@ function contracts(){
  return '<div class="bg-section-title"><div><span class="bg-eyebrow">CONTRACT INTELLIGENCE</span><h3>Du PDF au contrat pilotable.</h3></div></div>'+
  '<div class="bg-contract-layout"><div class="bg-panel bg-contract-hero"><span class="bg-contract-symbol">✳</span><h3>Chaque clause doit devenir une règle contrôlée.</h3>'+
  '<p>Le moteur cible saura lire un contrat Word ou PDF, proposer les taux, seuils, assiettes, exclusions et échéances, puis demander une validation avant tout calcul financier.</p>'+
- '<a class="bg-btn bg-btn-primary" href="'+PLATFORM_URL+'" rel="noopener noreferrer" target="_blank">Ouvrir la maquette contrats ↗</a>'+
- '<small>Maquette externe, sans intégration à la session StoreOps. Ne pas déposer de contrat confidentiel.</small></div>'+
+ '<button class="bg-btn bg-btn-primary" data-bg-tab="workflow">Ouvrir le parcours contractuel H&S</button>'+
+ '<small>Accès authentifié dans la Centrale d’achat, sans sortie du site.</small></div>'+
  '<div class="bg-panel"><span class="bg-eyebrow">CHAÎNE DOCUMENTAIRE CIBLE</span>'+
  ['Déposer le document dans un stockage privé','Extraire les valeurs et preuves par page','Rattacher à un fournisseur Groupe et à une entité','Vérifier et approuver les clauses financières','Versionner les avenants, échéances et approbations'].map((x,i)=>'<div class="bg-checkline"><span>'+String(i+1).padStart(2,'0')+'</span><strong>'+e(x)+'</strong></div>').join('')+
  '<p class="bg-hint">Le stockage et l’IA contractuelle ne sont pas encore reliés à ce module StoreOps.</p></div></div>';
@@ -155,6 +158,7 @@ function renderActive(){
  if(active==='simulation')return simulation();
  if(['suppliers','contracts','rebates','audit'].includes(active))return '<section id="bgManagement" aria-live="polite"></section>';
  if(['purchases','reconcile'].includes(active))return '<section id="bgPurchases" aria-live="polite"></section>';
+ if(active==='recovery')return '<section id="bgRecovery" aria-live="polite"></section>';
  if(['workflow','process'].includes(active))return '<section id="bgWorkflow" aria-live="polite"></section>';
  return dynamics();
 }
@@ -205,6 +209,8 @@ export function renderBuyingGroup(){
  if(purchaseHost)void renderPurchaseEvidence(state.tab,purchaseHost);
  const workflowHost=root.querySelector('#bgWorkflow');
  if(workflowHost)void renderWorkflow(state.tab,workflowHost,(next)=>{state.tab=next;renderBuyingGroup()});
+ const recoveryHost=root.querySelector('#bgRecovery');
+ if(recoveryHost)void renderRebateRecovery(recoveryHost);
  if(state.tab==='overview'&&(!buyingSnapshot()||!purchaseSnapshot()))void Promise.allSettled([loadBuyingManagement(),loadPurchaseEvidence()]).then(()=>{
    if(state.tab==='overview')renderBuyingGroup();
  });
