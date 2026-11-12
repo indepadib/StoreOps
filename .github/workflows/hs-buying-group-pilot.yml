@@ -13,6 +13,9 @@ on:
       - "backend/services/buying-group-reading-jobs.mjs"
       - "netlify/functions/hs-contract-reader-background.mts"
       - "frontend/js/pages/buying-group-reading-queue.js"
+      - "frontend/js/pages/buying-group-recovery.js"
+      - "backend/services/buying-group-recovery.mjs"
+      - "tests/buying-group-recovery.test.mjs"
       - "tests/buying-group-reading-jobs.test.mjs"
       - "frontend/js/pages/buying-group-reading-view.js"
       - "tests/buying-group-deep-reading.test.mjs"
@@ -50,6 +53,9 @@ on:
       - "backend/services/buying-group-reading-jobs.mjs"
       - "netlify/functions/hs-contract-reader-background.mts"
       - "frontend/js/pages/buying-group-reading-queue.js"
+      - "frontend/js/pages/buying-group-recovery.js"
+      - "backend/services/buying-group-recovery.mjs"
+      - "tests/buying-group-recovery.test.mjs"
       - "tests/buying-group-reading-jobs.test.mjs"
       - "frontend/js/pages/buying-group-reading-view.js"
       - "tests/buying-group-deep-reading.test.mjs"
@@ -102,6 +108,9 @@ jobs:
           node --check backend/services/buying-group-reading-quality.mjs
           node --check backend/services/buying-group-reading-jobs.mjs
           node --check frontend/js/pages/buying-group-reading-queue.js
+          node --check frontend/js/pages/buying-group-recovery.js
+          node --check backend/services/buying-group-recovery.mjs
+          node --check tests/buying-group-recovery.test.mjs
           node --check tests/buying-group-reading-jobs.test.mjs
           node --check frontend/js/pages/buying-group-reading-view.js
           node --check tests/buying-group-deep-reading.test.mjs
@@ -114,4 +123,4 @@ jobs:
           node --check frontend/centrale-achat/entry.js
           node --check tests/buying-group.test.mjs
       - name: Buying Group regression contract
-        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs tests/buying-group-contract-workflow.test.mjs tests/buying-group-direct-import.test.mjs tests/buying-group-deep-reading.test.mjs tests/buying-group-reading-jobs.test.mjs
+        run: node --test tests/buying-group.test.mjs tests/buying-group-operations.test.mjs tests/buying-group-purchases.test.mjs tests/buying-group-d365.test.mjs tests/buying-group-contract-workflow.test.mjs tests/buying-group-direct-import.test.mjs tests/buying-group-deep-reading.test.mjs tests/buying-group-reading-jobs.test.mjs tests/buying-group-recovery.test.mjs
