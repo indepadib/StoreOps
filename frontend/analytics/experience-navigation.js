@@ -28,20 +28,21 @@ const navGroups=[
  ['RELATION CLIENT',['crm','loyalty','cashiers']],
  ['EXÉCUTION & DONNÉES',['inventory','detention','replenishment','reference']]
 ];
-const intents={
- overview:[['Comprendre les variations','Pourquoi le CA évolue-t-il ? Distingue le trafic et le panier moyen.'],['Analyser les clients','crm'],['Contrôler le réseau','network']],
- sales:[['Identifier les moteurs du CA','Quels sont les trois facteurs principaux de variation du CA ?'],['Explorer les catégories','categories'],['Voir les clients','crm']],
- crm:[['Comprendre les non-retours','Pourquoi certains clients ne reviennent-ils plus ? Compare fréquence, paniers et produits abandonnés.'],['Voir les paniers avant/après','journey'],['Analyser la fidélité','loyalty']],
- network:[['Magasins en recul','Quels magasins expliquent le recul et pourquoi ?'],['Comparer les ventes','sales'],['Voir les stocks','inventory']],
- categories:[['Articles qui pèsent sur le CA','Quelles références expliquent les principales baisses de ventes ?'],['Voir les promotions','promotions'],['Analyser les clients','crm']],
- promotions:[['Effet des remises','Que nous apprennent les promotions sur le CA et les clients identifiés ?'],['Voir les clients','crm'],['Voir les produits','categories']],
- loyalty:[['Recrutement & valeur','Combien de clients ont été recrutés et quel est leur impact ?'],['Parcours clients','crm'],['Voir les ventes','sales']],
- suppliers:[['Taux de service','service'],['Proposer une commande','purchase'],['Vérifier les conditions prix','price']],
- detention:[['Réceptions historiques','historical-range'],['Proposer un transfert','purchase'],['Voir les stocks','availability']],
- replenishment:[['Vérifier l’assortiment historique','historical-range'],['Voir les stocks','availability'],['Voir le taux de service','service']],
- inventory:[['Comprendre les ruptures','Quels articles sont à risque de rupture et quelles actions prioriser ?'],['Détention magasin','detention'],['Impact sur les ventes','sales']]
+const pageActions={
+ overview:[['Comparer les magasins','store-comparison'],['Comprendre la variation du CA','turnover']],
+ sales:[['Voir le CA et le panier moyen','turnover'],['Voir les articles qui expliquent les ventes','category']],
+ network:[['Voir les écarts entre magasins','store-comparison'],['Vérifier les ruptures','availability']],
+ categories:[['Comparer les produits et les rayons','category'],['Consulter la fiche article','catalog']],
+ suppliers:[['Voir le taux de service','service'],['Préparer une commande','purchase']],
+ crm:[['Voir qui ne revient plus','retention'],['Voir les tickets identifiés','identification']],
+ loyalty:[['Voir les tickets identifiés','identification'],['Comparer les paniers clients','retention']],
+ promotions:[['Voir les ventes et remises','promotion'],['Vérifier le prix applicable','price']],
+ inventory:[['Voir les ruptures et anomalies','availability'],['Préparer un transfert','purchase']],
+ replenishment:[['Préparer une commande ou un transfert','purchase'],['Vérifier les articles déjà reçus','historical-range']],
+ detention:[['Voir les articles déjà reçus','historical-range'],['Préparer un transfert','purchase']],
+ reference:[['Chercher un code ou une fiche article','catalog'],['Voir les prix applicables','price']],
+ cashiers:[['Voir les résultats par caissier','cashier-results'],['Voir les tickets identifiés','identification']]
 };
-const fallbackActions=[['Voir les ventes','sales'],['Comprendre les clients','crm'],['Interroger le compagnon','Comment évolue cette activité et que vérifier ?']];
 const modes=[
  {id:'focus',label:"L’essentiel",description:'Les messages et indicateurs prioritaires, sans tableaux secondaires.'},
  {id:'explore',label:'Explorer',description:'Analyses, comparaisons et enquêtes détaillées.'},
@@ -90,8 +91,8 @@ function updateHeading(){
  if(el('riExperienceSubtitle'))el('riExperienceSubtitle').textContent=section.description;
  const actions=el('riExperienceActions');if(!actions)return;
  actions.replaceChildren();
- for(const [label,command] of (intents[section.id]||fallbackActions)){
-  const b=node('button','ri-intent-chip',label);b.type='button';b.dataset.riAction=command;actions.append(b)
+ for(const [label,command] of pageActions[section.id]){
+  const b=node('button',actions.childElementCount?'ri-intent-chip':'ri-intent-chip ri-intent-primary',label);b.type='button';b.dataset.riAction=command;actions.append(b)
  }
  const active=el('riExperienceLens');
  if(active)active.setAttribute('aria-label','Niveau de lecture — '+section.label);
@@ -116,13 +117,13 @@ function act(command){
    if(!target)return;
    if(!target.getClientRects().length&&!target.closest('[hidden]'))setMode('full',{remember:false});
    if(!target.getClientRects().length)return;
-   if(!target.hasAttribute('tabindex'))target.setAttribute('tabindex','-1');
+   if(target.tabIndex<0&&!target.hasAttribute('tabindex'))target.setAttribute('tabindex','-1');
    target.focus({preventScroll:true});
    target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
   });
   return
  }
- if(byId[command]){getClient()?.navigate?.(command);return}
+ if(byId[command]){getClient()?.navigate?.(command,{scroll:true});return}
  openAssistant(command)
 }
 function defineFinder(){
@@ -139,9 +140,9 @@ function defineFinder(){
   ...extras.map(x=>({title:x.label,description:x.description,terms:x.label,action:x.question,kind:'question'}))
  ];
  function renderFinder(value=''){
-  const rows=rankDestinations(entries,value);
+  const rows=value.trim()?rankDestinations(entries,value):entries.filter(item=>item.kind==='section');
   results.replaceChildren();
-  for(const item of rows.slice(0,12)){
+  for(const item of rows.slice(0,13)){
    const button=node('button','ri-finder-item');button.type='button';
    button.dataset.riFinderAction=item.action;
    const symbol=node('span','ri-finder-icon',item.kind==='question'?'✦':'◈');
