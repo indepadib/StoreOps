@@ -1,3 +1,4 @@
+import {dataDestinations,rankDestinations} from '../../frontend/analytics/data-destinations.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -52,3 +53,16 @@ for(const id of ['analyticsContent','filterbar','crmIntelligence','customerResea
 assert.doesNotMatch(js,/api\/analytics|fetch\(|\.reload\(/,'Experience layer must not change data access or trigger extra D365 requests');
 assert.match(js,/getState\?\./);
 console.log('Analytics Experience V1: progressive disclosure, accessibility, keyboard search, intact data and reduced-motion contracts passed.');
+
+for(const [query,id] of [
+ ['taux de service fournisseur','service'],['panier moyen ca','turnover'],['clients non revus','retention'],
+ ['réceptions historiques','historical-range'],['code interne ean','catalog'],['transfert entrepôt','purchase'],
+]){
+ assert.equal(rankDestinations(dataDestinations,query)[0]?.id,id,query);
+}
+for(const item of dataDestinations){
+ assert.match(html,new RegExp('data-section="'+item.section+'"'));
+ if(item.target==='detentionViews')assert.match(get('detention-views.js'),/host.id='detentionViews'/);
+ else assert.match(html,new RegExp('id="'+item.target+'"'));
+}
+assert.match(js,/navigate\?\.\(destination.section\)/);

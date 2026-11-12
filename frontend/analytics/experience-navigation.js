@@ -3,8 +3,8 @@
  * Navigation, progressive disclosure and keyboard search — no data mutation,
  * no fetch, no change to store permissions, KPI formulas, or existing widgets.
  */
+import {dataDestinations,rankDestinations} from './data-destinations.js';
 const el=id=>document.getElementById(id);
-const norm=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n};
 const sections=[
  {id:'overview',label:'Vue exécutive',description:'Les résultats essentiels et les décisions à prendre.',search:'accueil synthese direction performance prioritaires'},
@@ -36,6 +36,9 @@ const intents={
  categories:[['Articles qui pèsent sur le CA','Quelles références expliquent les principales baisses de ventes ?'],['Voir les promotions','promotions'],['Analyser les clients','crm']],
  promotions:[['Effet des remises','Que nous apprennent les promotions sur le CA et les clients identifiés ?'],['Voir les clients','crm'],['Voir les produits','categories']],
  loyalty:[['Recrutement & valeur','Combien de clients ont été recrutés et quel est leur impact ?'],['Parcours clients','crm'],['Voir les ventes','sales']],
+ suppliers:[['Taux de service','service'],['Proposer une commande','purchase'],['Vérifier les conditions prix','price']],
+ detention:[['Réceptions historiques','historical-range'],['Proposer un transfert','purchase'],['Voir les stocks','availability']],
+ replenishment:[['Vérifier l’assortiment historique','historical-range'],['Voir les stocks','availability'],['Voir le taux de service','service']],
  inventory:[['Comprendre les ruptures','Quels articles sont à risque de rupture et quelles actions prioriser ?'],['Détention magasin','detention'],['Impact sur les ventes','sales']]
 };
 const fallbackActions=[['Voir les ventes','sales'],['Comprendre les clients','crm'],['Interroger le compagnon','Comment évolue cette activité et que vérifier ?']];
@@ -105,11 +108,19 @@ function openAssistant(question){
  return true
 }
 function act(command){
- if(command==='journey'){
-  setMode('explore');
-  const target=el('customerResearch');
-  if(target){target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});return}
-  getClient()?.navigate?.('crm');return
+ const destination=dataDestinations.find(item=>item.id===(command==='journey'?'retention':command));
+ if(destination){
+  if(selectedSection()!==destination.section)getClient()?.navigate?.(destination.section);
+  requestAnimationFrame(()=>{
+   const target=el(destination.target);
+   if(!target)return;
+   if(!target.getClientRects().length&&!target.closest('[hidden]'))setMode('full',{remember:false});
+   if(!target.getClientRects().length)return;
+   if(!target.hasAttribute('tabindex'))target.setAttribute('tabindex','-1');
+   target.focus({preventScroll:true});
+   target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
+  });
+  return
  }
  if(byId[command]){getClient()?.navigate?.(command);return}
  openAssistant(command)
@@ -123,20 +134,17 @@ function defineFinder(){
   {label:'Diagnostiquer les ruptures',description:'Question au compagnon',question:'Quels articles peuvent être en rupture et quels contrôles de disponibilité effectuer ?'}
  ];
  const entries=[
+  ...dataDestinations.map(x=>({...x,action:x.id,kind:'data'})),
   ...sections.map(s=>({title:s.label,description:s.description,terms:s.search,action:s.id,kind:'section'})),
   ...extras.map(x=>({title:x.label,description:x.description,terms:x.label,action:x.question,kind:'question'}))
  ];
  function renderFinder(value=''){
-  const q=norm(value);
-  const rows=entries.map(x=>{
-   const name=norm(x.title),d=norm(x.description),search=norm(x.terms||'');
-   return{...x,score:!q?1:name===q?10:name.startsWith(q)?8:name.includes(q)?6:search.includes(q)?4:d.includes(q)?2:0}
-  }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score);
+  const rows=rankDestinations(entries,value);
   results.replaceChildren();
   for(const item of rows.slice(0,12)){
    const button=node('button','ri-finder-item');button.type='button';
    button.dataset.riFinderAction=item.action;
-   const symbol=node('span','ri-finder-icon',item.kind==='section'?'◈':'✦');
+   const symbol=node('span','ri-finder-icon',item.kind==='question'?'✦':'◈');
    const stack=node('span','ri-finder-copy');stack.append(node('strong',null,item.title),node('small',null,item.description));
    button.append(symbol,stack);results.append(button)
   }
@@ -168,7 +176,9 @@ function defineFinder(){
  });
  results.addEventListener('click',event=>{
   const target=event.target.closest('[data-ri-finder-action]');if(!target)return;
-  dialog.close();act(target.dataset.riFinderAction)
+  const command=target.dataset.riFinderAction;
+  if(dataDestinations.some(item=>item.id===command))priorFocus=null;
+  dialog.close();act(command)
  });
  dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
  dialog.addEventListener('close',()=>{if(priorFocus?.isConnected)priorFocus.focus();priorFocus=null});
