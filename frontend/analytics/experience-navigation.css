@@ -195,3 +195,6 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
  .ri-finder-dialog::backdrop{background:rgba(10,18,31,.8);backdrop-filter:none!important}
 }
 @media print{#riExperience,#riFinderTrigger,#riFilterMore,#riFinderDialog,.ri-nav-label{display:none!important}body[data-ri-mode="focus"] :is(#crmIntelligence > .decision-grid,#crmIntelligence > .decision-table-wrap,#salesDiagnostic .decision-table-wrap){display:revert!important}}
+
+.ri-intent-primary{min-height:44px;background:#23354c;border-color:#23354c;color:#fff}
+.ri-intent-primary::before{color:#fff}

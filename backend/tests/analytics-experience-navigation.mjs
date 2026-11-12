@@ -66,3 +66,11 @@ for(const item of dataDestinations){
  else assert.match(html,new RegExp('id="'+item.target+'"'));
 }
 assert.match(js,/navigate\?\.\(destination.section\)/);
+
+const analytics=get('analytics.js');
+for(const [,section] of html.matchAll(/data-section="(\w+)"/g)){
+ assert.match(js,new RegExp('^ '+section+':\\[','m'),section+' must have its own page actions');
+ assert.match(analytics,new RegExp('^    '+section+': \\[','m'),section+' must support direct links');
+}
+assert.match(analytics,/addEventListener\('popstate', \(\) => navigateSection\(sectionFromUrl\(\)/);
+assert.match(js,/entries.filter\(item=>item.kind==='section'\)/,'Finder must list all pages before typing');

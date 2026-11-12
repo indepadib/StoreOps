@@ -10,7 +10,8 @@ export const dataDestinations=[
  {id:'retention',title:'Clients non revus et paniers avant/après',section:'crm',target:'customerResearch',terms:'marketing fidélité rétention cohortes clients paniers avant après non retour fréquence',description:'Clients & CRM · étude par période'},
  {id:'identification',title:'Identification des clients et cartes fidélité',section:'loyalty',target:'loyaltyIntelligence',terms:'fidélité recrutement inscription enrôlement carte nouveaux comptes client',description:'Fidélité · tickets identifiés et données du programme'},
  {id:'price',title:'Prix article et conditions commerciales',section:'sales',target:'pricingLab',terms:'prix pricing promotion trade agreement tarif ean article',description:'Ventes · prix applicable par article, magasin et date'},
- {id:'catalog',title:'Fiche article et hiérarchie D365',section:'reference',target:'referenceTable',terms:'ean sku code interne référentiel article fournisseur unité rayon famille',description:'Référentiel · caractéristiques et classement'},
+ {id:'catalog',title:'Fiche article et hiérarchie D365',section:'reference',target:'referenceSearch',terms:'ean sku code interne référentiel article fournisseur unité rayon famille',description:'Référentiel · caractéristiques et classement'},
+ {id:'cashier-results',title:'Résultats par caissier',section:'cashiers',target:'cashierIntelligence',terms:'caissiers caisse tickets identification recrutement équipe',description:'Caissiers · tickets et identification par personne'},
 ];
 
 export const normalizeSearch=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();

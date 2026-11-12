@@ -5,6 +5,27 @@
 
   const TENANTS = window.RETAIL_INTELLIGENCE_TENANTS || {};
 
+  const SECTION_WIDGETS = {
+    overview: ['executiveOnePager'],
+    sales: ['decisionSales','customerBi','pricingLab','decisionStudio'],
+    network: ['storeBenchmark','decisionStudio'],
+    categories: ['productPerformance','decisionStudio'],
+    reference: ['articleReference'],
+    detention: ['customerBi','decisionStudio'],
+    replenishment: ['replenishment'],
+    suppliers: ['supplierIntelligence','decisionStudio'],
+    crm: ['crmIntelligence','decisionStudio'],
+    inventory: ['inventory','decisionStudio'],
+    loyalty: ['loyalty','decisionStudio'],
+    cashiers: ['cashiers','decisionStudio'],
+    promotions: ['promotions','decisionStudio']
+  };
+
+  function sectionFromUrl(){
+    const section = new URLSearchParams(location.search).get('section');
+    return Object.hasOwn(SECTION_WIDGETS, section) ? section : 'overview';
+  }
+
   const state = {
     tenant: 'franprix',
     session: null,
@@ -12,7 +33,7 @@
     pulses: [],
     selectedStore: 'ALL',
     selectedStoreIds: [],
-    section: ['reference','detention','sales','categories','replenishment'].includes(new URLSearchParams(location.search).get('section')) ? new URLSearchParams(location.search).get('section') : 'overview',
+    section: sectionFromUrl(),
     periodPreset: '7d',
     periodStart: shiftDate(isoDate(new Date()), -6),
     periodEnd: isoDate(new Date()),
@@ -1107,25 +1128,30 @@
       toast('Vue locale réinitialisée');
     });
 
-    $$('.side-nav button:not(:disabled)').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.section = btn.dataset.section || 'overview';
-        applySectionView();
-        setMobileNavOpen(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        refreshForPeriod(false);
-      });
+    $$('.side-nav button[data-section]:not(:disabled), [data-mobile-section]').forEach(btn => {
+      btn.addEventListener('click', () => navigateSection(btn.dataset.section || btn.dataset.mobileSection, {scroll: true}));
     });
+    window.addEventListener('popstate', () => navigateSection(sectionFromUrl(), {historyMode: 'none', scroll: true}));
+  }
 
-    $$('[data-mobile-section]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        state.section = btn.dataset.mobileSection || 'overview';
-        applySectionView();
-        setMobileNavOpen(false);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        refreshForPeriod(false);
-      });
-    });
+  function writeSectionUrl(section, method){
+    const url = new URL(location.href);
+    if(section === 'overview')url.searchParams.delete('section');
+    else url.searchParams.set('section', section);
+    if(url.href !== location.href)history[method](null, '', url);
+  }
+
+  function navigateSection(section, {historyMode = 'pushState', scroll = false} = {}){
+    if(!Object.hasOwn(SECTION_WIDGETS, section))return;
+    if(historyMode !== 'none')writeSectionUrl(section, historyMode);
+    const changed = state.section !== section;
+    state.section = section;
+    setMobileNavOpen(false);
+    if(changed){
+      applySectionView();
+      refreshForPeriod(false);
+    }
+    if(scroll)window.scrollTo({top: 0, behavior: 'instant'});
   }
 
   function currentViewPayload() {
@@ -1207,7 +1233,8 @@
       applyTenant();
     }
 
-    state.section = SECTION_WIDGETS[payload.section] ? payload.section : state.section;
+    state.section = Object.hasOwn(SECTION_WIDGETS, payload.section) ? payload.section : state.section;
+    writeSectionUrl(state.section, 'pushState');
     state.periodPreset = payload.periodPreset || state.periodPreset;
     state.periodStart = payload.periodStart || payload.businessDate || state.periodStart;
     state.periodEnd = payload.periodEnd || payload.businessDate || state.periodEnd;
@@ -1280,22 +1307,6 @@
     $('#drawerBackdrop').hidden = true;
   }
 
-  const SECTION_WIDGETS = {
-    overview: ['executiveOnePager'],
-    sales: ['decisionSales','customerBi','pricingLab','decisionStudio'],
-    network: ['storeBenchmark','decisionStudio'],
-    categories: ['productPerformance','decisionStudio'],
-    reference: ['articleReference'],
-    detention: ['customerBi','decisionStudio'],
-    replenishment: ['replenishment'],
-    suppliers: ['supplierIntelligence','decisionStudio'],
-    crm: ['crmIntelligence','decisionStudio'],
-    inventory: ['inventory','decisionStudio'],
-    loyalty: ['loyalty','decisionStudio'],
-    cashiers: ['cashiers','decisionStudio'],
-    promotions: ['promotions','decisionStudio']
-  };
-
   function applySectionView() {
     const allowed = new Set(SECTION_WIDGETS[state.section] || SECTION_WIDGETS.overview);
     document.body.dataset.analyticsSection = state.section;
@@ -1324,7 +1335,10 @@
     }
 
     $$('.side-nav button[data-section]').forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.section === state.section);
+      const active = btn.dataset.section === state.section;
+      btn.classList.toggle('active', active);
+      if(active)btn.setAttribute('aria-current','page');
+      else btn.removeAttribute('aria-current');
     });
     $$('[data-mobile-section]').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mobileSection === state.section);
@@ -1404,13 +1418,13 @@
   }
 
   window.RETAIL_INTELLIGENCE = {
-    applyAnalysisScope:target=>{const dates=[target.start,target.end,target.compareStart,target.compareEnd];if(dates.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x||''))||target.start>target.end||target.compareStart>target.compareEnd||target.compareEnd>=target.start)throw new Error('Période invalide');const ids=target.storeIds||[];if(!Array.isArray(ids)||ids.some(id=>!state.stores.some(s=>s.id===id)))throw new Error('Magasin hors périmètre');state.periodPreset='custom';state.comparisonMode='custom';state.periodStart=target.start;state.periodEnd=target.end;state.compareStart=target.compareStart;state.compareEnd=target.compareEnd;state.selectedStoreIds=[...new Set(ids)];state.section='sales';syncStoreSelectionState();hydrateStoreFilter();applySectionView();refreshForPeriod(false);},
+    applyAnalysisScope:target=>{const dates=[target.start,target.end,target.compareStart,target.compareEnd];if(dates.some(x=>!/^\d{4}-\d{2}-\d{2}$/.test(x||''))||target.start>target.end||target.compareStart>target.compareEnd||target.compareEnd>=target.start)throw new Error('Période invalide');const ids=target.storeIds||[];if(!Array.isArray(ids)||ids.some(id=>!state.stores.some(s=>s.id===id)))throw new Error('Magasin hors périmètre');state.periodPreset='custom';state.comparisonMode='custom';state.periodStart=target.start;state.periodEnd=target.end;state.compareStart=target.compareStart;state.compareEnd=target.compareEnd;state.selectedStoreIds=[...new Set(ids)];state.section='sales';writeSectionUrl(state.section,'pushState');syncStoreSelectionState();hydrateStoreFilter();applySectionView();refreshForPeriod(false);},
     getState: () => state,
     getSelectedStores: () => selectedStores(),
     getStoreScopeKey: () => state.selectedStoreIds.length ? [...state.selectedStoreIds].sort().join(',') : 'ALL',
     getStoreScopeLabel: () => storeScopeLabel(),
     api,
-    navigate:section=>{if(SECTION_WIDGETS[section]){state.section=section;applySectionView();refreshForPeriod(false)}},
+    navigate:navigateSection,
     money,
     number,
     percent,
