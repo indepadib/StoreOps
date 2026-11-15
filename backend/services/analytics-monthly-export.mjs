@@ -43,7 +43,7 @@ function quantityMap(row={}){
 }
 function mergeQuantity(target,source){for(const [u,v] of source||[])target.set(u,(target.get(u)||0)+n(v))}
 function singleQuantity(q){
- const rows=[...(q||new Map()).entries()].filter(([,v])=>n(v)!==0);
+ const rows=[...(q||new Map()).entries()];
  return rows.length===1?{unit:rows[0][0],units:round2(rows[0][1])}:{unit:null,units:null}
 }
 function combineRanges(ranges=[]){
@@ -62,8 +62,17 @@ function combineRanges(ranges=[]){
 }
 function combineEvidence(parts=[]){
  const valid=parts.filter(x=>x&&Array.isArray(x.baskets));
- if(!valid.length)return null;
+ if(!valid.length||valid.length!==parts.length)return null;
  return{baskets:valid.flatMap(x=>x.baskets||[]),rejectedIdentity:valid.reduce((s,x)=>s+n(x.rejectedIdentity),0)}
+}
+function reconciledEvidence(evidence,range){
+ if(!evidence||!Array.isArray(evidence.baskets))return{evidence:null,error:'BASKET_COLLECTION_UNAVAILABLE'};
+ if(n(evidence.rejectedIdentity)>0)return{evidence:null,error:'BASKET_IDENTITY_INCOMPLETE'};
+ if(evidence.baskets.some(b=>!Array.isArray(b?.items)||b.items.some(i=>i?.sales==null||!Number.isFinite(Number(i.sales)))))return{evidence:null,error:'BASKET_INVALID_SALES'};
+ if(range?.summary?.tickets==null||evidence.baskets.length!==Number(range.summary.tickets))return{evidence:null,error:'BASKET_TICKETS_MISMATCH'};
+ const sales=evidence.baskets.reduce((sum,b)=>sum+b.items.reduce((s,i)=>s+Number(i.sales),0),0);
+ if(range?.summary?.sales==null||!Number.isFinite(Number(range.summary.sales))||Math.abs(sales-Number(range.summary.sales))>0.020001)return{evidence:null,error:'BASKET_SALES_MISMATCH'};
+ return{evidence,error:null}
 }
 function basketStats(evidence){
  if(!evidence||!Array.isArray(evidence.baskets))return{ready:false,totalTickets:null,products:new Map()};
@@ -147,7 +156,7 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
   const c=cm.get(productNumber)||{},p=pm.get(productNumber)||{},cat=catalog.get(productNumber)||{},bc=cb.products.get(productNumber)||{},bp=pb.products.get(productNumber)||{};
   const cq=singleQuantity(quantityMap(c)),pq=singleQuantity(quantityMap(p)),sameUnit=!!cq.unit&&cq.unit===pq.unit,avgPriceC=cq.units>0?round2(n(c.sales)/cq.units):null,avgPriceP=pq.units>0?round2(n(p.sales)/pq.units):null;
   const assocC=bc.topAssociation||{},assocP=bp.topAssociation||{},assocCatC=catalog.get(assocC.productNumber)||{},assocCatP=catalog.get(assocP.productNumber)||{};
-  const basketNumber=(stats,row,key)=>stats.ready?(row[key]??0):null;
+  const basketNumber=(stats,row,key)=>stats.ready?(Object.hasOwn(row,key)?row[key]:0):null;
   return{
    scope_type:scopeType,store_id:storeId||'RÉSEAU',store_code:storeCode||'RÉSEAU',store_name:storeName,
    period_start:currentPeriod.startDate,period_end:currentPeriod.endDate,n1_start:previousPeriod.startDate,n1_end:previousPeriod.endDate,comparison_type:comparisonLabel(comparisonType),
@@ -167,9 +176,10 @@ function buildScopeRows({scopeType,storeId=null,storeName,storeCode=null,current
    ca_daily_n:currentDays?round2(n(c.sales)/currentDays):null,ca_daily_n1:previousDays?round2(n(p.sales)/previousDays):null,
    abc_class_n:cumulative.get(productNumber)?.className||null,cumulative_ca_pct_n:cumulative.get(productNumber)?.share??null,
    rank_ca_n:cr.get(productNumber)||null,rank_ca_n1:pr.get(productNumber)||null,rank_delta:cr.get(productNumber)&&pr.get(productNumber)?pr.get(productNumber)-cr.get(productNumber):null,
-   quantity_n:cq.units??round2(c.units),quantity_n1:pq.units??round2(p.units),quantity_unit:cq.unit||pq.unit||'',
+   quantity_n:cm.has(productNumber)?cq.units:0,quantity_n1:pm.has(productNumber)?pq.units:0,
+   quantity_unit:sameUnit?cq.unit:!cm.has(productNumber)?pq.unit||'':!pm.has(productNumber)?cq.unit||'':'',quantity_unit_n:cq.unit||'',quantity_unit_n1:pq.unit||'',
    quantity_delta:sameUnit?round2(cq.units-pq.units):null,quantity_evolution_pct:sameUnit?growth(cq.units,pq.units):null,
-   realized_price_n:avgPriceC,realized_price_n1:avgPriceP,realized_price_evolution_pct:avgPriceC!=null&&avgPriceP!=null?growth(avgPriceC,avgPriceP):null,
+   realized_price_n:avgPriceC,realized_price_n1:avgPriceP,realized_price_evolution_pct:sameUnit&&avgPriceC!=null&&avgPriceP!=null?growth(avgPriceC,avgPriceP):null,
    ca_volume_effect:sameUnit&&avgPriceP!=null?round2((cq.units-pq.units)*avgPriceP):null,
    ca_price_effect:sameUnit&&avgPriceC!=null&&avgPriceP!=null?round2(cq.units*(avgPriceC-avgPriceP)):null,
    tickets_scope_n:cb.totalTickets,tickets_scope_n1:pb.totalTickets,
@@ -198,7 +208,7 @@ export const MONTHLY_EXPORT_COLUMNS=[
  ['ca_n','CA période TTC'],['ca_n1','CA comparaison TTC'],['ca_delta','Écart CA'],['ca_evolution_pct','Évolution CA %'],['ca_weight_pct','Poids CA période %'],['ca_weight_n1_pct','Poids CA comparaison %'],['ca_weight_delta_points','Écart poids CA pts'],
  ['ca_daily_n','CA / jour calendaire période'],['ca_daily_n1','CA / jour calendaire comparaison'],['abc_class_n','Classe ABC CA période'],['cumulative_ca_pct_n','Poids CA cumulé période %'],
  ['rank_ca_n','Rang CA période'],['rank_ca_n1','Rang CA comparaison'],['rank_delta','Gain/perte rang'],
- ['quantity_n','Quantité période'],['quantity_n1','Quantité comparaison'],['quantity_unit','Unité quantité'],['quantity_delta','Écart quantité'],['quantity_evolution_pct','Évolution quantité %'],
+ ['quantity_n','Quantité période'],['quantity_n1','Quantité comparaison'],['quantity_unit','Unité commune quantité'],['quantity_unit_n','Unité quantité période'],['quantity_unit_n1','Unité quantité comparaison'],['quantity_delta','Écart quantité'],['quantity_evolution_pct','Évolution quantité %'],
  ['realized_price_n','Prix moyen réalisé période'],['realized_price_n1','Prix moyen réalisé comparaison'],['realized_price_evolution_pct','Évolution prix moyen %'],
  ['ca_volume_effect','Effet volume estimé DH'],['ca_price_effect','Effet prix estimé DH'],
  ['tickets_scope_n','Tickets périmètre période'],['tickets_scope_n1','Tickets périmètre comparaison'],['tickets_with_product_n','Tickets avec article période'],['tickets_with_product_n1','Tickets avec article comparaison'],['tickets_with_product_evolution_pct','Évolution tickets article %'],
@@ -231,7 +241,8 @@ async function catalogForProducts(products=[]){
  }
  return results.flat()
 }
-export async function readMonthlySalesExport(stores=[],{startDate='',endDate='',compareStartDate='',compareEndDate='',comparisonMode='custom',force=false,scope='all',onProgress=(_progress)=>{}}={}){
+export async function readMonthlySalesExport(stores=[],{startDate='',endDate='',compareStartDate='',compareEndDate='',comparisonMode='custom',force=false,scope='all',onProgress=(_progress)=>{}}={}, {readSales=readStoreSalesRange,readBaskets=readBasketPeriod,readCatalog=catalogForProducts}={}){
+ if(!stores.length)throw Object.assign(new Error('Sélectionne au moins un magasin autorisé.'),{status:400,code:'MONTHLY_EXPORT_STORES_REQUIRED'});
  const days=daysBetween(startDate,endDate),comparisonDays=daysBetween(compareStartDate,compareEndDate);
  if(!days||days<1||days>31)throw Object.assign(new Error('Export Analytics : sélectionne une période de 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_RANGE'});
  if(!comparisonDays||comparisonDays<1||comparisonDays>31)throw Object.assign(new Error('Export Analytics : la période de comparaison doit contenir 1 à 31 jours.'),{status:400,code:'MONTHLY_EXPORT_COMPARISON_RANGE'});
@@ -239,17 +250,17 @@ export async function readMonthlySalesExport(stores=[],{startDate='',endDate='',
  for(const [index,store] of stores.entries()){
   await onProgress({phase:'READING_SALES',completed:index,total:stores.length,store:store.name});
   const [current,previous]=await Promise.all([
-   readStoreSalesRange(store.id,{startDate,endDate,force,exportLean:true}),
-   readStoreSalesRange(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force,exportLean:true})
+   readSales(store.id,{startDate,endDate,force,exportLean:true}),
+   readSales(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force,exportLean:true})
   ]);
   let currentEvidence=null,previousEvidence=null,currentEvidenceError=null,previousEvidenceError=null;
-  if(current.status==='READY')try{currentEvidence=await readBasketPeriod(store.id,{startDate,endDate,force})}catch(error){currentEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
-  if(previous.status==='READY')try{previousEvidence=await readBasketPeriod(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force})}catch(error){previousEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
+  if(current.status==='READY')try{const checked=reconciledEvidence(await readBaskets(store.id,{startDate,endDate,force}),current);currentEvidence=checked.evidence;currentEvidenceError=checked.error}catch(error){currentEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
+  if(previous.status==='READY')try{const checked=reconciledEvidence(await readBaskets(store.id,{startDate:previousPeriod.startDate,endDate:previousPeriod.endDate,force}),previous);previousEvidence=checked.evidence;previousEvidenceError=checked.error}catch(error){previousEvidenceError=error?.code||error?.message||'BASKET_UNAVAILABLE'}
   storeResults.push({store,current,previous,currentEvidence,previousEvidenceError, currentEvidenceError,previousEvidence});
   await onProgress({phase:'READING_SALES',completed:index+1,total:stores.length,store:store.name});
  }
  await onProgress({phase:'ENRICHING_CATALOG',completed:0,total:1});
- const products=storeResults.flatMap(x=>[...(x.current.products||[]),...(x.previous.products||[])]).map(x=>x.key),catalogItems=await catalogForProducts(products),catalog=catalogMap(catalogItems);
+ const products=storeResults.flatMap(x=>[...(x.current.products||[]),...(x.previous.products||[])]).map(x=>x.key),catalogItems=await readCatalog(products),catalog=catalogMap(catalogItems);
  await onProgress({phase:'ENRICHING_CATALOG',completed:1,total:1});
  const networkCurrent=combineRanges(storeResults.map(x=>x.current)),networkPrevious=combineRanges(storeResults.map(x=>x.previous)),networkCurrentEvidence=combineEvidence(storeResults.map(x=>x.currentEvidence)),networkPreviousEvidence=combineEvidence(storeResults.map(x=>x.previousEvidence));
  const scopeMode=['network','stores'].includes(clean(scope).toLowerCase())?clean(scope).toLowerCase():'all';
@@ -257,7 +268,7 @@ export async function readMonthlySalesExport(stores=[],{startDate='',endDate='',
  const storeRows=scopeMode==='network'?[]:storeResults.flatMap(x=>buildScopeRows({scopeType:'STORE',storeId:x.store.id,storeName:x.store.name,storeCode:x.store.code,current:x.current,previous:x.previous,currentEvidence:x.currentEvidence,previousEvidence:x.previousEvidence,catalog,currentPeriod,previousPeriod,comparisonType:comparisonMode}));
  const comparisonType=clean(comparisonMode)||'custom';
  return{
-  status:storeResults.every(x=>x.current.status==='READY'&&x.previous.status==='READY')?'READY':'PARTIAL',
+  status:storeResults.every(x=>x.current.status==='READY'&&x.previous.status==='READY'&&x.currentEvidence&&x.previousEvidence)?'READY':'PARTIAL',
   period:currentPeriod,comparison:{...previousPeriod,type:comparisonType,label:comparisonLabel(comparisonType)},stores:stores.map(s=>({id:s.id,name:s.name,code:s.code})),columns:MONTHLY_EXPORT_COLUMNS,rows:[...networkRows,...storeRows],
   summary:{stores:stores.length,networkProducts:networkRows.length,rows:networkRows.length+storeRows.length,currentSales:networkCurrent.summary.sales,comparisonSales:networkPrevious.summary.sales,previousSales:networkPrevious.summary.sales,currentTickets:networkCurrent.summary.tickets,comparisonTickets:networkPrevious.summary.tickets,previousTickets:networkPrevious.summary.tickets},
   diagnostics:{catalogProducts:catalogItems.length,basketCurrentReady:storeResults.filter(x=>!!x.currentEvidence).length,basketComparisonReady:storeResults.filter(x=>!!x.previousEvidence).length,basketPreviousReady:storeResults.filter(x=>!!x.previousEvidence).length,basketErrors:storeResults.map(x=>({storeId:x.store.id,current:x.currentEvidenceError,comparison:x.previousEvidenceError})).filter(x=>x.current||x.comparison),checkedAt:new Date().toISOString()}

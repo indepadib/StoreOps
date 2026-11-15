@@ -6,9 +6,9 @@ import { analyticsCacheKey, readAnalyticsCache, readAnalyticsCacheFresh, writeAn
 // Long monthly exports must not run inside the ~30-second public API request.
 // Only authenticated callers may create/read a job; the background worker gets
 // an unguessable job id and reads the validated, persisted job specification.
-export const exportJobKey=id=>analyticsCacheKey('monthly-export-job-v1',[id]);
-export const exportPageKey=(id,index)=>analyticsCacheKey('monthly-export-job-page-v1',[id,index]);
-const pendingKey=(userId,fingerprint)=>analyticsCacheKey('monthly-export-active-v1',[userId,fingerprint]);
+export const exportJobKey=id=>analyticsCacheKey('monthly-export-job-v2',[id]);
+export const exportPageKey=(id,index)=>analyticsCacheKey('monthly-export-job-page-v2',[id,index]);
+const pendingKey=(userId,fingerprint)=>analyticsCacheKey('monthly-export-active-v2',[userId,fingerprint]);
 const clean=v=>String(v??'').trim();
 const iso=v=>/^\d{4}-\d{2}-\d{2}$/.test(clean(v))&&!Number.isNaN(Date.parse(v+'T00:00:00Z'))?clean(v):null;
 const daysBetween=(a,b)=>a&&b&&b>=a?Math.round((Date.parse(b+'T00:00:00Z')-Date.parse(a+'T00:00:00Z'))/86400000)+1:0;
@@ -52,8 +52,8 @@ export async function handleAnalyticsExportJobApi({req,url,user}){
    if(prior&&prior.userId===user.id&&!abandoned(prior)&&['QUEUED','RUNNING','READY'].includes(prior.status))return{status:202,data:{jobId:prior.id,status:prior.status,reused:true}};
   }
   const id=randomUUID(),job={id,userId:user.id,status:'QUEUED',input,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),progress:{phase:'QUEUED',completed:0,total:stores.length},pages:0};
-  if(!await writeAnalyticsCache(exportJobKey(id),'monthly-export-job-v1',job,21600))return error(503,'Impossible de préparer le stockage sécurisé de l’export.','EXPORT_STORAGE_UNAVAILABLE');
-  await writeAnalyticsCache(reuseKey,'monthly-export-active-v1',{jobId:id},21600);
+  if(!await writeAnalyticsCache(exportJobKey(id),'monthly-export-job-v2',job,21600))return error(503,'Impossible de préparer le stockage sécurisé de l’export.','EXPORT_STORAGE_UNAVAILABLE');
+  await writeAnalyticsCache(reuseKey,'monthly-export-active-v2',{jobId:id},21600);
   const origin=clean(process.env.DEPLOY_PRIME_URL||process.env.URL||'https://storeops.ma').replace(/\/$/,'');
   try{
    const response=await fetch(origin+'/.netlify/functions/analytics-export-background',{
@@ -62,7 +62,7 @@ export async function handleAnalyticsExportJobApi({req,url,user}){
    if(!response.ok){throw new Error('HTTP '+response.status)}
   }catch(cause){
    const failed={...job,status:'FAILED',code:'EXPORT_WORKER_UNAVAILABLE',message:'Service de préparation de l’export indisponible.',updatedAt:new Date().toISOString()};
-   await writeAnalyticsCache(exportJobKey(id),'monthly-export-job-v1',failed,21600);
+   await writeAnalyticsCache(exportJobKey(id),'monthly-export-job-v2',failed,21600);
    console.error('Failed to start Analytics background export',cause);
    return error(503,'Le service d’export différé ne répond pas. Réessayer.','EXPORT_WORKER_UNAVAILABLE')
   }
