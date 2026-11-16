@@ -112,17 +112,21 @@
       ['Tickets identifiés', api.number(a.identifiedTickets), a.identifiedTicketRate == null ? 'Taux N/A' : api.percent(a.identifiedTicketRate)],
       ['Clients identifiés', api.number(a.identifiedCustomers), a.repeatRate == null ? 'retour N/A' : api.percent(a.repeatRate)+' avec ≥2 visites'],
       ['Visites / client', api.number(a.averageVisitsPerCustomer,2), 'tickets identifiés / client'],
-      ['Créations de comptes', 'N/D', 'Date de création du compte non vérifiée'],
-      ['Inscriptions fidélité', enrollmentCoverage, 'Voir le détail par magasin'],
-      ['Panier identifié', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs '+api.money(a.nonMemberBasket)],
-      ['Écart de panier', api.percent(a.uplift), 'tickets identifiés vs non identifiés'],
-      ['Cashback crédité', 'N/D', 'Source des mouvements de crédit à vérifier'],
-      ['Cashback consommé · burn Wallet', api.money(walletBurn,true), walletBurn==null?`${walletReady.length}/${totalStores} magasins avec paiements Wallet disponibles`:api.number(walletTx)+' paiement(s) Wallet'],
-      ['Burn / CA identifié', a.identifiedSales&&walletBurn!=null?api.percent(walletBurn/a.identifiedSales*100):'N/A', 'usage cashback sur la période']
+      ['Panier identifié', api.money(a.memberBasket), a.nonMemberBasket == null ? 'Comparaison N/D' : 'vs '+api.money(a.nonMemberBasket)],
+      ['Écart de panier', api.percent(a.uplift), 'Tickets identifiés vs non identifiés'],
+      ['Burn / CA identifié', a.identifiedSales&&walletBurn!=null?api.percent(walletBurn/a.identifiedSales*100):'N/D', 'Part du CA identifié réglée en Wallet']
+
     ];
 
-    $('#loyaltyKpis').innerHTML = cards.map(([label, value, sub]) => `
-      <div class="loyalty-kpi">
+    const priority=[
+      ['Créations de comptes','N/D','Source de création de compte à confirmer'],
+      ['Cashback crédité · earn','N/D','Journal des crédits Wallet à confirmer'],
+      ['Cashback consommé · burn',walletBurn==null?'N/D':api.money(walletBurn,true),state.walletLoading?'Lecture des paiements…':walletBurn==null?`${walletReady.length}/${totalStores} magasins couverts`:api.number(walletTx)+' paiements Wallet'],
+    ];
+    cards.unshift(...priority);
+    cards.push(['Inscriptions fidélité',enrollmentCoverage,'Voir le détail par magasin']);
+    $('#loyaltyKpis').innerHTML = cards.map(([label, value, sub],index) => `
+      <div class="loyalty-kpi${index<3?' loyalty-kpi-priority':''}">
         <small>${label}</small>
         <strong>${value}</strong>
         <span>${sub}</span>

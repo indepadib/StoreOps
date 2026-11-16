@@ -212,3 +212,17 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
 .ri-experience-copy .ri-workspace-scope{margin-top:8px;color:#344861;font-weight:650}
 .ri-experience-actions button{min-height:42px}
 .ri-experience-actions button:focus-visible{outline:2px solid #94214f;outline-offset:2px}
+
+#loyaltyKpis .loyalty-kpi-priority{background:linear-gradient(145deg,#edf5ff,#fff);border:1px solid #c3d6f0;border-top:3px solid #395c9d;border-radius:12px}
+#loyaltyKpis .loyalty-kpi-priority strong{color:#182f55;font-variant-numeric:tabular-nums}
+
+#loyaltyKpis{gap:12px}
+#loyaltyKpis .loyalty-kpi-priority{min-height:110px;padding:14px 16px}
+#loyaltyKpis .loyalty-kpi-priority small{color:#365475;font-size:.84rem}
+#loyaltyKpis .loyalty-kpi-priority strong{font-size:clamp(1.35rem,2.4vw,2rem)}
+#loyaltyKpis .loyalty-kpi-priority span{font-size:.8rem;line-height:1.4;color:#4b607c}
+#detentionCommon>.studio-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:10px}
+#detentionCommon select{width:100%;min-height:42px;background:#fff}
+#detentionCommon .detention-common{padding:14px 16px;border-color:#d2dfef;background:#f7faff}
+#detentionCommon .studio-table{margin:10px 0 0}
+#detentionCommon .detention-common summary{color:#21436b;padding-block:4px}

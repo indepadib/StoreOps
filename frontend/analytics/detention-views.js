@@ -5,30 +5,48 @@ import {detentionReport,detentionHtml,detentionCsv} from './detention-report.js'
 import {origin,isPGC,relativeMetric,historicalMetric,filterDetentionRows,commonDetention} from './detention-metrics.js';
 const core=window.RETAIL_INTELLIGENCE,$=id=>document.getElementById(id),esc=core.escapeHtml;
 const style=document.createElement('style');style.textContent='body[data-analytics-section=detention] #decisionStudio{display:none}.detention-common{background:#f1f6ff;border:1px solid #d6e3f5;border-radius:12px;padding:12px 16px;margin:8px 0}.detention-common h3,.detention-common p{margin:4px 0}.detention-common summary{font-weight:700;cursor:pointer}';document.head.appendChild(style);
-const host=document.createElement('section');host.className='decision-studio';host.id='detentionViews';host.innerHTML=`<div class="studio-heading"><div><small class="studio-kicker">DÉTENTION MÉTIER</small><h2>Ce qui a déjà été reçu, ce qui doit être présent</h2><p>Stock positif actuel / références réceptionnées au moins une fois. La vue relative PGC compare uniquement les références disponibles sur la plateforme.</p></div></div><div class="studio-filters"><label>Vision<select id="detentionView"><option value="store">Magasin / historique réception</option><option value="supply">Entrepôt / historique réception</option><option value="relative">Relative PGC · plateforme → magasin</option><option value="reference">Référentiel global · complément</option></select></label><label>Département<select id="detentionDepartment"><option value="">Tous</option></select></label><label>Origine fournisseur<select id="detentionOrigin"><option value="">Toutes</option><option value="IMPORT">Import · Extenc International</option><option value="LOCAL">Local · autres fournisseurs connus</option><option value="UNKNOWN">Fournisseur non qualifié</option></select></label><button id="detentionHistoryLoad">Actualiser les réceptions</button><button id="detentionMetricExport" disabled>Exporter cette vision</button><button id="detentionGlobalReport">Rapport global complet</button><button id="detentionGlobalCsv" disabled>Liste articles seule · CSV</button></div><p id="detentionHistoryStatus" role="status">Préparation automatique des stocks et des réceptions. Détention = références en stock positif / références déjà réceptionnées.</p><div id="detentionCommon"></div><div id="detentionMetricContent"></div><p class="studio-note">Import défini par le fournisseur actuel Extenc International ; ce classement n’est pas une origine douanière historique. Réceptions achat et transferts confirmés, sans filtre de date. La disponibilité des archives depuis l’ouverture doit être vérifiée. Les commandes attendues ne sont pas des réceptions. Entrepôt partagé : références comptées une seule fois.</p>`;
+const host=document.createElement('section');host.className='decision-studio';host.id='detentionViews';host.innerHTML=`<div class="studio-heading"><div><small class="studio-kicker">DÉTENTION MÉTIER</small><h2>Ce qui a déjà été reçu, ce qui doit être présent</h2><p>Stock positif actuel / références réceptionnées au moins une fois. La vue relative PGC compare uniquement les références disponibles sur la plateforme.</p></div></div><div class="studio-filters"><label>Vision<select id="detentionView"><option value="store">Magasin / historique réception</option><option value="supply">Entrepôt / historique réception</option><option value="relative">Relative PGC · plateforme → magasin</option><option value="reference">Référentiel global · complément</option></select></label><label>Département<select id="detentionDepartment"><option value="">Tous</option></select></label><label>Origine fournisseur<select id="detentionOrigin"><option value="">Toutes</option><option value="IMPORT">Import · Extenc International</option><option value="LOCAL">Local · autres fournisseurs connus</option><option value="UNKNOWN">Fournisseur non qualifié</option></select></label><button id="detentionHistoryLoad">Actualiser les réceptions</button><button id="detentionMetricExport" disabled>Exporter cette vision</button><button id="detentionGlobalReport">Rapport global complet</button><button id="detentionGlobalCsv" disabled>Liste articles seule · CSV</button></div><p id="detentionHistoryStatus" role="status">Préparation automatique des stocks et des réceptions. Détention = références en stock positif / références déjà réceptionnées.</p><div id="detentionCommon">
+ <div class="studio-filters"><label>Magasin du Top 20<select id="detentionTopStore"></select></label>
+ <label>Ajouter un deuxième magasin<select id="detentionTopCompare"></select></label></div>
+ <div id="detentionTopResults"></div>
+ </div><div id="detentionMetricContent"></div><p class="studio-note">Import défini par le fournisseur actuel Extenc International ; ce classement n’est pas une origine douanière historique. Réceptions achat et transferts confirmés, sans filtre de date. La disponibilité des archives depuis l’ouverture doit être vérifiée. Les commandes attendues ne sont pas des réceptions. Entrepôt partagé : références comptées une seule fois.</p>`;
 $('bi-stockSummary').before(host);
 let rows=[],meta=[],stockComplete=false,histories=new Map(),generation=0,exportRows=[];
 const scope=()=>core.getSelectedStores().map(s=>s.id).sort().join(',');let scopeKey=scope();
 const table=(heads,data)=>'<div class="studio-table"><table><thead><tr>'+heads.map(x=>'<th>'+esc(x)+'</th>').join('')+'</tr></thead><tbody>'+data.map(r=>'<tr>'+r.map(x=>'<td>'+esc(String(x??''))+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
 const rate=x=>x==null?'Non disponible':new Intl.NumberFormat('fr-FR',{maximumFractionDigits:2}).format(x)+' %';
 function filtered(list){return filterDetentionRows(list,{view:$('detentionView').value,department:$('detentionDepartment').value,supplierOrigin:$('detentionOrigin').value})}
+function renderTopDetention(){
+ const shops=core.getSelectedStores(),first=$('detentionTopStore'),second=$('detentionTopCompare');
+ const requestedFirst=first.value,requestedSecond=second.value;
+ const option=shop=>`<option value="${esc(shop.id)}">${esc(shop.name)}</option>`;
+ first.innerHTML=shops.map(option).join('');
+ first.value=shops.some(shop=>shop.id===requestedFirst)?requestedFirst:shops[0]?.id||'';
+ second.innerHTML='<option value="">Aucun · un seul magasin</option>'+shops.filter(shop=>shop.id!==first.value).map(option).join('');
+ second.value=shops.some(shop=>shop.id===requestedSecond&&shop.id!==first.value)?requestedSecond:'';
+ second.disabled=shops.length<2;
+ const picked=shops.filter(shop=>shop.id===first.value||shop.id===second.value);
+ const result=commonDetention(picked.map(shop=>{
+  const history=histories.get(shop.id+'|store'),metadata=meta.find(item=>item.storeId===shop.id);
+  const complete=history?.complete===true&&metadata?.stockComplete===true;
+  const snapshot=historicalMetric(history?.products||[],rows.filter(row=>row.storeId===shop.id),{complete,stockComplete:complete});
+  return {storeId:shop.id,storeName:shop.name,historical:{complete,rows:snapshot.rows.map(row=>({sku:row.productNumber,name:row.productName||row.productNumber,quantity:row.quantity}))}};
+ }));
+ const title=picked.length===2?'Détention commune':'Détention du magasin';
+ const eligible=picked.length===2?'références reçues dans les deux magasins':'références déjà reçues par le magasin';
+ $('detentionTopResults').innerHTML=`<section class="detention-common"><h3>${title} · ${rate(result.rate)}</h3>
+  <p>${result.status==='READY'?`${result.held} présentes sur ${result.base} ${eligible}.`:'Historique ou stock incomplet pour la sélection du Top 20.'}</p></section>
+  <details class="detention-common" ${result.missing.length?'open':''}><summary>Top 20 des références non détenues</summary>
+  <p>${picked.length===2?'Priorité aux articles absents des deux magasins.':'Articles déjà reçus dont la présence n’est plus confirmée par le stock.'} Vérifier la présence en rayon et la date de dernière réception avant de décider.</p>
+  ${result.missing.length?table(['Code','Article','Magasins concernés'],result.missing.map(row=>[row.sku,row.name,row.stores.join(' · ')])):`<p>${result.status==='READY'?'Aucune référence manquante sur ce périmètre.':'Classement disponible après préparation des sources.'}</p>`}</details>`;
+}
+for(const id of ['detentionTopStore','detentionTopCompare'])$(id).addEventListener('change',renderTopDetention);
+
 function render(){
  const view=$('detentionView').value;$('bi-stockSummary').hidden=view!=='reference';$('detentionHistoryLoad').hidden=view==='relative'||view==='reference';$('detentionDepartment').disabled=view==='relative';
  const commonHost=$('detentionCommon');
  commonHost.hidden=view!=='store';
- if(view==='store'){
-  const common=commonDetention(core.getSelectedStores().map(shop=>{
-   const history=histories.get(shop.id+'|store'),metaRow=meta.find(m=>m.storeId===shop.id);
-   const complete=history?.complete===true&&stockComplete&&metaRow?.stockComplete===true;
-   const snapshot=historicalMetric(history?.products||[],rows.filter(r=>r.storeId===shop.id),{complete,stockComplete:complete});
-   return {storeId:shop.id,storeName:shop.name,historical:{complete,rows:snapshot.rows.map(row=>({sku:row.productNumber,name:row.productName||row.productNumber,quantity:row.quantity}))}};
-  }));
-  commonHost.innerHTML=`<section class="detention-common"><h3>Détention commune · ${rate(common.rate)}</h3>
-   <p>${common.status==='READY'?`${common.held} présentes dans tous les magasins sur ${common.base} références reçues en commun.`:'Historique ou stock incomplet pour les magasins sélectionnés.'}</p></section>
-   <details class="detention-common"><summary>Top 20 des références communes non détenues</summary>
-   <p>Priorité aux articles qui manquent dans le plus de magasins.</p>
-   ${common.missing.length?table(['Code','Article','Magasins concernés'],common.missing.map(row=>[row.sku,row.name,row.stores.join(' · ')])):`<p>${common.status==='READY'?'Aucune référence commune manquante.':'Classement disponible après préparation des sources.'}</p>`}</details>`;
- }
+ if(view==='store')renderTopDetention();
  if(view==='reference'){$('detentionMetricContent').textContent='Comparaison avec tous les articles du référentiel commun ci-dessous. Cette base ne remplace pas les historiques de réception.';exportRows=[];return}
  const summaries=[],details=[],seen=new Set();
  for(const shop of core.getSelectedStores()){

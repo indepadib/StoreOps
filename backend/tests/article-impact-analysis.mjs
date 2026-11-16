@@ -82,3 +82,11 @@ const levels=[14,14,14,18.55,20.71,24.95,24.95,24.95,24.95,24.95,24.95,24.95,21.
 const events=observedPriceChanges(levels);assert.equal(events.length,2);assert.equal(events[0].beforePrice,14);assert.equal(events[0].afterPrice,24.95);assert.deepEqual(events[0].transitionDays,['2026-10-20','2026-10-21']);assert.equal(events[1].beforePrice,24.95);assert.equal(events[1].afterPrice,19.95);assert.equal(events[0].basis,'OBSERVED_PRICE_NOT_TARIFF');assert.equal(observedPriceChanges(levels.map((d,i)=>({...d,unit:i%2?'PC':'KG'}))).length,0);
 assert.ok(follow.data.answer.length<diagnostic.data.answer.length/3,'A focused stock follow-up must not repeat the full diagnosis');
 globalThis.document={createElement:()=>new Element(),getElementById:id=>{if(!nodes.has(id))nodes.set(id,new Element());return nodes.get(id)},querySelector:()=>context};const focusedView=new Element();renderInvestigation(focusedView,follow.data);assert.ok(!focusedView.children.some(x=>x.className==='impact-cohorts'),'Stock follow-up does not repeat the customer cards');delete globalThis.document;
+
+const orange=buildArticleImpact({...args,product:{productNumber:'HS-007149',productName:'Jus d’orange'},previous:{baskets:[b('old','2026-10-16','A',[['HS-006590',8]])]},current:{baskets:[b('linked','2026-10-22','A',[['HS-007149',10],['HS-006590',8]])]},networkCurrent:{baskets:[]}});
+assert.deepEqual(orange.productCodes,['HS-006590','HS-007149']);
+assert.equal(orange.previous.articleSales,8);
+assert.equal(orange.current.articleSales,18);
+assert.equal(orange.current.articleTickets,1);
+assert.equal(orange.cohort.articleRepurchasePct,100);
+assert.match(renderArticleImpact(orange),/HS-006590 → HS-007149/);
