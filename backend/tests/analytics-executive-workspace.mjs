@@ -53,3 +53,5 @@ const dates=read('analytics.js');
 assert.match(dates,/periodStart: shiftDate\(initialDate, -7\)/);
 assert.match(dates,/periodEnd: shiftDate\(initialDate, -1\)/);
 assert.match(dates,/preset === '7d'\) \{ state.periodEnd = shiftDate\(today, -1\); state.periodStart = shiftDate\(today, -7\)/);
+assert.match(html,/id="briefRanking"/);
+assert.match(read('decision-studio.js'),/canvas\.width=1920;canvas\.height=1080;/);
