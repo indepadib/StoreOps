@@ -1,3 +1,4 @@
+import {filterAndSortRows} from './table-analysis.js';
 import {marginEvidence,performanceCard} from './performance-evidence.js';
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -609,7 +610,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
 
   function productWithCatalog(row){
     const ref=catalogItem(row.key),m=estimateMargin(row);
-    return{...row,label:productLabel(row.key,row.label),productCode:row.key,hierarchy:ref?.hierarchy||{},ub:ref?.ub||null,quantityUnit:row.quantityUnit||ref?.salesUnit||ref?.inventoryUnit||null,marginValue:m.value,marginRate:m.rate,marginEstimated:m.estimated}
+    return{...row,label:productLabel(row.key,row.label),productCode:row.key,hierarchy:ref?.hierarchy||{},ub:ref?.ub||null,quantityUnit:row.quantityUnit||null,marginValue:m.value,marginRate:m.rate,marginEstimated:m.estimated}
   }
   function matchesHierarchyFilters(row){
     const f=state.filters||{},h=row.hierarchy||{};
@@ -651,7 +652,10 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     const map=new Map();
     for(const p of products){
       const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true,marginEstimated:false};
-      cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);quantityMapAdd(cur.quantityByUnit,p.quantityUnit,Number(p.units||0));
+      cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);
+      const quantities=Object.entries(p.quantityByUnit||{});
+      if(quantities.length)for(const [unit,value] of quantities)quantityMapAdd(cur.quantityByUnit,unit,value);
+      else if(p.units!=null)quantityMapAdd(cur.quantityByUnit,p.quantityUnit,p.units);
       if(p.marginSalesBase==null)cur.marginBaseKnown=false;else cur.marginSalesBase+=Number(p.marginSalesBase||0);
       if(p.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(p.marginValue||0);
       cur.marginEstimated=cur.marginEstimated||!!p.marginEstimated;map.set(key,cur)
@@ -667,7 +671,8 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     const products=filteredProducts(),base=state.level==='product'?products:aggregateHierarchyRows(products,state.level),metric=(state.metric==='units'&&state.level!=='product')?'sales':state.metric;
     const ranked=[...base].sort((a,b)=>{const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av});
     const prevField='previousSales',prevSorted=[...base].filter(x=>safe(x[prevField])!=null).sort((a,b)=>Number(b[prevField]||0)-Number(a[prevField]||0)),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
-    return ranked.map((x,i)=>({...x,displayRank:i+1,previousRank:prevRank.get(x.key)||x.previousRank||null,rankDelta:(prevRank.get(x.key)||x.previousRank)?(prevRank.get(x.key)||x.previousRank)-(i+1):null}))
+    const salesRank=new Map([...base].sort((a,b)=>b.sales-a.sales).map((x,i)=>[x.key,i+1]));
+    return ranked.map(x=>{const displayRank=salesRank.get(x.key),previousRank=prevRank.get(x.key)||null;return {...x,displayRank,previousRank,rankDelta:previousRank==null?null:previousRank-displayRank}})
   }
   function optionRows(level){
     const seen=new Map();
@@ -695,13 +700,69 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     const currentSkus=new Set((state.data?.products||[]).map(x=>String(x.key||''))),currentCatalog=[...state.catalog.values()].filter(x=>currentSkus.has(String(x.productNumber||''))),total=state.data?.products?.length||0,resolved=currentCatalog.filter(x=>x.productName).length,hier=currentCatalog.filter(x=>x.hierarchyStatus==='RESOLVED').length,cost=currentCatalog.filter(x=>x.currentCostStatus==='READY').length;
     if($('#catalogCoverage'))$('#catalogCoverage').textContent=state.catalogLoading?`Enrichissement articles en cours · ${resolved}/${total} libellés chargés`:`Libellés ${resolved}/${total} · hiérarchie ${hier}. Marge validée = coût transactionnel. Si le coût courant produit complète des lignes manquantes, la marge est explicitement marquée estimée (~).`
   }
+  const performanceTable={filters:{},sort:{key:null,desc:false},page:0};
+  const performancePageSize=50;
+  function performanceColumns(api){
+    const column=(key,label,value,format,hidden=false)=>({key,label,value,format,numeric:true,hidden});
+    const text=(key,label,value,hidden=false)=>({...column(key,label,value,v=>api.escapeHtml(v),hidden),numeric:false});
+    const money=v=>api.money(v,true), percent=v=>api.percent(v);
+    return [
+      column('displayRank','Rang CA',r=>r.displayRank),
+      {...text('label','Article ou catégorie',r=>[r.label,r.productCode||r.key].filter(Boolean).join(' · ')),format:(_,r)=>state.level==='product'?'<button type="button" class="ghost-light-btn" data-performance-product="'+api.escapeHtml(r.key)+'">'+api.escapeHtml(r.label||r.key)+'</button><small> '+api.escapeHtml(r.key)+'</small>':api.escapeHtml(r.label||r.key)},
+      column('sales','CA',r=>safe(r.sales),money),
+      column('previousSales','CA précédent',r=>safe(r.previousSales),money),
+      column('deltaSales','Écart CA',r=>safe(r.deltaSales??r.delta),v=>signed(api,v,'money')),
+      column('changePct','Évolution CA',r=>safe(r.changePct),percent),
+      column('sharePct','Poids CA',r=>safe(r.sharePct),percent),
+      {...text('quantity','Quantités par unité',r=>quantityBreakdown(r,api)),value:r=>{const q=quantityBreakdown(r,api);return q==='N/A'?null:q}},
+      column('marginValue','Marge DH',r=>safe(r.marginValue),(v,r)=>(r.marginEstimated?'~ ':'')+money(v)),
+      column('marginRate','Taux de marge',r=>safe(r.marginRate),(v,r)=>(r.marginEstimated?'~ ':'')+percent(v)),
+      column('previousRank','Rang avant',r=>safe(r.previousRank),undefined,true),
+      column('rankDelta','Écart de rang',r=>safe(r.rankDelta),undefined,true),
+      text('vendor','Fournisseur',r=>catalogItem(r.key)?.vendorName||catalogItem(r.key)?.primaryVendorAccount||null,true),
+      text('rayon','Rayon',r=>r.hierarchy?.rayon?.label||null,true),
+      column('previousMarginValue','Marge précédente',r=>safe(r.previousMarginValue),money,true),
+      column('deltaMargin','Écart de marge',r=>safe(r.deltaMargin),v=>signed(api,v,'money'),true),
+      text('marginQuality','Qualité marge',r=>r.marginValue==null?'Indisponible':r.marginEstimated?'Estimée':'Validée',true),
+    ];
+  }
+  function renderPerformanceTable(rows,api){
+    const head=$('#performanceHead'),body=$('#performanceBody'),panel=$('#performanceTableTools');
+    if(!head||!panel)return;
+    const all=performanceColumns(api),columns=all.filter(c=>!c.hidden||$('#performanceExtra').checked);
+    if(!columns.some(c=>c.key===performanceTable.sort.key))performanceTable.sort={key:null,desc:false};
+    if(head.dataset.columns!==columns.map(c=>c.key).join(',')){
+      head.dataset.columns=columns.map(c=>c.key).join(',');
+      head.innerHTML='<tr>'+columns.map(c=>`<th scope="col"><button type="button" data-performance-sort="${c.key}">${c.label}</button></th>`).join('')+'</tr><tr data-performance-filter-row>'+columns.map(c=>`<td><input type="text" data-performance-filter="${c.key}" aria-label="Filtrer ${c.label}" placeholder="${c.numeric?'Ex. >100':'Filtrer'}" value="${api.escapeHtml(performanceTable.filters[c.key]||'')}"></td>`).join('')+'</tr>';
+    }
+    head.querySelector('[data-performance-filter-row]').hidden=!$('#performanceShowFilters').checked;
+    for(const button of $$('[data-performance-sort]',head)){
+      const active=performanceTable.sort.key===button.dataset.performanceSort;
+      button.textContent=columns.find(c=>c.key===button.dataset.performanceSort).label+(active?(performanceTable.sort.desc?' ↓':' ↑'):'');
+      const th=button.closest('th');
+      if(active)th.setAttribute('aria-sort',performanceTable.sort.desc?'descending':'ascending');
+      else th.removeAttribute('aria-sort');
+    }
+    const matching=filterAndSortRows(rows,columns,performanceTable.filters,performanceTable.sort);
+    const pages=Math.max(1,Math.ceil(matching.length/performancePageSize));
+    performanceTable.page=Math.min(performanceTable.page,pages-1);
+    const start=performanceTable.page*performancePageSize;
+    performanceTable.exportRows=[columns.map(c=>c.label),...matching.map(row=>columns.map(c=>{const value=c.value(row);return typeof value==='string'&&/^[\s]*[=+@-]/.test(value)?"'"+value:value}))];
+    $('#performanceExport').disabled=!matching.length;
+    $('#performancePageStatus').textContent=matching.length?`${start+1}–${Math.min(start+performancePageSize,matching.length)} sur ${matching.length} lignes · ${rows.length} chargées`:`0 sur ${rows.length} lignes chargées`;
+    $('#performancePrev').disabled=performanceTable.page===0;
+    $('#performanceNext').disabled=performanceTable.page>=pages-1;
+    body.innerHTML=matching.slice(start,start+performancePageSize).map(row=>'<tr>'+columns.map(c=>{
+      const value=c.value(row);
+      return '<td>'+(value==null?'N/A':c.format?c.format(value,row):api.number(value))+'</td>';
+    }).join('')+'</tr>').join('')||`<tr><td colspan="${columns.length}">Aucune ligne pour ces filtres.</td></tr>`;
+  }
   function renderPerformance(refreshFilters=true){
     const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;if(refreshFilters)renderHierarchyFilters();
     const salesValues=rows.map(x=>safe(x.sales)).filter(v=>v!=null).sort((a,b)=>a-b),median=salesValues.length?salesValues[Math.floor(salesValues.length/2)]:0;
     const stars=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)>=0).length,declining=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)<0).length,potential=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)>0).length,weak=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)<=0).length;
     $('#performanceQuadrants').innerHTML=[['Stars',stars,'Fort poids + dynamique positive','star'],['À défendre',declining,'Fort poids + baisse','risk'],['Potentiel',potential,'Faible poids + croissance','potential'],['À challenger',weak,'Faible poids + faible dynamique','']].map(([l,v,s,cls])=>`<div class="quadrant-card ${cls}"><small>${l}</small><strong>${api.number(v)}</strong><span>${s}</span></div>`).join('');
-    if(!rows.length){body.innerHTML='<tr><td colspan="10"><div class="table-loading">Aucune donnée sur ce niveau / filtre.</div></td></tr>';return}
-    body.innerHTML=rows.slice(0,500).map(r=>{const delta=r.deltaSales??r.delta??null,marginPrefix=r.marginEstimated?'~ ':'';return`<tr><td><span class="rank-chip">${r.displayRank}</span></td><td><div class="element-cell"><strong>${api.escapeHtml(r.label||r.key)}</strong><span>${api.escapeHtml(r.productCode||r.key||'')}</span></div></td><td>${api.money(r.sales,true)}</td><td>${signed(api,delta,'money')}</td><td>${api.percent(r.sharePct)}</td><td>${quantityBreakdown(r,api)}</td><td>${r.marginValue==null?'<span class="metric-na">N/A</span>':marginPrefix+api.money(r.marginValue,true)}</td><td>${r.marginRate==null?'<span class="metric-na">N/A</span>':marginPrefix+api.percent(r.marginRate)}</td><td>${r.previousRank?'#'+r.previousRank:'—'}</td><td>${r.rankDelta==null?'—':(r.rankDelta>0?'▲ +'+r.rankDelta:r.rankDelta<0?'▼ '+Math.abs(r.rankDelta):'▬')}</td></tr>`}).join('')
+    renderPerformanceTable(rows,api);
   }
 
   function supplierRows(){
@@ -894,7 +955,33 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
   }
 
   function bind(){
-    const setLevel=level=>{state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
+    const refreshGrid=()=>renderPerformanceTable(performanceRows(),core());
+    $('#performanceHead')?.addEventListener('input',event=>{
+      const key=event.target.dataset.performanceFilter;
+      if(!key)return;
+      performanceTable.filters[key]=event.target.value;performanceTable.page=0;refreshGrid();
+    });
+    $('#performanceHead')?.addEventListener('click',event=>{
+      const key=event.target.closest('[data-performance-sort]')?.dataset.performanceSort;
+      if(!key)return;
+      performanceTable.sort={key,desc:performanceTable.sort.key===key?!performanceTable.sort.desc:performanceColumns(core()).find(c=>c.key===key).numeric};
+      performanceTable.page=0;refreshGrid();
+    });
+    $('#performanceBody')?.addEventListener('click',event=>{
+      const productNumber=event.target.closest('[data-performance-product]')?.dataset.performanceProduct;
+      if(!productNumber)return;
+      const product=performanceRows().find(row=>row.key===productNumber);
+      if(product)document.dispatchEvent(new CustomEvent('retail-intelligence:open-product',{detail:{productNumber,product}}));
+    });
+    for(const id of ['performanceExtra','performanceShowFilters'])$('#'+id)?.addEventListener('change',()=>{performanceTable.page=0;refreshGrid()});
+    $('#performanceClearColumns')?.addEventListener('click',()=>{
+      performanceTable.filters={};performanceTable.sort={key:null,desc:false};performanceTable.page=0;
+      delete $('#performanceHead').dataset.columns;refreshGrid();
+    });
+    $('#performanceExport')?.addEventListener('click',()=>core().downloadCsv('performance-produits-categories.csv',performanceTable.exportRows));
+    $('#performancePrev')?.addEventListener('click',()=>{performanceTable.page--;refreshGrid()});
+    $('#performanceNext')?.addEventListener('click',()=>{performanceTable.page++;refreshGrid()});
+    const setLevel=level=>{performanceTable.page=0;state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
     $('#performanceLevel')?.addEventListener('change',e=>setLevel(e.target.value));
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.addEventListener('click',()=>setLevel(btn.dataset.level)));
     const filterMap={filterDepartment:'department',filterRayon:'rayon',filterFamily:'family',filterSubfamily:'subfamily',filterSubsubfamily:'subsubfamily',filterUb:'ub',filterProduct:'product',filterVendor:'vendor',filterSupplyMode:'supplyMode'};

@@ -318,15 +318,15 @@
     `).join('');
   }
 
-  async function openProduct(key) {
+  async function openProduct(key, detail) {
     const api = core();
     const products = aggregateProducts();
-    const product = products.find(p => p.key === key);
+    const product = products.find(p => p.key === key) || (detail&&{...detail,rank:detail.displayRank,previous:detail.previousSales,previousKnown:detail.previousSales!=null});
     if (!product) return;
 
-    const hierarchy = product.hierarchy?.levels || {};
+    const hierarchy = product.hierarchy?.levels || product.hierarchy || {};
     const stores = [...(product.stores || [])].sort((a, b) => b.sales - a.sales);
-    const averagePrice = product.units ? product.sales / product.units : null;
+    const averagePrice = product.units && (!detail || detail.quantityUnit) ? product.sales / product.units : null;
     const previous = product.previousKnown ? product.previous : null;
     const change = previous ? (product.sales - previous) / previous * 100 : null;
     const ub = product.hierarchy?.ub || hierarchy.ub?.id || null;
@@ -351,7 +351,7 @@
     $('#productDrawerBody').innerHTML = `
       <div class="product-grid">
         <div class="product-card"><small>CA</small><strong>${api.money(product.sales, true)}</strong><span>Périmètre sélectionné</span></div>
-        <div class="product-card"><small>Δ CA</small><strong>${api.percent(change)}</strong><span>vs J-7</span></div>
+        <div class="product-card"><small>Δ CA</small><strong>${api.percent(change)}</strong><span>Période de comparaison sélectionnée</span></div>
         <div class="product-card"><small>Quantité</small><strong>${api.number(product.units, 1)}</strong><span>Unités vendues</span></div>
         <div class="product-card"><small>Prix moyen</small><strong>${api.money(averagePrice)}</strong><span>CA / quantité</span></div>
       </div>
@@ -475,7 +475,7 @@
     });
 
     document.addEventListener('retail-intelligence:data', render);
-    document.addEventListener('retail-intelligence:open-product', e => { const key=e.detail?.productNumber; if(key) openProduct(key); });
+    document.addEventListener('retail-intelligence:open-product', e => { const key=e.detail?.productNumber; if(key) openProduct(key,e.detail?.product); });
 
     const existing = core()?.getState?.();
     if (existing?.pulses?.length) render();
