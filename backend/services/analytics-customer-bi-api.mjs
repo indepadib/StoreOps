@@ -99,28 +99,27 @@ export async function handleCustomerBiApi({req,url,user}){
   if(!start||!end||start>end||Math.round((Date.parse(end)-Date.parse(start))/86400000)>31)
    return{status:400,data:{error:'Un mois calendaire (31 jours maximum) est requis.'}};
   if(stores.length!==1)return{status:400,data:{error:'Un seul magasin autorisé par lot d’adhésions.'}};
-  const store=stores[0],key=analyticsCacheKey('customer-enrollment-chunk-v1',[store.id,start,end]);
+  const store=stores[0],key=analyticsCacheKey('customer-enrollment-chunk-v2',[store.id,start,end]);
   const old=await readAnalyticsCache(key);if(old)return{status:200,data:{status:'READY',storeId:store.id,enrollments:old.count,cached:true}};
   const rows=await readStoreLoyaltyEnrollments(store.id,{startDate:start,endDate:end});
-  if(rows.status!=='READY'||rows.truncated)return{status:422,data:{error:'Adhésions historiques non complètes pour ce mois ; le cumul restera indisponible.',source:rows.source||null,code:rows.truncated?'LOYALTY_TRUNCATED':'LOYALTY_UNAVAILABLE'}};
+  if(rows.status!=='READY'||rows.truncated||rows.missingIdentityRows)return{status:422,data:{error:'Adhésions historiques non complètes pour ce mois ; le cumul restera indisponible.',source:rows.source||null,code:rows.truncated?'LOYALTY_TRUNCATED':'LOYALTY_UNAVAILABLE'}};
   const fingerprints=[...new Set((rows.items||[]).map(row=>String(row.customerAccount||'').trim()).filter(Boolean)
    .map(id=>createHash('sha256').update('RI-lifetime-v1|'+id).digest('hex')))];
   const completeIdentity=rows.identityBasis==='CUSTOMER_ACCOUNT'&&fingerprints.length===rows.total;
   const data={count:rows.total,identities:completeIdentity?fingerprints:[],identityComplete:completeIdentity,
    storeId:store.id,source:rows.source,checkedAt:new Date().toISOString()};
-  const saved=await writeAnalyticsCache(key,'customer-enrollment-chunk-v1',data,604800);
+  const saved=await writeAnalyticsCache(key,'customer-enrollment-chunk-v2',data,604800);
   if(!saved)return{status:503,data:{error:'L’historique mensuel n’a pas pu être persisté. Relancer la journée plutôt que compter un résultat non sauvegardé.'}};
   return{status:200,data:{status:'READY',storeId:store.id,enrollments:data.count,identityComplete:data.identityComplete}}
  }
- // A true recruitment count comes from D365 enrollment records, not first
- // observed tickets. The caller must supply a known opening/historical start.
+ // This history describes fidelity enrollment records. Account creations require a separate source.
  if(url.pathname==='/api/analytics/customer-base'){
   const start=day(url.searchParams.get('historyStart')),end=day(url.searchParams.get('end'));
   const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
   if(!start||!end||start>end||end>today||Date.parse(end)-Date.parse(start)>2*366*86400000)
    return{status:400,data:{error:'Date de départ historique vérifiée et date de fin requises (deux années maximum).'}};
   if(!stores.length)return{status:422,data:{error:'Aucun magasin avec fidélité configurée.'}};
-  const scope=stores.map(x=>x.id).sort().join(','),key=analyticsCacheKey('customer-base-lifetime-v2',[scope,start,end]);
+  const scope=stores.map(x=>x.id).sort().join(','),key=analyticsCacheKey('customer-base-lifetime-v3',[scope,start,end]);
   const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
   const months=[];
   const nextDay=d=>{const x=new Date(d+'T12:00:00Z');x.setUTCDate(x.getUTCDate()+1);return x.toISOString().slice(0,10)};
@@ -128,7 +127,7 @@ export async function handleCustomerBiApi({req,url,user}){
    const [year,month]=d.split('-').map(Number),monthLast=new Date(Date.UTC(year,month,0)).toISOString().slice(0,10);
    const last=monthLast<end?monthLast:end;months.push({start:d,end:last});d=nextDay(last)
   }
-  const keys=stores.flatMap(store=>months.map(m=>({store,m,key:analyticsCacheKey('customer-enrollment-chunk-v1',[store.id,m.start,m.end])})));
+  const keys=stores.flatMap(store=>months.map(m=>({store,m,key:analyticsCacheKey('customer-enrollment-chunk-v2',[store.id,m.start,m.end])})));
   const rows=[];
   for(let i=0;i<keys.length;i+=12)rows.push(...await Promise.all(keys.slice(i,i+12).map(async v=>({...v,value:await readAnalyticsCache(v.key)}))));
   const pending=rows.filter(r=>!r.value);
@@ -143,14 +142,14 @@ export async function handleCustomerBiApi({req,url,user}){
    storeTotals.get(row.store.id).source=row.value.source;
    if(identityComplete)for(const id of row.value.identities)ids.add(id)
   }
-  const out={status:'READY',historyStart:start,end,openingDateCertified:false,
+  const out={status:'READY',historyStart:start,end,openingDateCertified:false,accountCreations:null,accountCreationStatus:'ACCOUNT_CREATION_SOURCE_UNVERIFIED',
    note:'Cumul depuis la date de début choisie. La date officielle d’ouverture du magasin doit être certifiée. Les inscriptions enregistrées sont différentes des clients identifiés dans les tickets.',
    enrollments:[...storeTotals.values()].reduce((n,x)=>n+x.enrollments,0),
    distinctRegisteredCustomers:identityComplete?ids.size:null,
    distinctIdentityCoverage:identityComplete?'CUSTOMER_ACCOUNT_COMPLETE':'MISSING_CUSTOMER_ID',
    stores:[...storeTotals.values()].map(r=>({...r,status:'READY',identityBasis:identityComplete?'CUSTOMER_ACCOUNT':'UNVERIFIED'})),
-   provenance:'D365 Loyalty Card · fenêtres mensuelles certifiées',checkedAt:new Date().toISOString(),monthsCovered:rows.length};
-  await writeAnalyticsCache(key,'customer-base-lifetime-v2',out,1800);
+   provenance:'D365 Loyalty Card · inscriptions par fenêtre mensuelle',checkedAt:new Date().toISOString(),monthsCovered:rows.length};
+  await writeAnalyticsCache(key,'customer-base-lifetime-v3',out,1800);
   return{status:200,data:out};
  }
  if(url.pathname==='/api/analytics/customer-intelligence/prepare'){

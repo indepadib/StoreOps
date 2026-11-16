@@ -13,7 +13,7 @@ const sections=[
  {id:'categories',label:'Produits & catégories',description:'Repérer les articles et univers qui expliquent les résultats.',search:'produit article sku rayon famille departement mix categorie'},
  {id:'suppliers',label:'Fournisseurs',description:'Relier performances commerciales, achats et fournisseurs.',search:'approvisionnement achats fournisseurs'},
  {id:'crm',label:'Clients & CRM',description:'Suivre les clients, les habitudes d’achat et les paniers avant/après.',search:'client cohortes acquisition retention non retour dormant fidelisation panier'},
- {id:'loyalty',label:'Fidélité',description:'Suivre l’identification, le recrutement et la valeur des clients.',search:'carte programme fidélité recrutement fidelise'},
+ {id:'loyalty',label:'Fidélité',description:'Comparer les tickets identifiés et la valeur des clients.',search:'carte programme fidélité recrutement fidelise'},
  {id:'promotions',label:'Promotions',description:'Comprendre remises, effets sur les ventes et dépendance promotionnelle.',search:'promotions offres discount remises prix'},
  {id:'inventory',label:'Stock',description:'Contrôler disponibilité, immobilisation et risques opérationnels.',search:'stock rupture inventaire couverture'},
  {id:'replenishment',label:'Réapprovisionnement',description:'Calculer une proposition de commande fournisseur ou de transfert entrepôt.',search:'commande fournisseur transfert entrepot stock po to'},
@@ -85,8 +85,25 @@ function setMode(mode,{remember=true}={}){
  if(remember)writePreference(mode);
 }
 function selectedSection(){return window.RETAIL_INTELLIGENCE?.getState?.()?.section||document.body.dataset.analyticsSection||'overview'}
+const scopeDate=new Intl.DateTimeFormat('fr-MA',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'});
+function updateWorkspaceScope(){
+ const client=getClient(),scope=client?.getState?.(),label=el('riWorkspaceScope');
+ if(!label||!scope)return;
+ const section=selectedSection();
+ const store=client.getStoreScopeLabel?.();
+ const date=value=>{const time=Date.parse(value);return Number.isFinite(time)?scopeDate.format(time):null;};
+ const start=date(scope.periodStart),end=date(scope.periodEnd);
+ const previousStart=date(scope.compareStart),previousEnd=date(scope.compareEnd);
+ const pair=(a,b)=>a&&b?(a===b?a:a+' au '+b):null;
+ const period=pair(start,end),comparison=pair(previousStart,previousEnd);
+ if(section==='reference')label.textContent='Société · fiche article actuelle';
+ else if(section==='replenishment')label.textContent='Périmètre à choisir ci-dessous · stock actuel et 28 jours de ventes clos';
+ else if(section==='detention')label.textContent=[store,'Stock actuel et réceptions historiques'].filter(Boolean).join(' · ');
+ else label.textContent=[store,period,comparison&&'comparé au '+comparison].filter(Boolean).join(' · ');
+}
 function updateHeading(){
  const section=byId[selectedSection()]||byId.overview;
+ updateWorkspaceScope();
  if(el('riExperienceSection'))el('riExperienceSection').textContent=section.label;
  if(el('riExperienceSubtitle'))el('riExperienceSubtitle').textContent=section.description;
  const actions=el('riExperienceActions');if(!actions)return;
@@ -237,5 +254,7 @@ function connect(){
  setupTools();defineFinder();setupFilters();updateHeading();
  window.addEventListener('resize',syncLensIndicator,{passive:true});
  document.addEventListener('retail-intelligence:section',updateHeading);
+ document.addEventListener('retail-intelligence:period',updateWorkspaceScope);
+ document.addEventListener('retail-intelligence:data',updateWorkspaceScope);
 }
 connect();

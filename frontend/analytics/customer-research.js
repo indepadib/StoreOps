@@ -97,15 +97,16 @@ function render(report){
 }
 function renderBase(response){
  base.replaceChildren();const section=node('section','customer-research-panel');
- add(section,'h4',null,'Base fidélité et recrutements enregistrés');
+ add(section,'h4',null,'Inscriptions au programme de fidélité');
  if(!response||response.status==='UNAVAILABLE'){add(section,'p',null,'La source fidélité est indisponible.');base.append(section);return}
  const metrics=node('div','customer-research-metrics');
- metrics.append(summaryCard('Adhésions enregistrées',number(response.enrollments),'Depuis le '+response.historyStart),
-  summaryCard('Comptes distincts',number(response.distinctRegisteredCustomers),'Dédoublonnés entre magasins seulement si le compte client est disponible'),
+ metrics.append(summaryCard('Inscriptions enregistrées',number(response.enrollments),'Depuis le '+response.historyStart),
+  summaryCard('Comptes liés aux inscriptions',number(response.distinctRegisteredCustomers),'Dédupliqués entre magasins si tous les identifiants sont disponibles'),
+  summaryCard('Créations de comptes','N/D','Date de création du compte non vérifiée'),
   summaryCard('Statut des sources',response.status,'Comptage non publié si historique tronqué ou partiel'));
  section.append(metrics);add(section,'p','customer-research-warning',response.note);
  for(const store of response.stores||[]){
-  const p=add(section,'p','research-base-store',store.storeName+' · '+number(store.enrollments)+' adhésions · '+store.status+' · '+(store.source||'source inconnue'));
+  const p=add(section,'p','research-base-store',store.storeName+' · '+number(store.enrollments)+' inscriptions · '+store.status+' · '+(store.source||'source inconnue'));
   if(store.error)p.textContent+=' · '+(store.error.message||store.error.code)
  }
  base.append(section)
