@@ -284,7 +284,17 @@ export function clearWalletBurnCache(storeId=null){
   for(const key of cache.keys())if(key.startsWith(storeId+'|'))cache.delete(key);
 }
 
-export async function readWalletBurnRange(storeId,{startDate,endDate,force=false}={}){
+const pendingWalletRanges=new Map();
+export async function readWalletBurnRange(storeId,options={}){
+ const requestKey=JSON.stringify([storeId,options.startDate,options.endDate,!!options.force]);
+ if(pendingWalletRanges.has(requestKey))return pendingWalletRanges.get(requestKey);
+ const request=loadWalletBurnRange(storeId,options);
+ pendingWalletRanges.set(requestKey,request);
+ try{return await request;}
+ finally{pendingWalletRanges.delete(requestKey);}
+}
+
+async function loadWalletBurnRange(storeId,{startDate,endDate,force=false}={}){
   const start=/^\d{4}-\d{2}-\d{2}$/.test(clean(startDate))?clean(startDate):null,end=/^\d{4}-\d{2}-\d{2}$/.test(clean(endDate))?clean(endDate):null,days=start&&end?rangeDays(start,end):null;
   if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,burn:null,message:'Période Wallet invalide.'};
   const key=`RANGE|${storeId}|${start}|${end}`,hit=cache.get(key);if(!force&&hit&&Date.now()<hit.expiresAt)return{...hit.value,cache:{status:'HIT'}};
@@ -316,6 +326,6 @@ export async function readWalletBurnRange(storeId,{startDate,endDate,force=false
 
   const tenderTypes=await tenderTypesPromise.catch(()=>({status:'UNAVAILABLE',entity:null,map:new Map()})),resolvedWalletIds=[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(name))).map(([id])=>id)])],rawWalletPresent=selectedRows.some(row=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(row?.[schema.fields.tender]))),walletMappingKnown=resolvedWalletIds.length>0||rawWalletPresent;
   const walletRows=selectedRows.filter(row=>isWalletValue(row?.[schema.fields.tender],tenderTypes.map,resolvedWalletIds)),profile=signProfile(walletRows,schema.fields.amount),derived=derivedBurn(profile),burn=walletMappingKnown?derived:{amount:null,signMode:'WALLET_MAPPING_REQUIRED'},mix=paymentMix(selectedRows,schema.fields,tenderTypes,resolvedWalletIds);
-  const value={status:burn.amount===null?(walletMappingKnown?'SIGN_VALIDATION_REQUIRED':'PAYMENT_MIX_READY_WALLET_UNMAPPED'):'READY',storeId,startDate:start,endDate:end,days,burn:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:resolvedWalletIds,tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
+  const value={status:selectedMeta?.truncated?'TRUNCATED':burn.amount===null?(walletMappingKnown?'SIGN_VALIDATION_REQUIRED':'PAYMENT_MIX_READY_WALLET_UNMAPPED'):'READY',storeId,startDate:start,endDate:end,days,burn:selectedMeta?.truncated?null:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:resolvedWalletIds,tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
   cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
 }

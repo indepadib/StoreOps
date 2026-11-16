@@ -212,3 +212,6 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
 .ri-experience-copy .ri-workspace-scope{margin-top:8px;color:#344861;font-weight:650}
 .ri-experience-actions button{min-height:42px}
 .ri-experience-actions button:focus-visible{outline:2px solid #94214f;outline-offset:2px}
+
+#loyaltyKpis .loyalty-kpi-priority{background:linear-gradient(145deg,#edf5ff,#fff);border:1px solid #c3d6f0;border-top:3px solid #395c9d;border-radius:12px}
+#loyaltyKpis .loyalty-kpi-priority strong{color:#182f55;font-variant-numeric:tabular-nums}
