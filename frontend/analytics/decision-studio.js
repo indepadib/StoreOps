@@ -45,10 +45,10 @@ function renderBrief(){
   ${d.lines?.length?`<ul>${d.lines.map(line=>`<li>${esc(line)}</li>`).join('')}</ul>`:''}
   ${d.section?`<div class="brief-decision-actions"><button type="button" data-studio-section="${esc(d.section)}">${esc(d.action)}</button></div>`:''}</article>`;
  const reading=$('briefReading'),r=m.reading;
- reading.hidden=!r;
+ reading.hidden=!r&&!m.readingNote;
  reading.innerHTML=r?`<div class="brief-reading-lead"><h2>${esc(r.headline)}</h2><strong>${esc(r.change)}</strong><p>CA de référence ${esc(r.previous)}${r.driver?' · '+esc(r.driver):''}</p></div>
   <div class="brief-reading-spread">${[[r.gain,'En hausse','up'],[r.loss,'En baisse','down']].map(([side,label,tone])=>`<article class="${tone}"><h3>${esc(label)} · ${side.count} magasin(s)</h3><strong>${esc(side.total)}</strong>${side.leader?`<p>${esc(side.leader)} · ${number(side.share)} % de cette contribution</p>`:''}</article>`).join('')}
-  <footer><span>${r.stable} magasin(s) stable(s)</span><button type="button" data-studio-section="network">Ouvrir le détail par magasin ↗</button></footer></div>`:'';
+  <footer><span>${r.stable} magasin(s) stable(s)</span><button type="button" data-studio-section="network">Ouvrir le détail par magasin ↗</button></footer></div>`:m.readingNote?`<div class="brief-reading-status"><h2>${esc(m.readingNote.title)}</h2><p>${esc(m.readingNote.detail)}</p><button type="button" data-studio-section="network">Voir les magasins ↗</button></div>`:'';
  const pace=$('briefPace');
  pace.hidden=!m.pace;
  pace.innerHTML=m.pace?`<div class="brief-pace-head"><h2>Rythme quotidien</h2><p>${esc(m.pace.caption)}</p></div><div class="brief-pace-grid">${m.pace.indicators.map(metric=>`<article><h3>${esc(metric.label)}</h3><strong>${esc(metric.value)}</strong><p>${esc(metric.detail)}</p></article>`).join('')}</div>`:'';

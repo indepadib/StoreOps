@@ -184,6 +184,10 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
  else if(!comparable)decision={title:'Vérifier avant de décider',text:priority?.items?.find(item=>item.id==='evidence')?.evidence||'La comparaison n’est pas suffisamment documentée.',section:'sales',action:'Ouvrir les contrôles de ventes'};
  else if(exception)decision={title:exception.title,text:exception.evidence,lines:[exception.action],section:exception.section,action:exception.section==='network'?'Comparer les magasins':'Examiner les ventes'};
  const reading=currentReady?networkReading(data,current,previous,comparable):null;
+ const readingNote=reading?null:currentReady&&finite(current.sales)?{
+  title:provisional?'La journée est encore ouverte':'Vue réseau · comparaison à vérifier',
+  detail:provisional?'Le rythme quotidien compare uniquement les journées closes. Le CA de la période reste provisoire.':'Le CA de la période est disponible. La répartition des gains et pertes nécessite une comparaison complète et rapprochée.',
+ }:null;
  const pace=currentReady?dailyPace(data,period,today,current,referenceReady?data.summary?.previous||{}:{},referenceReady):null;
  const trend=executiveTrend(data,period,{currentReady,comparisonReady:comparable,provisional});
  const generatedAt=data?.generatedAt?new Date(data.generatedAt):null;
@@ -195,6 +199,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,pace,reading,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,pace,reading,readingNote,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

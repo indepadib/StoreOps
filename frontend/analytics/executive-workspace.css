@@ -282,3 +282,9 @@ body[data-analytics-section="overview"] #periodSummary{
 .brief-reading-spread button{padding:6px 8px;border:1px solid #c1cfe1;border-radius:8px;background:#fff;color:#204c84;font:inherit;font-weight:700;cursor:pointer}
 @container executive (max-width:650px){#briefReading{grid-template-columns:1fr}}
 @media print{#briefReading{margin:1mm 4mm;break-inside:avoid}.brief-reading-spread button{display:none}}
+
+.brief-reading-status{grid-column:1/-1;display:flex;align-items:baseline;flex-wrap:wrap;gap:8px 14px;padding:12px 16px}
+.brief-reading-status h2,.brief-reading-status p{margin:0;font-size:.9rem}
+.brief-reading-status p{color:#425470;flex:1 1 280px}
+.brief-reading-status button{padding:5px 8px;border:1px solid #c1cfe1;border-radius:7px;background:#fff;color:#204c84;font:inherit;cursor:pointer}
+@media print{.brief-reading-status button{display:none}}
