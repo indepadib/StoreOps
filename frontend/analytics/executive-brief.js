@@ -42,7 +42,7 @@ export function executiveTrend(data,period,{currentReady,comparisonReady,provisi
   low:min,high:max,dateLabels,caption:`CA TTC par jour · ${recordedDays}/${days} jours renseignés${provisional?' · journée en cours exclue':''}`};
 }
 
-function businessSignals(data,current,comparable){
+function businessSignals(data,current,comparable,stock){
  const cards=[];
  const row=(label,value,tone='')=>({label,value,tone});
  const signedMoney=value=>(value>0?'+':'')+money(value);
@@ -69,6 +69,23 @@ function businessSignals(data,current,comparable){
   ['Remises enregistrées',current.discountAmount,'DH'],
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
  add('Exposition aux promotions',promoRows,'promotions','Analyser les offres');
+ const departments=(data.hierarchy?.department||[]).filter(department=>department.label&&finite(department.sales));
+ const mapped=departments.filter(department=>!/non classé|unknown|unclassified/i.test(department.label));
+ const categoryGap=finite(current.sales)?Math.abs(departments.reduce((sum,d)=>sum+d.sales,0)-current.sales):Infinity;
+ if(mapped.length&&categoryGap<=Math.max(1,Math.abs(current.sales)*.005)){
+  const changes=mapped.filter(d=>finite(d.previousSales??d.previous)&&d.sales<(d.previousSales??d.previous));
+  const useChanges=comparable&&changes.length>0;
+  const top=useChanges?[...changes].sort((a,b)=>(a.sales-(a.previousSales??a.previous))-(b.sales-(b.previousSales??b.previous))):[...mapped].sort((a,b)=>b.sales-a.sales);
+  add(useChanges?'Départements en recul':'Départements qui portent le CA',top.slice(0,3).map(d=>row(d.label,useChanges?signedMoney(d.sales-(d.previousSales??d.previous)):money(d.sales),useChanges?'down':'')),'categories','Analyser les catégories');
+ }
+ const stockRows=[
+  ['Détention historique',stock?.historyRate,'%'],
+  ['Références à compter pour stock négatif',stock?.complete?stock?.negative:null,''],
+  ['Références à réapprovisionner',stock?.complete?stock?.replenishable:null,''],
+ ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
+ if(stockRows.length)add('Disponibilité · stock actuel',stockRows,'detention','Vérifier la détention');
+ else cards.push({title:'Disponibilité · stock actuel',rows:[],section:'inventory',action:'Ouvrir le stock',note:'Les stocks actuels se consultent dans Stock.'});
+
  return cards;
 }
 
@@ -106,7 +123,7 @@ function dailyPace(data,period,today,current,previous,referenceReady){
  return {indicators,caption};
 }
 
-export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority}){
+export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority,stock}){
  const ready=selectedStores>0&&data?.coverage?.storesRequested===selectedStores;
  const truncated=(data?.quality?.checks?.truncatedStores||0)>0||data?.quality?.issues?.some(issue=>issue.code==='SALES_TRUNCATED');
  const currentReady=ready&&data.coverage.currentStoresReady===selectedStores&&!truncated;
@@ -148,6 +165,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,pace,signals:currentReady?businessSignals(data,current,comparable):[],title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,pace,signals:currentReady?businessSignals(data,current,comparable,stock):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

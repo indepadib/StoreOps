@@ -20,9 +20,9 @@ const data={
  stores:[{status:'READY',storeName:'A',sales:100,previousSales:150},{status:'READY',storeName:'B',sales:100,previousSales:100}],
 };
 const model=(today,override={})=>buildExecutiveBrief({data:{...data,...override},period,selectedStores:2,scopeLabel:'Réseau',today});
-assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','network','loyalty','promotions']);
+assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','network','loyalty','promotions','inventory']);
 assert.equal(model('2026-11-13').signals[1].rows.length,1);
-assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions']);
+assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions','inventory']);
 assert.equal(model('2026-11-12').signals[0].rows.length,2);
 assert.equal(model('2026-11-13',{quality:{status:'WARN',checks:{truncatedStores:1}}}).signals.length,0);
 
@@ -34,3 +34,7 @@ assert.match(live.pace.indicators[0].detail,/50 DH.*\+80 %.*\+40 DH/);
 assert.equal(live.pace.indicators[1].value,'9');
 assert.equal(model('2026-11-12',{daily:{...liveDaily,current:liveDaily.current.slice(0,1)}}).pace.indicators[0].value,'Indisponible');
 assert.equal(model('2026-11-13',{quality:{status:'ERROR'}}).pace.indicators[0].detail,'Comparaison indisponible');
+
+const withDepartments=model('2026-11-13',{hierarchy:{department:[{label:'Frais',sales:120,previousSales:150},{label:'PGC',sales:80,previousSales:100}]}});
+assert.deepEqual(withDepartments.signals.find(card=>card.section==='categories').rows.map(row=>row.label),['Frais','PGC']);
+assert.ok(!model('2026-11-13',{hierarchy:{department:[{label:'Frais',sales:30}]}}).signals.some(card=>card.section==='categories'));
