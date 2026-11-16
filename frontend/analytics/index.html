@@ -197,6 +197,11 @@
         <div class="ri-experience-bottom"><div id="riExperienceActions" class="ri-experience-actions" aria-label="Actions pour cette page"></div><p id="riExperienceModeHelp" aria-live="polite">Les messages et indicateurs prioritaires, sans tableaux secondaires.</p></div>
       </section>
 
+      <div class="ri-page-outline-wrap">
+        <nav id="riPageOutline" aria-label="Dans cette page"></nav>
+        <p id="riOutlineStatus" role="status"></p>
+      </div>
+
       <section id="brandUnavailable" class="empty-product" hidden>
         <div class="empty-icon">◈</div>
         <h1 id="emptyBrandTitle">Enseigne non connectée</h1>
@@ -244,7 +249,7 @@
     <button class="primary" type="submit">Générer le TO</button>
   </form>
   <p class="repl-status" role="status" aria-live="polite"></p>
-  <div data-repl-result></div>
+  <div data-repl-result id="replenishmentResult"></div>
 </section><section data-widget="customerBi" id="biWorkspace" class="bi-workspace" hidden><nav aria-label="Analyse des paniers" id="biTabs"><button data-tab="global" class="active">Vue globale</button><button data-tab="article">Article 360°</button></nav>
 <form id="bi-filters" hidden><label>Magasin<select id="bi-stores"><option value="ALL">Tous mes magasins</option></select></label><label>Analyse du<input id="bi-start" type="date" required></label><label>Au<input id="bi-end" type="date" required></label><label>Comparaison du<input id="bi-beforeStart" type="date" required></label><label>Au<input id="bi-beforeEnd" type="date" required></label><button type="submit" class="primary">Analyser</button></form>
 <section id="basketDirection" class="decision-studio"><h2>Rapport direction sur les paniers</h2><p>Comparer deux articles, leurs achats associés et les clients avant et après. Le rapport utilise les périodes et magasins sélectionnés ci-dessus.</p><label>Articles à analyser<input id="directionProducts" value="HS-006590, HS-006585" aria-label="Codes articles du rapport" maxlength="140"></label><button type="button" id="directionRun">Préparer le rapport et les tickets</button><p id="directionStatus" role="status"></p><div id="directionContent"></div></section>

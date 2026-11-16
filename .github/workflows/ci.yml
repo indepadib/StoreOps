@@ -44,6 +44,7 @@ jobs:
           node backend/tests/analytics-loyalty-range.mjs
           node backend/tests/analytics-customer-journey-v2.mjs
           node backend/tests/analytics-experience-navigation.mjs
+          node backend/tests/analytics-page-outline.mjs
           node backend/tests/analytics-table-analysis.mjs
           node backend/tests/analytics-category-analysis.mjs
           node backend/tests/analytics-sales-proof.mjs
