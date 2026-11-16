@@ -1,3 +1,4 @@
+import {buildExecutiveBrief} from '../../frontend/analytics/executive-brief.js';
 import {marginEvidence,promotionEvidence,evolution,matchesEvidence,calendarDays,dailyComparison,performanceCard} from '../../frontend/analytics/performance-evidence.js';
 import {buildReliableCategories,categorySummaryLines} from '../../frontend/analytics/category-reconciliation.js';
 import assert from 'node:assert/strict';
@@ -54,10 +55,13 @@ const supplyMetric=receptionDetention(stockUniverse,received,receiptCatalog,{kin
 const ops=await operationalSummary([{id:'A',name:'A'},{id:'B',name:'B'}],{read:async()=>stockUniverse,catalogReader:async()=>receiptCatalog,historyReader:async()=>received});assert.equal(ops.warehouses.length,1);assert.equal(ops.stores[0].historical.base,3);assert.equal(ops.stores[0].relativePGC.base,2);assert.equal(ops.coverage.historicalReady,2);
 const studioSource=readFileSync(new URL('../../frontend/analytics/decision-studio.js',import.meta.url),'utf8'),modelSource=studioSource.slice(studioSource.indexOf('function stockMetrics()'),studioSource.indexOf('function renderBrief()'));
 const modelState={stock:{stores:[{storeId:'A',storeName:'A',historical:{base:10,held:8,rate:80,departments:{PGC:{rate:80},APLS:{rate:70}}},insights:{total:100,held:30,expected:100,expectedHeld:30,expectedDetentionPct:30,warehouseExpectedDetentionPct:20,warehouseExpectedHeld:20,actions:[],negative:0,replenishable:2}},{storeId:'B',storeName:'B',historical:{base:20,held:10,rate:50,departments:{PGC:{rate:60},APLS:{rate:40}}},insights:{total:100,held:40,expected:100,expectedHeld:40,expectedDetentionPct:40,warehouseExpectedDetentionPct:20,warehouseExpectedHeld:20,actions:[],negative:0,replenishable:3}}],warehouses:[{warehouseId:'W',rate:75,base:4,held:3}]},catalog:new Map(),data:{summary:{current:{sales:100,tickets:10,averageBasket:10},previous:{sales:80,tickets:8,averageBasket:10},drivers:{trafficEffect:20,basketEffect:0}},stores:[]}};
-const fmt=v=>v==null?'À compléter':String(v),briefContext={marginEvidence,promotionEvidence,evolution,dailyComparison,performanceCard,buildReliableCategories,categorySummaryLines,state:modelState,stores:()=>[{id:'A'},{id:'B'}],scope:()=>({periodStart:'2026-10-30',periodEnd:'2026-10-30',compareStart:'2026-10-29',compareEnd:'2026-10-29'}),core:{getStoreScopeLabel:()=> 'A + B'},number:fmt,pct:v=>v==null?'À compléter':String(v)+' %',money:fmt,change:(a,b)=>b>0?(a-b)/b*100:null,productLabel:()=>'',Intl,Date,Map};vm.createContext(briefContext);vm.runInContext(modelSource+';this.makeBrief=briefModel;this.metrics=stockMetrics;',briefContext);assert.equal(briefContext.metrics().historyRate,60);assert.equal(briefContext.metrics().historyWarehouseRate,75);const overview=briefContext.makeBrief();assert.equal(overview.kpis[5][1],'60 %');assert.match(overview.kpis[5][0],/réceptions/);assert.ok(overview.sections.some(s=>s.lines.some(l=>l.includes('PGC 80 %')&&l.includes('APLS 70 %'))));modelState.stock.stores[0].historical=null;assert.equal(briefContext.makeBrief().kpis[5][1],'À compléter','missing receipts must never fall back to the global-reference rate');
-console.log('PASS executive and operational detention use historical receipt denominators, exhausted receipts stay in base, never-received stock is excluded, PGC/APLS rates and shared warehouse reconcile');
-
-modelState.data.hierarchy={rayon:[{key:'004001',label:'FLEG',sales:50,previousSales:40}]};assert.match(briefContext.makeBrief().sections[1].lines[0],/FLEG · 50 · 50 % du CA · évolution 25 %/,'prepared category totals should work before optional catalog enrichment');modelState.data.summary.current.marginValue=99;modelState.data.margin={available:false,status:'UNVALIDATED'};assert.equal(briefContext.makeBrief().kpis[3][1],'Coût à qualifier');
+const briefContext={state:modelState,stores:()=>[{id:'A'},{id:'B'}],Map};
+vm.createContext(briefContext);vm.runInContext(modelSource+';this.metrics=stockMetrics;',briefContext);
+assert.equal(briefContext.metrics().historyRate,60);
+assert.equal(briefContext.metrics().historyWarehouseRate,75);
+modelState.stock.stores[0].historical=null;
+assert.equal(briefContext.metrics().historyRate,null,'missing receipts must never fall back to the global-reference rate');
+console.log('PASS operational detention uses historical receipt denominators without falling back to the global reference');
 
 // The same prepared evidence must drive executive, sales and promotion displays.
 assert.equal(evolution(0,100).pct,-100);assert.equal(evolution(10,0).pct,null);assert.equal(evolution(null,100).delta,null);
@@ -67,7 +71,28 @@ assert.equal(matchesEvidence(performanceData,performanceScope,[{id:'A'}]),true);
 const promo=promotionEvidence(performanceData);assert.equal(promo.sales.pct,200);assert.equal(promo.currentShare,30);assert.equal(promo.shareDelta,10);assert.equal(promo.currentTicketShare,20);assert.equal(promo.ticketShareDelta,10);assert.equal(promotionEvidence(null).sales.pct,null);
 const partial=marginEvidence(performanceData);assert.equal(partial.kind,'PARTIAL');assert.equal(partial.value,28);assert.equal(partial.rate,28/98*100);assert.equal(partial.estimated,true);assert.equal(marginEvidence({...performanceData,margin:{status:'UNVALIDATED',diagnosticMarginValue:999}}).value,null,'never promote a diagnostic amount to a displayed margin');
 assert.equal(marginEvidence({...performanceData,margin:{covered:{...performanceData.margin.covered,salesHT:null}}}).value,null);
-modelState.data=performanceData;const partialOverview=briefContext.makeBrief();assert.equal(partialOverview.kpis[3][0],'Taux de marge HT · couvert');assert.match(partialOverview.kpis[3][1],/28[.,]571/);assert.match(partialOverview.kpis[3][2],/28/);assert.match(partialOverview.kpis[3][2],/98 %.*partielle/);assert.match(partialOverview.kpis[1][2],/100 %/);
+const overviewData={...performanceData,quality:{status:'OK'},coverage:{storesRequested:1,currentStoresReady:1,comparisonStoresReady:1},daily:{
+ current:[{date:'2026-10-21',sales:50},{date:'2026-10-23',sales:70},{date:'2026-10-24',sales:80}],
+ previous:[{date:'2026-10-15',sales:40},{date:'2026-10-17',sales:60}]
+}};
+const executiveInput={data:overviewData,period:performanceScope,selectedStores:1,scopeLabel:'A',today:'2026-10-28'};
+const partialOverview=buildExecutiveBrief(executiveInput);
+assert.equal(partialOverview.kpis.length,4);
+assert.equal(partialOverview.kpis[3][0],'Marge HT sur ventes couvertes');
+assert.match(partialOverview.kpis[3][1],/28[.,]57/);
+assert.match(partialOverview.kpis[3][2],/coût couvert 98 %/);
+assert.match(partialOverview.kpis[1][2],/100 %/);
+assert.match(partialOverview.trend.current,/^M[^M]+M/,'missing sale dates preserve gaps');
+assert.ok(partialOverview.trend.previous);
+const missingStore=buildExecutiveBrief({...executiveInput,selectedStores:2});
+assert.equal(missingStore.comparisons[0].value,undefined,'do not present partial network revenue as consolidated');
+assert.equal(missingStore.trend,null);
+const openDay=buildExecutiveBrief({...executiveInput,today:'2026-10-26'});
+assert.equal(openDay.comparisons[0].changeMode,'none');
+assert.equal(openDay.trend.previous,null);
+assert.match(openDay.quality,/provisoire/);
+assert.equal(buildExecutiveBrief({...executiveInput,priority:{evidenceConflict:'Divergence'}}).comparisons[0].changeMode,'none');
+
 // Chunking must preserve previous covered margin for a consistent comparison basis.
 const mergeContext={};vm.createContext(mergeContext);vm.runInContext(source.slice(source.indexOf('  function moneySum('),source.indexOf('  function mergeRankedRows('))+';this.merge=mergeCoveredMargin;',mergeContext);
 const chunked=mergeContext.merge([{summary:{previous:{sales:120}},margin:{previousCovered:{valueHT:28,salesHT:98,costHT:70,coveragePct:98,unvaluedSalesTTC:2.4}}},{summary:{previous:{sales:0}},margin:{}}],true);assert.equal(chunked.valueHT,28);assert.equal(chunked.coveragePct,98);

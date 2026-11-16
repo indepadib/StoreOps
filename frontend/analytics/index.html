@@ -26,6 +26,7 @@
 <link rel="stylesheet" href="/analytics/sales-proof.css">
 <link rel="icon" type="image/svg+xml" href="/analytics/favicon.svg">
 <link rel="stylesheet" href="/analytics/replenishment.css">
+  <link rel="stylesheet" href="/analytics/executive-workspace.css">
 </head>
 <body data-ri-mode="focus">
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -210,8 +211,14 @@
       </section>
 
       <div id="analyticsContent">
-<section id="executiveOnePager" data-widget="executiveOnePager" hidden aria-label="Synthèse exécutive sur une page">
- <header class="brief-head"><div><p>STOREOPS · DIRECTION</p><h1>L’activité en une page.</h1><span id="briefPeriod"></span></div><div class="brief-tools"><button id="briefRefreshStock">Actualiser la synthèse</button><button id="briefPng">Image présentation</button><button id="briefPrint">PDF / imprimer</button></div></header>
+<section id="executiveOnePager" data-widget="executiveOnePager" hidden aria-labelledby="briefTitle">
+ <header class="brief-head">
+  <div><h1 id="briefTitle">Vue exécutive</h1><span id="briefPeriod"></span></div>
+  <div class="brief-tools">
+   <button type="button" id="briefPng">Exporter en image</button>
+   <button type="button" id="briefPrint">Imprimer / PDF</button>
+  </div>
+ </header>
  <div id="briefKpis" class="brief-kpis"></div><div id="briefGrid" class="brief-grid"></div><footer id="briefQuality" class="brief-quality" role="status">Chargement des sources…</footer>
 <section id="decisionPriorities" class="decision-priorities" aria-label="Priorités de décision"></section>
 </section>

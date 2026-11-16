@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=name=>readFileSync(new URL('../../frontend/analytics/'+name,import.meta.url),'utf8');
+const html=read('index.html'),css=read('executive-workspace.css');
+assert.match(html,/executive-workspace\.css/);
+assert.match(html,/id="executiveOnePager"[^>]*aria-labelledby="briefTitle"/);
+assert.equal([...html.matchAll(/id="briefTitle"/g)].length,1);
+for(const id of ['briefPeriod','briefKpis','briefGrid','briefQuality','briefPng','briefPrint'])assert.match(html,new RegExp('id="'+id+'"'));
+assert.match(css,/body\[data-analytics-section="overview"\] #riExperience/);
+assert.match(css,/backdrop-filter/);
+assert.match(css,/@media print/);
+assert.match(css,/prefers-reduced-transparency/);
+console.log('PASS executive layout, accessibility and export structure');
