@@ -61,7 +61,7 @@ const divergent={...decision,products:[{key:'HS-0001',sales:1000,previousSales:6
 assert.equal(buildReliableCategories(divergent,catalog).status,'UNAVAILABLE','Catalog mapping from an unreconciled product base must never replace server revenue');
 const html=readFileSync(new URL('../../frontend/analytics/decision-studio.js',import.meta.url),'utf8');
 assert.match(html,/from '.\/category-reconciliation\.js'/);
-assert.match(html,/categorySummaryLines\(categoryReport,money,number\)/);
+assert.match(html,/buildReliableCategories\(d,state.catalog\)/);
 assert.match(html,/CA catégorisé/);
 assert.match(html,/classification\.status==='UNAVAILABLE'/);
 for(const name of ['category-reconciliation.js','decision-studio.js']){

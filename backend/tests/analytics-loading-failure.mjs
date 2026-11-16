@@ -14,5 +14,6 @@ await new Promise(resolve=>setTimeout(resolve,20));
 assert.equal(calls,2,'two short concurrent slices must fail without endless retries');
 assert.equal(get('#executiveSalesValue').textContent,'Analyse indisponible');
 assert.equal(get('#executiveComparisonValue').textContent,'Ticket parent indisponible');
+assert.match(get('#briefQuality').textContent,/Ventes indisponibles/);
 assert.doesNotMatch(get('#executiveSalesValue').textContent,/Analyse \d|Finalisation/);
 console.log('PASS Analytics rejects a failed load visibly instead of retaining progress forever');

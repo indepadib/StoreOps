@@ -17,7 +17,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   };
   const sectionState=()=>core()?.getState?.()||null;
 
-  function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
+  function storeScopeKey(s){return selectedStoreIds(s).sort().join(',')}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
   const decisionCachePrefix='retail-intelligence:decision:v36:';
   const catalogCacheKey='retail-intelligence:catalog:v10';
@@ -27,6 +27,19 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     const hit=readJsonStorage(decisionCachePrefix+key);
     if(!hit?.data||!hit.at)return null;
     return Date.now()-Number(hit.at)<15*60*1000?hit.data:null
+  }
+  function cachedScopeMatches(data,scope){
+    if(!data)return false;
+    const stores=selectedStoreIds(scope),cachedStores=new Set((data.stores||[]).map(store=>store.storeId));
+    return stores.length>0&&cachedStores.size===stores.length&&stores.every(id=>cachedStores.has(id))
+      &&data.period?.startDate===scope.periodStart&&data.period?.endDate===scope.periodEnd
+      &&data.comparison?.startDate===scope.compareStart&&data.comparison?.endDate===scope.compareEnd;
+  }
+  function canReuseExecutiveCache(data,scope){
+    if(scope.section!=='overview'||data?.status!=='READY'||!['OK','WARN'].includes(data.quality?.status))return false;
+    const storeCount=selectedStoreIds(scope).length;
+    return data.coverage?.storesRequested===storeCount&&data.coverage.currentStoresReady===storeCount
+      &&data.coverage.comparisonStoresReady===storeCount;
   }
   function saveDecisionCache(key,data){writeJsonStorage(decisionCachePrefix+key,{at:Date.now(),data})}
   function hydrateCatalogCache(){
@@ -266,7 +279,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       for(const p of d.contributors?.negativeProducts||[])add(p.key);
       for(const p of d.contributors?.positiveProducts||[])add(p.key);
       for(const p of (d.products||[]).slice(0,100))add(p.key);
-    }else if(section==='overview'||section==='categories'||section==='suppliers'){
+    }else if(section==='categories'||section==='suppliers'){
       for(const p of (d.products||[]))add(p.key);
     }else if(section==='crm'){
       for(const p of (d.products||[]).slice(0,180))add(p.key);
@@ -292,18 +305,19 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','suppliers','crm','loyalty','cashiers','promotions'].includes(s?.section)}
-  function sectionNeedsCatalog(s=sectionState()){return ['overview','sales','categories','suppliers','crm'].includes(s?.section)}
+  function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','suppliers','crm'].includes(s?.section)}
   function warmCatalogSoon(){
     const s=sectionState();if(!s||!['sales','categories','suppliers','crm'].includes(s.section))return;
     const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
     if('requestIdleCallback' in window)window.requestIdleCallback(run,{timeout:1200});else setTimeout(run,500)
   }
   function prewarmFullCatalog(){
-    if(!state.data||state.catalogLoading)return;
+    if(!state.data||state.catalogLoading||sectionState()?.section==='overview')return;
     const all=(state.data.products||[]).slice(0,750).map(x=>String(x.key||'').trim()).filter(Boolean);
     const missing=all.filter(sku=>!state.catalog.has(sku));if(!missing.length)return;
     const api=core();if(!api)return;
     const run=async()=>{
+      if(state.loading||state.catalogLoading||sectionState()?.section==='overview')return;
       const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
       let cursor=0;
       const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache()}catch(error){console.debug('Catalog prewarm skipped',error?.code||error?.message)}}};
@@ -314,7 +328,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   }
 
   function maybeLoadCatalog(force=false){if(sectionNeedsCatalog())loadCatalog(force).catch(error=>{console.error('Retail Intelligence catalog enrichment failure',error);const note=$('#catalogCoverage');if(note)note.textContent='Libellés produits indisponibles : '+(error?.message||'erreur source article')})}
-  async function load(force=false){
+  async function load(force=false,{reuseExecutive=true}={}){
     const api=core(),liveScope=sectionState(); if(!api||!liveScope||!liveScope.stores?.length||!sectionNeedsDecision(liveScope))return;
     const s={...liveScope,stores:[...liveScope.stores],selectedStoreIds:[...(liveScope.selectedStoreIds||[])]},key=queryKey(s);
     if(state.loading){
@@ -322,7 +336,16 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       return;
     }
     if(!force&&state.freshKey===key&&state.data){render();return}
-    const cached=!force?cachedDecision(key):null;
+    const candidate=!force?cachedDecision(key):null;
+    const cached=cachedScopeMatches(candidate,s)?candidate:null;
+    if(reuseExecutive&&canReuseExecutiveCache(cached,s)){
+      state.data=cached;state.key=key;state.freshKey=null;
+      if(!state.catalog.size)hydrateCatalogCache();
+      window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
+      render();
+      document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
+      return;
+    }
     if(cached&&state.key!==key){
       state.data=cached;state.key=key;if(!state.catalog.size)hydrateCatalogCache();
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
@@ -367,6 +390,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     for(const id of ['benchmarkBody','performanceBody','crmBody']){const h=$('#'+id);if(h)h.innerHTML=`<tr><td colspan="12"><div class="table-loading">${msg}</div></td></tr>`}
     const sales=$('#executiveSalesValue');if(sales)sales.textContent='Analyse indisponible';
     const comparison=$('#executiveComparisonValue');if(comparison)comparison.textContent=error?.message||'Réessayez le chargement';
+    const quality=$('#briefQuality');if(quality&&sectionState()?.section==='overview')quality.textContent='Ventes indisponibles. '+(error?.message||'Utilisez Actualiser rapidement pour réessayer.');
     const k=$('#decisionSalesKpis');if(k)k.innerHTML=`<div class="decision-kpi"><small>Source</small><strong>N/A</strong><span>${msg}</span></div>`;
   }
 
@@ -1057,7 +1081,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     $('#supplierSearch')?.addEventListener('input',e=>{state.supplierSearch=e.target.value||'';renderSupplier()});
     document.addEventListener('retail-intelligence:period',e=>{if(sectionNeedsDecision())load(!!e.detail?.force);if(sectionState()?.section==='suppliers')loadSupplierOps(!!e.detail?.force)});
     document.addEventListener('retail-intelligence:data',()=>{if(sectionNeedsDecision())load(false)});
-    document.addEventListener('retail-intelligence:quick-refresh',()=>{state.freshKey=null;if(sectionNeedsDecision())load(false)});
+    document.addEventListener('retail-intelligence:quick-refresh',()=>{state.freshKey=null;if(sectionNeedsDecision())load(false,{reuseExecutive:false})});
     document.addEventListener('retail-intelligence:section',()=>{if(sectionNeedsDecision())load(false);if(state.data&&sectionNeedsCatalog())maybeLoadCatalog(false);if(sectionState()?.section==='suppliers')loadSupplierOps(false)});
     const s=sectionState();if(s?.stores?.length&&sectionNeedsDecision(s))load(false);
   }
