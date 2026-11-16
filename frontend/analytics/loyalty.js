@@ -239,6 +239,12 @@
     }
 
     if (ready.length) {
+      const expected=api.getSelectedStores?.().length||0;
+      if(ready.length!==expected||ready.some(result=>safe(result.data.burn)==null)){
+        value.textContent='N/D';
+        status.textContent=`Paiements Wallet disponibles pour ${ready.length}/${expected} magasin(s). Le détail par magasin reste consultable.`;
+        return;
+      }
       const burn = ready.reduce((s,x)=>s+Number(x.data?.burn||0),0);
       const transactions = ready.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
       value.textContent = api.money(burn, true);
@@ -262,11 +268,13 @@
     }
   }
 
+  const walletScopeKey=scope=>`${scope.start}|${scope.end}|${scope.stores.map(store=>store.id).sort().join(',')}`;
+
   async function loadWallet(force = false) {
     const api = core();
     if (!api || state.walletLoading) return;
     const scope = cashierScope();
-    const key = `${scope.start}|${scope.end}|${scope.stores.map(s=>s.id).join(',')}`;
+    const key = walletScopeKey(scope);
     if (!force && state.walletKey === key) {
       renderWalletStatus();
       renderLoyalty();
@@ -274,6 +282,7 @@
     }
 
     state.walletLoading = true;
+    if(state.walletKey!==key)state.walletStores=[];
     renderWalletStatus();
 
     try {
@@ -294,10 +303,12 @@
         }
       };
       await Promise.all(Array.from({ length: Math.min(2, Math.max(1, scope.stores.length)) }, worker));
+      if(walletScopeKey(cashierScope())!==key)return;
       state.walletStores = results.filter(Boolean);
       state.walletKey = key;
     } finally {
       state.walletLoading = false;
+      if(walletScopeKey(cashierScope())!==key&&api.getState?.()?.section==='loyalty')loadWallet();
       renderWalletStatus();
       renderLoyalty();
     }
@@ -452,6 +463,7 @@
     });
     document.addEventListener('retail-intelligence:period', () => {
       state.walletKey = null;
+      state.walletStores = [];
       state.cashierKey = null;
       state.enrollmentKey = null;
       state.enrollmentData = null;
