@@ -255,9 +255,14 @@
         <section class="decision-dashboard sales-diagnostic" id="salesDiagnostic" data-widget="decisionSales" hidden>
           <div class="decision-head">
             <div>
-              <span class="eyebrow">SALES DIAGNOSTIC</span>
-              <h2>Pourquoi le chiffre bouge ?</h2>
-              <p>Décomposition CA → fréquentation → panier → catégories → articles, avec lecture marge lorsque le coût transactionnel est validé.</p>
+              <h2>Pourquoi le chiffre d’affaires a changé</h2>
+              <nav class="decision-toolbar" aria-label="Sections du diagnostic des ventes">
+                <a href="#decisionSalesKpis">Résultats</a>
+                <a href="#salesDriversWaterfall">Tickets et panier</a>
+                <a href="#decisionDailyChart">Évolution par jour</a>
+                <a href="#negativeContributors">Articles qui expliquent l’écart</a>
+                <a href="#hourlyDepartmentFilter">Ventes par heure</a>
+              </nav>
             </div>
             <div class="margin-status" id="marginStatusBadge">Marge · vérification source</div>
           </div>
@@ -334,8 +339,8 @@
           <div class="decision-head decision-head-tools">
             <div>
               <span class="eyebrow">PRODUCT & CATEGORY PERFORMANCE</span>
-              <h2>Ranker ce qui se vend — et ce qui détruit de la valeur</h2>
-              <p>Classement dynamique par niveau de hiérarchie et métrique business.</p>
+              <h2>Performance des produits et catégories</h2>
+              <p>Choisis un niveau, puis clique sur une colonne pour trier les résultats.</p>
             </div>
             <div class="decision-toolbar">
               <select id="performanceLevel">
@@ -384,11 +389,22 @@
           </div>
           <div class="performance-data-note" id="catalogCoverage">Libellés, hiérarchie UB et coût courant en cours d'enrichissement…</div>
           <div class="performance-quadrants" id="performanceQuadrants"></div>
+          <div class="decision-toolbar" id="performanceTableTools">
+            <label><input type="checkbox" id="performanceShowFilters"> Filtres par colonne</label>
+            <label><input type="checkbox" id="performanceExtra"> Colonnes détaillées</label>
+            <button type="button" class="ghost-light-btn" id="performanceExport" disabled>Exporter les résultats filtrés</button>
+            <button type="button" class="ghost-light-btn" id="performanceClearColumns">Effacer filtres et tri du tableau</button>
+          </div>
           <div class="decision-table-wrap">
-            <table class="decision-table">
-              <thead><tr><th>Rank</th><th>Libellé</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>Qté / unité</th><th>Marge</th><th>Taux marge</th><th>Rank avant</th><th>Δ Rank</th></tr></thead>
+            <table class="decision-table" aria-label="Performance des produits et catégories">
+              <thead id="performanceHead"></thead>
               <tbody id="performanceBody"></tbody>
             </table>
+          </div>
+          <div class="decision-toolbar">
+            <button type="button" class="ghost-light-btn" id="performancePrev" disabled>Précédent</button>
+            <span id="performancePageStatus" aria-live="polite"></span>
+            <button type="button" class="ghost-light-btn" id="performanceNext" disabled>Suivant</button>
           </div>
         </section>
 

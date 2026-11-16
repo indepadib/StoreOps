@@ -1424,6 +1424,7 @@
     getStoreScopeKey: () => state.selectedStoreIds.length ? [...state.selectedStoreIds].sort().join(',') : 'ALL',
     getStoreScopeLabel: () => storeScopeLabel(),
     api,
+    downloadCsv,
     navigate:navigateSection,
     money,
     number,
