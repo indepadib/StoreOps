@@ -42,6 +42,36 @@ export function executiveTrend(data,period,{currentReady,comparisonReady,provisi
   low:min,high:max,dateLabels,caption:`CA TTC par jour · ${recordedDays}/${days} jours renseignés${provisional?' · journée en cours exclue':''}`};
 }
 
+function businessSignals(data,current,comparable){
+ const cards=[];
+ const row=(label,value,tone='')=>({label,value,tone});
+ const signedMoney=value=>(value>0?'+':'')+money(value);
+ const add=(title,rows,section,action)=>{if(rows.length)cards.push({title,rows,section,action});};
+ const drivers=data.summary?.drivers||{};
+ if(comparable)add('Ce qui explique l’écart de CA',[
+  ['Effet tickets',drivers.trafficEffect],['Effet panier',drivers.basketEffect],['Écart résiduel',drivers.reconciliationGap]
+ ].filter(([,v])=>finite(v)).map(([label,value])=>row(label,signedMoney(value),value<0?'down':value>0?'up':'')),'sales','Vérifier les contributions');
+ const shops=(data.stores||[]).filter(store=>store.status==='READY'&&finite(store.sales));
+ const ranked=[...shops].sort((a,b)=>b.sales-a.sales);
+ const declining=comparable?shops.filter(store=>finite(store.previousSales)&&store.sales<store.previousSales).sort((a,b)=>(a.sales-a.previousSales)-(b.sales-b.previousSales)):[];
+ add(declining.length?'Magasins qui pèsent sur la baisse':'CA par magasin',(declining.length?declining:ranked).slice(0,3).map(store=>
+  row(store.storeName||store.storeCode||store.storeId,declining.length?signedMoney(store.sales-store.previousSales):money(store.sales),declining.length?'down':'')
+ ),'network','Comparer les magasins');
+ const clientRows=[
+  ['Part du CA identifié',current.identifiedSalesShare,'%'],
+  ['Tickets identifiés',current.identifiedTicketRate,'%'],
+  ['Clients distincts identifiés',data.crm?.identifiedCustomers,''],
+ ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
+ add('Fidélité et identification',clientRows,'loyalty','Analyser la fidélité');
+ const promoRows=[
+  ['CA des ventes sous promotion',current.promotionSales,'DH'],
+  ['Tickets concernés',current.promotionTickets,''],
+  ['Remises enregistrées',current.discountAmount,'DH'],
+ ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
+ add('Exposition aux promotions',promoRows,'promotions','Analyser les offres');
+ return cards;
+}
+
 export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority}){
  const ready=selectedStores>0&&data?.coverage?.storesRequested===selectedStores;
  const truncated=(data?.quality?.checks?.truncatedStores||0)>0||data?.quality?.issues?.some(issue=>issue.code==='SALES_TRUNCATED');
@@ -82,6 +112,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,signals:currentReady?businessSignals(data,current,comparable):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

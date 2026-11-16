@@ -238,3 +238,16 @@ body[data-analytics-section="overview"] #periodSummary{
   #executiveOnePager .brief-trend svg{max-height:155px}
   #executiveOnePager .brief-quality{padding-block:2mm;font-size:10px}
 }
+
+#briefSignals{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:12px;padding:0 var(--exec-space) var(--exec-space)}
+#briefSignals[hidden]{display:none}
+.brief-signal{display:flex;flex-direction:column;min-width:0;padding:16px;border-radius:16px;border:1px solid #d4deef;background:#ffffffe6;box-shadow:0 8px 18px #253e6910}
+.brief-signal h2{font-size:1rem;line-height:1.35;margin:0;color:#162643}
+.brief-signal dl{margin:12px 0;display:grid;gap:0}
+.brief-signal dl>div{display:flex;gap:8px;justify-content:space-between;padding:8px 0;border-top:1px solid #e3eaf4}
+.brief-signal dt{font-size:.86rem;line-height:1.35;color:#425470;overflow-wrap:anywhere}
+.brief-signal dd{margin:0;font-weight:760;text-align:right;font-variant-numeric:tabular-nums}
+.brief-signal .down{color:#9e1d45}.brief-signal .up{color:#1b6a54}
+.brief-signal button{align-self:start;margin-top:auto;min-height:38px;padding:6px 0;background:none;border:0;color:#204c84;font:inherit;font-weight:700;cursor:pointer;text-align:left}
+.brief-signal button:focus-visible{outline:2px solid #204c84;outline-offset:3px}
+@media print{#briefSignals{grid-template-columns:repeat(4,minmax(0,1fr));padding:0 4mm 3mm;gap:2mm}.brief-signal{padding:2mm;box-shadow:none}.brief-signal button{display:none}}
