@@ -20,7 +20,7 @@ function stockMetrics(){const all=state.stock?.stores||[],loaded=all.filter(s=>s
 function briefModel(){
  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
  return buildExecutiveBrief({data:state.data,period:scope(),selectedStores:stores().length,
-  scopeLabel:core.getStoreScopeLabel(),today,priority:priorityModel()});
+  scopeLabel:core.getStoreScopeLabel(),today,priority:priorityModel(),stock:stockMetrics()});
 }
 function executiveTrendHtml(trend){
  if(!trend)return '<p class="brief-decision-text">La tendance est disponible à partir de trois jours renseignés.</p>';
@@ -50,7 +50,7 @@ function renderBrief(){
  const signals=$('briefSignals');
  signals.hidden=!m.signals.length;
  signals.innerHTML=m.signals.map(card=>`<article class="brief-signal">
-  <h2>${esc(card.title)}</h2><dl>${card.rows.map(row=>`<div><dt>${esc(row.label)}</dt><dd class="${row.tone}">${esc(row.value)}</dd></div>`).join('')}</dl>
+  <h2>${esc(card.title)}</h2>${card.note?`<p class="brief-signal-note">${esc(card.note)}</p>`:''}<dl>${card.rows.map(row=>`<div><dt>${esc(row.label)}</dt><dd class="${row.tone}">${esc(row.value)}</dd></div>`).join('')}</dl>
   <button type="button" data-studio-section="${esc(card.section)}">${esc(card.action)} <span aria-hidden="true">↗</span></button>
  </article>`).join('');
  $('briefQuality').textContent=m.quality;
@@ -317,7 +317,7 @@ function textLines(ctx,text,maxWidth){const result=[];let line='';for(const word
 function exportBrief(){
  if(!state.data)return;
  const m=briefModel(),canvas=document.createElement('canvas');
- canvas.width=1920;canvas.height=(m.signals.length?1430:1080)+(m.pace?175:0);
+ canvas.width=1920;canvas.height=(m.signals.length?1430+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:1080)+(m.pace?175:0);
  const ctx=canvas.getContext('2d');if(!ctx)return;
  function block(text,x,y,width,{size=25,color='#243c5a',weight='',maxLines=8}={}){
   ctx.font=`${weight} ${size}px Segoe UI`.trim();ctx.fillStyle=color;
@@ -357,15 +357,16 @@ function exportBrief(){
  y=block(m.decision.text,1204,y+25,632,{size:23});
  for(const line of m.decision.lines||[])y=block(line,1204,y+18,632,{size:22});
  if(m.signals.length){
-  const width=(1808-20*(m.signals.length-1))/m.signals.length;
+  const columns=Math.min(4,m.signals.length),width=(1808-20*(columns-1))/columns;
   m.signals.forEach((card,index)=>{
-   const x=56+index*(width+20);
-   ctx.fillStyle='#fff';ctx.fillRect(x,928,width,325);
-   let lineY=block(card.title,x+20,970,width-40,{size:24,weight:'bold',maxLines:2})+12;
+   const x=56+(index%columns)*(width+20),top=928+Math.floor(index/columns)*350;
+   ctx.fillStyle='#fff';ctx.fillRect(x,top,width,325);
+   let lineY=block(card.title,x+20,top+42,width-40,{size:24,weight:'bold',maxLines:2})+12;
+   if(card.note)block(card.note,x+20,lineY,width-40,{size:21,maxLines:3});
    for(const row of card.rows)lineY=block(row.label+' · '+row.value,x+20,lineY,width-40,{size:21,maxLines:2})+8;
   });
  }
- const qualityY=m.signals.length?1310:962;
+ const qualityY=m.signals.length?1310+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:962;
  if(m.pace){
   block('Rythme quotidien · '+m.pace.caption,56,qualityY,1808,{size:22,weight:'bold'});
   m.pace.indicators.forEach((metric,index)=>{
