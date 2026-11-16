@@ -1,5 +1,7 @@
+import {mergeDailyEvidence} from './sales-proof-model.js';
 import {filterAndSortRows} from './table-analysis.js';
 import {marginEvidence,performanceCard} from './performance-evidence.js';
+import {contributions,summarizeCategories} from './category-analysis.js';
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
@@ -17,7 +19,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
 
   function storeScopeKey(s){const ids=Array.isArray(s?.selectedStoreIds)?s.selectedStoreIds:[];return ids.length?[...ids].sort().join(','):'ALL'}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v35:';
+  const decisionCachePrefix='retail-intelligence:decision:v36:';
   const catalogCacheKey='retail-intelligence:catalog:v10';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -158,7 +160,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     const qualityIssues=[...issueMap.values()],qualityStatus=qualityIssues.some(x=>x.level==='ERROR')?'ERROR':qualityIssues.some(x=>x.level==='WARN')?'WARN':'OK';
     const qualityChecks={chunks:parts.length,chunkStatuses:parts.map(p=>p.quality?.status||'UNKNOWN'),...mergedCoverage};
     const fallbackMarginSales=parts.reduce((s,p)=>s+Number(p.margin?.productMasterFallbackMarginSales||0),0),fallbackLines=parts.reduce((s,p)=>s+Number(p.margin?.productMasterFallbackLines||0),0),weightedConversions=parts.reduce((s,p)=>s+Number(p.margin?.weightedConversions||0),0),fallbackPct=current.marginSalesBase?fallbackMarginSales/current.marginSalesBase*100:0;
-    return{status:'READY',period,comparison,evidenceSlices:parts.flatMap(p=>p.evidenceSlices||[{period:p.period,comparison:p.comparison}]),coverage:{...mergedCoverage},quality:{status:qualityStatus,issues:qualityIssues,checks:qualityChecks},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{covered:mergeCoveredMargin(parts),previousCovered:mergeCoveredMargin(parts,true),status:marginStatus,available:['VALIDATED','ESTIMATED'].includes(marginStatus)&&current.marginValue!=null&&current.marginSalesBase!=null,estimated:marginStatus==='ESTIMATED',basisCoveragePct:Math.min(...parts.filter(p=>Number(p.summary?.current?.sales)>0).map(p=>Number(p.margin?.basisCoveragePct??0))),coveragePct:Math.min(...parts.filter(p=>Number(p.summary?.current?.sales)>0).map(p=>Number(p.margin?.coveragePct??0))),salesBasis:[...new Set(parts.map(p=>p.margin?.salesBasis).filter(Boolean))].join(',')||null,salesBasisField:[...new Set(parts.map(p=>p.margin?.salesBasisField).filter(Boolean))].join(',')||null,taxField:[...new Set(parts.map(p=>p.margin?.taxField).filter(Boolean))].join(',')||null,costField:[...new Set(parts.map(p=>p.margin?.costField).filter(Boolean))].join(',')||null,costKind:[...new Set(parts.map(p=>p.margin?.costKind).filter(Boolean))].join(',')||null,method:[...new Set(parts.map(p=>p.margin?.method).filter(Boolean))].join(',')||null,productMasterFallbackLines:fallbackLines,productMasterFallbackMarginSales:fallbackMarginSales,productMasterFallbackPct:fallbackPct,weightedConversions,reason:[...new Set(parts.map(p=>p.margin?.reason).filter(Boolean))].join(',')||null,message:marginStatus==='VALIDATED'?'Marge brute calculée sur CA HT avec coût transactionnel validé.':marginStatus==='ESTIMATED'?'Marge brute HT estimée avec coût courant en fallback sur une partie du CA.':'Marge masquée : base HT, coût ou contrôle métier non validé.'},daily:{current:parts.flatMap(p=>p.daily?.current||[]).sort((a,b)=>a.date.localeCompare(b.date)),previous:parts.flatMap(p=>p.daily?.previous||[]).sort((a,b)=>a.date.localeCompare(b.date))},hourly:{current:mergeHourlyParts(parts,'current'),previous:mergeHourlyParts(parts,'previous')},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},cashiers:{status:cashierItems.length?'READY':'UNAVAILABLE',items:cashierItems,source:'CHUNK_MERGE'},crm,generatedAt:new Date().toISOString()}
+    return{status:'READY',period,comparison,evidenceSlices:parts.flatMap(p=>p.evidenceSlices||[{period:p.period,comparison:p.comparison}]),coverage:{...mergedCoverage},quality:{status:qualityStatus,issues:qualityIssues,checks:qualityChecks},summary:{current,previous,salesChangePct:pct(current.sales,previous.sales),ticketsChangePct:pct(current.tickets,previous.tickets),basketChangePct:pct(current.averageBasket,previous.averageBasket),marginChangePct:previous.marginValue?pct(current.marginValue,previous.marginValue):null,marginRateDelta:current.marginRate!=null&&previous.marginRate!=null?current.marginRate-previous.marginRate:null,drivers:{trafficEffect,basketEffect,totalDelta:current.sales-previous.sales,reconciliationGap:trafficEffect!=null&&basketEffect!=null?(current.sales-previous.sales)-trafficEffect-basketEffect:null}},margin:{covered:mergeCoveredMargin(parts),previousCovered:mergeCoveredMargin(parts,true),status:marginStatus,available:['VALIDATED','ESTIMATED'].includes(marginStatus)&&current.marginValue!=null&&current.marginSalesBase!=null,estimated:marginStatus==='ESTIMATED',basisCoveragePct:Math.min(...parts.filter(p=>Number(p.summary?.current?.sales)>0).map(p=>Number(p.margin?.basisCoveragePct??0))),coveragePct:Math.min(...parts.filter(p=>Number(p.summary?.current?.sales)>0).map(p=>Number(p.margin?.coveragePct??0))),salesBasis:[...new Set(parts.map(p=>p.margin?.salesBasis).filter(Boolean))].join(',')||null,salesBasisField:[...new Set(parts.map(p=>p.margin?.salesBasisField).filter(Boolean))].join(',')||null,taxField:[...new Set(parts.map(p=>p.margin?.taxField).filter(Boolean))].join(',')||null,costField:[...new Set(parts.map(p=>p.margin?.costField).filter(Boolean))].join(',')||null,costKind:[...new Set(parts.map(p=>p.margin?.costKind).filter(Boolean))].join(',')||null,method:[...new Set(parts.map(p=>p.margin?.method).filter(Boolean))].join(',')||null,productMasterFallbackLines:fallbackLines,productMasterFallbackMarginSales:fallbackMarginSales,productMasterFallbackPct:fallbackPct,weightedConversions,reason:[...new Set(parts.map(p=>p.margin?.reason).filter(Boolean))].join(',')||null,message:marginStatus==='VALIDATED'?'Marge brute calculée sur CA HT avec coût transactionnel validé.':marginStatus==='ESTIMATED'?'Marge brute HT estimée avec coût courant en fallback sur une partie du CA.':'Marge masquée : base HT, coût ou contrôle métier non validé.'},daily:{current:mergeDailyEvidence(parts,'current'),previous:mergeDailyEvidence(parts,'previous')},hourly:{current:mergeHourlyParts(parts,'current'),previous:mergeHourlyParts(parts,'previous')},stores,products,hierarchy,contributors:{negativeProducts:[...products].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,20),positiveProducts:[...products].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,20),negativeStores:[...stores].filter(x=>x.deltaSales<0).sort((a,b)=>a.deltaSales-b.deltaSales).slice(0,10),positiveStores:[...stores].filter(x=>x.deltaSales>0).sort((a,b)=>b.deltaSales-a.deltaSales).slice(0,10)},cashiers:{status:cashierItems.length?'READY':'UNAVAILABLE',items:cashierItems,source:'CHUNK_MERGE'},crm,generatedAt:new Date().toISOString()}
   }
   function setProgress(done,total,expectedKey=null){
     if(expectedKey&&expectedKey!==queryKey(sectionState()))return;
@@ -600,7 +602,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       const decisions=[];
       if(weak)decisions.push({tone:'risk',title:`Relancer ${weak.storeName}`,text:`CA ${api.percent(weak.changePct)} vs période comparée. Priorité au diagnostic trafic / assortiment.`});
       if(trafficGap)decisions.push({tone:'warning',title:`Potentiel trafic · ${trafficGap.storeName}`,text:`Panier au-dessus du réseau mais fréquentation sous la moyenne : le levier principal est l'acquisition de visites.`});
-      if(loyalty)decisions.push({tone:'info',title:`Fidélité · ${loyalty.storeName}`,text:`Poids CA identifié ${api.percent(loyalty.identifiedSalesShare)} : vérifier identification caisse et recrutement.`});
+      if(loyalty)decisions.push({tone:'info',title:`Fidélité · ${loyalty.storeName}`,text:`Poids CA identifié ${api.percent(loyalty.identifiedSalesShare)} : vérifier le taux d’identification et le volume de tickets.`});
       if(growth)decisions.push({tone:'positive',title:`À répliquer · ${growth.storeName}`,text:`Meilleure dynamique réseau (${api.percent(growth.changePct)}). Identifier les catégories et créneaux qui expliquent la hausse.`});
       actions.innerHTML=decisions.slice(0,4).map(d=>`<div class="decision-action ${d.tone}"><strong>${api.escapeHtml(d.title)}</strong><span>${api.escapeHtml(d.text)}</span></div>`).join('')||'<div class="table-loading">Pas assez de données pour prioriser.</div>'
     }
@@ -651,20 +653,23 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
   function aggregateHierarchyRows(products,level){
     const map=new Map();
     for(const p of products){
-      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true,marginEstimated:false};
+      const node=p.hierarchy?.[level],key=node?.id||'__UNCLASSIFIED__',label=node?.label||'Non classé',cur=map.get(key)||{key,label,sales:0,previousSales:0,quantityByUnit:new Map(),articleCount:0,activeArticleCount:0,previousMarginValue:0,previousMarginKnown:true,marginSalesBase:0,marginBaseKnown:true,marginValue:0,marginKnown:true,marginEstimated:false};
       cur.sales+=Number(p.sales||0);cur.previousSales+=Number(p.previousSales||0);
       const quantities=Object.entries(p.quantityByUnit||{});
       if(quantities.length)for(const [unit,value] of quantities)quantityMapAdd(cur.quantityByUnit,unit,value);
       else if(p.units!=null)quantityMapAdd(cur.quantityByUnit,p.quantityUnit,p.units);
       if(p.marginSalesBase==null)cur.marginBaseKnown=false;else cur.marginSalesBase+=Number(p.marginSalesBase||0);
       if(p.marginValue==null)cur.marginKnown=false;else cur.marginValue+=Number(p.marginValue||0);
+      cur.articleCount++;
+      if(p.sales>0)cur.activeArticleCount++;
+      if(p.previousMarginValue==null)cur.previousMarginKnown=false;else cur.previousMarginValue+=p.previousMarginValue;
       cur.marginEstimated=cur.marginEstimated||!!p.marginEstimated;map.set(key,cur)
     }
     const total=[...map.values()].reduce((s,x)=>s+x.sales,0),prev=[...map.values()].sort((a,b)=>b.previousSales-a.previousSales),prevRank=new Map(prev.map((x,i)=>[x.key,i+1]));
     return[...map.values()].map(x=>{
       const unitEntries=[...x.quantityByUnit.entries()].filter(([,v])=>Number(v)!==0),single=unitEntries.length===1?unitEntries[0]:null;
       const marginSalesBase=x.marginBaseKnown?x.marginSalesBase:null,marginValue=x.marginKnown?x.marginValue:null;
-      return{...x,units:single?single[1]:null,quantityUnit:single?single[0]:null,mixedQuantityUnits:unitEntries.length>1,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginSalesBase,marginValue,marginRate:marginValue!=null&&marginSalesBase?marginValue/marginSalesBase*100:null,previousRank:prevRank.get(x.key)||null}
+      return{...x,units:single?single[1]:null,quantityUnit:single?single[0]:null,mixedQuantityUnits:unitEntries.length>1,deltaSales:x.sales-x.previousSales,changePct:x.previousSales?(x.sales-x.previousSales)/x.previousSales*100:null,sharePct:total?x.sales/total*100:null,marginSalesBase,marginValue,marginRate:marginValue!=null&&marginSalesBase?marginValue/marginSalesBase*100:null,previousMarginValue:x.previousMarginKnown?x.previousMarginValue:null,deltaMargin:x.previousMarginKnown&&marginValue!=null?marginValue-x.previousMarginValue:null,previousRank:prevRank.get(x.key)||null}
     }).sort((a,b)=>b.sales-a.sales)
   }
   function performanceRows(){
@@ -672,7 +677,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     const ranked=[...base].sort((a,b)=>{const av=safe(a[metric]),bv=safe(b[metric]);if(av==null&&bv==null)return 0;if(av==null)return 1;if(bv==null)return-1;return bv-av});
     const prevField='previousSales',prevSorted=[...base].filter(x=>safe(x[prevField])!=null).sort((a,b)=>Number(b[prevField]||0)-Number(a[prevField]||0)),prevRank=new Map(prevSorted.map((x,i)=>[x.key,i+1]));
     const salesRank=new Map([...base].sort((a,b)=>b.sales-a.sales).map((x,i)=>[x.key,i+1]));
-    return ranked.map(x=>{const displayRank=salesRank.get(x.key),previousRank=prevRank.get(x.key)||null;return {...x,displayRank,previousRank,rankDelta:previousRank==null?null:previousRank-displayRank}})
+    return contributions(ranked.map(x=>{const displayRank=salesRank.get(x.key),previousRank=prevRank.get(x.key)||null;return {...x,displayRank,previousRank,rankDelta:previousRank==null?null:previousRank-displayRank}}))
   }
   function optionRows(level){
     const seen=new Map();
@@ -702,13 +707,19 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
   }
   const performanceTable={filters:{},sort:{key:null,desc:false},page:0};
   const performancePageSize=50;
+  const categoryLevels=['department','rayon','family','subfamily','subsubfamily','ub','product'];
+  const categoryTrail=[];
   function performanceColumns(api){
     const column=(key,label,value,format,hidden=false)=>({key,label,value,format,numeric:true,hidden});
     const text=(key,label,value,hidden=false)=>({...column(key,label,value,v=>api.escapeHtml(v),hidden),numeric:false});
     const money=v=>api.money(v,true), percent=v=>api.percent(v);
     return [
       column('displayRank','Rang CA',r=>r.displayRank),
-      {...text('label','Article ou catégorie',r=>[r.label,r.productCode||r.key].filter(Boolean).join(' · ')),format:(_,r)=>state.level==='product'?'<button type="button" class="ghost-light-btn" data-performance-product="'+api.escapeHtml(r.key)+'">'+api.escapeHtml(r.label||r.key)+'</button><small> '+api.escapeHtml(r.key)+'</small>':api.escapeHtml(r.label||r.key)},
+      {...text('label','Article ou catégorie',r=>[r.label,r.productCode||r.key].filter(Boolean).join(' · ')),format:(_,r)=>{
+        const label=api.escapeHtml(r.label||r.key),key=api.escapeHtml(r.key);
+        if(state.level==='product')return `<button type="button" class="category-row-link" data-performance-product="${key}">${label}</button><small>${key}</small>`;
+        return r.key==='__UNCLASSIFIED__'?label:`<button type="button" class="category-row-link" data-category-drill="${key}">${label} <span aria-hidden="true">›</span></button>`;
+      }},
       column('sales','CA',r=>safe(r.sales),money),
       column('previousSales','CA précédent',r=>safe(r.previousSales),money),
       column('deltaSales','Écart CA',r=>safe(r.deltaSales??r.delta),v=>signed(api,v,'money')),
@@ -717,13 +728,17 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       {...text('quantity','Quantités par unité',r=>quantityBreakdown(r,api)),value:r=>{const q=quantityBreakdown(r,api);return q==='N/A'?null:q}},
       column('marginValue','Marge DH',r=>safe(r.marginValue),(v,r)=>(r.marginEstimated?'~ ':'')+money(v)),
       column('marginRate','Taux de marge',r=>safe(r.marginRate),(v,r)=>(r.marginEstimated?'~ ':'')+percent(v)),
+      column('changeContribution','Part dans la hausse / baisse',r=>safe(r.changeContribution),percent,true),
+      column('articleCount','Articles analysés',r=>r.articleCount??(state.level==='product'?1:null),undefined,true),
+      column('activeArticleCount','Articles avec CA positif',r=>r.activeArticleCount??(state.level==='product'?Number(r.sales>0):null),undefined,true),
       column('previousRank','Rang avant',r=>safe(r.previousRank),undefined,true),
       column('rankDelta','Écart de rang',r=>safe(r.rankDelta),undefined,true),
       text('vendor','Fournisseur',r=>catalogItem(r.key)?.vendorName||catalogItem(r.key)?.primaryVendorAccount||null,true),
       text('rayon','Rayon',r=>r.hierarchy?.rayon?.label||null,true),
       column('previousMarginValue','Marge précédente',r=>safe(r.previousMarginValue),money,true),
       column('deltaMargin','Écart de marge',r=>safe(r.deltaMargin),v=>signed(api,v,'money'),true),
-      text('marginQuality','Qualité marge',r=>r.marginValue==null?'Indisponible':r.marginEstimated?'Estimée':'Validée',true),
+      text('marginQuality','Qualité marge',r=>r.marginValue==null?'Indisponible':r.marginEstimated?'Estimée':'Coût transactionnel',true),
+      column('marginSalesBase','Base HT de la marge',r=>r.marginValue==null?null:safe(r.marginSalesBase),money,true),
     ];
   }
   function renderPerformanceTable(rows,api){
@@ -744,6 +759,7 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       else th.removeAttribute('aria-sort');
     }
     const matching=filterAndSortRows(rows,columns,performanceTable.filters,performanceTable.sort);
+    renderCategorySummary(matching,api);
     const pages=Math.max(1,Math.ceil(matching.length/performancePageSize));
     performanceTable.page=Math.min(performanceTable.page,pages-1);
     const start=performanceTable.page*performancePageSize;
@@ -757,11 +773,27 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       return '<td>'+(value==null?'N/A':c.format?c.format(value,row):api.number(value))+'</td>';
     }).join('')+'</tr>').join('')||`<tr><td colspan="${columns.length}">Aucune ligne pour ces filtres.</td></tr>`;
   }
+  function renderCategorySummary(rows,api){
+    const host=$('#performanceQuadrants');
+    if(!host)return;
+    const {sales,previousSales,delta,change,marginValue,marginRate,marginRows,estimated}=summarizeCategories(rows);
+    const value=(n,format)=>n==null?'N/D':format(n);
+    const money=n=>api.money(n,true),percentage=n=>api.percent(n);
+    const prefix=estimated?'~ ':'';
+    const marginCaption=marginRows>0?`${api.number(marginRows)} / ${api.number(rows.length)} lignes valorisées`:'Aucune ligne valorisée';
+    const cards=[
+      ['CA sélectionné',value(sales,money),`Comparaison ${value(previousSales,money)}`],
+      ['Écart de CA',signed(api,delta,'money'),value(change,percentage)],
+      ['Marge des lignes valorisées',value(marginValue,n=>prefix+money(n)),marginCaption],
+      ['Taux de marge',value(marginRate,n=>prefix+percentage(n)),'Marge / CA HT valorisé'],
+    ];
+    const path=categoryTrail.map(item=>api.escapeHtml(item.label)).join(' › ');
+    const articles=state.level==='product'?'':'<button type="button" class="ghost-light-btn" data-category-articles>Voir les articles</button>';
+    host.innerHTML=(path?`<div class="category-trail"><button type="button" class="ghost-light-btn" data-category-back>← Remonter</button><span>${path}</span>${articles}</div>`:'')
+      +cards.map(([label,amount,caption])=>`<div class="category-summary-card"><span>${label}</span><strong>${amount}</strong><small>${caption}</small></div>`).join('');
+  }
   function renderPerformance(refreshFilters=true){
     const api=core(),rows=performanceRows(),body=$('#performanceBody');if(!body)return;if(refreshFilters)renderHierarchyFilters();
-    const salesValues=rows.map(x=>safe(x.sales)).filter(v=>v!=null).sort((a,b)=>a-b),median=salesValues.length?salesValues[Math.floor(salesValues.length/2)]:0;
-    const stars=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)>=0).length,declining=rows.filter(x=>Number(x.sales||0)>=median&&Number(x.deltaSales??x.delta??0)<0).length,potential=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)>0).length,weak=rows.filter(x=>Number(x.sales||0)<median&&Number(x.deltaSales??x.delta??0)<=0).length;
-    $('#performanceQuadrants').innerHTML=[['Stars',stars,'Fort poids + dynamique positive','star'],['À défendre',declining,'Fort poids + baisse','risk'],['Potentiel',potential,'Faible poids + croissance','potential'],['À challenger',weak,'Faible poids + faible dynamique','']].map(([l,v,s,cls])=>`<div class="quadrant-card ${cls}"><small>${l}</small><strong>${api.number(v)}</strong><span>${s}</span></div>`).join('');
     renderPerformanceTable(rows,api);
   }
 
@@ -968,6 +1000,18 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
       performanceTable.page=0;refreshGrid();
     });
     $('#performanceBody')?.addEventListener('click',event=>{
+      const drill=event.target.closest('[data-category-drill]')?.dataset.categoryDrill;
+      if(drill){
+        const row=performanceRows().find(item=>item.key===drill);
+        if(!row)return;
+        const scoped=filteredProducts().filter(product=>product.hierarchy?.[state.level]?.id===drill);
+        const next=categoryLevels.slice(categoryLevels.indexOf(state.level)+1).find(level=>level==='product'||scoped.some(product=>product.hierarchy?.[level]?.id));
+        if(!next)return;
+        categoryTrail.push({level:state.level,label:row.label,previous:state.filters[state.level]});
+        state.filters[state.level]=drill;
+        goToCategoryLevel(next);
+        return;
+      }
       const productNumber=event.target.closest('[data-performance-product]')?.dataset.performanceProduct;
       if(!productNumber)return;
       const product=performanceRows().find(row=>row.key===productNumber);
@@ -981,12 +1025,27 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     $('#performanceExport')?.addEventListener('click',()=>core().downloadCsv('performance-produits-categories.csv',performanceTable.exportRows));
     $('#performancePrev')?.addEventListener('click',()=>{performanceTable.page--;refreshGrid()});
     $('#performanceNext')?.addEventListener('click',()=>{performanceTable.page++;refreshGrid()});
-    const setLevel=level=>{performanceTable.page=0;state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
+    const goToCategoryLevel=level=>{performanceTable.page=0;performanceTable.filters={};performanceTable.sort={key:null,desc:false};delete $('#performanceHead').dataset.columns;state.level=level||'product';if(state.metric==='units'&&state.level!=='product'){state.metric='sales';if($('#performanceMetric'))$('#performanceMetric').value='sales'}renderPerformance()};
+    function resetCategoryTrail(){
+      while(categoryTrail.length){
+        const item=categoryTrail.pop();
+        state.filters[item.level]=item.previous;
+      }
+    }
+    const setLevel=level=>{resetCategoryTrail();goToCategoryLevel(level)};
+    $('#performanceQuadrants')?.addEventListener('click',event=>{
+      if(event.target.closest('[data-category-articles]')){goToCategoryLevel('product');return;}
+      if(!event.target.closest('[data-category-back]')||!categoryTrail.length)return;
+      const item=categoryTrail.pop();
+      state.filters[item.level]=item.previous;
+      goToCategoryLevel(item.level);
+      $('#performanceQuadrants')?.querySelector('[data-category-back]')?.focus();
+    });
     $('#performanceLevel')?.addEventListener('change',e=>setLevel(e.target.value));
     $$('#hierarchyTabs [data-level]').forEach(btn=>btn.addEventListener('click',()=>setLevel(btn.dataset.level)));
     const filterMap={filterDepartment:'department',filterRayon:'rayon',filterFamily:'family',filterSubfamily:'subfamily',filterSubsubfamily:'subsubfamily',filterUb:'ub',filterProduct:'product',filterVendor:'vendor',filterSupplyMode:'supplyMode'};
     for(const [id,key] of Object.entries(filterMap))$('#'+id)?.addEventListener('change',e=>{state.filters[key]=e.target.value||'';renderPerformance()});
-    $('#clearProductFilters')?.addEventListener('click',()=>{state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
+    $('#clearProductFilters')?.addEventListener('click',()=>{categoryTrail.length=0;state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
     $('#hourlyDepartmentFilter')?.addEventListener('change',e=>{state.hourly.department=e.target.value||'';state.hourly.rayon='';state.hourly.product='';renderHourlyIntelligence()});

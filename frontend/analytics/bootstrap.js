@@ -39,6 +39,7 @@ async function start(){
     await import(analyticsAsset('/analytics/loyalty.js'));
     await import(analyticsAsset('/analytics/promotions.js'));
     await import(analyticsAsset('/analytics/decision.js'));
+    await import(analyticsAsset('/analytics/sales-proof.js'));
     await import(analyticsAsset('/analytics/workspace-bi.js'));
     await import(analyticsAsset('/analytics/article-reference.js'));
     await import(analyticsAsset('/analytics/decision-studio.js'));

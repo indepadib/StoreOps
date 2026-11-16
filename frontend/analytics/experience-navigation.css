@@ -204,3 +204,11 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
 #performanceHead input{width:100%;min-width:6rem;box-sizing:border-box;padding:6px}
 #performanceHead tr[hidden]{display:none}
 #salesDiagnostic .decision-toolbar{flex-wrap:wrap}
+
+.ri-experience{border-radius:16px;background:#fff;border-color:#dde5ee;box-shadow:none}
+.ri-experience::before{display:none}
+.ri-experience h2{font-size:clamp(1.5rem,2.6vw,2.125rem)}
+.ri-experience-copy p{font-size:.875rem;color:#47586e}
+.ri-experience-copy .ri-workspace-scope{margin-top:8px;color:#344861;font-weight:650}
+.ri-experience-actions button{min-height:42px}
+.ri-experience-actions button:focus-visible{outline:2px solid #94214f;outline-offset:2px}

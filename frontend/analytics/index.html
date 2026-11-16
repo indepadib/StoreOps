@@ -22,6 +22,8 @@
 <link rel="stylesheet" href="/analytics/business-experience.css">
 <link rel="stylesheet" href="/analytics/customer-research.css">
 <link rel="stylesheet" href="/analytics/experience-navigation.css">
+<link rel="stylesheet" href="/analytics/category-analysis.css">
+<link rel="stylesheet" href="/analytics/sales-proof.css">
 <link rel="icon" type="image/svg+xml" href="/analytics/favicon.svg">
 <link rel="stylesheet" href="/analytics/replenishment.css">
 </head>
@@ -130,6 +132,7 @@
             <option value="yesterday">Hier</option>
             <option value="7d" selected>7 derniers jours</option>
             <option value="30d">30 derniers jours</option>
+            <option value="90d">90 derniers jours</option>
             <option value="month">Mois en cours</option>
             <option value="previous_month">Mois précédent</option>
             <option value="custom">Personnalisée</option>
@@ -181,9 +184,9 @@
         <div class="active-period" id="periodSummary"></div>
       </section>
 
-      <section id="riExperience" class="ri-experience" aria-label="Niveaux de lecture du tableau de bord">
+      <section id="riExperience" class="ri-experience" aria-labelledby="riExperienceSection">
         <div class="ri-experience-top">
-          <div class="ri-experience-copy"><h2 id="riExperienceSection">Vue exécutive</h2><p id="riExperienceSubtitle">Les résultats essentiels et les décisions à prendre.</p></div>
+          <div class="ri-experience-copy"><h2 id="riExperienceSection">Vue exécutive</h2><p id="riExperienceSubtitle">Les résultats essentiels et les décisions à prendre.</p><p id="riWorkspaceScope" class="ri-workspace-scope"></p></div>
           <div class="ri-lens-control" id="riExperienceLens" role="group" aria-label="Niveau de lecture">
             <span class="ri-lens-indicator" aria-hidden="true"></span>
             <button type="button" data-ri-mode-choice="focus" aria-pressed="true">L’essentiel</button>
@@ -262,6 +265,7 @@
                 <a href="#decisionDailyChart">Évolution par jour</a>
                 <a href="#negativeContributors">Articles qui expliquent l’écart</a>
                 <a href="#hourlyDepartmentFilter">Ventes par heure</a>
+                <a href="#salesProof">Détail par jour et magasin</a>
               </nav>
             </div>
             <div class="margin-status" id="marginStatusBadge">Marge · vérification source</div>
@@ -288,6 +292,7 @@
               <div id="positiveContributors" class="contributor-list"></div>
             </article>
           </div>
+          <section id="salesProof" aria-label="Détail des ventes"></section>
           <div class="decision-card hourly-intelligence-card">
             <div class="decision-card-head">
               <div><span class="mini-kicker">VENTES PAR HEURE</span><h3>Quand je vends quoi ?</h3></div>
@@ -371,6 +376,7 @@
             <button data-level="ub">UB</button>
             <button class="active" data-level="product">Article</button>
           </div>
+          <details class="category-advanced-filters"><summary>Filtres produits et fournisseurs</summary>
           <div class="hierarchy-filters">
             <select id="filterDepartment"><option value="">Tous les départements</option></select>
             <select id="filterRayon"><option value="">Tous les rayons</option></select>
@@ -387,6 +393,7 @@
             </select>
             <button class="ghost-light-btn" id="clearProductFilters">Réinitialiser</button>
           </div>
+          </details>
           <div class="performance-data-note" id="catalogCoverage">Libellés, hiérarchie UB et coût courant en cours d'enrichissement…</div>
           <div class="performance-quadrants" id="performanceQuadrants"></div>
           <div class="decision-toolbar" id="performanceTableTools">
@@ -692,8 +699,8 @@
                   <th data-sort="tickets">Tickets</th>
                   <th data-sort="basket">Panier</th>
                   <th data-sort="identifiedShare">% CA fidélisé</th>
-                  <th data-sort="recruitments">Recrutements</th>
-                  <th data-sort="recruitmentRate">Taux recrut.</th>
+                  <th data-sort="recruitments">Créations de comptes</th>
+                  <th data-sort="recruitmentRate">Taux de création</th>
                   <th data-sort="oos">Ruptures</th>
                   <th data-sort="negative">Stock nég.</th>
                   <th>Qualité data</th>
@@ -799,8 +806,8 @@
           <div class="section-heading loyalty-head">
             <div>
               <span class="eyebrow">LOYALTY INTELLIGENCE</span>
-              <h2>Identification, recrutement & valeur client</h2>
-              <p class="category-subtitle">Lecture du poids fidélisé, de l'uplift panier et de la performance de recrutement. Les métriques non disponibles restent explicitement à N/A.</p>
+              <h2>Identification et valeur client</h2>
+              <p class="category-subtitle">Compare les tickets identifiés, leur panier moyen et les inscriptions au programme. La création de compte est un indicateur distinct.</p>
             </div>
             <span class="coverage-badge" id="loyaltyCoverage">—</span>
           </div>
@@ -827,8 +834,8 @@
                       <th>Panier membre</th>
                       <th>Panier non-membre</th>
                       <th>Uplift panier</th>
-                      <th>Recrutements</th>
-                      <th>Taux recrut. non-fid.</th>
+                      <th>Inscriptions fidélité</th>
+                      <th>Créations de comptes</th>
                       <th>Burn Wallet</th>
                       <th>Tx Wallet</th>
                     </tr>
@@ -865,8 +872,8 @@
           <div class="section-heading">
             <div>
               <span class="eyebrow">CASHIER ANALYTICS</span>
-              <h2>Identification & recrutement par staff</h2>
-              <p class="category-subtitle">Classement avec seuil minimum de volume. Le recrutement est attribué selon la première transaction identifiée historique lorsque la source le permet.</p>
+              <h2>Identification en caisse</h2>
+              <p class="category-subtitle">Retrouve par caissier les tickets identifiés et les cartes inscrites quand ces données sont disponibles.</p>
             </div>
             <div class="cashier-tools">
               <select id="cashierWindow">
@@ -889,8 +896,8 @@
                   <th>Tickets</th>
                   <th>% tickets fid.</th>
                   <th>% CA fid.</th>
-                  <th>Recrutements</th>
-                  <th>Taux recrut.</th>
+                  <th>Cartes inscrites</th>
+                  <th>Créations de comptes</th>
                   <th>Volume suffisant</th>
                 </tr>
               </thead>

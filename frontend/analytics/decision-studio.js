@@ -1,3 +1,4 @@
+import {compareObservedPrice} from './competitor-comparison.js';
 import {promptsForSection,sectionGuide} from './assistant-section-prompts.js';
 import {buildReliableCategories,categorySummaryLines} from './category-reconciliation.js';
 import {marginEvidence,promotionEvidence,evolution,dailyComparison,performanceCard} from './performance-evidence.js';
@@ -302,7 +303,31 @@ $('briefRefreshStock').addEventListener('click',()=>loadStockBrief(true));$('stu
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();
 
-async function loadCompetitors(){const generation=++competitorGeneration;const requested=new URLSearchParams({storeId:$('pricingContextStore').value,product:$('pricingContextSku').value.trim().toUpperCase()});$('competitorCoverage').textContent='Lecture des relevés sourcés…';try{const r=await core.api('/api/analytics/competitor-prices?'+requested,{noRetry:true});if(generation!==competitorGeneration)return;$('competitorCoverage').textContent=`${r.items.length} relevés enregistrés · Marjane et Carrefour à Casablanca · date et comparabilité visibles.`;const factor=(a,b)=>a===b?1:({'KG:G':1000,'G:KG':.001,'L:ML':1000,'ML:L':.001})[a+':'+b]??null;$('competitorRows').innerHTML=table(['Enseigne / magasin','Relevé','Prix / quantité','Comparabilité','Écart indicatif','Source'],r.items.map(x=>{const f=pricingSnapshot?factor(String(pricingSnapshot.priceUnit).toUpperCase(),x.unit):null,dateGap=pricingSnapshot?Math.abs(Date.parse(pricingSnapshot.businessDate)-Date.parse(x.observedAt.slice(0,10)))/86400000:Infinity,ours=pricingSnapshot?.indicativeEffectivePrice!=null?pricingSnapshot.indicativeEffectivePrice/(pricingSnapshot.priceQuantity||1):null,theirs=f!=null?x.price/x.priceQuantity*f:null,comparable=x.matchType==='IDENTICAL_GTIN'&&f!=null&&ours!=null&&theirs>0&&pricingSnapshot?.currency===x.currency&&dateGap<=7;return[esc(x.retailer+' · '+x.shop),esc(x.observedAt.slice(0,10))+(x.promotion?' · promotion':''),number(x.price)+' MAD / '+number(x.priceQuantity)+' '+esc(x.unit),x.matchType==='IDENTICAL_GTIN'?'Code-barres identique':'Équivalent à qualifier',comparable?pct((ours/theirs-1)*100):'Contexte, date ou unité à compléter',`<a href="${esc(x.sourceUrl)}" target="_blank" rel="noopener">Voir la preuve</a>`]}))+'<p class="studio-note">Écart indicatif par unité comparable, par rapport au prix configuré dans Pricing. Les dates doivent être distantes de sept jours au maximum ; l’écart ne prouve pas que le prix concurrent est encore en vigueur.</p>';}catch(e){$('competitorCoverage').textContent='Relevés indisponibles : '+e.message}}
+async function loadCompetitors(){
+ const generation=++competitorGeneration;
+ const requested=new URLSearchParams({storeId:$('pricingContextStore').value,product:$('pricingContextSku').value.trim().toUpperCase()});
+ $('competitorCoverage').textContent='Lecture des relevés sourcés…';
+ try{
+  const {items}=await core.api('/api/analytics/competitor-prices?'+requested,{noRetry:true});
+  if(generation!==competitorGeneration)return;
+  const rows=items.map(observation=>({observation,comparison:compareObservedPrice(pricingSnapshot,observation)}));
+  const comparable=rows.filter(row=>!row.comparison.reason).length;
+  $('competitorCoverage').textContent=`${rows.length} relevé(s) · ${comparable} comparable(s) · ${rows.length-comparable} à qualifier`;
+  const headings=['Enseigne / point de vente','Date et offre','Prix affiché','StoreOps / unité','Concurrent / unité','Écart DH','Écart %','Comparabilité','Source'];
+  $('competitorRows').innerHTML=table(headings,rows.map(({observation:x,comparison:c})=>{
+   const perUnit=value=>c.reason?'—':number(value)+' DH / '+esc(c.unit);
+   return [
+    esc(x.retailer+' · '+x.shop),esc(x.observedAt.slice(0,10))+(x.promotion?' · Promotion':''),
+    number(x.price)+' MAD / '+number(x.priceQuantity)+' '+esc(x.unit),
+    perUnit(c.own),perUnit(c.competitor),c.reason?'—':number(c.difference)+' DH',c.reason?'—':pct(c.percent),
+    esc(c.reason||'EAN et unité comparables'),
+    `<a href="${esc(x.sourceUrl)}" target="_blank" rel="noopener">Voir le relevé</a>`
+   ];
+  }))+'<p class="studio-note">Écart = prix StoreOps indicatif moins prix concurrent par unité. Le lieu, le canal et le statut promotionnel du relevé définissent le périmètre de comparaison.</p>';
+ }catch(error){
+  if(generation===competitorGeneration)$('competitorCoverage').textContent='Relevés indisponibles : '+error.message;
+ }
+}
 $('competitorLoad').addEventListener('click',loadCompetitors);$('competitorDate').value=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
 $('competitorForm').addEventListener('submit',async e=>{e.preventDefault();$('competitorCoverage').textContent='Vérification et enregistrement du relevé…';try{await core.api('/api/analytics/competitor-prices',{method:'POST',noRetry:true,body:{storeId:$('pricingContextStore').value,product:$('pricingContextSku').value.trim().toUpperCase(),retailer:$('competitorRetailer').value,city:'Casablanca',shop:$('competitorShop').value,matchType:$('competitorMatch').value,ean:$('competitorEan').value,price:$('competitorPrice').value,unit:$('competitorUnit').value,priceQuantity:$('competitorQuantity').value,currency:'MAD',observedAt:$('competitorDate').value,sourceUrl:$('competitorSource').value,promotion:$('competitorPromotion').checked}});await loadCompetitors()}catch(e){$('competitorCoverage').textContent='Relevé non enregistré : '+e.message}});
 

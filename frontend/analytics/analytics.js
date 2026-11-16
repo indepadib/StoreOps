@@ -81,6 +81,7 @@
     else if (preset === 'yesterday') state.periodStart = state.periodEnd = shiftDate(today, -1);
     else if (preset === '7d') { state.periodEnd = today; state.periodStart = shiftDate(today, -6); }
     else if (preset === '30d') { state.periodEnd = today; state.periodStart = shiftDate(today, -29); }
+    else if (preset === '90d') { state.periodEnd = today; state.periodStart = shiftDate(today, -89); }
     else if (preset === 'month') { const m = monthBounds(today, 0); state.periodStart = m.start; state.periodEnd = today; }
     else if (preset === 'previous_month') { const m = monthBounds(today, -1); state.periodStart = m.start; state.periodEnd = m.end; }
     state.businessDate = state.periodEnd;
@@ -471,13 +472,13 @@
       },
       loyalty: {
         eyebrow: 'FIDÉLITÉ',
-        title: 'Valeur client & recrutement',
-        subtitle: 'Identification, panier membre, recrutement et burn Wallet lorsque la source paiement est disponible.'
+        title: 'Fidélité et identification',
+        subtitle: 'Tickets identifiés, panier, inscriptions et utilisation du Wallet.'
       },
       cashiers: {
         eyebrow: 'CAISSIERS',
         title: 'Performance fidélité par staff',
-        subtitle: 'Identifier les écarts de recrutement et d’identification en tenant compte du volume traité.'
+        subtitle: 'Comparer le taux d’identification en tenant compte du nombre de tickets.'
       },
       promotions: {
         eyebrow: 'PROMOTIONS',
@@ -614,15 +615,6 @@
       });
     }
 
-    if (a.recruitmentRate != null && a.recruitmentRate < 8) {
-      items.push({
-        tone: 'warning',
-        label: 'Recrutement',
-        text: `${percent(a.recruitmentRate)} des tickets recrutables`,
-        target: 'loyalty'
-      });
-    }
-
     if (a.ready < a.totalStores) {
       items.push({
         tone: 'neutral',
@@ -668,7 +660,7 @@
       { label: 'Tickets', value: number(a.tickets), delta: null, compare: `${a.ready} magasin(s)`, progress: 66 },
       { label: 'Panier moyen', value: money(a.avgBasket), delta: null, compare: 'périmètre courant', progress: 58 },
       { label: 'CA fidélisé', value: percent(a.identifiedShare), delta: null, compare: a.identifiedSales == null ? 'source indisponible' : money(a.identifiedSales, true), progress: a.identifiedShare || 0 },
-      { label: 'Recrutements', value: number(a.recruitments), delta: null, compare: a.recruitmentRate == null ? 'taux N/A' : `${percent(a.recruitmentRate)} recrutables`, progress: Math.min(a.recruitmentRate || 0, 100) },
+      { label: 'Créations de comptes', value: 'N/D', delta: null, compare: 'Date de création du compte non vérifiée', progress: 0 },
       { label: 'Ruptures', value: number(a.oos), delta: null, compare: a.oos == null ? 'calcul en attente' : 'vendu 30j + stock 0', progress: a.oos == null ? 0 : Math.min(a.oos, 100) }
     ];
 
@@ -730,7 +722,7 @@
       items.push({
         tone: a.identifiedShare >= 45 ? 'positive' : 'warning',
         title: `${percent(a.identifiedShare)} du CA est identifié fidélité.`,
-        detail: a.recruitments == null ? 'Recrutements non disponibles.' : `${number(a.recruitments)} nouveau(x) recrutement(s) sur la date.`
+        detail: 'Créations de comptes indisponibles. La source doit exposer la date de création.'
       });
     }
 
@@ -865,8 +857,8 @@
         tickets: safe(k.tickets),
         basket: safe(k.averageBasket),
         identifiedShare: safe(k.identifiedSalesShare),
-        recruitments: safe(k.recruitments),
-        recruitmentRate: safe(k.recruitmentRateNonLoyalty),
+        recruitments: null,
+        recruitmentRate: null,
         oos: safe(k.outOfStockCount),
         negative: safe(k.negativeStockCount),
         refreshedAt: pulse.refreshedAt,
