@@ -16,3 +16,19 @@ export function historicalMetric(products,rows,{complete=false,stockComplete=fal
 }
 
 export function filterDetentionRows(rows,{view='store',department='',supplierOrigin=''}={}){return rows.filter(r=>(view==='relative'||!department||r.hierarchy?.department?.id===department)&&(!supplierOrigin||origin(r)===supplierOrigin))}
+
+export function commonDetention(stores){
+ if(!stores.length||stores.some(store=>!store.historical?.complete))return {status:'INCOMPLETE',base:null,held:null,rate:null,missing:[]};
+ const bySku=new Map();
+ for(const store of stores)for(const {sku,name,quantity} of store.historical.rows||[]){
+  const row=bySku.get(sku)||{sku,name,positions:new Map()};
+  row.positions.set(store.storeId,{name:store.storeName,quantity});
+  bySku.set(sku,row);
+ }
+ const common=[...bySku.values()].filter(row=>row.positions.size===stores.length);
+ if(common.some(row=>[...row.positions.values()].some(position=>position.quantity==null)))return {status:'INCOMPLETE',base:null,held:null,rate:null,missing:[]};
+ const missing=common.map(row=>({sku:row.sku,name:row.name,stores:[...row.positions.values()].filter(p=>p.quantity<=0).map(p=>p.name)})).filter(row=>row.stores.length);
+ missing.sort((a,b)=>b.stores.length-a.stores.length||a.name.localeCompare(b.name,'fr')||a.sku.localeCompare(b.sku));
+ const held=common.length-missing.length;
+ return {status:'READY',base:common.length,held,rate:common.length?held/common.length*100:null,missing:missing.slice(0,20)};
+}

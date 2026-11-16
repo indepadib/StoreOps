@@ -54,3 +54,11 @@ assert.equal(businessDom.businessArticles.children[1].children.length,2);
 assert.ok(businessDom.businessArticles.children[1].children.every(tr=>tr.children[2].textContent==='PGC'&&tr.children[12].textContent===1));
 businessDom.businessDepartment.value='APLS';businessDom.businessDepartment.change();assert.equal(businessDom.businessArticles.children[1].children.length,0);
 console.log('PASS visible business synthesis and detailed scope, vision and department filters');
+
+const {commonDetention}=await import('../../frontend/analytics/detention-metrics.js');
+const group=(storeId,items)=>({storeId,storeName:storeId,historical:{complete:true,rows:items.map(([sku,quantity])=>({sku,name:sku,quantity}))}});
+const common=commonDetention([group('A',[['X',1],['Y',0],['A-only',1],['Z',0]]),group('B',[['X',2],['Y',8],['B-only',1],['Z',-1]])]);
+assert.equal(common.base,3);
+assert.equal(common.held,1);
+assert.deepEqual(common.missing.map(row=>[row.sku,row.stores]),[['Z',['A','B']],['Y',['A']]]);
+assert.equal(commonDetention([group('A',[['X',1]]),group('B',[['X',null]])]).rate,null);

@@ -11,6 +11,7 @@
     cashierStores: [],
     walletKey: null,
     walletLoading: false,
+    walletController: null,
     walletStores: [],
     enrollmentKey: null,
     enrollmentLoading: false,
@@ -102,7 +103,7 @@
 
     $('#loyaltyCoverage').textContent = `${a.coverage}/${totalStores} magasin(s) disponible(s)`;
 
-    const walletReady=state.walletStores.filter(x=>x.ok&&x.data?.status==='READY'),walletBurn=walletReady.length?walletReady.reduce((s,x)=>s+Number(x.data?.burn||0),0):null,walletTx=walletReady.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
+    const walletReady=state.walletStores.filter(x=>x.ok&&x.data?.status==='READY'),walletBurn=totalStores>0&&walletReady.length===totalStores&&walletReady.every(x=>safe(x.data.burn)!=null)?walletReady.reduce((s,x)=>s+Number(x.data.burn),0):null,walletTx=walletReady.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
     const evidence=state.enrollmentData?.coverage;
     const enrollmentCoverage=state.enrollmentLoading?'Lecture en cours':evidence?`${evidence.ready}/${evidence.total} magasins couverts`:'Source indisponible';
     const cards = [
@@ -115,7 +116,8 @@
       ['Inscriptions fidélité', enrollmentCoverage, 'Voir le détail par magasin'],
       ['Panier identifié', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs '+api.money(a.nonMemberBasket)],
       ['Écart de panier', api.percent(a.uplift), 'tickets identifiés vs non identifiés'],
-      ['Burn Wallet', api.money(walletBurn,true), walletBurn==null?'source paiement en cours':api.number(walletTx)+' paiement(s) Wallet'],
+      ['Cashback crédité', 'N/D', 'Source des mouvements de crédit à vérifier'],
+      ['Cashback consommé · burn Wallet', api.money(walletBurn,true), walletBurn==null?`${walletReady.length}/${totalStores} magasins avec paiements Wallet disponibles`:api.number(walletTx)+' paiement(s) Wallet'],
       ['Burn / CA identifié', a.identifiedSales&&walletBurn!=null?api.percent(walletBurn/a.identifiedSales*100):'N/A', 'usage cashback sur la période']
     ];
 
@@ -238,6 +240,12 @@
     }
 
     if (ready.length) {
+      const expected=api.getSelectedStores?.().length||0;
+      if(ready.length!==expected||ready.some(result=>safe(result.data.burn)==null)){
+        value.textContent='N/D';
+        status.textContent=`Paiements Wallet disponibles pour ${ready.length}/${expected} magasin(s). Le détail par magasin reste consultable.`;
+        return;
+      }
       const burn = ready.reduce((s,x)=>s+Number(x.data?.burn||0),0);
       const transactions = ready.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
       value.textContent = api.money(burn, true);
@@ -261,11 +269,13 @@
     }
   }
 
+  const walletScopeKey=scope=>`${scope.start}|${scope.end}|${scope.stores.map(store=>store.id).sort().join(',')}`;
+
   async function loadWallet(force = false) {
     const api = core();
     if (!api || state.walletLoading) return;
     const scope = cashierScope();
-    const key = `${scope.start}|${scope.end}|${scope.stores.map(s=>s.id).join(',')}`;
+    const key = walletScopeKey(scope);
     if (!force && state.walletKey === key) {
       renderWalletStatus();
       renderLoyalty();
@@ -273,19 +283,22 @@
     }
 
     state.walletLoading = true;
+    const controller=new AbortController();
+    state.walletController=controller;
+    if(state.walletKey!==key)state.walletStores=[];
     renderWalletStatus();
 
     try {
       let cursor = 0;
       const results = new Array(scope.stores.length);
       const worker = async () => {
-        while (cursor < scope.stores.length) {
+        while (!controller.signal.aborted&&cursor < scope.stores.length) {
           const i = cursor++;
           const store = scope.stores[i];
           try {
             const qs = new URLSearchParams({ storeId: store.id, start: scope.start, end: scope.end });
             if (force) qs.set('force','1');
-            const data = await withTimeout(api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true }),25000,'Paiements Wallet');
+            const data = await withTimeout(api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true,signal:controller.signal }),25000,'Paiements Wallet');
             results[i] = { store, ok: true, data };
           } catch (error) {
             results[i] = { store, ok: false, error };
@@ -293,10 +306,13 @@
         }
       };
       await Promise.all(Array.from({ length: Math.min(2, Math.max(1, scope.stores.length)) }, worker));
+      if(controller.signal.aborted||walletScopeKey(cashierScope())!==key)return;
       state.walletStores = results.filter(Boolean);
       state.walletKey = key;
     } finally {
       state.walletLoading = false;
+      state.walletController=null;
+      if((controller.signal.aborted||walletScopeKey(cashierScope())!==key)&&api.getState?.()?.section==='loyalty')loadWallet();
       renderWalletStatus();
       renderLoyalty();
     }
@@ -450,7 +466,9 @@
       loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:period', () => {
+      state.walletController?.abort();
       state.walletKey = null;
+      state.walletStores = [];
       state.cashierKey = null;
       state.enrollmentKey = null;
       state.enrollmentData = null;

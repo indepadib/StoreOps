@@ -303,3 +303,21 @@ body[data-analytics-section="overview"] #periodSummary{
 @media print{#briefRanking{margin:0 4mm 2mm;padding:2mm;break-inside:avoid}#briefRanking button[aria-pressed=false]{display:none}#briefRanking button{min-height:0;padding:1mm;font-size:9px}#briefRanking :is(th,td){padding:1mm 2mm}}
 
 .brief-signal button:disabled{opacity:.65;cursor:wait}
+
+#briefRanking{background:linear-gradient(145deg,#fff 44%,#edf4ff);border-color:#cbd9ed;padding:16px 20px}
+#briefRanking header{gap:12px;margin-bottom:14px}
+#briefRanking header>div{padding:3px;border-radius:11px;background:#e7eef9}
+#briefRanking header button{border:0;background:transparent}
+#briefRanking header button[aria-pressed=true]{background:#25446e;color:#fff}
+.brief-rank-list{list-style:none;counter-reset:brief-rank;margin:0;padding:0;display:grid;gap:5px}
+.brief-rank-list li{counter-increment:brief-rank;display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:center;gap:9px;padding:8px 0;border-top:1px solid #dbe5f2}
+.brief-rank-list li::before{content:counter(brief-rank);color:#556e91;font-weight:700;font-variant-numeric:tabular-nums}
+.brief-rank-label,.brief-rank-values{display:grid;gap:4px;min-width:0}
+.brief-rank-label strong{overflow-wrap:anywhere}
+.brief-rank-values{text-align:right;font-variant-numeric:tabular-nums}
+.brief-rank-list small{font-size:.76rem;color:#506680}
+.brief-rank-bar{display:block;background:#dce7f7;border-radius:10px;overflow:hidden;height:4px}
+.brief-rank-bar i{display:block;background:linear-gradient(90deg,#4f75b7,#4b5bb1);height:100%;border-radius:inherit}
+.brief-rank-values .up{color:#176349;font-weight:700}.brief-rank-values .down{color:#9a2147;font-weight:700}
+#briefRanking .brief-rank-coverage{font-size:.8rem;margin-top:10px}
+@media print{#briefRanking{padding:2mm}.brief-rank-list{gap:0}.brief-rank-list li{padding:1mm 0}}
