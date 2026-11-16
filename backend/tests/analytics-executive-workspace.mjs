@@ -25,3 +25,12 @@ assert.equal(model('2026-11-13').signals[1].rows.length,1);
 assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions']);
 assert.equal(model('2026-11-12').signals[0].rows.length,2);
 assert.equal(model('2026-11-13',{quality:{status:'WARN',checks:{truncatedStores:1}}}).signals.length,0);
+
+assert.match(model('2026-11-13').pace.indicators[0].value,/^66[,.]67 DH$/);
+const liveDaily={current:[{date:'2026-11-10',sales:80,tickets:8},{date:'2026-11-11',sales:100,tickets:10},{date:'2026-11-12',sales:999,tickets:99}],previous:[{date:'2026-11-07',sales:40,tickets:4},{date:'2026-11-08',sales:60,tickets:6},{date:'2026-11-09',sales:999,tickets:99}]};
+const live=model('2026-11-12',{daily:liveDaily});
+assert.equal(live.pace.indicators[0].value,'90 DH');
+assert.match(live.pace.indicators[0].detail,/50 DH.*\+80 %.*\+40 DH/);
+assert.equal(live.pace.indicators[1].value,'9');
+assert.equal(model('2026-11-12',{daily:{...liveDaily,current:liveDaily.current.slice(0,1)}}).pace.indicators[0].value,'Indisponible');
+assert.equal(model('2026-11-13',{quality:{status:'ERROR'}}).pace.indicators[0].detail,'Comparaison indisponible');

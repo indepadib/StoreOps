@@ -251,3 +251,13 @@ body[data-analytics-section="overview"] #periodSummary{
 .brief-signal button{align-self:start;margin-top:auto;min-height:38px;padding:6px 0;background:none;border:0;color:#204c84;font:inherit;font-weight:700;cursor:pointer;text-align:left}
 .brief-signal button:focus-visible{outline:2px solid #204c84;outline-offset:3px}
 @media print{#briefSignals{grid-template-columns:repeat(4,minmax(0,1fr));padding:0 4mm 3mm;gap:2mm}.brief-signal{padding:2mm;box-shadow:none}.brief-signal button{display:none}}
+
+#briefPace{margin:12px var(--exec-space) 0;padding:14px 16px;border-radius:16px;border:1px solid #d4deef;background:#ffffffac}
+#briefPace[hidden]{display:none}
+.brief-pace-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.brief-pace-head h2,.brief-pace-grid h3{margin:0;font-size:1rem}
+.brief-pace-head p,.brief-pace-grid p{margin:0;font-size:.85rem;color:#425470}
+.brief-pace-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:12px;margin-top:10px}
+.brief-pace-grid article{padding:8px 12px;border-left:3px solid #6c8dc8;background:#f2f6ff}
+.brief-pace-grid strong{display:block;margin:4px 0;font-size:1.25rem;font-variant-numeric:tabular-nums}
+@media print{#briefPace{margin:1mm 4mm;padding:2mm}.brief-pace-grid article{padding:1mm 2mm}}
