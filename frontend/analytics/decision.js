@@ -969,7 +969,9 @@ import {marginEvidence,performanceCard} from './performance-evidence.js';
     });
     $('#performanceBody')?.addEventListener('click',event=>{
       const productNumber=event.target.closest('[data-performance-product]')?.dataset.performanceProduct;
-      if(productNumber)document.dispatchEvent(new CustomEvent('retail-intelligence:open-product',{detail:{productNumber}}));
+      if(!productNumber)return;
+      const product=performanceRows().find(row=>row.key===productNumber);
+      if(product)document.dispatchEvent(new CustomEvent('retail-intelligence:open-product',{detail:{productNumber,product}}));
     });
     for(const id of ['performanceExtra','performanceShowFilters'])$('#'+id)?.addEventListener('change',()=>{performanceTable.page=0;refreshGrid()});
     $('#performanceClearColumns')?.addEventListener('click',()=>{

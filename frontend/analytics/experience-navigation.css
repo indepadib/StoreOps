@@ -54,7 +54,6 @@ body[data-ri-mode="focus"] :is(
  #customerResearch .customer-journey-section ~ .customer-journey-section,
  #salesDiagnostic .decision-table-wrap,
  #storeBenchmark .decision-table-wrap,
- #productPerformance .decision-table-wrap,
  #supplierIntelligence .decision-table-wrap,
  #decisionStudio .studio-table
 ){display:none!important}
