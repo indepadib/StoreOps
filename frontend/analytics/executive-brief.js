@@ -146,8 +146,6 @@ function businessSignals(data,current,comparable,stock,reading){
  const stockRows=[
   ['Détention commune magasins',stock?.historyRate,'%'],
   ['Détention historique entrepôt',stock?.historyWarehouseRate,'%'],
-  ['Références à compter pour stock négatif',stock?.complete?stock?.negative:null,''],
-  ['Références à réapprovisionner',stock?.complete?stock?.replenishable:null,''],
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
  if(finite(stock?.historyRate))stockRows.splice(1,0,row('Présentes partout / références communes',number(stock.historyHeld)+' / '+number(stock.historyBase)));
  else stockRows.unshift(row('Détention commune magasins','Indisponible'));

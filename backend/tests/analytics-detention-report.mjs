@@ -62,3 +62,7 @@ assert.equal(common.base,3);
 assert.equal(common.held,1);
 assert.deepEqual(common.missing.map(row=>[row.sku,row.stores]),[['Z',['A','B']],['Y',['A']]]);
 assert.equal(commonDetention([group('A',[['X',1]]),group('B',[['X',null]])]).rate,null);
+
+const single=commonDetention([group('A',[['X',0],['Y',1]])]);
+assert.equal(single.base,2);
+assert.deepEqual(single.missing.map(row=>row.sku),['X']);
