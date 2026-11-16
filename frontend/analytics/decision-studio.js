@@ -1,4 +1,4 @@
-import {buildExecutiveBrief} from './executive-brief.js';
+import {buildExecutiveBrief,rankingLevels} from './executive-brief.js';
 import {compareObservedPrice} from './competitor-comparison.js';
 import {promptsForSection,sectionGuide} from './assistant-section-prompts.js';
 import {buildReliableCategories} from './category-reconciliation.js';
@@ -35,6 +35,26 @@ function executiveTrendHtml(trend){
   <figcaption id="briefTrendCaption">${esc(trend.caption+' · Échelle '+money(trend.low)+' à '+money(trend.high))}</figcaption>
  </figure>`;
 }
+let executiveLevel='department',executiveStockKey=null;
+function renderExecutiveRanking(rankings){
+ const host=$('briefRanking');
+ host.hidden=!rankings;
+ if(!rankings)return;
+ const rows=rankings[executiveLevel]||[];
+ host.innerHTML=`<header><h2>Top 5 du CA TTC</h2><div role="group" aria-label="Niveau du classement">${rankingLevels.map(([key,label])=>`<button type="button" data-executive-level="${key}" aria-pressed="${key===executiveLevel}">${label}</button>`).join('')}</div></header>
+ ${rows.length?table(['Rang','Libellé','CA TTC','Part réseau','Écart CA'],rows.map((row,index)=>[index+1,esc(row.label),esc(row.sales),esc(row.share),esc(row.change)])):'<p>Classement indisponible pour ce niveau et ce périmètre.</p>'}`;
+}
+async function loadExecutiveStock(){
+ const wanted=stockKey();
+ if(scope().section!=='overview'||!wanted||executiveStockKey===wanted||state.stockKey===wanted)return;
+ executiveStockKey=wanted;
+ const generation=state.scopeGeneration;
+ try{
+  const summary=await core.api('/api/analytics/operational-summary?'+new URLSearchParams({storeIds:stores().map(s=>s.id).join(',')}),{noRetry:true});
+  if(stockKey()!==wanted||state.scopeGeneration!==generation||state.stockKey===wanted)return;
+  state.stock=summary;renderBrief();
+ }catch{if(stockKey()===wanted)renderBrief();}
+}
 function renderBrief(){
  const host=$('briefGrid');if(!host||scope().section!=='overview')return;
  const m=briefModel(),d=m.decision;
@@ -52,6 +72,7 @@ function renderBrief(){
  const pace=$('briefPace');
  pace.hidden=!m.pace;
  pace.innerHTML=m.pace?`<div class="brief-pace-head"><h2>Rythme quotidien</h2><p>${esc(m.pace.caption)}</p></div><div class="brief-pace-grid">${m.pace.indicators.map(metric=>`<article><h3>${esc(metric.label)}</h3><strong>${esc(metric.value)}</strong><p>${esc(metric.detail)}</p></article>`).join('')}</div>`:'';
+ renderExecutiveRanking(m.rankings);
  const signals=$('briefSignals');
  signals.hidden=!m.signals.length;
  signals.innerHTML=m.signals.map(card=>`<article class="brief-signal">
@@ -322,76 +343,77 @@ function textLines(ctx,text,maxWidth){const result=[];let line='';for(const word
 function exportBrief(){
  if(!state.data)return;
  const m=briefModel(),canvas=document.createElement('canvas');
- canvas.width=1920;canvas.height=(m.signals.length?1430+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:1080)+(m.pace?175:0)+(m.reading?205:0);
+ canvas.width=1920;canvas.height=1080;
  const ctx=canvas.getContext('2d');if(!ctx)return;
- function block(text,x,y,width,{size=25,color='#243c5a',weight='',maxLines=8}={}){
+ function block(text,x,y,width,{size=24,color='#243c5a',weight='',maxLines=2}={}){
   ctx.font=`${weight} ${size}px Segoe UI`.trim();ctx.fillStyle=color;
   const lines=textLines(ctx,text,width).slice(0,maxLines);
-  lines.forEach((line,i)=>ctx.fillText(line,x,y+i*(size+10),width));
-  return y+lines.length*(size+10);
+  lines.forEach((line,index)=>ctx.fillText(line,x,y+index*(size+6),width));
  }
- ctx.fillStyle='#edf3fc';ctx.fillRect(0,0,1920,canvas.height);
- ctx.fillStyle='#152946';ctx.fillRect(0,0,1920,169);
- block(m.title,56,78,1800,{size:52,color:'#fff',weight:'bold'});
- block(m.period,56,132,1800,{size:25,color:'#e1eafb',maxLines:1});
- const gap=20,w=(1808-3*gap)/4;
+ function panel(x,y,width,height){
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.roundRect(x,y,width,height,16);ctx.fill();
+ }
+ ctx.fillStyle='#edf3fc';ctx.fillRect(0,0,1920,1080);
+ const gradient=ctx.createLinearGradient(0,0,1920,0);
+ gradient.addColorStop(0,'#152946');gradient.addColorStop(1,'#294775');
+ ctx.fillStyle=gradient;ctx.fillRect(0,0,1920,116);
+ block(m.title,42,52,1800,{size:40,color:'#fff',weight:'bold'});
+ block(m.period,42,91,1800,{size:22,color:'#e1eafb',maxLines:1});
+ const width=444,gap=20;
  m.kpis.forEach(([label,value,note],i)=>{
-  const x=56+i*(w+gap);
-  ctx.fillStyle='#fff';ctx.fillRect(x,199,w,186);
-  block(label,x+22,238,w-44,{size:22,weight:'bold'});
-  block(value,x+22,294,w-44,{size:32,weight:'bold',maxLines:1});
-  if(note)block(note,x+22,339,w-44,{size:18,maxLines:2});
+  const x=42+i*(width+gap);
+  panel(x,135,width,129);
+  block(label,x+16,163,width-32,{size:20,weight:'bold'});
+  block(value,x+16,204,width-32,{size:29,weight:'bold',maxLines:1});
+  if(note)block(note,x+16,230,width-32,{size:17});
  });
- ctx.fillStyle='#fff';ctx.fillRect(56,414,1100,486);ctx.fillRect(1176,414,688,486);
- block('Tendance des ventes',84,469,1040,{size:31,weight:'bold'});
+ panel(42,282,912,259);panel(974,282,904,259);
+ block('Tendance des ventes',60,312,870,{size:23,weight:'bold'});
  const t=m.trend;
  if(t){
-  ctx.save();ctx.translate(55,480);ctx.scale(1.72,2.9);
-  ctx.lineWidth=1;ctx.strokeStyle='#dbe5f0';
-  ctx.stroke(new Path2D('M24 20 H616 M24 63 H616 M24 106 H616'));
+  ctx.save();ctx.translate(48,315);ctx.scale(1.42,1.42);
+  ctx.lineWidth=1;ctx.strokeStyle='#dbe5f0';ctx.stroke(new Path2D('M24 20 H616 M24 63 H616 M24 106 H616'));
   if(t.previous){
    ctx.strokeStyle='#896bd0';ctx.setLineDash([5,4]);ctx.lineWidth=1.6;
    ctx.stroke(new Path2D(t.previous));ctx.setLineDash([]);
   }
   ctx.strokeStyle='#304de0';ctx.lineWidth=2;ctx.stroke(new Path2D(t.current));ctx.restore();
-  const dates=`${t.dateLabels[0]} → ${t.dateLabels[1]}${t.previous?' · Comparaison en pointillés':''}`;
-  block(dates,84,836,1040,{size:22});
-  block(t.caption+' · Échelle '+money(t.low)+' à '+money(t.high),84,873,1040,{size:19});
- }else block('La tendance est disponible à partir de trois jours renseignés.',84,525,1040);
- let y=block(m.decision.title,1204,469,632,{size:30,weight:'bold'});
- y=block(m.decision.text,1204,y+25,632,{size:23});
- for(const line of m.decision.lines||[])y=block(line,1204,y+18,632,{size:22});
- if(m.signals.length){
-  const columns=Math.min(4,m.signals.length),width=(1808-20*(columns-1))/columns;
-  m.signals.forEach((card,index)=>{
-   const x=56+(index%columns)*(width+20),top=928+Math.floor(index/columns)*350;
-   ctx.fillStyle='#fff';ctx.fillRect(x,top,width,325);
-   let lineY=block(card.title,x+20,top+42,width-40,{size:24,weight:'bold',maxLines:2})+12;
-   if(card.note)block(card.note,x+20,lineY,width-40,{size:21,maxLines:3});
-   for(const row of card.rows)lineY=block(row.label+' · '+row.value,x+20,lineY,width-40,{size:21,maxLines:2})+8;
+  block(t.dateLabels.join(' → ')+(t.previous?' · Comparaison en pointillés':''),60,497,870,{size:17});
+  block(t.caption+' · '+money(t.low)+' à '+money(t.high),60,520,870,{size:16});
+ }else block('Tendance disponible à partir de trois jours renseignés.',60,354,870,{size:19});
+ const pace=m.pace,reading=m.reading;
+ block(reading?reading.headline+' · '+reading.change:m.decision.title,992,312,866,{size:22,weight:'bold'});
+ block(reading?reading.driver:m.decision.text,992,341,866,{size:18});
+ if(reading){
+  const line=(label,side)=>`${label} · ${side.count} magasin(s) · ${side.total}${side.leader?' · '+side.leader:''}`;
+  block(line('Hausse',reading.gain)+' | '+line('Baisse',reading.loss),992,380,862,{size:17});
+ }
+ if(pace){
+  block(pace.caption,992,425,866,{size:17});
+  pace.indicators.forEach((metric,index)=>{
+   const x=992+index*435;
+   block(metric.label+' · '+metric.value,x,455,420,{size:18,weight:'bold'});
+   block(metric.detail,x,480,420,{size:16});
   });
  }
- const qualityY=m.signals.length?1310+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:962;
- if(m.pace){
-  block('Rythme quotidien · '+m.pace.caption,56,qualityY,1808,{size:22,weight:'bold'});
-  m.pace.indicators.forEach((metric,index)=>{
-   const x=56+index*910;
-   block(metric.label+' · '+metric.value,x,qualityY+42,880,{size:22,weight:'bold'});
-   block(metric.detail,x,qualityY+80,880,{size:20,maxLines:2});
-  });
- }
- const readingY=qualityY+(m.pace?175:0);
- if(m.reading){
-  const r=m.reading;
-  block(r.headline+' · '+r.change,56,readingY,1808,{size:24,weight:'bold'});
-  block('CA de référence '+r.previous+' · '+r.driver,56,readingY+40,1808,{size:21});
-  for(const [i,side] of [r.gain,r.loss].entries()){
-   const lead=side.leader?' · '+side.leader+' ('+number(side.share)+' %)':'';
-   block((i?'En baisse':'En hausse')+' · '+side.count+' magasin(s) · '+side.total+lead,56+i*910,readingY+87,880,{size:21,maxLines:2});
-  }
-  block(r.stable+' magasin(s) stable(s)',56,readingY+162,1808,{size:19});
- }
- block(m.quality,56,readingY+(m.reading?205:0),1808,{size:21,maxLines:3});
+ panel(42,559,912,454);
+ block('Top 5 CA TTC · '+rankingLevels.find(([key])=>key===executiveLevel)[1],60,595,870,{size:23,weight:'bold'});
+ const ranked=m.rankings?.[executiveLevel]||[];
+ if(!ranked.length)block('Classement indisponible pour ce périmètre.',60,638,870,{size:19});
+ ranked.forEach((row,index)=>{
+  const y=641+index*63;
+  block(`${index+1}. ${row.label}`,60,y,545,{size:20,weight:'bold',maxLines:1});
+  block(row.sales,640,y,260,{size:20,weight:'bold',maxLines:1});
+  block(`${row.share} du CA · Écart ${row.change}`,60,y+27,870,{size:17,maxLines:1});
+ });
+ m.signals.slice(0,6).forEach((card,index)=>{
+  const x=974+(index%2)*461,y=559+Math.floor(index/2)*151;
+  panel(x,y,443,140);
+  block(card.title,x+12,y+25,419,{size:17,weight:'bold',maxLines:1});
+  if(card.note)block(card.note,x+12,y+48,419,{size:15});
+  card.rows.slice(0,4).forEach((row,rowIndex)=>block(row.label+' · '+row.value,x+12,y+(card.note?82:50)+rowIndex*23,419,{size:15,maxLines:1}));
+ });
+ block(m.quality,42,1044,1836,{size:16});
  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');
  a.download=`storeops-direction-${scope().periodStart}-${scope().periodEnd}.png`;a.click();
 }
@@ -399,13 +421,21 @@ function setAssistant(open){$('analyticsAssistant').hidden=!open;$('analyticsAss
 async function askAssistant(e){e.preventDefault();const requested=key(),context=investigationContext(),contextKey=JSON.stringify(context),isCurrent=()=>key()===requested&&JSON.stringify(investigationContext())===contextKey,question=$('analyticsAssistantQuestion').value.trim();if(!question)return;const line=document.createElement('p');line.className='assistant-question';line.textContent=question;$('assistantMessages').appendChild(line);$('analyticsAssistantSend').disabled=true;$('assistantStatus').textContent='Lecture des preuves serveur et préparation de la réponse…';
  const controller=new AbortController();state.assistantController?.abort();state.assistantController=controller;try{const r=await requestAssistant({question,...context,storeIds:stores().map(s=>s.id),start:scope().periodStart,end:scope().periodEnd,compareStart:scope().compareStart,compareEnd:scope().compareEnd,slices:state.data?.evidenceSlices,followUp:assistantQueryContext},{ensureStock:id=>window.RETAIL_DETENTION_STOCK?.ensure?.(id),api:core.api,signal:controller.signal,isCurrent,onProgress:text=>{if(isCurrent())$('assistantStatus').textContent=text}});if(!isCurrent()){$('assistantStatus').textContent='Périmètre modifié : réponse précédente masquée. Posez la question sur la nouvelle sélection.';return}if(r.queryContext)assistantQueryContext=r.queryContext;else if(r.queryPlan)assistantQueryContext={plan:r.queryPlan};const answer=document.createElement('div');answer.className='assistant-answer';const p=document.createElement('p');p.textContent=r.answer;if(!renderInvestigation(answer,r)&&!renderQueryResult(answer,r,{onScope:(target,question)=>applyQueryScope(target,question,()=>{assistantQueryContext={plan:r.queryPlan}})}))answer.appendChild(p);const source=document.createElement('small');source.dataset.aiStatus=r.aiStatus||'';source.dataset.aiValidation=r.aiValidationDetail||'';source.textContent=(r.engine==='ARTICLE_IMPACT'?'Enquête article · paniers et cohortes calculés par StoreOps':r.engine==='ARTICLE_CLARIFICATION'?'Article à préciser':['OPERATIONS_GROUNDED','QUERY_GROUNDED','QUERY_CLARIFICATION','QUERY_NEEDS_DATA','CUSTOMER_RESEARCH'].includes(r.engine)?(r.aiPlanUsed?'Question interprétée par IA · chiffres calculés par StoreOps':'Réponse calculée · sans appel IA'):r.engine==='AI_GROUNDED'?'Priorités IA · chiffres calculés par StoreOps':r.aiValidationFailed?'Lecture calculée · réponse IA non retenue':'Lecture calculée · IA non disponible')+(!['AI_GROUNDED','ARTICLE_IMPACT','ARTICLE_CLARIFICATION','OPERATIONS_GROUNDED','QUERY_GROUNDED','QUERY_CLARIFICATION','QUERY_NEEDS_DATA','CUSTOMER_RESEARCH'].includes(r.engine)?' · '+({INVALID_PLAN:'Plan IA refusé par les contrôles',TIMEOUT:'Délai IA dépassé',RATE_LIMIT:'Limite fournisseur atteinte',PROVIDER_ACCESS:'Accès fournisseur à vérifier',PROVIDER_CONFIGURATION:'Configuration fournisseur à vérifier',PROVIDER_UNAVAILABLE:'Fournisseur temporairement indisponible',NOT_CONFIGURED:'IA non configurée'}[r.aiStatus]||'Contrôle IA à vérifier'):'')+' · '+(r.sources||[]).map(s=>s.id+' : '+s.name).join(' · ');answer.appendChild(source);const next=document.createElement('div');next.className='assistant-next';for(const [title,section] of [['Explorer les ventes','sales'],['Vérifier les stocks','detention'],['Prix et paniers','sales']]){const b=document.createElement('button');b.type='button';b.textContent=title;b.dataset.studioSection=section;next.appendChild(b)}answer.appendChild(next);$('assistantMessages').appendChild(answer);$('assistantMessages').scrollTop=r.engine==='ARTICLE_IMPACT'?answer.offsetTop-$('assistantMessages').offsetTop:$('assistantMessages').scrollHeight;if(r.engine!=='ARTICLE_CLARIFICATION'&&r.engine!=='QUERY_NEEDS_DATA'&&!r.incomplete)$('analyticsAssistantQuestion').value='';for(const candidate of r.candidates||[]){const b=document.createElement('button');b.type='button';b.textContent=(candidate.productName||candidate.productNumber)+' · '+candidate.productNumber;b.addEventListener('click',()=>{$('assistantArticle').value=candidate.productNumber;$('assistantArticle').dispatchEvent(new Event('change'));$('analyticsAssistantQuestion').focus()});answer.appendChild(b)}$('assistantStatus').textContent=r.incomplete?'Diagnostic partiel : les sources indisponibles sont signalées dans la réponse.':r.engine==='ARTICLE_IMPACT'?'Enquête sur les fenêtres indiquées dans la réponse ; aucun client déclaré définitivement perdu.':'Réponse sur la période et les magasins affichés.';}catch(error){$('assistantStatus').textContent=error.name==='AbortError'?'Enquête annulée : périmètre modifié.':'Réponse indisponible : '+error.message;}finally{$('analyticsAssistantSend').disabled=false;}}
 function matchesScope(d){return d?.period?.startDate===scope().periodStart&&d?.period?.endDate===scope().periodEnd&&d?.comparison?.startDate===scope().compareStart&&d?.comparison?.endDate===scope().compareEnd&&JSON.stringify((d.stores||[]).map(s=>s.storeId||s.id).sort())===JSON.stringify(stores().map(s=>s.id).sort())}
-function changed(){const next=key();if(state.key!==next){state.key=next;assistantQueryContext=null;pricingSnapshot=null;competitorGeneration++;state.assistantController?.abort();state.data=null;state.baskets=null;state.proof=null;state.suppliers=null;if(stockKey()!==state.stockKey){state.scopeGeneration++;state.stockDetail=null;state.stock=null;state.stockLoading=false;state.stockController?.abort();$('studioStockRefresh').disabled=false;}state.pricingController?.abort();state.pricingGeneration++;$('pricingContextCards').innerHTML='';$('pricingContextDetails').innerHTML='';$('pricingContextStatus').textContent='Vérifier le contexte tarifaire sélectionné.';}syncPricingStores();const loaded=window.RETAIL_DECISION_INTELLIGENCE?.getData?.();if(matchesScope(loaded))state.data=loaded;render();}
-document.addEventListener('retail-intelligence:decision',e=>{if(!matchesScope(e.detail.data))return;state.data=e.detail.data;state.key=key();render();if(['network','inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});});
+function changed(){const next=key();if(state.key!==next){state.key=next;assistantQueryContext=null;pricingSnapshot=null;competitorGeneration++;state.assistantController?.abort();state.data=null;state.baskets=null;state.proof=null;state.suppliers=null;if(stockKey()!==state.stockKey){state.scopeGeneration++;state.stockDetail=null;state.stock=null;executiveStockKey=null;state.stockLoading=false;state.stockController?.abort();$('studioStockRefresh').disabled=false;}state.pricingController?.abort();state.pricingGeneration++;$('pricingContextCards').innerHTML='';$('pricingContextDetails').innerHTML='';$('pricingContextStatus').textContent='Vérifier le contexte tarifaire sélectionné.';}syncPricingStores();const loaded=window.RETAIL_DECISION_INTELLIGENCE?.getData?.();if(matchesScope(loaded))state.data=loaded;render();}
+document.addEventListener('retail-intelligence:decision',e=>{if(!matchesScope(e.detail.data))return;state.data=e.detail.data;state.key=key();render();loadExecutiveStock();if(['network','inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});});
 document.addEventListener('retail-intelligence:catalog',e=>{for(const r of e.detail.items||[])state.catalog.set(r.productNumber,r);render()});
 document.addEventListener('retail-intelligence:baskets',e=>{const r=e.detail.report;if(r?.period?.start!==scope().periodStart||r?.period?.end!==scope().periodEnd||r?.comparison?.start!==scope().compareStart||r?.comparison?.end!==scope().compareEnd||JSON.stringify((r.stores||[]).map(s=>s.id).sort())!==JSON.stringify(stores().map(s=>s.id).sort()))return;if(!state.baskets?.summary?.nonreturn||r.summary?.nonreturn)state.baskets=r;render()});
 document.addEventListener('retail-intelligence:stock',e=>{const ids=new Set(stores().map(s=>s.id));if((e.detail.rows||[]).some(r=>!ids.has(r.storeId)))return;state.stockDetail=e.detail;render();loadStockBrief().catch(()=>{});});
-for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:data'])document.addEventListener(event,()=>{changed();if(['crm','loyalty'].includes(scope().section))loadCrmProof();if(['inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='suppliers'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
+for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:data'])document.addEventListener(event,()=>{changed();if(state.data)loadExecutiveStock();if(['crm','loyalty'].includes(scope().section))loadCrmProof();if(['inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='suppliers'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
 document.addEventListener('click',e=>{const proof=e.target.closest('[data-crm-proof]');if(proof){proof.disabled=true;loadCrmProof(true).finally(()=>{proof.disabled=false});}const b=e.target.closest('[data-studio-section]');if(b)core.navigate(b.dataset.studioSection)});
+$('briefRanking')?.addEventListener('click',event=>{
+ const level=event.target.closest('[data-executive-level]')?.dataset.executiveLevel;
+ if(!rankingLevels.some(([key])=>key===level))return;
+ executiveLevel=level;
+ renderExecutiveRanking(briefModel().rankings);
+ $('briefRanking').querySelector('[aria-pressed="true"]')?.focus();
+});
+if(state.data)loadExecutiveStock();
 $('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();

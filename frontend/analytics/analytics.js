@@ -26,6 +26,8 @@
     return Object.hasOwn(SECTION_WIDGETS, section) ? section : 'overview';
   }
 
+  const businessToday = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
+  const initialDate = businessToday();
   const state = {
     tenant: 'franprix',
     session: null,
@@ -35,12 +37,12 @@
     selectedStoreIds: [],
     section: sectionFromUrl(),
     periodPreset: '7d',
-    periodStart: shiftDate(isoDate(new Date()), -6),
-    periodEnd: isoDate(new Date()),
+    periodStart: shiftDate(initialDate, -7),
+    periodEnd: shiftDate(initialDate, -1),
     comparisonMode: 'previous_period',
-    compareStart: shiftDate(isoDate(new Date()), -13),
-    compareEnd: shiftDate(isoDate(new Date()), -7),
-    businessDate: isoDate(new Date()),
+    compareStart: shiftDate(initialDate, -14),
+    compareEnd: shiftDate(initialDate, -8),
+    businessDate: shiftDate(initialDate, -1),
     sort: { key: 'sales', dir: 'desc' },
     storeSearch: '',
     loading: false,
@@ -75,11 +77,11 @@
   }
 
   function applyPresetToState(preset = state.periodPreset) {
-    const today = isoDate(new Date());
+    const today = businessToday();
     state.periodPreset = preset;
     if (preset === 'today') state.periodStart = state.periodEnd = today;
     else if (preset === 'yesterday') state.periodStart = state.periodEnd = shiftDate(today, -1);
-    else if (preset === '7d') { state.periodEnd = today; state.periodStart = shiftDate(today, -6); }
+    else if (preset === '7d') { state.periodEnd = shiftDate(today, -1); state.periodStart = shiftDate(today, -7); }
     else if (preset === '30d') { state.periodEnd = today; state.periodStart = shiftDate(today, -29); }
     else if (preset === '90d') { state.periodEnd = today; state.periodStart = shiftDate(today, -89); }
     else if (preset === 'month') { const m = monthBounds(today, 0); state.periodStart = m.start; state.periodEnd = today; }

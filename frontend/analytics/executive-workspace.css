@@ -288,3 +288,16 @@ body[data-analytics-section="overview"] #periodSummary{
 .brief-reading-status p{color:#425470;flex:1 1 280px}
 .brief-reading-status button{padding:5px 8px;border:1px solid #c1cfe1;border-radius:7px;background:#fff;color:#204c84;font:inherit;cursor:pointer}
 @media print{.brief-reading-status button{display:none}}
+
+#briefRanking{margin:0 var(--exec-space) 14px;padding:12px 16px;border:1px solid #d4deef;border-radius:16px;background:#ffffffd9}
+#briefRanking[hidden]{display:none}
+#briefRanking header,#briefRanking header>div{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+#briefRanking header{justify-content:space-between;margin-bottom:7px}
+#briefRanking h2{font-size:1rem;margin:0}
+#briefRanking button{padding:6px 10px;min-height:36px;border:1px solid #c1cfe1;border-radius:8px;background:#fff;color:#204c84;font:inherit;font-size:.84rem;font-weight:700;cursor:pointer}
+#briefRanking button[aria-pressed=true]{background:#25446e;color:#fff}
+#briefRanking .studio-table{margin:0;max-height:none}
+#briefRanking :is(th,td){padding:6px 10px}
+#briefRanking :is(th,td):nth-child(n+3){text-align:right;white-space:nowrap}
+#briefRanking p{margin:6px 0;color:#425470;font-size:.85rem}
+@media print{#briefRanking{margin:0 4mm 2mm;padding:2mm;break-inside:avoid}#briefRanking button[aria-pressed=false]{display:none}#briefRanking button{min-height:0;padding:1mm;font-size:9px}#briefRanking :is(th,td){padding:1mm 2mm}}
