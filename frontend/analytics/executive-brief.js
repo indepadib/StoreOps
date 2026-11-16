@@ -1,4 +1,4 @@
-import {calendarDays, evolution, marginEvidence} from './performance-evidence.js';
+import {calendarDays, dailyComparison, evolution, marginEvidence} from './performance-evidence.js';
 
 const finite=value=>typeof value==='number'&&Number.isFinite(value);
 const number=(value,digits=1)=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:digits}).format(value);
@@ -72,6 +72,40 @@ function businessSignals(data,current,comparable){
  return cards;
 }
 
+function dailyPace(data,period,today,current,previous,referenceReady){
+ const days=calendarDays(period.periodStart,period.periodEnd);
+ const referenceDays=calendarDays(period.compareStart,period.compareEnd);
+ const dateAt=(start,index)=>new Date(Date.parse(start)+index*86400000).toISOString().slice(0,10);
+ const closed=days?Math.max(0,Math.min(days,Math.floor((Date.parse(today)-Date.parse(period.periodStart))/86400000))):0;
+ const provisional=closed!==days;
+ const read=(rows,start,count,key)=>{
+  if(!count)return null;
+  const values=new Map((rows||[]).map(row=>[row.date,row[key]]));
+  let sum=0;
+  for(let index=0;index<count;index++){
+   const value=values.get(dateAt(start,index));
+   if(!finite(value))return null;
+   sum+=value;
+  }
+  return sum;
+ };
+ const matched=provisional&&referenceReady&&closed>0&&closed<=referenceDays;
+ const currentScope=closed?{...period,periodEnd:dateAt(period.periodStart,closed-1),compareEnd:matched?dateAt(period.compareStart,closed-1):period.compareEnd}:period;
+ const indicators=[['CA TTC moyen / jour','sales',' DH'],['Tickets moyens / jour','tickets','']].map(([label,key,unit])=>{
+  const total=provisional?read(data.daily?.current,period.periodStart,closed,key):current[key];
+  const reference=provisional?(matched?read(data.daily?.previous,period.compareStart,closed,key):null):previous[key];
+  const pace=dailyComparison(total,reference,currentScope);
+  const format=value=>number(value,2)+unit;
+  const signed=(value,suffix)=>(value>0?'+':'')+number(value,2)+suffix;
+  return {
+   label,value:pace.value==null?'Indisponible':format(pace.value),
+   detail:pace.previous==null?'Comparaison indisponible':`Avant : ${format(pace.previous)} / jour · ${pace.pct==null?(pace.delta===0?'Stable · base nulle':'Base précédente nulle'):signed(pace.pct,' %')} · ${signed(pace.delta,unit)} / jour`,
+  };
+ });
+ const caption=provisional?closed?`${closed} jour(s) clos · jusqu’au ${asDate(currentScope.periodEnd)}${matched?` · comparaison du ${asDate(period.compareStart)} au ${asDate(currentScope.compareEnd)}`:''}`:'Aucune journée close dans cette période.':`${days} jours calendaires${referenceReady&&referenceDays?` · comparaison sur ${referenceDays} jours`:''}`;
+ return {indicators,caption};
+}
+
 export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority}){
  const ready=selectedStores>0&&data?.coverage?.storesRequested===selectedStores;
  const truncated=(data?.quality?.checks?.truncatedStores||0)>0||data?.quality?.issues?.some(issue=>issue.code==='SALES_TRUNCATED');
@@ -79,7 +113,8 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
  const comparisonReady=ready&&data.coverage.comparisonStoresReady===selectedStores;
  const provisional=period.periodEnd>=today||period.compareEnd>=today;
  const sameDays=calendarDays(period.periodStart,period.periodEnd)===calendarDays(period.compareStart,period.compareEnd);
- const comparable=currentReady&&comparisonReady&&sameDays&&!provisional&&!priority?.evidenceConflict&&data?.quality?.status==='OK'&&period.compareEnd<period.periodStart;
+ const referenceReady=currentReady&&comparisonReady&&!priority?.evidenceConflict&&['OK','WARN'].includes(data?.quality?.status)&&period.compareEnd<period.periodStart&&period.compareEnd<today;
+ const comparable=referenceReady&&sameDays&&!provisional;
  const current=currentReady?data.summary?.current||{}:{};const previous=comparable?data.summary?.previous||{}:{};
  const margin=marginEvidence(currentReady?data:null);
  const marginNote=margin.rate==null?'Coût ou base HT à qualifier':(margin.estimated?'Coût courant estimé · ':'')+'Montant HT : '+money(margin.value)+(margin.coverage==null?'':` · coût couvert ${number(margin.coverage)} %`);
@@ -102,6 +137,7 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
  if(!data)decision={title:'Lecture du périmètre',text:'Les chiffres s’affichent après lecture des magasins sélectionnés.'};
  else if(!comparable)decision={title:'Vérifier avant de décider',text:priority?.items?.find(item=>item.id==='evidence')?.evidence||'La comparaison n’est pas suffisamment documentée.',section:'sales',action:'Ouvrir les contrôles de ventes'};
  else if(exception)decision={title:exception.title,text:exception.evidence,lines:[exception.action],section:exception.section,action:exception.section==='network'?'Comparer les magasins':'Examiner les ventes'};
+ const pace=currentReady?dailyPace(data,period,today,current,referenceReady?data.summary?.previous||{}:{},referenceReady):null;
  const trend=executiveTrend(data,period,{currentReady,comparisonReady:comparable,provisional});
  const generatedAt=data?.generatedAt?new Date(data.generatedAt):null;
  const read=generatedAt&&Number.isFinite(generatedAt.valueOf())?generatedAt.toLocaleString('fr-MA',{timeZone:'Africa/Casablanca',dateStyle:'short',timeStyle:'short'}):null;
@@ -112,6 +148,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,signals:currentReady?businessSignals(data,current,comparable):[],title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,pace,signals:currentReady?businessSignals(data,current,comparable):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

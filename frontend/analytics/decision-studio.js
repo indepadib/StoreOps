@@ -44,6 +44,9 @@ function renderBrief(){
   <article class="brief-panel"><h3>${esc(d.title)}</h3><p class="brief-decision-text">${esc(d.text)}</p>
   ${d.lines?.length?`<ul>${d.lines.map(line=>`<li>${esc(line)}</li>`).join('')}</ul>`:''}
   ${d.section?`<div class="brief-decision-actions"><button type="button" data-studio-section="${esc(d.section)}">${esc(d.action)}</button></div>`:''}</article>`;
+ const pace=$('briefPace');
+ pace.hidden=!m.pace;
+ pace.innerHTML=m.pace?`<div class="brief-pace-head"><h2>Rythme quotidien</h2><p>${esc(m.pace.caption)}</p></div><div class="brief-pace-grid">${m.pace.indicators.map(metric=>`<article><h3>${esc(metric.label)}</h3><strong>${esc(metric.value)}</strong><p>${esc(metric.detail)}</p></article>`).join('')}</div>`:'';
  const signals=$('briefSignals');
  signals.hidden=!m.signals.length;
  signals.innerHTML=m.signals.map(card=>`<article class="brief-signal">
@@ -314,7 +317,7 @@ function textLines(ctx,text,maxWidth){const result=[];let line='';for(const word
 function exportBrief(){
  if(!state.data)return;
  const m=briefModel(),canvas=document.createElement('canvas');
- canvas.width=1920;canvas.height=m.signals.length?1430:1080;
+ canvas.width=1920;canvas.height=(m.signals.length?1430:1080)+(m.pace?175:0);
  const ctx=canvas.getContext('2d');if(!ctx)return;
  function block(text,x,y,width,{size=25,color='#243c5a',weight='',maxLines=8}={}){
   ctx.font=`${weight} ${size}px Segoe UI`.trim();ctx.fillStyle=color;
@@ -362,7 +365,16 @@ function exportBrief(){
    for(const row of card.rows)lineY=block(row.label+' · '+row.value,x+20,lineY,width-40,{size:21,maxLines:2})+8;
   });
  }
- block(m.quality,56,m.signals.length?1310:962,1808,{size:21,maxLines:3});
+ const qualityY=m.signals.length?1310:962;
+ if(m.pace){
+  block('Rythme quotidien · '+m.pace.caption,56,qualityY,1808,{size:22,weight:'bold'});
+  m.pace.indicators.forEach((metric,index)=>{
+   const x=56+index*910;
+   block(metric.label+' · '+metric.value,x,qualityY+42,880,{size:22,weight:'bold'});
+   block(metric.detail,x,qualityY+80,880,{size:20,maxLines:2});
+  });
+ }
+ block(m.quality,56,qualityY+(m.pace?175:0),1808,{size:21,maxLines:3});
  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');
  a.download=`storeops-direction-${scope().periodStart}-${scope().periodEnd}.png`;a.click();
 }
