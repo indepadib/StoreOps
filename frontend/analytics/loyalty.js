@@ -11,6 +11,7 @@
     cashierStores: [],
     walletKey: null,
     walletLoading: false,
+    walletController: null,
     walletStores: [],
     enrollmentKey: null,
     enrollmentLoading: false,
@@ -282,6 +283,8 @@
     }
 
     state.walletLoading = true;
+    const controller=new AbortController();
+    state.walletController=controller;
     if(state.walletKey!==key)state.walletStores=[];
     renderWalletStatus();
 
@@ -289,13 +292,13 @@
       let cursor = 0;
       const results = new Array(scope.stores.length);
       const worker = async () => {
-        while (cursor < scope.stores.length) {
+        while (!controller.signal.aborted&&cursor < scope.stores.length) {
           const i = cursor++;
           const store = scope.stores[i];
           try {
             const qs = new URLSearchParams({ storeId: store.id, start: scope.start, end: scope.end });
             if (force) qs.set('force','1');
-            const data = await withTimeout(api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true }),25000,'Paiements Wallet');
+            const data = await withTimeout(api.api(`/api/analytics/wallet-range?${qs}`, { noRetry: true,signal:controller.signal }),25000,'Paiements Wallet');
             results[i] = { store, ok: true, data };
           } catch (error) {
             results[i] = { store, ok: false, error };
@@ -303,12 +306,13 @@
         }
       };
       await Promise.all(Array.from({ length: Math.min(2, Math.max(1, scope.stores.length)) }, worker));
-      if(walletScopeKey(cashierScope())!==key)return;
+      if(controller.signal.aborted||walletScopeKey(cashierScope())!==key)return;
       state.walletStores = results.filter(Boolean);
       state.walletKey = key;
     } finally {
       state.walletLoading = false;
-      if(walletScopeKey(cashierScope())!==key&&api.getState?.()?.section==='loyalty')loadWallet();
+      state.walletController=null;
+      if((controller.signal.aborted||walletScopeKey(cashierScope())!==key)&&api.getState?.()?.section==='loyalty')loadWallet();
       renderWalletStatus();
       renderLoyalty();
     }
@@ -462,6 +466,7 @@
       loadVisibleModule();
     });
     document.addEventListener('retail-intelligence:period', () => {
+      state.walletController?.abort();
       state.walletKey = null;
       state.walletStores = [];
       state.cashierKey = null;
