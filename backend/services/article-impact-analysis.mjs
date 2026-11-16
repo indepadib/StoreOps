@@ -1,3 +1,5 @@
+import {historyCodes} from '../../frontend/analytics/product-history.js';
+export {historyCodes};
 import {renderArticleBusinessContext} from './analytics-article-context.mjs';
 // Pure analysis: customer tokens remain in transient indexes, never in the report.
 const round=n=>Number.isFinite(n)?Math.round((n+Number.EPSILON)*100)/100:null;
@@ -34,9 +36,6 @@ export function impactPeriod(input,today){
  if(![start,end,compareStart,compareEnd].every(valid)||start>end||compareStart>compareEnd||compareEnd>=start||end>today||span(start,end)>31||span(compareStart,compareEnd)>31)throw Object.assign(new Error('Deux fenêtres de 1 à 31 jours, non superposées et non futures, sont requises.'),{status:400});
  return {start,end,compareStart,compareEnd,days:span(start,end),previousDays:span(compareStart,compareEnd),eventDate:null,currentDayIncomplete:end===today};
 }
-const orangeHistory=['HS-006590','HS-007149'];
-export const historyCodes=sku=>orangeHistory.includes(sku)?orangeHistory:[sku];
-
 function index(evidence,sku){
  const codes=new Set(historyCodes(sku));
  const result={sales:0,tickets:0,identifiedTickets:0,customers:new Map(),buyers:new Set(),product:{sales:0,tickets:0,basketSales:0,attachedSales:0,promotionSales:0,units:new Map(),invalidPrice:false,identifiedTickets:0},daily:new Map(),stores:new Map(),rejectedIdentity:evidence.rejectedIdentity||0};

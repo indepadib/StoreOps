@@ -78,3 +78,15 @@ for(const store of bridge.stores){
 const oneStoreBridge=compareBasketEvidence({baskets:[visit('x','2026-10-08','Q')]},{baskets:[visit('a','2026-10-01'),visit('b','2026-10-02')]}).summary.customerSalesBridge.stores[0];
 assert.deepEqual([oneStoreBridge.previousTickets,oneStoreBridge.currentTickets,oneStoreBridge.trafficEffect,oneStoreBridge.basketEffect],[2,1,-10,0]);
 assert.deepEqual(oneStoreBridge.declines,[{productNumber:'P',previousSales:20,currentSales:0,delta:-20}]);
+
+const linked=compareBasketEvidence(
+ evidence([row('buyer','new','HS-007149',12),row('buyer','new','HS-006590',10)]),
+ evidence([row('buyer','old','HS-006590',10)])
+);
+const juice=linked.products.find(product=>product.productNumber==='HS-007149');
+assert.deepEqual(juice.historyCodes,['HS-006590','HS-007149']);
+assert.equal(juice.current.sales,22);
+assert.equal(juice.current.tickets,1);
+assert.equal(juice.previous.sales,10);
+assert.equal(juice.cohort.repurchasedArticle,1);
+assert.equal(linked.products.some(product=>product.productNumber==='HS-006590'),false);

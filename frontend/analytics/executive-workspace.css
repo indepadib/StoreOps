@@ -321,18 +321,15 @@ body[data-analytics-section="overview"] #periodSummary{
 .brief-rank-values .up{color:#176349;font-weight:700}.brief-rank-values .down{color:#9a2147;font-weight:700}
 #briefRanking .brief-rank-coverage{font-size:.8rem;margin-top:10px}
 @media print{#briefRanking{padding:2mm}.brief-rank-list{gap:0}.brief-rank-list li{padding:1mm 0}}
-
-#executiveOnePager .brief-priority{
- display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
- margin:14px var(--exec-space) 0;padding:14px 16px;border:1px solid #eed3df;border-left:4px solid #b52c60;
- border-radius:14px;background:linear-gradient(110deg,#fff4f8,#fff 74%);
+#executiveOnePager .brief-workspace-grid{display:grid;gap:14px;padding:14px var(--exec-space)}
+#executiveOnePager .brief-workspace-story{display:grid;min-width:0;gap:12px}
+#executiveOnePager .brief-workspace-grid #briefGrid{padding:0;gap:12px;grid-template-columns:minmax(0,1fr)}
+#executiveOnePager .brief-workspace-grid :is(#briefPace,#briefRanking){margin:0;min-width:0}
+#executiveOnePager .brief-workspace-grid #briefRanking{align-self:start}
+@container executive (min-width:940px){
+ #executiveOnePager .brief-workspace-grid{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);align-items:start}
 }
-.brief-priority-label{display:block;color:#8d244d;font-size:.75rem;font-weight:750}
-.brief-priority h2{font-size:1.15rem;margin:3px 0}
-.brief-priority p{margin:0;color:#425470;font-size:.88rem;line-height:1.45}
-.brief-priority button{
- min-height:44px;padding:8px 14px;border:1px solid #7e1b40;border-radius:9px;
- background:#8f214c;color:#fff;font:inherit;font-weight:700;cursor:pointer;
+@media print{
+ #executiveOnePager .brief-workspace-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:2mm 4mm;gap:3mm}
+ #executiveOnePager .brief-workspace-story{gap:2mm}
 }
-.brief-priority button:hover{background:#701839}
-@media print{#executiveOnePager .brief-priority{margin:1mm 4mm;padding:2mm}.brief-priority button{display:none}}
