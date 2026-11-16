@@ -20,8 +20,14 @@ const data={
  stores:[{status:'READY',storeName:'A',sales:100,previousSales:150},{status:'READY',storeName:'B',sales:100,previousSales:100}],
 };
 const model=(today,override={})=>buildExecutiveBrief({data:{...data,...override},period,selectedStores:2,scopeLabel:'Réseau',today});
-assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','network','loyalty','promotions','inventory']);
-assert.equal(model('2026-11-13').signals[1].rows.length,1);
+assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','loyalty','promotions','inventory']);
+assert.equal(model('2026-11-13').reading.loss.leader,'A');
+assert.equal(model('2026-11-13').reading.stable,1);
+assert.equal(model('2026-11-13').reading.loss.share,100);
+assert.match(model('2026-11-13').reading.driver,/tickets/);
+assert.equal(model('2026-11-12').reading,null);
+assert.equal(model('2026-11-13',{stores:[{status:'READY',sales:100,previousSales:150}]}).reading,null);
+assert.equal(model('2026-11-13',{stores:[{...data.stores[0],sales:600},data.stores[1]]}).reading,null);
 assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions','inventory']);
 assert.equal(model('2026-11-12').signals[0].rows.length,2);
 assert.equal(model('2026-11-13',{quality:{status:'WARN',checks:{truncatedStores:1}}}).signals.length,0);
