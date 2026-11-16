@@ -1,3 +1,4 @@
+import {pageOutline,jumpToPagePanel} from './page-outline.js';
 /**
  * Retail Intelligence Experience Layer v1
  * Navigation, progressive disclosure and keyboard search — no data mutation,
@@ -111,6 +112,14 @@ function updateHeading(){
  for(const [label,command] of pageActions[section.id]){
   const b=node('button',actions.childElementCount?'ri-intent-chip':'ri-intent-chip ri-intent-primary',label);b.type='button';b.dataset.riAction=command;actions.append(b)
  }
+ const outline=el('riPageOutline');
+ if(outline){
+  const status=el('riOutlineStatus');if(status)status.textContent='';
+  outline.replaceChildren(...pageOutline[section.id].map(([label,id])=>{
+   const button=node('button','ri-outline-link',label);
+   button.type='button';button.dataset.riPanel=id;return button;
+  }));
+ }
  const active=el('riExperienceLens');
  if(active)active.setAttribute('aria-label','Niveau de lecture — '+section.label);
 }
@@ -125,19 +134,17 @@ function openAssistant(question){
  if(input){input.value=question;input.focus()}
  return true
 }
+function goToPanel(id){
+ return jumpToPagePanel(el(id),{
+  showAll:()=>setMode('full',{remember:false}),
+  reduceMotion:matchMedia('(prefers-reduced-motion: reduce)').matches
+ });
+}
 function act(command){
  const destination=dataDestinations.find(item=>item.id===(command==='journey'?'retention':command));
  if(destination){
   if(selectedSection()!==destination.section)getClient()?.navigate?.(destination.section);
-  requestAnimationFrame(()=>{
-   const target=el(destination.target);
-   if(!target)return;
-   if(!target.getClientRects().length&&!target.closest('[hidden]'))setMode('full',{remember:false});
-   if(!target.getClientRects().length)return;
-   if(target.tabIndex<0&&!target.hasAttribute('tabindex'))target.setAttribute('tabindex','-1');
-   target.focus({preventScroll:true});
-   target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth',block:'start'});
-  });
+  requestAnimationFrame(()=>goToPanel(destination.target));
   return
  }
  if(byId[command]){getClient()?.navigate?.(command,{scroll:true});return}
@@ -250,6 +257,12 @@ function connect(){
  }
  document.addEventListener('click',event=>{
   const b=event.target.closest('[data-ri-action]');if(b)act(b.dataset.riAction)
+ });
+ el('riPageOutline')?.addEventListener('click',event=>{
+  const target=event.target.closest('[data-ri-panel]')?.dataset.riPanel;
+  if(!target)return;
+  const status=el('riOutlineStatus');
+  if(status)status.textContent=goToPanel(target)?'':'Ce bloc est indisponible dans la vue actuelle.';
  });
  setupTools();defineFinder();setupFilters();updateHeading();
  window.addEventListener('resize',syncLensIndicator,{passive:true});

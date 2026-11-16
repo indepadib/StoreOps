@@ -212,3 +212,13 @@ body[data-ri-mode="focus"] .decision-dashboard .decision-table-wrap{contain:cont
 .ri-experience-copy .ri-workspace-scope{margin-top:8px;color:#344861;font-weight:650}
 .ri-experience-actions button{min-height:42px}
 .ri-experience-actions button:focus-visible{outline:2px solid #94214f;outline-offset:2px}
+
+.ri-page-outline-wrap{margin:-10px 0 20px}
+#riPageOutline{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border:1px solid #dce5ef;border-radius:12px;background:#f4f7fb}
+.ri-outline-link{background:#fff;color:#263d57;border:1px solid #d7e1eb;border-radius:8px;padding:8px 12px;min-height:40px;font:inherit;font-weight:650;cursor:pointer}
+.ri-outline-link:hover,.ri-outline-link:focus-visible{border-color:#975274;color:#75173d}
+#riOutlineStatus{margin:6px 0 0;color:#47586e;font-size:.85rem}
+#riOutlineStatus:empty{display:none}
+#analyticsContent [tabindex="-1"]{scroll-margin-top:96px}
+@media(max-width:600px){#riPageOutline{flex-wrap:nowrap;overflow-x:auto}.ri-outline-link{flex:0 0 auto}}
+@media print{.ri-page-outline-wrap{display:none}}
