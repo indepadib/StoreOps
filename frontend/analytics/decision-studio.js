@@ -44,6 +44,11 @@ function renderBrief(){
   <article class="brief-panel"><h3>${esc(d.title)}</h3><p class="brief-decision-text">${esc(d.text)}</p>
   ${d.lines?.length?`<ul>${d.lines.map(line=>`<li>${esc(line)}</li>`).join('')}</ul>`:''}
   ${d.section?`<div class="brief-decision-actions"><button type="button" data-studio-section="${esc(d.section)}">${esc(d.action)}</button></div>`:''}</article>`;
+ const reading=$('briefReading'),r=m.reading;
+ reading.hidden=!r;
+ reading.innerHTML=r?`<div class="brief-reading-lead"><h2>${esc(r.headline)}</h2><strong>${esc(r.change)}</strong><p>CA de référence ${esc(r.previous)}${r.driver?' · '+esc(r.driver):''}</p></div>
+  <div class="brief-reading-spread">${[[r.gain,'En hausse','up'],[r.loss,'En baisse','down']].map(([side,label,tone])=>`<article class="${tone}"><h3>${esc(label)} · ${side.count} magasin(s)</h3><strong>${esc(side.total)}</strong>${side.leader?`<p>${esc(side.leader)} · ${number(side.share)} % de cette contribution</p>`:''}</article>`).join('')}
+  <footer><span>${r.stable} magasin(s) stable(s)</span><button type="button" data-studio-section="network">Ouvrir le détail par magasin ↗</button></footer></div>`:'';
  const pace=$('briefPace');
  pace.hidden=!m.pace;
  pace.innerHTML=m.pace?`<div class="brief-pace-head"><h2>Rythme quotidien</h2><p>${esc(m.pace.caption)}</p></div><div class="brief-pace-grid">${m.pace.indicators.map(metric=>`<article><h3>${esc(metric.label)}</h3><strong>${esc(metric.value)}</strong><p>${esc(metric.detail)}</p></article>`).join('')}</div>`:'';
@@ -317,7 +322,7 @@ function textLines(ctx,text,maxWidth){const result=[];let line='';for(const word
 function exportBrief(){
  if(!state.data)return;
  const m=briefModel(),canvas=document.createElement('canvas');
- canvas.width=1920;canvas.height=(m.signals.length?1430+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:1080)+(m.pace?175:0);
+ canvas.width=1920;canvas.height=(m.signals.length?1430+Math.max(0,Math.ceil(m.signals.length/4)-1)*350:1080)+(m.pace?175:0)+(m.reading?205:0);
  const ctx=canvas.getContext('2d');if(!ctx)return;
  function block(text,x,y,width,{size=25,color='#243c5a',weight='',maxLines=8}={}){
   ctx.font=`${weight} ${size}px Segoe UI`.trim();ctx.fillStyle=color;
@@ -375,7 +380,18 @@ function exportBrief(){
    block(metric.detail,x,qualityY+80,880,{size:20,maxLines:2});
   });
  }
- block(m.quality,56,qualityY+(m.pace?175:0),1808,{size:21,maxLines:3});
+ const readingY=qualityY+(m.pace?175:0);
+ if(m.reading){
+  const r=m.reading;
+  block(r.headline+' · '+r.change,56,readingY,1808,{size:24,weight:'bold'});
+  block('CA de référence '+r.previous+' · '+r.driver,56,readingY+40,1808,{size:21});
+  for(const [i,side] of [r.gain,r.loss].entries()){
+   const lead=side.leader?' · '+side.leader+' ('+number(side.share)+' %)':'';
+   block((i?'En baisse':'En hausse')+' · '+side.count+' magasin(s) · '+side.total+lead,56+i*910,readingY+87,880,{size:21,maxLines:2});
+  }
+  block(r.stable+' magasin(s) stable(s)',56,readingY+162,1808,{size:19});
+ }
+ block(m.quality,56,readingY+(m.reading?205:0),1808,{size:21,maxLines:3});
  const a=document.createElement('a');a.href=canvas.toDataURL('image/png');
  a.download=`storeops-direction-${scope().periodStart}-${scope().periodEnd}.png`;a.click();
 }

@@ -42,7 +42,36 @@ export function executiveTrend(data,period,{currentReady,comparisonReady,provisi
   low:min,high:max,dateLabels,caption:`CA TTC par jour · ${recordedDays}/${days} jours renseignés${provisional?' · journée en cours exclue':''}`};
 }
 
-function businessSignals(data,current,comparable,stock){
+export function networkReading(data,current,previous,comparable){
+ const shops=(data.stores||[]).filter(s=>s.status==='READY'&&finite(s.sales)&&finite(s.previousSales));
+ const scopeSize=data.coverage?.storesRequested;
+ if(!comparable||!finite(current.sales)||!finite(previous.sales)||shops.length!==scopeSize||!scopeSize)return null;
+ const delta=current.sales-previous.sales;
+ const sum=field=>shops.reduce((total,store)=>total+store[field],0);
+ const reconciles=(value,expected)=>Math.abs(value-expected)<=Math.max(0.1,Math.abs(expected)*.001);
+ if(!reconciles(sum('sales'),current.sales)||!reconciles(sum('previousSales'),previous.sales))return null;
+ const movements=shops.map(store=>({name:store.storeName||store.storeCode||store.storeId,delta:store.sales-store.previousSales}));
+ const rising=movements.filter(row=>row.delta>.01).sort((a,b)=>b.delta-a.delta);
+ const falling=movements.filter(row=>row.delta<-.01).sort((a,b)=>a.delta-b.delta);
+ const total=rows=>rows.reduce((value,row)=>value+row.delta,0);
+ const positive=total(rising),negative=total(falling);
+ const signed=value=>(value>0?'+':'')+money(value);
+ const evolutionPct=evolution(current.sales,previous.sales).pct;
+ const drivers=data.summary?.drivers;
+ const effects=drivers&&[drivers.trafficEffect,drivers.basketEffect].every(finite)&&reconciles(drivers.trafficEffect+drivers.basketEffect,delta)
+  ?[{label:'Tickets',value:drivers.trafficEffect},{label:'Panier',value:drivers.basketEffect}].sort((a,b)=>Math.abs(b.value)-Math.abs(a.value)):[];
+ const headline=delta>.01?'Le réseau progresse':delta<-.01?'Le réseau recule':'Le CA réseau est stable';
+ return {
+  headline,change:signed(delta)+(evolutionPct==null?'':` · ${evolutionPct>0?'+':''}${number(evolutionPct,2)} %`),
+  previous:money(previous.sales),
+  driver:effects[0]?`Principal facteur observable : effet ${effects[0].label.toLowerCase()} ${signed(effects[0].value)}.`:'',
+  gain:{count:rising.length,total:signed(positive),leader:rising[0]?.name,share:positive>0?rising[0].delta/positive*100:null},
+  loss:{count:falling.length,total:signed(negative),leader:falling[0]?.name,share:negative<0?falling[0].delta/negative*100:null},
+  stable:scopeSize-rising.length-falling.length,
+ };
+}
+
+function businessSignals(data,current,comparable,stock,reading){
  const cards=[];
  const row=(label,value,tone='')=>({label,value,tone});
  const signedMoney=value=>(value>0?'+':'')+money(value);
@@ -54,7 +83,7 @@ function businessSignals(data,current,comparable,stock){
  const shops=(data.stores||[]).filter(store=>store.status==='READY'&&finite(store.sales));
  const ranked=[...shops].sort((a,b)=>b.sales-a.sales);
  const declining=comparable?shops.filter(store=>finite(store.previousSales)&&store.sales<store.previousSales).sort((a,b)=>(a.sales-a.previousSales)-(b.sales-b.previousSales)):[];
- add(declining.length?'Magasins qui pèsent sur la baisse':'CA par magasin',(declining.length?declining:ranked).slice(0,3).map(store=>
+ if(!reading)add(declining.length?'Magasins qui pèsent sur la baisse':'CA par magasin',(declining.length?declining:ranked).slice(0,3).map(store=>
   row(store.storeName||store.storeCode||store.storeId,declining.length?signedMoney(store.sales-store.previousSales):money(store.sales),declining.length?'down':'')
  ),'network','Comparer les magasins');
  const clientRows=[
@@ -154,6 +183,7 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
  if(!data)decision={title:'Lecture du périmètre',text:'Les chiffres s’affichent après lecture des magasins sélectionnés.'};
  else if(!comparable)decision={title:'Vérifier avant de décider',text:priority?.items?.find(item=>item.id==='evidence')?.evidence||'La comparaison n’est pas suffisamment documentée.',section:'sales',action:'Ouvrir les contrôles de ventes'};
  else if(exception)decision={title:exception.title,text:exception.evidence,lines:[exception.action],section:exception.section,action:exception.section==='network'?'Comparer les magasins':'Examiner les ventes'};
+ const reading=currentReady?networkReading(data,current,previous,comparable):null;
  const pace=currentReady?dailyPace(data,period,today,current,referenceReady?data.summary?.previous||{}:{},referenceReady):null;
  const trend=executiveTrend(data,period,{currentReady,comparisonReady:comparable,provisional});
  const generatedAt=data?.generatedAt?new Date(data.generatedAt):null;
@@ -165,6 +195,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,pace,signals:currentReady?businessSignals(data,current,comparable,stock):[],title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,pace,reading,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }
