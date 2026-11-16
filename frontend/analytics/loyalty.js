@@ -102,7 +102,7 @@
 
     $('#loyaltyCoverage').textContent = `${a.coverage}/${totalStores} magasin(s) disponible(s)`;
 
-    const walletReady=state.walletStores.filter(x=>x.ok&&x.data?.status==='READY'),walletBurn=walletReady.length?walletReady.reduce((s,x)=>s+Number(x.data?.burn||0),0):null,walletTx=walletReady.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
+    const walletReady=state.walletStores.filter(x=>x.ok&&x.data?.status==='READY'),walletBurn=totalStores>0&&walletReady.length===totalStores&&walletReady.every(x=>safe(x.data.burn)!=null)?walletReady.reduce((s,x)=>s+Number(x.data.burn),0):null,walletTx=walletReady.reduce((s,x)=>s+Number(x.data?.walletTransactions||0),0);
     const evidence=state.enrollmentData?.coverage;
     const enrollmentCoverage=state.enrollmentLoading?'Lecture en cours':evidence?`${evidence.ready}/${evidence.total} magasins couverts`:'Source indisponible';
     const cards = [
@@ -115,7 +115,8 @@
       ['Inscriptions fidélité', enrollmentCoverage, 'Voir le détail par magasin'],
       ['Panier identifié', api.money(a.memberBasket), a.nonMemberBasket == null ? 'comparaison N/A' : 'vs '+api.money(a.nonMemberBasket)],
       ['Écart de panier', api.percent(a.uplift), 'tickets identifiés vs non identifiés'],
-      ['Burn Wallet', api.money(walletBurn,true), walletBurn==null?'source paiement en cours':api.number(walletTx)+' paiement(s) Wallet'],
+      ['Cashback crédité', 'N/D', 'Source des mouvements de crédit à vérifier'],
+      ['Cashback consommé · burn Wallet', api.money(walletBurn,true), walletBurn==null?`${walletReady.length}/${totalStores} magasins avec paiements Wallet disponibles`:api.number(walletTx)+' paiement(s) Wallet'],
       ['Burn / CA identifié', a.identifiedSales&&walletBurn!=null?api.percent(walletBurn/a.identifiedSales*100):'N/A', 'usage cashback sur la période']
     ];
 

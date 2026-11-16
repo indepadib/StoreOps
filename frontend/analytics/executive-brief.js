@@ -122,7 +122,7 @@ function businessSignals(data,current,comparable,stock,reading){
  const signedMoney=value=>(value>0?'+':'')+money(value);
  const add=(title,rows,section,action)=>{if(rows.length)cards.push({title,rows,section,action});};
  const drivers=data.summary?.drivers||{};
- if(comparable)add('Ce qui explique l’écart de CA',[
+ if(comparable&&!reading?.driver)add('Ce qui explique l’écart de CA',[
   ['Effet tickets',drivers.trafficEffect],['Effet panier',drivers.basketEffect],['Écart résiduel',drivers.reconciliationGap]
  ].filter(([,v])=>finite(v)).map(([label,value])=>row(label,signedMoney(value),value<0?'down':value>0?'up':'')),'sales','Vérifier les contributions');
  const shops=(data.stores||[]).filter(store=>store.status==='READY'&&finite(store.sales));
@@ -144,13 +144,13 @@ function businessSignals(data,current,comparable,stock,reading){
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
  add('Exposition aux promotions',promoRows,'promotions','Analyser les offres');
  const stockRows=[
-  ['Détention historique magasin',stock?.historyRate,'%'],
+  ['Détention commune magasins',stock?.historyRate,'%'],
   ['Détention historique entrepôt',stock?.historyWarehouseRate,'%'],
   ['Références à compter pour stock négatif',stock?.complete?stock?.negative:null,''],
   ['Références à réapprovisionner',stock?.complete?stock?.replenishable:null,''],
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
- if(finite(stock?.historyRate))stockRows.splice(1,0,row('Présences / références déjà reçues',number(stock.historyHeld)+' / '+number(stock.historyBase)));
- else stockRows.unshift(row('Détention historique magasin','Indisponible'));
+ if(finite(stock?.historyRate))stockRows.splice(1,0,row('Présentes partout / références communes',number(stock.historyHeld)+' / '+number(stock.historyBase)));
+ else stockRows.unshift(row('Détention commune magasins','Indisponible'));
  cards.push({title:'Détention · stock actuel',rows:stockRows,section:'detention',action:'Voir la Détention',note:stock?.historyRate==null?'Historique ou stock incomplet pour ce périmètre.':null});
 
  return cards;
