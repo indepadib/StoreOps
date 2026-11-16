@@ -55,3 +55,7 @@ assert.match(dates,/periodEnd: shiftDate\(initialDate, -1\)/);
 assert.match(dates,/preset === '7d'\) \{ state.periodEnd = shiftDate\(today, -1\); state.periodStart = shiftDate\(today, -7\)/);
 assert.match(html,/id="briefRanking"/);
 assert.match(read('decision-studio.js'),/canvas\.width=1920;canvas\.height=1080;/);
+
+const studio=read('decision-studio.js');
+assert.match(studio,/data-brief-prepare-stock/);
+assert.match(studio,/const task=loadStockBrief\(true\)/);

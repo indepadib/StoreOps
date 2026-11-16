@@ -77,6 +77,7 @@ function renderBrief(){
  signals.hidden=!m.signals.length;
  signals.innerHTML=m.signals.map(card=>`<article class="brief-signal">
   <h2>${esc(card.title)}</h2>${card.note?`<p class="brief-signal-note">${esc(card.note)}</p>`:''}<dl>${card.rows.map(row=>`<div><dt>${esc(row.label)}</dt><dd class="${row.tone}">${esc(row.value)}</dd></div>`).join('')}</dl>
+  ${card.section==='detention'&&card.note?`<button type="button" data-brief-prepare-stock ${state.stockLoading?'disabled':''}>${state.stockLoading?'Préparation en cours…':'Préparer la Détention'}</button>`:''}
   <button type="button" data-studio-section="${esc(card.section)}">${esc(card.action)} <span aria-hidden="true">↗</span></button>
  </article>`).join('');
  $('briefQuality').textContent=m.quality;
@@ -436,6 +437,15 @@ $('briefRanking')?.addEventListener('click',event=>{
  $('briefRanking').querySelector('[aria-pressed="true"]')?.focus();
 });
 if(state.data)loadExecutiveStock();
+$('briefSignals')?.addEventListener('click',async event=>{
+ if(!event.target.closest('[data-brief-prepare-stock]')||state.stockLoading)return;
+ const task=loadStockBrief(true);
+ renderBrief();
+ await task;
+ const feedback=$('briefQuality').textContent;
+ renderBrief();
+ if(scope().section==='overview'&&feedback.startsWith('Détention historique incomplète'))$('briefQuality').textContent=feedback;
+});
 $('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();

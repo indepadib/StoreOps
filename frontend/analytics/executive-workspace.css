@@ -301,3 +301,5 @@ body[data-analytics-section="overview"] #periodSummary{
 #briefRanking :is(th,td):nth-child(n+3){text-align:right;white-space:nowrap}
 #briefRanking p{margin:6px 0;color:#425470;font-size:.85rem}
 @media print{#briefRanking{margin:0 4mm 2mm;padding:2mm;break-inside:avoid}#briefRanking button[aria-pressed=false]{display:none}#briefRanking button{min-height:0;padding:1mm;font-size:9px}#briefRanking :is(th,td){padding:1mm 2mm}}
+
+.brief-signal button:disabled{opacity:.65;cursor:wait}
