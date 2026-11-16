@@ -71,6 +71,24 @@ export function networkReading(data,current,previous,comparable){
  };
 }
 
+export const rankingLevels=[['department','Départements'],['rayon','Rayons'],['family','Familles'],['product','Articles']];
+
+function executiveRankings(data,current,comparable){
+ return Object.fromEntries(rankingLevels.map(([level])=>{
+  const rows=level==='product'?data.products:data.hierarchy?.[level];
+  const available=(rows||[]).filter(row=>finite(row.sales));
+  const subtotal=available.reduce((total,row)=>total+row.sales,0);
+  if(!finite(current.sales)||!available.length||Math.abs(subtotal-current.sales)>Math.max(1,Math.abs(current.sales)*.005))return [level,[]];
+  const top=available.filter(row=>row.sales>0&&row.key!=='__UNCLASSIFIED__'&&!/non classé|unknown|unclassified/i.test(row.label||'')).sort((a,b)=>b.sales-a.sales).slice(0,5);
+  return [level,top.map(row=>{
+   const previous=row.previousSales??row.previous;
+   const delta=comparable&&finite(previous)?row.sales-previous:null;
+   return {label:String(row.label||row.key),sales:money(row.sales),share:current.sales>0?number(row.sales/current.sales*100,1)+' %':'—',
+    change:delta==null?'—':(delta>0?'+':'')+money(delta)};
+  })];
+ }));
+}
+
 function businessSignals(data,current,comparable,stock,reading){
  const cards=[];
  const row=(label,value,tone='')=>({label,value,tone});
@@ -98,22 +116,15 @@ function businessSignals(data,current,comparable,stock,reading){
   ['Remises enregistrées',current.discountAmount,'DH'],
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
  add('Exposition aux promotions',promoRows,'promotions','Analyser les offres');
- const departments=(data.hierarchy?.department||[]).filter(department=>department.label&&finite(department.sales));
- const mapped=departments.filter(department=>!/non classé|unknown|unclassified/i.test(department.label));
- const categoryGap=finite(current.sales)?Math.abs(departments.reduce((sum,d)=>sum+d.sales,0)-current.sales):Infinity;
- if(mapped.length&&categoryGap<=Math.max(1,Math.abs(current.sales)*.005)){
-  const changes=mapped.filter(d=>finite(d.previousSales??d.previous)&&d.sales<(d.previousSales??d.previous));
-  const useChanges=comparable&&changes.length>0;
-  const top=useChanges?[...changes].sort((a,b)=>(a.sales-(a.previousSales??a.previous))-(b.sales-(b.previousSales??b.previous))):[...mapped].sort((a,b)=>b.sales-a.sales);
-  add(useChanges?'Départements en recul':'Départements qui portent le CA',top.slice(0,3).map(d=>row(d.label,useChanges?signedMoney(d.sales-(d.previousSales??d.previous)):money(d.sales),useChanges?'down':'')),'categories','Analyser les catégories');
- }
  const stockRows=[
-  ['Détention historique',stock?.historyRate,'%'],
+  ['Détention historique magasin',stock?.historyRate,'%'],
+  ['Détention historique entrepôt',stock?.historyWarehouseRate,'%'],
   ['Références à compter pour stock négatif',stock?.complete?stock?.negative:null,''],
   ['Références à réapprovisionner',stock?.complete?stock?.replenishable:null,''],
  ].filter(([,v])=>finite(v)).map(([label,value,unit])=>row(label,number(value)+(unit?' '+unit:'')));
- if(stockRows.length)add('Disponibilité · stock actuel',stockRows,'detention','Vérifier la détention');
- else cards.push({title:'Disponibilité · stock actuel',rows:[],section:'inventory',action:'Ouvrir le stock',note:'Les stocks actuels se consultent dans Stock.'});
+ if(finite(stock?.historyRate))stockRows.splice(1,0,row('Présences / références déjà reçues',number(stock.historyHeld)+' / '+number(stock.historyBase)));
+ else stockRows.unshift(row('Détention historique magasin','Indisponible'));
+ cards.push({title:'Détention · stock actuel',rows:stockRows,section:'detention',action:'Voir la Détention',note:stock?.historyRate==null?'Historique ou stock incomplet pour ce périmètre.':null});
 
  return cards;
 }
@@ -199,6 +210,6 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,pace,reading,readingNote,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
+ return {comparisons,kpis,trend,decision,quality,pace,reading,readingNote,rankings:currentReady?executiveRankings(data,current,comparable):null,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

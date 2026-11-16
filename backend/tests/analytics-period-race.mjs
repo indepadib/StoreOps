@@ -31,9 +31,15 @@ assert.equal(published.filter(e=>e.type==='retail-intelligence:decision').length
 const analytics=readFileSync(new URL('../../frontend/analytics/analytics.js',import.meta.url),'utf8');
 const preset=analytics.slice(analytics.indexOf('  function applyPresetToState('),analytics.indexOf('  function applyComparisonToState('));
 for(const [today,expected] of [['2026-10-22','2026-10-21'],['2026-10-01','2026-09-30']]){
- const state={comparisonMode:'previous_period'},test={state,isoDate:()=>today,shiftDate:(day,n)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},applyComparisonToState(){}};
+ const state={comparisonMode:'previous_period'},test={state,businessToday:()=>today,shiftDate:(day,n)=>{const d=new Date(day+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10)},applyComparisonToState(){}};
  vm.runInNewContext(preset+";applyPresetToState('yesterday');",test);
  assert.equal(state.periodStart,expected);assert.equal(state.periodEnd,expected);assert.equal(state.businessDate,expected);
+ vm.runInNewContext(preset+";applyPresetToState('7d');",test);
+ assert.equal(state.periodEnd,expected);
+ assert.equal((Date.parse(state.periodEnd)-Date.parse(state.periodStart))/86400000+1,7);
+ vm.runInNewContext(preset+";applyPresetToState('today');",test);
+ assert.equal(state.periodStart,today);assert.equal(state.periodEnd,today);
+
 }
 console.log('PASS changed-period cancellation, late response rejection, latest result/cache and yesterday date boundaries');
 

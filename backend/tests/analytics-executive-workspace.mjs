@@ -20,7 +20,7 @@ const data={
  stores:[{status:'READY',storeName:'A',sales:100,previousSales:150},{status:'READY',storeName:'B',sales:100,previousSales:100}],
 };
 const model=(today,override={})=>buildExecutiveBrief({data:{...data,...override},period,selectedStores:2,scopeLabel:'Réseau',today});
-assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','loyalty','promotions','inventory']);
+assert.deepEqual(model('2026-11-13').signals.map(card=>card.section),['sales','loyalty','promotions','detention']);
 assert.equal(model('2026-11-13').reading.loss.leader,'A');
 assert.equal(model('2026-11-13').reading.stable,1);
 assert.equal(model('2026-11-13').reading.loss.share,100);
@@ -28,7 +28,7 @@ assert.match(model('2026-11-13').reading.driver,/tickets/);
 assert.equal(model('2026-11-12').reading,null);
 assert.equal(model('2026-11-13',{stores:[{status:'READY',sales:100,previousSales:150}]}).reading,null);
 assert.equal(model('2026-11-13',{stores:[{...data.stores[0],sales:600},data.stores[1]]}).reading,null);
-assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions','inventory']);
+assert.deepEqual(model('2026-11-12').signals.map(card=>card.section),['network','loyalty','promotions','detention']);
 assert.equal(model('2026-11-12').signals[0].rows.length,2);
 assert.equal(model('2026-11-13',{quality:{status:'WARN',checks:{truncatedStores:1}}}).signals.length,0);
 
@@ -41,6 +41,21 @@ assert.equal(live.pace.indicators[1].value,'9');
 assert.equal(model('2026-11-12',{daily:{...liveDaily,current:liveDaily.current.slice(0,1)}}).pace.indicators[0].value,'Indisponible');
 assert.equal(model('2026-11-13',{quality:{status:'ERROR'}}).pace.indicators[0].detail,'Comparaison indisponible');
 
-const withDepartments=model('2026-11-13',{hierarchy:{department:[{label:'Frais',sales:120,previousSales:150},{label:'PGC',sales:80,previousSales:100}]}});
-assert.deepEqual(withDepartments.signals.find(card=>card.section==='categories').rows.map(row=>row.label),['Frais','PGC']);
-assert.ok(!model('2026-11-13',{hierarchy:{department:[{label:'Frais',sales:30}]}}).signals.some(card=>card.section==='categories'));
+const hierRows=[{label:'Frais',sales:120,previousSales:150},{label:'PGC',sales:80,previousSales:100}];
+const ranks=model('2026-11-13',{hierarchy:{department:hierRows,rayon:hierRows,family:hierRows},products:Array.from({length:8},(_,i)=>({key:'SKU'+i,label:'Article '+i,sales:25}))}).rankings;
+assert.deepEqual(Object.keys(ranks),['department','rayon','family','product']);
+assert.deepEqual(ranks.department.map(row=>row.label),['Frais','PGC']);
+assert.equal(ranks.department[0].change,'-30 DH');
+assert.equal(ranks.product.length,5);
+assert.equal(model('2026-11-13',{hierarchy:{department:[{label:'Frais',sales:30}]}}).rankings.department.length,0);
+assert.equal(model('2026-11-13').signals.find(card=>card.section==='detention').rows[0].value,'Indisponible');
+const dates=read('analytics.js');
+assert.match(dates,/periodStart: shiftDate\(initialDate, -7\)/);
+assert.match(dates,/periodEnd: shiftDate\(initialDate, -1\)/);
+assert.match(dates,/preset === '7d'\) \{ state.periodEnd = shiftDate\(today, -1\); state.periodStart = shiftDate\(today, -7\)/);
+assert.match(html,/id="briefRanking"/);
+assert.match(read('decision-studio.js'),/canvas\.width=1920;canvas\.height=1080;/);
+
+const studio=read('decision-studio.js');
+assert.match(studio,/data-brief-prepare-stock/);
+assert.match(studio,/const task=loadStockBrief\(true\)/);
