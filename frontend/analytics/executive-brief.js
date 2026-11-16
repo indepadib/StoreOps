@@ -73,20 +73,47 @@ export function networkReading(data,current,previous,comparable){
 
 export const rankingLevels=[['department','Départements'],['rayon','Rayons'],['family','Familles'],['product','Articles']];
 
-function executiveRankings(data,current,comparable){
- return Object.fromEntries(rankingLevels.map(([level])=>{
-  const rows=level==='product'?data.products:data.hierarchy?.[level];
-  const available=(rows||[]).filter(row=>finite(row.sales));
-  const subtotal=available.reduce((total,row)=>total+row.sales,0);
-  if(!finite(current.sales)||!available.length||Math.abs(subtotal-current.sales)>Math.max(1,Math.abs(current.sales)*.005))return [level,[]];
-  const top=available.filter(row=>row.sales>0&&row.key!=='__UNCLASSIFIED__'&&!/non classé|unknown|unclassified/i.test(row.label||'')).sort((a,b)=>b.sales-a.sales).slice(0,5);
+function executiveRankings(data,current,comparable,catalog){
+ const matches=rows=>finite(current.sales)&&rows.length&&Math.abs(rows.reduce((sum,row)=>sum+row.sales,0)-current.sales)<=Math.max(1,Math.abs(current.sales)*.005);
+ const known=row=>row.key!=='__UNCLASSIFIED__'&&!/^(non classé|unknown|unclassified)$/i.test(row.label||'');
+ const products=(data.products||[]).filter(row=>finite(row.sales));
+ const productBase=matches(products);
+ const prior=row=>row.previousSales??row.previous;
+ const coverage={};
+ const rankings=Object.fromEntries(rankingLevels.map(([level])=>{
+  const available=(data.hierarchy?.[level]||[]).filter(row=>finite(row.sales));
+  const server=matches(available)?available.filter(row=>known(row)&&row.label&&String(row.label)!==String(row.key)):[];
+  const groups=new Map();
+  if(level!=='product'&&productBase)for(const product of products){
+   const ref=catalog?.get(String(product.key));
+   const node=ref?.hierarchy?.[level];
+   if(!node?.id||!node.label||node.label===node.id||node.labelStatus==='AMBIGUOUS'||!known({key:node.id,label:node.label}))continue;
+   const path=['department','rayon','family'].slice(0,['department','rayon','family'].indexOf(level)+1).map(key=>ref.hierarchy?.[key]?.id);
+   const key=JSON.stringify(path);
+   const row=groups.get(key)||{key,label:node.label,sales:0,previousSales:0,previousComplete:true};
+   row.sales+=product.sales;
+   if(finite(prior(product)))row.previousSales+=prior(product);
+   else row.previousComplete=false;
+   groups.set(key,row);
+  }
+  const enriched=[...groups.values()];
+  const covered=rows=>rows.reduce((sum,row)=>sum+row.sales,0);
+  const rows=level==='product'?(productBase?products:[]):covered(enriched)>=covered(server)&&enriched.length?enriched:server;
+  coverage[level]=current.sales>0&&rows.length?Math.max(0,Math.min(100,covered(rows)/current.sales*100)):null;
+  const top=rows.filter(row=>row.sales>0).sort((a,b)=>b.sales-a.sales).slice(0,5);
   return [level,top.map(row=>{
-   const previous=row.previousSales??row.previous;
-   const delta=comparable&&finite(previous)?row.sales-previous:null;
-   return {label:String(row.label||row.key),sales:money(row.sales),share:current.sales>0?number(row.sales/current.sales*100,1)+' %':'—',
-    change:delta==null?'—':(delta>0?'+':'')+money(delta)};
+   const ref=level==='product'?catalog?.get(String(row.key)):null;
+   const name=ref?.nameStatus==='RESOLVED'&&ref.productName;
+   const previous=prior(row);
+   const delta=comparable&&(level==='product'||coverage[level]>=99.5)&&row.previousComplete!==false&&finite(previous)?row.sales-previous:null;
+   return {label:level==='product'?(name||String(row.key)):String(row.label||row.key),
+    code:level==='product'&&name?String(row.key):null,missingName:level==='product'&&!name,
+    sales:money(row.sales),share:current.sales>0?number(row.sales/current.sales*100,1)+' %':'—',
+    percent:current.sales>0?Math.min(100,row.sales/current.sales*100):0,
+    change:delta==null?'—':(delta>0?'+':'')+money(delta),tone:delta>0?'up':delta<0?'down':''};
   })];
  }));
+ return {rankings,coverage};
 }
 
 function businessSignals(data,current,comparable,stock,reading){
@@ -163,7 +190,7 @@ function dailyPace(data,period,today,current,previous,referenceReady){
  return {indicators,caption};
 }
 
-export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority,stock}){
+export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority,stock,catalog}){
  const ready=selectedStores>0&&data?.coverage?.storesRequested===selectedStores;
  const truncated=(data?.quality?.checks?.truncatedStores||0)>0||data?.quality?.issues?.some(issue=>issue.code==='SALES_TRUNCATED');
  const currentReady=ready&&data.coverage.currentStoresReady===selectedStores&&!truncated;
@@ -210,6 +237,7 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,
  ].filter(Boolean).join(' · ');
- return {comparisons,kpis,trend,decision,quality,pace,reading,readingNote,rankings:currentReady?executiveRankings(data,current,comparable):null,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
+ const ranking=currentReady?executiveRankings(data,current,comparable,catalog):null;
+ return {comparisons,kpis,trend,decision,quality,pace,reading,readingNote,rankings:ranking?.rankings||null,rankingCoverage:ranking?.coverage||null,signals:currentReady?businessSignals(data,current,comparable,stock,reading):[],title:'Vue exécutive',
   period:`${period.periodStart} → ${period.periodEnd} · comparaison ${period.compareStart} → ${period.compareEnd} · ${scopeLabel}`};
 }

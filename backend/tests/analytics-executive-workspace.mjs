@@ -59,3 +59,13 @@ assert.match(read('decision-studio.js'),/canvas\.width=1920;canvas\.height=1080;
 const studio=read('decision-studio.js');
 assert.match(studio,/data-brief-prepare-stock/);
 assert.match(studio,/const task=loadStockBrief\(true\)/);
+
+const catalog=new Map([['A',{nameStatus:'RESOLVED',productName:'Nom complet',hierarchy:{department:{id:'D',label:'Frais'},rayon:{id:'R',label:'Crèmerie'},family:{id:'F',label:'Yaourts'}}}],['B',{nameStatus:'SEARCH_ONLY',searchName:'SEARCH-B',hierarchy:{department:{id:'X',label:'PGC'}}}]]);
+const enriched=buildExecutiveBrief({data:{...data,products:[{key:'A',label:'SEARCH-A',sales:140,previousSales:160},{key:'B',label:'SEARCH-B',sales:60,previousSales:90}]},period,selectedStores:2,scopeLabel:'Réseau',today:'2026-11-13',catalog});
+assert.equal(enriched.rankings.product[0].label,'Nom complet');
+assert.equal(enriched.rankings.product[1].label,'B');
+assert.equal(enriched.rankings.product[1].missingName,true);
+assert.equal(enriched.rankings.rayon[0].label,'Crèmerie');
+assert.equal(enriched.rankings.family[0].label,'Yaourts');
+assert.equal(enriched.rankingCoverage.rayon,70);
+assert.equal(enriched.rankings.rayon[0].change,'—');

@@ -20,7 +20,7 @@ function stockMetrics(){const all=state.stock?.stores||[],loaded=all.filter(s=>s
 function briefModel(){
  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
  return buildExecutiveBrief({data:state.data,period:scope(),selectedStores:stores().length,
-  scopeLabel:core.getStoreScopeLabel(),today,priority:priorityModel(),stock:stockMetrics()});
+  scopeLabel:core.getStoreScopeLabel(),today,priority:priorityModel(),stock:stockMetrics(),catalog:state.catalog});
 }
 function executiveTrendHtml(trend){
  if(!trend)return '<p class="brief-decision-text">La tendance est disponible à partir de trois jours renseignés.</p>';
@@ -36,13 +36,47 @@ function executiveTrendHtml(trend){
  </figure>`;
 }
 let executiveLevel='department',executiveStockKey=null;
-function renderExecutiveRanking(rankings){
- const host=$('briefRanking');
+let rankingRequest=null;
+function renderExecutiveRanking(model){
+ const host=$('briefRanking'),rankings=model.rankings;
  host.hidden=!rankings;
  if(!rankings)return;
- const rows=rankings[executiveLevel]||[];
- host.innerHTML=`<header><h2>Top 5 du CA TTC</h2><div role="group" aria-label="Niveau du classement">${rankingLevels.map(([key,label])=>`<button type="button" data-executive-level="${key}" aria-pressed="${key===executiveLevel}">${label}</button>`).join('')}</div></header>
- ${rows.length?table(['Rang','Libellé','CA TTC','Part réseau','Écart CA'],rows.map((row,index)=>[index+1,esc(row.label),esc(row.sales),esc(row.share),esc(row.change)])):'<p>Classement indisponible pour ce niveau et ce périmètre.</p>'}`;
+ const rows=rankings[executiveLevel]||[],coverage=model.rankingCoverage?.[executiveLevel];
+ const busy=rankingRequest?.key===key()&&rankingRequest.running;
+ const footer=executiveLevel==='product'?'Noms issus du référentiel article D365.':coverage==null?'Aucun classement confirmé pour ce niveau.':`Classement sur ${number(coverage)} % du CA du périmètre.`;
+ const focused=host.contains(document.activeElement)&&document.activeElement.dataset.executiveLevel;
+ host.innerHTML=`<header><h2>Top 5 du CA TTC</h2><div role="group" aria-label="Niveau du classement">${rankingLevels.map(([k,label])=>`<button type="button" data-executive-level="${k}" aria-pressed="${k===executiveLevel}">${label}</button>`).join('')}</div></header>
+ ${rows.length?`<ol class="brief-rank-list">${rows.map(row=>`<li><div class="brief-rank-label"><strong>${esc(row.label)}</strong>${row.code||row.missingName?`<small>${esc(row.code||'Nom article indisponible')}</small>`:''}<span class="brief-rank-bar" aria-hidden="true"><i style="width:${row.percent}%"></i></span></div><div class="brief-rank-values"><strong>${esc(row.sales)}</strong><small>${esc(row.share)} du CA · <span class="${row.tone}">${esc(row.change)}</span></small></div></li>`).join('')}</ol>`:'<p>Classement indisponible pour ce niveau et ce périmètre.</p>'}
+ <p class="brief-rank-coverage" role="status">${esc(busy?'Lecture du référentiel D365…':footer)}</p>`;
+ if(focused)host.querySelector('[aria-pressed="true"]')?.focus({preventScroll:true});
+}
+async function loadExecutiveCatalog(){
+ const wanted=key(),source=state.data;
+ if(scope().section!=='overview'||!source?.products?.length||!matchesScope(source)||rankingRequest?.key===wanted)return;
+ const request={key:wanted,running:true};
+ rankingRequest=request;
+ const skus=[...new Set([...source.products].sort((a,b)=>b.sales-a.sales).map(row=>String(row.key||'')).filter(Boolean))];
+ // Names for the top five arrive first, followed by the whole-period classification.
+ const batches=[skus.slice(0,5)];
+ for(let i=5;i<skus.length;i+=120)batches.push(skus.slice(i,i+120));
+ const current=()=>rankingRequest===request&&key()===wanted&&scope().section==='overview';
+ const read=async batch=>{
+  if(!current())return;
+  try{
+   const result=await core.api('/api/analytics/catalog?'+new URLSearchParams({products:batch.join(',')}),{noRetry:true});
+   if(!current())return;
+   for(const item of result.items||[])if(item.productNumber)state.catalog.set(item.productNumber,item);
+   renderExecutiveRanking(briefModel());
+  }catch{/* The coverage line reports incomplete classification. */}
+ };
+ renderExecutiveRanking(briefModel());
+ await read(batches.shift());
+ let cursor=0;
+ const worker=async()=>{while(current()&&cursor<batches.length)await read(batches[cursor++]);};
+ await Promise.all([worker(),worker()]);
+ request.running=false;
+ if(current())renderExecutiveRanking(briefModel());
+ else if(rankingRequest===request)rankingRequest=null;
 }
 async function loadExecutiveStock(){
  const wanted=stockKey();
@@ -72,7 +106,7 @@ function renderBrief(){
  const pace=$('briefPace');
  pace.hidden=!m.pace;
  pace.innerHTML=m.pace?`<div class="brief-pace-head"><h2>Rythme quotidien</h2><p>${esc(m.pace.caption)}</p></div><div class="brief-pace-grid">${m.pace.indicators.map(metric=>`<article><h3>${esc(metric.label)}</h3><strong>${esc(metric.value)}</strong><p>${esc(metric.detail)}</p></article>`).join('')}</div>`:'';
- renderExecutiveRanking(m.rankings);
+ renderExecutiveRanking(m);
  const signals=$('briefSignals');
  signals.hidden=!m.signals.length;
  signals.innerHTML=m.signals.map(card=>`<article class="brief-signal">
@@ -423,20 +457,20 @@ async function askAssistant(e){e.preventDefault();const requested=key(),context=
  const controller=new AbortController();state.assistantController?.abort();state.assistantController=controller;try{const r=await requestAssistant({question,...context,storeIds:stores().map(s=>s.id),start:scope().periodStart,end:scope().periodEnd,compareStart:scope().compareStart,compareEnd:scope().compareEnd,slices:state.data?.evidenceSlices,followUp:assistantQueryContext},{ensureStock:id=>window.RETAIL_DETENTION_STOCK?.ensure?.(id),api:core.api,signal:controller.signal,isCurrent,onProgress:text=>{if(isCurrent())$('assistantStatus').textContent=text}});if(!isCurrent()){$('assistantStatus').textContent='Périmètre modifié : réponse précédente masquée. Posez la question sur la nouvelle sélection.';return}if(r.queryContext)assistantQueryContext=r.queryContext;else if(r.queryPlan)assistantQueryContext={plan:r.queryPlan};const answer=document.createElement('div');answer.className='assistant-answer';const p=document.createElement('p');p.textContent=r.answer;if(!renderInvestigation(answer,r)&&!renderQueryResult(answer,r,{onScope:(target,question)=>applyQueryScope(target,question,()=>{assistantQueryContext={plan:r.queryPlan}})}))answer.appendChild(p);const source=document.createElement('small');source.dataset.aiStatus=r.aiStatus||'';source.dataset.aiValidation=r.aiValidationDetail||'';source.textContent=(r.engine==='ARTICLE_IMPACT'?'Enquête article · paniers et cohortes calculés par StoreOps':r.engine==='ARTICLE_CLARIFICATION'?'Article à préciser':['OPERATIONS_GROUNDED','QUERY_GROUNDED','QUERY_CLARIFICATION','QUERY_NEEDS_DATA','CUSTOMER_RESEARCH'].includes(r.engine)?(r.aiPlanUsed?'Question interprétée par IA · chiffres calculés par StoreOps':'Réponse calculée · sans appel IA'):r.engine==='AI_GROUNDED'?'Priorités IA · chiffres calculés par StoreOps':r.aiValidationFailed?'Lecture calculée · réponse IA non retenue':'Lecture calculée · IA non disponible')+(!['AI_GROUNDED','ARTICLE_IMPACT','ARTICLE_CLARIFICATION','OPERATIONS_GROUNDED','QUERY_GROUNDED','QUERY_CLARIFICATION','QUERY_NEEDS_DATA','CUSTOMER_RESEARCH'].includes(r.engine)?' · '+({INVALID_PLAN:'Plan IA refusé par les contrôles',TIMEOUT:'Délai IA dépassé',RATE_LIMIT:'Limite fournisseur atteinte',PROVIDER_ACCESS:'Accès fournisseur à vérifier',PROVIDER_CONFIGURATION:'Configuration fournisseur à vérifier',PROVIDER_UNAVAILABLE:'Fournisseur temporairement indisponible',NOT_CONFIGURED:'IA non configurée'}[r.aiStatus]||'Contrôle IA à vérifier'):'')+' · '+(r.sources||[]).map(s=>s.id+' : '+s.name).join(' · ');answer.appendChild(source);const next=document.createElement('div');next.className='assistant-next';for(const [title,section] of [['Explorer les ventes','sales'],['Vérifier les stocks','detention'],['Prix et paniers','sales']]){const b=document.createElement('button');b.type='button';b.textContent=title;b.dataset.studioSection=section;next.appendChild(b)}answer.appendChild(next);$('assistantMessages').appendChild(answer);$('assistantMessages').scrollTop=r.engine==='ARTICLE_IMPACT'?answer.offsetTop-$('assistantMessages').offsetTop:$('assistantMessages').scrollHeight;if(r.engine!=='ARTICLE_CLARIFICATION'&&r.engine!=='QUERY_NEEDS_DATA'&&!r.incomplete)$('analyticsAssistantQuestion').value='';for(const candidate of r.candidates||[]){const b=document.createElement('button');b.type='button';b.textContent=(candidate.productName||candidate.productNumber)+' · '+candidate.productNumber;b.addEventListener('click',()=>{$('assistantArticle').value=candidate.productNumber;$('assistantArticle').dispatchEvent(new Event('change'));$('analyticsAssistantQuestion').focus()});answer.appendChild(b)}$('assistantStatus').textContent=r.incomplete?'Diagnostic partiel : les sources indisponibles sont signalées dans la réponse.':r.engine==='ARTICLE_IMPACT'?'Enquête sur les fenêtres indiquées dans la réponse ; aucun client déclaré définitivement perdu.':'Réponse sur la période et les magasins affichés.';}catch(error){$('assistantStatus').textContent=error.name==='AbortError'?'Enquête annulée : périmètre modifié.':'Réponse indisponible : '+error.message;}finally{$('analyticsAssistantSend').disabled=false;}}
 function matchesScope(d){return d?.period?.startDate===scope().periodStart&&d?.period?.endDate===scope().periodEnd&&d?.comparison?.startDate===scope().compareStart&&d?.comparison?.endDate===scope().compareEnd&&JSON.stringify((d.stores||[]).map(s=>s.storeId||s.id).sort())===JSON.stringify(stores().map(s=>s.id).sort())}
 function changed(){const next=key();if(state.key!==next){state.key=next;assistantQueryContext=null;pricingSnapshot=null;competitorGeneration++;state.assistantController?.abort();state.data=null;state.baskets=null;state.proof=null;state.suppliers=null;if(stockKey()!==state.stockKey){state.scopeGeneration++;state.stockDetail=null;state.stock=null;executiveStockKey=null;state.stockLoading=false;state.stockController?.abort();$('studioStockRefresh').disabled=false;}state.pricingController?.abort();state.pricingGeneration++;$('pricingContextCards').innerHTML='';$('pricingContextDetails').innerHTML='';$('pricingContextStatus').textContent='Vérifier le contexte tarifaire sélectionné.';}syncPricingStores();const loaded=window.RETAIL_DECISION_INTELLIGENCE?.getData?.();if(matchesScope(loaded))state.data=loaded;render();}
-document.addEventListener('retail-intelligence:decision',e=>{if(!matchesScope(e.detail.data))return;state.data=e.detail.data;state.key=key();render();loadExecutiveStock();if(['network','inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});});
+document.addEventListener('retail-intelligence:decision',e=>{if(!matchesScope(e.detail.data))return;state.data=e.detail.data;state.key=key();render();loadExecutiveStock();loadExecutiveCatalog();if(['network','inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});});
 document.addEventListener('retail-intelligence:catalog',e=>{for(const r of e.detail.items||[])state.catalog.set(r.productNumber,r);render()});
 document.addEventListener('retail-intelligence:baskets',e=>{const r=e.detail.report;if(r?.period?.start!==scope().periodStart||r?.period?.end!==scope().periodEnd||r?.comparison?.start!==scope().compareStart||r?.comparison?.end!==scope().compareEnd||JSON.stringify((r.stores||[]).map(s=>s.id).sort())!==JSON.stringify(stores().map(s=>s.id).sort()))return;if(!state.baskets?.summary?.nonreturn||r.summary?.nonreturn)state.baskets=r;render()});
 document.addEventListener('retail-intelligence:stock',e=>{const ids=new Set(stores().map(s=>s.id));if((e.detail.rows||[]).some(r=>!ids.has(r.storeId)))return;state.stockDetail=e.detail;render();loadStockBrief().catch(()=>{});});
-for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:data'])document.addEventListener(event,()=>{changed();if(state.data)loadExecutiveStock();if(['crm','loyalty'].includes(scope().section))loadCrmProof();if(['inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='suppliers'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
+for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:data'])document.addEventListener(event,()=>{changed();if(state.data){loadExecutiveStock();loadExecutiveCatalog();}if(['crm','loyalty'].includes(scope().section))loadCrmProof();if(['inventory','detention'].includes(scope().section)&&state.stockKey!==stockKey())loadStockBrief().catch(()=>{});if(scope().section==='suppliers'&&!state.suppliers)loadSupplierBrief().catch(()=>{});});
 document.addEventListener('click',e=>{const proof=e.target.closest('[data-crm-proof]');if(proof){proof.disabled=true;loadCrmProof(true).finally(()=>{proof.disabled=false});}const b=e.target.closest('[data-studio-section]');if(b)core.navigate(b.dataset.studioSection)});
 $('briefRanking')?.addEventListener('click',event=>{
  const level=event.target.closest('[data-executive-level]')?.dataset.executiveLevel;
  if(!rankingLevels.some(([key])=>key===level))return;
  executiveLevel=level;
- renderExecutiveRanking(briefModel().rankings);
+ renderExecutiveRanking(briefModel());
  $('briefRanking').querySelector('[aria-pressed="true"]')?.focus();
 });
-if(state.data)loadExecutiveStock();
+if(state.data){loadExecutiveStock();loadExecutiveCatalog();}
 $('briefSignals')?.addEventListener('click',async event=>{
  if(!event.target.closest('[data-brief-prepare-stock]')||state.stockLoading)return;
  const task=loadStockBrief(true);
@@ -449,6 +483,7 @@ $('briefSignals')?.addEventListener('click',async event=>{
 $('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();
+if(state.data)loadExecutiveCatalog();
 
 async function loadCompetitors(){
  const generation=++competitorGeneration;
