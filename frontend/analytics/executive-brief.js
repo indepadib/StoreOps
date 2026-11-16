@@ -44,7 +44,8 @@ export function executiveTrend(data,period,{currentReady,comparisonReady,provisi
 
 export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today,priority}){
  const ready=selectedStores>0&&data?.coverage?.storesRequested===selectedStores;
- const currentReady=ready&&data.coverage.currentStoresReady===selectedStores;
+ const truncated=(data?.quality?.checks?.truncatedStores||0)>0||data?.quality?.issues?.some(issue=>issue.code==='SALES_TRUNCATED');
+ const currentReady=ready&&data.coverage.currentStoresReady===selectedStores&&!truncated;
  const comparisonReady=ready&&data.coverage.comparisonStoresReady===selectedStores;
  const provisional=period.periodEnd>=today||period.compareEnd>=today;
  const sameDays=calendarDays(period.periodStart,period.periodEnd)===calendarDays(period.compareStart,period.compareEnd);
@@ -76,6 +77,7 @@ export function buildExecutiveBrief({data,period,selectedStores,scopeLabel,today
  const read=generatedAt&&Number.isFinite(generatedAt.valueOf())?generatedAt.toLocaleString('fr-MA',{timeZone:'Africa/Casablanca',dateStyle:'short',timeStyle:'short'}):null;
  const quality=!data?'Lecture des sources en cours.':[
   `Magasins lus : ${data.coverage?.currentStoresReady??0}/${selectedStores} · comparaison ${data.coverage?.comparisonStoresReady??0}/${selectedStores}`,
+  truncated?'Lecture des ventes tronquée':null,
   provisional?'Période provisoire':!sameDays?'Durées différentes':null,
   data.quality?.status==='OK'?'Contrôles OK':data.quality?.status?'Contrôles à examiner':null,
   read?`Lu le ${read}`:null,

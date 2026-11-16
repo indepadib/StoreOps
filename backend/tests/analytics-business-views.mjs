@@ -87,6 +87,11 @@ assert.ok(partialOverview.trend.previous);
 const missingStore=buildExecutiveBrief({...executiveInput,selectedStores:2});
 assert.equal(missingStore.comparisons[0].value,undefined,'do not present partial network revenue as consolidated');
 assert.equal(missingStore.trend,null);
+const truncatedOverview=buildExecutiveBrief({...executiveInput,data:{...overviewData,quality:{status:'ERROR',issues:[{code:'SALES_TRUNCATED'}]}}});
+assert.equal(truncatedOverview.comparisons[0].value,undefined);
+assert.equal(truncatedOverview.trend,null);
+assert.match(truncatedOverview.quality,/tronquée/);
+
 const openDay=buildExecutiveBrief({...executiveInput,today:'2026-10-26'});
 assert.equal(openDay.comparisons[0].changeMode,'none');
 assert.equal(openDay.trend.previous,null);
