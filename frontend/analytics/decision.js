@@ -377,7 +377,18 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     }
   }
 
+  function resetSalesPanels(message){
+    if(sectionState()?.section!=='sales')return;
+    for(const id of ['salesDriversWaterfall','decisionCoverage','marginStatusBadge','coveredMarginEvidence','hourlyKpis','hourlySalesBars','hourlyTopBody','decisionDailyChart']){
+      const node=$('#'+id);
+      if(node)node.textContent='';
+    }
+    const status=$('#salesScopeStatus');
+    if(status)status.textContent=message;
+  }
+
   function setLoading(){
+    resetSalesPanels('Chargement des ventes de la période sélectionnée…');
     for(const id of ['decisionSalesKpis','benchmarkSummary','performanceQuadrants','supplierKpis','crmKpis']){
       const h=$('#'+id);if(h)h.innerHTML='<div class="decision-kpi skeleton-card"></div><div class="decision-kpi skeleton-card"></div><div class="decision-kpi skeleton-card"></div>';
     }
@@ -386,6 +397,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     }
   }
   function renderError(error){
+    resetSalesPanels('Ventes indisponibles pour la période sélectionnée.');
     const api=core(); const msg=api?.escapeHtml?.(error?.message||'Analyse indisponible')||'Analyse indisponible';
     for(const id of ['benchmarkBody','performanceBody','crmBody']){const h=$('#'+id);if(h)h.innerHTML=`<tr><td colspan="12"><div class="table-loading">${msg}</div></td></tr>`}
     const sales=$('#executiveSalesValue');if(sales)sales.textContent='Analyse indisponible';
@@ -492,7 +504,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
 
   function renderSales(){
     const api=core(),d=state.data,s=d.summary||{},cur=s.current||{},prev=s.previous||{};
-    const margin=marginDisplay(d),displayMargin=margin.value,displayRate=margin.rate,estimated=margin.estimated,marginCoverage=margin.coverage,marginQuality=margin.quality;
+    const margin=marginDisplay(d),displayMargin=margin.value,displayRate=margin.rate,estimated=margin.estimated,marginCoverage=margin.coverage;
     const badge=$('#marginStatusBadge');
     if(badge){
       if(d.margin?.available){const estimated=d.margin?.status==='ESTIMATED'||d.margin?.estimated===true,fallback=d.margin?.productMasterFallbackLines?` · fallback coût courant ${api.percent(d.margin.productMasterFallbackPct||0)}`:'';badge.textContent=`${estimated?'Marge brute HT estimée':'Marge brute HT validée'} · ${d.margin?.salesBasis==='DERIVED_TTC_MINUS_TAX'?'TTC − taxe':'CA HT D365'} · ${d.margin?.costKind==='UNIT_COST_INVENTORY'?'coût/unité inventaire × quantité convertie (kg→g si nécessaire)':'coût transactionnel'} · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' coût couvert'}${fallback}`;badge.className=estimated?'margin-status warning':'margin-status valid'}
@@ -501,34 +513,33 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     }
     const q=d.quality||{},qLabel=q.status==='OK'?'Qualité OK':q.status==='ERROR'?'Qualité à corriger':'Qualité à surveiller';
     const coverage=$('#decisionCoverage');if(coverage){coverage.textContent=`${d.coverage?.currentStoresReady||0}/${d.coverage?.storesRequested||0} magasin(s) · ${qLabel}`;coverage.title=(q.issues||[]).map(x=>x.message).join(' · ')}
-    const marginLabel=margin.partial?'Marge HT · ventes couvertes':'Marge brute HT',rateLabel=margin.partial?'Taux HT · ventes couvertes':'Taux de marge HT',marginSub=margin.partial?'partielle · coût couvert '+api.percent(marginCoverage)+' · non extrapolée':displayMargin==null?`transaction cost · ${marginCoverage==null?'couverture N/A':api.percent(marginCoverage,0)+' du CA'}`:`transaction cost · ${margin.method==='TRANSACTION_COST_PRICE_X_INVENTORY_QUANTITY'?'coût × quantité unité inventaire':'coût de ligne'}`;
-    const cards=[
-      ['CA',api.money(cur.sales,true),signed(api,s.salesChangePct),'vs période comparée'],
-      ['Tickets',api.number(cur.tickets),signed(api,s.ticketsChangePct),'fréquentation'],
-      ['Panier moyen',api.money(cur.averageBasket),signed(api,s.basketChangePct),'effet panier'],
-      [marginLabel,displayMargin==null?'N/A':(estimated?'~ ':'')+api.money(displayMargin,true),margin.partial?'<span class="metric-na">périmètre couvert</span>':estimated?'<span class="metric-na">estimation</span>':signed(api,s.marginChangePct),marginSub],
-      [rateLabel,displayRate==null?'N/A':(estimated?'~ ':'')+api.percent(displayRate),margin.partial?'<span class="metric-na">non comparable au total</span>':estimated?'<span class="metric-na">estimation</span>':s.marginRateDelta==null?'<span class="metric-na">N/A</span>':signed(api,s.marginRateDelta),margin.partial?'taux du CA HT valorisé':estimated?'pas une marge comptable historique':'écart en points'],
-      ['CA fidélisé',api.percent(cur.identifiedSalesShare),cur.identifiedSales==null?'<span class="metric-na">N/A</span>':api.money(cur.identifiedSales,true),'poids du CA identifié']
-    ];
-    const selected=sectionState(),currentDays=selected?rangeDays(selected.periodStart,selected.periodEnd):null,comparisonDays=selected?rangeDays(selected.compareStart,selected.compareEnd):null;
-    const perDay=(value,days)=>value==null||!days?null:Number(value)/days;
-    const promotionWeight=(promotion,sales)=>promotion==null||sales==null||Number(sales)===0?null:100*Number(promotion)/Number(sales);
+    const rateLabel=margin.partial?'Taux HT · ventes couvertes':'Taux de marge HT';
+    const selected=sectionState();
+    const complete=period=>!(q.checks?.truncatedStores>0||q.issues?.some(issue=>issue.code==='SALES_TRUNCATED')) &&
+      d.coverage?.storesRequested>0 && d.coverage[period+'StoresReady']===d.coverage.storesRequested;
+    const currentReady=complete('current'),comparisonReady=complete('comparison');
+    const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
+    const comparable=currentReady&&comparisonReady&&selected?.periodEnd<today&&selected?.compareEnd<today&&
+      rangeDays(selected.periodStart,selected.periodEnd)===rangeDays(selected.compareStart,selected.compareEnd);
+    const scopeForCard=comparable?selected:{...selected,compareStart:null,compareEnd:null};
+    const daily=currentReady&&selected?.periodEnd<today;
+    const basis=marginEvidence(d,true);
+    const scopeStatus=$('#salesScopeStatus');
+    if(scopeStatus)scopeStatus.textContent=!currentReady?'Source incomplète pour les magasins sélectionnés.':
+      selected?.periodEnd>=today?'Journée en cours incluse. Résultats provisoires.':'';
     $('#decisionSalesKpis').innerHTML=[
-      {label:'Chiffre d’affaires TTC',value:cur.sales,previous:prev.sales,unit:'money',daily:true,positiveGood:true},
-      {label:'Tickets',value:cur.tickets,previous:prev.tickets,daily:true,positiveGood:true},
-      {label:'CA TTC / jour',value:perDay(cur.sales,currentDays),previous:perDay(prev.sales,comparisonDays),unit:'money',positiveGood:true,note:'Moyenne calendaire sur la période'},
-      {label:'Tickets / jour',value:perDay(cur.tickets,currentDays),previous:perDay(prev.tickets,comparisonDays),positiveGood:true,note:'Fréquentation par jour calendaire'},
-      {label:'Panier moyen',value:cur.averageBasket,previous:prev.averageBasket,unit:'money',positiveGood:true,note:'Moyenne par ticket, pas par jour'},
-      {label:rateLabel,value:displayRate,previous:margin.partial?null:prev.marginRate,unit:'percent',estimated,emphasis:true,changeMode:margin.partial?'none':'points',note:'Montant HT : '+(displayMargin==null?'À compléter':api.money(displayMargin))+' · coût couvert '+api.percent(marginCoverage,2)+(margin.partial?' · partiel, non extrapolé':'')},
-      {label:'CA remisé TTC',value:cur.promotionSales,previous:prev.promotionSales,unit:'money',daily:true,note:'Lignes avec remise périodique enregistrée'},
-      {label:'Poids du CA remisé',value:promotionWeight(cur.promotionSales,cur.sales),previous:promotionWeight(prev.promotionSales,prev.sales),unit:'percent',changeMode:'points',note:'CA lignes remisées / CA total · selon couverture Dynamics'},
-      {label:'CA identifié TTC',value:cur.identifiedSales,previous:prev.identifiedSales,unit:'money',positiveGood:true,note:'CA rattaché à un client identifié'},
-      {label:'Poids du CA identifié',value:cur.identifiedSalesShare,previous:prev.identifiedSalesShare,unit:'percent',changeMode:'points',note:cur.identifiedSales==null?'Identification à compléter':api.money(cur.identifiedSales)+' de CA identifié'}
-    ].map(k=>performanceCard({...k,scope:sectionState()})).join('');
-    renderWaterfall(); renderDailyChart(); renderContributors('negative'); renderContributors('positive'); renderHourlyIntelligence();
+      {label:'Chiffre d’affaires TTC',value:currentReady?cur.sales:null,previous:comparable?prev.sales:null,unit:'money',daily,positiveGood:true},
+      {label:'Tickets',value:currentReady?cur.tickets:null,previous:comparable?prev.tickets:null,daily,positiveGood:true},
+      {label:'Panier moyen',value:currentReady?cur.averageBasket:null,previous:comparable?prev.averageBasket:null,unit:'money',positiveGood:true},
+      {label:rateLabel,value:currentReady?displayRate:null,previous:comparable&&!margin.partial&&!estimated&&basis.kind==='FULL'&&!basis.estimated?basis.rate:null,unit:'percent',estimated,changeMode:margin.partial?'none':'points',note:currentReady&&displayMargin!=null?'Montant HT '+api.money(displayMargin):''}
+    ].map(metric=>performanceCard({...metric,scope:scopeForCard})).join('');
+    renderWaterfall(comparable,currentReady&&comparisonReady?'L’écart exige deux périodes terminées de même durée.':'L’écart sera disponible quand les deux périodes seront complètes.');
+    renderDailyChart(currentReady,comparable,selected);
+    renderHourlyIntelligence();
   }
 
-  function renderWaterfall(){
+  function renderWaterfall(comparable,message){
+    if(!comparable){$('#salesDriversWaterfall').textContent=message;return}
     const api=core(),drv=state.data?.summary?.drivers||{},vals=[
       ['Effet fréquentation',safe(drv.trafficEffect),'Tickets × panier de référence'],
       ['Effet panier',safe(drv.basketEffect),'Tickets actuels × variation panier'],
@@ -540,24 +551,44 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     }).join('');
   }
 
-  function renderDailyChart(){
-    const svg=$('#decisionDailyChart'),api=core(),cur=state.data?.daily?.current||[],prev=state.data?.daily?.previous||[];
-    if(!svg)return;if(!cur.length){svg.innerHTML='<text x="460" y="150" text-anchor="middle" class="decision-axis">Pas de série quotidienne disponible</text>';return}
-    const w=920,h=300,p={l:50,r:18,t:18,b:34},all=[...cur,...prev].map(x=>safe(x.sales)||0),max=Math.max(...all,1);
-    const x=(i,n)=>p.l+(i*(w-p.l-p.r))/Math.max(n-1,1),y=v=>h-p.b-(v/max)*(h-p.t-p.b);
-    let html='';for(let i=0;i<=4;i++){const yy=p.t+i*(h-p.t-p.b)/4;html+=`<line class="decision-gridline" x1="${p.l}" y1="${yy}" x2="${w-p.r}" y2="${yy}"/><text class="decision-axis" x="${p.l-8}" y="${yy+3}" text-anchor="end">${api.money(max*(1-i/4),true).replace(' DH','')}</text>`}
-    const path=(rows,cls)=>rows.length?`<path class="${cls}" d="${rows.map((r,i)=>`${i?'L':'M'} ${x(i,rows.length)} ${y(r.sales)}`).join(' ')}"/>`:'';
-    html+=path(prev,'decision-line-previous')+path(cur,'decision-line-current');
-    cur.forEach((r,i)=>{if(cur.length<=12||i%Math.max(1,Math.ceil(cur.length/8))===0)html+=`<text class="decision-axis" x="${x(i,cur.length)}" y="${h-10}" text-anchor="middle">${String(r.date).slice(5)}</text>`});
+  function renderDailyChart(currentReady,comparisonReady,scope){
+    const svg=$('#decisionDailyChart'),api=core(),cur=currentReady?(state.data?.daily?.current||[]):[],prev=comparisonReady?(state.data?.daily?.previous||[]):[];
+    if(!svg)return;
+    const legend=svg.previousElementSibling;
+    if(legend?.lastElementChild)legend.lastElementChild.hidden=!prev.length;
+    if(!scope||!cur.length){svg.innerHTML='<text x="460" y="150" text-anchor="middle" class="decision-axis">Pas de série quotidienne disponible</text>';return}
+    const w=920,h=300,p={l:70,r:28,t:25,b:34};
+    const values=[...cur,...prev].map(row=>safe(row.sales)).filter(value=>value!=null);
+    const max=Math.max(1,...values),min=Math.min(0,...values);
+    const days=rangeDays(scope.periodStart,scope.periodEnd);
+    const x=i=>days===1?w/2:p.l+i*(w-p.l-p.r)/(days-1);
+    const y=value=>h-p.b-(value-min)/(max-min)*(h-p.t-p.b);
+    const position=(date,start)=>Math.round((Date.parse(date)-Date.parse(start))/86400000);
+    let html='';
+    for(let i=0;i<=4;i++){
+      const value=max-(max-min)*i/4,yy=y(value);
+      html+=`<line class="decision-gridline" x1="${p.l}" y1="${yy}" x2="${w-p.r}" y2="${yy}"/><text class="decision-axis" x="${p.l-8}" y="${yy+3}" text-anchor="end">${api.money(value,true).replace(' DH','')}</text>`;
+    }
+    const line=(rows,start,cls)=>{
+      let preceding=-2,path='',points='';
+      for(const row of rows){
+        const i=position(row.date,start),value=safe(row.sales);
+        if(!Number.isInteger(i)||i<0||i>=days||value==null)continue;
+        path+=`${i===preceding+1?'L':'M'} ${x(i)} ${y(value)} `;
+        points+=`<circle class="${cls}" cx="${x(i)}" cy="${y(value)}" r="3"><title>${api.escapeHtml(row.date+' · '+api.money(value))}</title></circle>`;
+        preceding=i;
+      }
+      return `<path class="${cls}" d="${path}"/>`+points;
+    };
+    if(prev.length)html+=line(prev,scope.compareStart,'decision-line-previous');
+    html+=line(cur,scope.periodStart,'decision-line-current');
+    const step=Math.max(1,Math.ceil(days/7));
+    for(let i=0;i<days;i+=step){
+      const day=new Date(Date.parse(scope.periodStart)+i*86400000).toISOString().slice(0,10);
+      html+=`<text class="decision-axis" x="${x(i)}" y="${h-10}" text-anchor="middle">${day.slice(8)}/${day.slice(5,7)}</text>`;
+    }
     svg.innerHTML=html;
   }
-
-  function renderContributors(tone){
-    const api=core(),rows=tone==='negative'?state.data?.contributors?.negativeProducts||[]:state.data?.contributors?.positiveProducts||[],host=$(tone==='negative'?'#negativeContributors':'#positiveContributors');
-    if(!host)return;if(!rows.length){host.innerHTML='<div class="table-loading">Aucune contribution significative.</div>';return}
-    host.innerHTML=rows.slice(0,8).map((r,i)=>{const label=productLabel(r.key,r.label);return`<div class="contributor-row"><span class="contributor-rank">${i+1}</span><div class="contributor-name"><strong>${api.escapeHtml(label)}</strong><span>${api.escapeHtml(r.key)} · CA ${api.money(r.sales,true)}</span></div><span class="contributor-value ${tone}">${r.deltaSales>0?'+':''}${api.money(r.deltaSales,true)}</span></div>`}).join('');
-  }
-
 
   function renderHourlyIntelligence(){
     const api=core(),bars=$('#hourlySalesBars'),body=$('#hourlyTopBody'),kpis=$('#hourlyKpis');

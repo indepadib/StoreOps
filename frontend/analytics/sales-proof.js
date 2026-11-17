@@ -14,6 +14,12 @@ const sections={
  departments:{label:'Départements',title:'Trouver les départements qui expliquent l’écart',note:'Les catégories non classées restent dans le tableau quand la source les expose.',columns:[['name','Département','text'],['code','Code','text'],...common,['weight','Poids CA','percent'],...margin]},
  products:{label:'Articles',title:'Voir la contribution de chaque article',note:'Les lignes correspondent aux articles transmis par l’analyse des ventes.',columns:[['name','Article','text'],['code','Code interne','text'],...common,['weight','Poids CA','percent'],...margin]},
 };
+const essentialColumns={
+ days:['date','sales','delta','change','tickets','averageBasket'],
+ stores:['name','sales','delta','change','tickets','averageBasket'],
+ departments:['name','sales','delta','change','weight'],
+ products:['name','code','sales','delta','change','weight'],
+};
 const dateFormat=new Intl.DateTimeFormat('fr-MA',{dateStyle:'medium',timeZone:'UTC'});
 const formatDate=value=>dateFormat.format(new Date(value+'T00:00:00Z'));
 const text=key=>['text','date'].includes(key);
@@ -27,7 +33,7 @@ const sameScope=(data,selected)=>{
 
 function install(host){
  const api=window.RETAIL_INTELLIGENCE,escape=api.escapeHtml;
- let section='days',page=0,filters={},sort={},showFilters=false,source=null,filtered=[];
+ let section='days',page=0,filters={},sort={},showFilters=false,showAllColumns=false,source=null,filtered=[];
  const money=value=>api.money(value);
  const format=(value,type)=>{
   if(value===null||value===undefined)return 'N/A';
@@ -38,9 +44,9 @@ function install(host){
   return String(value);
  };
  host.className='sales-proof';
- host.innerHTML=`<header class="sales-proof-header"><div><h3>Détail des ventes</h3><p data-sales-scope></p></div><button type="button" class="ghost-light-btn" data-sales-export disabled>Exporter ce tableau</button></header>
+ host.innerHTML=`<header class="sales-proof-header"><div><h3>Détail des ventes</h3><p data-sales-scope></p></div><button type="button" class="ghost-light-btn" data-sales-export disabled>Exporter les lignes (CSV)</button></header>
  <div class="sales-proof-views" role="group" aria-label="Détail des ventes par niveau">${Object.entries(sections).map(([key,item])=>`<button type="button" data-sales-view="${key}" aria-pressed="${key===section}">${item.label}</button>`).join('')}</div>
- <div class="sales-proof-title"><div><h4 data-sales-title></h4><p data-sales-note></p></div><label><input type="checkbox" data-sales-filter-toggle> Filtres par colonne</label></div>
+ <div class="sales-proof-title"><div><h4 data-sales-title></h4><p data-sales-note></p></div><div class="sales-proof-controls"><label><input type="checkbox" data-sales-filter-toggle> Filtres par colonne</label><label><input type="checkbox" data-sales-columns-toggle> Toutes les colonnes</label></div></div>
  <div class="sales-proof-variations" role="group" aria-label="Filtrer selon la variation du CA">
   <button type="button" data-sales-variation="" aria-pressed="true">Toutes les lignes</button>
   <button type="button" data-sales-variation="<0" aria-pressed="false">En baisse</button>
@@ -51,7 +57,7 @@ function install(host){
  <footer class="sales-proof-footer"><span data-sales-count aria-live="polite"></span><button type="button" class="ghost-light-btn" data-sales-clear hidden>Effacer les filtres</button><button type="button" class="ghost-light-btn" data-sales-step="-1">Précédent</button><button type="button" class="ghost-light-btn" data-sales-step="1">Suivant</button></footer>`;
  const el=selector=>host.querySelector(selector);
  const head=el('thead'),body=el('tbody');
- const getColumns=()=>sections[section].columns.map(([key,label,type])=>({key,label,type,numeric:!text(type),value:row=>row[key]}));
+ const getColumns=(all=showAllColumns)=>sections[section].columns.filter(([key])=>all||essentialColumns[section].includes(key)).map(([key,label,type])=>({key,label,type,numeric:!text(type),value:row=>row[key]}));
 
  function drawHead(){
   head.innerHTML='<tr>'+getColumns().map(c=>`<th scope="col"><button type="button" data-sales-sort="${c.key}">${c.label}</button></th>`).join('')+'</tr><tr data-sales-filter-row>'+getColumns().map(c=>`<td><input data-sales-filter="${c.key}" aria-label="Filtrer ${c.label}" placeholder="${c.numeric?'Ex. <0':c.type==='date'?'AAAA-MM-JJ':'Filtrer'}" value="${escape(filters[c.key]||'')}"></td>`).join('')+'</tr>';
@@ -61,7 +67,7 @@ function install(host){
   for(const control of host.querySelectorAll('[data-sales-variation]'))control.setAttribute('aria-pressed',String(control.dataset.salesVariation===(filters.delta||'')));
 
   const columns=getColumns();
-  filtered=filterAndSortRows(source?.[section]||[],columns,filters,sort);
+  filtered=filterAndSortRows(source?.[section]||[],getColumns(true),filters,sort);
   const pages=Math.max(1,Math.ceil(filtered.length/size));
   page=Math.max(0,Math.min(page,pages-1));
   const start=page*size;
@@ -129,13 +135,21 @@ function install(host){
   }else if(button.hasAttribute('data-sales-clear')){
    filters={};page=0;drawHead();renderRows();el('[data-sales-filter-toggle]').focus();
   }else if(button.hasAttribute('data-sales-export')){
-   const columns=getColumns();
+   const columns=getColumns(true);
    const protect=value=>typeof value==='string'&&/^[\s]*[=+@-]/.test(value)?"'"+value:value;
    api.downloadCsv(`ventes-${section}-${scope().periodStart}-${scope().periodEnd}.csv`,[columns.map(c=>c.label),...filtered.map(row=>columns.map(c=>protect(c.value(row))))]);
   }
  });
  host.addEventListener('input',event=>{
   if(event.target.hasAttribute('data-sales-filter-toggle'))showFilters=event.target.checked;
+  else if(event.target.hasAttribute('data-sales-columns-toggle')){
+   showAllColumns=event.target.checked;
+   if(!showAllColumns){
+    for(const key of Object.keys(filters))if(!essentialColumns[section].includes(key))delete filters[key];
+    if(!essentialColumns[section].includes(sort.key))sort={};
+   }
+   page=0;drawHead();
+  }
   else if(event.target.dataset.salesFilter){filters[event.target.dataset.salesFilter]=event.target.value;page=0;}
   else return;
   renderRows();
@@ -147,3 +161,7 @@ function install(host){
 
 const host=document.getElementById('salesProof');
 if(host&&window.RETAIL_INTELLIGENCE)install(host);
+document.querySelector('a[href="#salesByHour"]')?.addEventListener('click',()=>{
+ const hourly=document.getElementById('salesByHour');
+ if(hourly)hourly.open=true;
+});

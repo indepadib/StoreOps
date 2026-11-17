@@ -225,7 +225,7 @@
 </section>
 <section id="decisionStudio" data-widget="decisionStudio" class="decision-studio" hidden><div class="studio-heading"><div><span class="studio-kicker">COMPRENDRE · DÉCIDER · AGIR</span><h2 id="studioTitle">Lecture de l’activité</h2><p id="studioSubtitle"></p></div><button id="studioStockRefresh">Compléter avec les stocks</button></div><div id="studioCards" class="studio-cards"></div><div id="studioDetails"></div></section>
 <section id="lossInventory" class="decision-studio" hidden><h2>Démarque et inventaire</h2><p>Déclarations et comptages enregistrés dans StoreOps sur les dates et magasins sélectionnés. Les pertes et les écarts de comptage restent distincts.</p><button id="lossInventoryLoad">Lire les registres de la période</button><div class="stock-filters studio-filters"><label>Liste articles<input id="lossInventoryCodes" placeholder="Codes séparés par espaces ou ;"></label><label>Motif de perte<select id="lossInventoryReason"><option value="">Tous</option></select></label><label>Statut pertes<select id="lossInventoryState"><option value="">Tous hors annulés</option><option value="POSTED">Comptabilisées</option><option value="PENDING">En attente</option></select></label><button id="lossInventoryExport" disabled>Exporter les lignes filtrées</button></div><p id="lossInventoryStatus" role="status"></p><div id="lossInventoryContent"></div></section>
-<section id="pricingLab" data-widget="pricingLab" class="decision-studio" hidden><div class="studio-heading"><div><span class="studio-kicker">PRICING · CONTEXTE CONFIGURÉ</span><h2>Quel prix s’applique, où et quand ?</h2><p>Fiche article, trade agreements, promotions et conditions de panier restent identifiables séparément du prix réalisé.</p></div></div><form id="pricingContextForm" class="studio-filters"><label>Article<input id="pricingContextSku" value="HS-006590" required maxlength="64"></label><label>Magasin<select id="pricingContextStore"></select></label><label>Date de validité<input id="pricingContextDate" type="date" required></label><button type="submit">Vérifier les prix applicables</button></form><p id="pricingContextStatus" role="status"></p><div id="pricingContextCards" class="studio-cards"></div><div id="pricingContextDetails"></div><details class="competitor-intro"><summary>Positionnement concurrence · Casablanca</summary><p>Enseignes suivies : Marjane et Carrefour. Un prix concurrent doit avoir un produit et conditionnement vérifiés, une unité, un point de vente, une date et une source. Les offres d’un catalogue national ou d’une livraison ne sont pas automatiquement des prix rayon Casablanca.</p><a href="https://www.marjane.ma/promotions" target="_blank" rel="noopener">Relevés Marjane</a> · <a href="https://www.bringo.ma/fr_MA/stores/carrefour-supermarket" target="_blank" rel="noopener">Relevés Carrefour / Bringo</a><p id="competitorCoverage">Aucun relevé comparable validé chargé : aucun indice prix n’est calculé.</p><button id="competitorLoad" type="button">Voir les relevés de cet article</button><div id="competitorRows"></div><form id="competitorForm" class="studio-filters"><label>Enseigne<select id="competitorRetailer"><option>Marjane</option><option>Carrefour</option></select></label><label>Point de vente Casablanca<input id="competitorShop" required placeholder="Nom du magasin concurrent"></label><label>Comparabilité<select id="competitorMatch"><option value="IDENTICAL_GTIN">Même code-barres / conditionnement</option><option value="EQUIVALENT">Produit équivalent à qualifier</option></select></label><label>Code-barres<input id="competitorEan" inputmode="numeric"></label><label>Prix TTC MAD<input id="competitorPrice" type="number" min="0" step="0.01" required></label><label>Unité<select id="competitorUnit"><option>PC</option><option>KG</option><option>G</option><option>L</option><option>ML</option></select></label><label>Pour quantité<input id="competitorQuantity" type="number" value="1" min="0.001" step="0.001" required></label><label>Date du relevé<input id="competitorDate" type="date" required></label><label>Source / preuve HTTPS<input id="competitorSource" type="url" required placeholder="Lien produit, catalogue ou preuve du relevé"></label><label>Promotion<input id="competitorPromotion" type="checkbox"></label><button type="submit">Enregistrer le relevé sourcé</button></form><p class="studio-note">L’article et votre magasin sont ceux du contexte Pricing ci-dessus. Un produit équivalent reste hors indice de comparaison identique ; aucune valeur n’est importée sans relevé.</p></details></section>
+
         <section class="hero" data-widget="hero">
           <div>
             <div class="eyebrow hero-eyebrow" id="eyebrow">PERFORMANCE RÉSEAU</div>
@@ -253,9 +253,7 @@
   </form>
   <p class="repl-status" role="status" aria-live="polite"></p>
   <div data-repl-result></div>
-</section><section data-widget="customerBi" id="biWorkspace" class="bi-workspace" hidden><nav aria-label="Analyse des paniers" id="biTabs"><button data-tab="global" class="active">Vue globale</button><button data-tab="article">Article 360°</button></nav>
-<form id="bi-filters" hidden><label>Magasin<select id="bi-stores"><option value="ALL">Tous mes magasins</option></select></label><label>Analyse du<input id="bi-start" type="date" required></label><label>Au<input id="bi-end" type="date" required></label><label>Comparaison du<input id="bi-beforeStart" type="date" required></label><label>Au<input id="bi-beforeEnd" type="date" required></label><button type="submit" class="primary">Analyser</button></form>
-<section id="basketDirection" class="decision-studio"><h2>Rapport direction sur les paniers</h2><p>Comparer deux articles, leurs achats associés et les clients avant et après. Le rapport utilise les périodes et magasins sélectionnés ci-dessus.</p><label>Articles à analyser<input id="directionProducts" value="HS-006590, HS-006585" aria-label="Codes articles du rapport" maxlength="140"></label><button type="button" id="directionRun">Préparer le rapport et les tickets</button><p id="directionStatus" role="status"></p><div id="directionContent"></div></section>
+</section>
 <button type="button" id="biRun" class="primary-btn">Analyser prix, volumes & paniers sur la période sélectionnée</button><p id="bi-period" class="muted"></p><p id="bi-status" role="status" aria-live="polite"></p>
 <section id="bi-global"><div id="bi-kpis" class="kpis"></div><div class="section-title"><div><h2>Ce qui mérite votre attention</h2><p>Les variations de prix sont mesurées sur le prix TTC réellement payé, promotions comprises.</p></div><button id="bi-export">Exporter les indicateurs</button></div><div id="bi-signals"></div><div class="section-title"><h2>Tous les articles de la période</h2><input id="bi-search" type="search" placeholder="Code ou libellé article" aria-label="Rechercher un article"></div><div class="stock-filters"><label>Liste articles<input id="bi-productCodes" placeholder="Coller les codes séparés par espaces ou ;"></label><label>Fournisseur<select id="bi-productSupplier"><option value="">Tous</option></select></label><label>Rayon ou famille<input id="bi-productCategory" placeholder="Ex. LIQUIDE"></label></div><p id="bi-productScope"></p><div id="bi-products" class="table-wrap"></div><h2>Affinités de panier</h2><p class="muted">Articles achetés ensemble, au moins trois paniers. Un lift supérieur à 1 indique une association plus fréquente que le hasard.</p><div id="bi-affinities" class="table-wrap"></div></section>
 <section id="bi-article" hidden><div class="section-title"><div><h2>Article 360°</h2><p>Comprendre sa contribution au panier, au magasin et au retour des clients.</p></div><form id="bi-articleForm"><label>Code article<input id="bi-articleCode" value="HS-006590" placeholder="HS-006590" required></label><button class="primary">Explorer</button></form></div><div id="bi-articleContent" class="empty">Choisissez une période puis un article. L’analyse porte sur les tickets observés dans les magasins sélectionnés.</div></section>
@@ -264,44 +262,41 @@
 
 
         <section class="decision-dashboard sales-diagnostic" id="salesDiagnostic" data-widget="decisionSales" hidden>
-          <div class="decision-head">
+          <header class="sales-workspace-head">
             <div>
-              <h2>Pourquoi le chiffre d’affaires a changé</h2>
-              <nav class="decision-toolbar" aria-label="Sections du diagnostic des ventes">
-                <a href="#decisionSalesKpis">Résultats</a>
-                <a href="#salesDriversWaterfall">Tickets et panier</a>
-                <a href="#decisionDailyChart">Évolution par jour</a>
-                <a href="#negativeContributors">Articles qui expliquent l’écart</a>
-                <a href="#hourlyDepartmentFilter">Ventes par heure</a>
-                <a href="#salesProof">Détail par jour et magasin</a>
-              </nav>
+              <h2>Comprendre les ventes</h2>
+              <p>Suivez le chiffre d’affaires, mesurez son évolution et retrouvez les lignes qui l’expliquent.</p>
             </div>
-            <div class="margin-status" id="marginStatusBadge">Marge · vérification source</div>
-          </div>
-          <section id="businessStory" class="business-story" aria-label="Lecture business de la période" hidden></section>
-          <div class="decision-kpis" id="decisionSalesKpis"></div>
-          <div class="decision-grid decision-grid-main">
-            <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">DÉCOMPOSITION</span><h3>Ce qui explique l'écart de CA</h3></div></div>
-              <div id="salesDriversWaterfall" class="waterfall-list"></div>
-            </article>
+            <nav class="decision-toolbar" aria-label="Sections de la page Ventes">
+              <a href="#decisionSalesKpis">Résultats</a>
+              <a href="#salesEvolution">Évolution</a>
+              <a href="#salesProof">Détail</a>
+              <a href="#salesByHour">Par heure</a>
+              <a href="#biWorkspace">Paniers</a>
+              <a href="#pricingLab">Prix</a>
+            </nav>
+          </header>
+          <div class="decision-kpis" id="decisionSalesKpis" aria-label="Indicateurs de ventes"></div>
+          <p id="salesScopeStatus" class="sales-scope-status" role="status"></p>
+          <details class="sales-margin-details">
+            <summary>Source et couverture de la marge</summary>
+            <div class="margin-status" id="marginStatusBadge"></div>
+          </details>
+          <section class="decision-grid sales-evolution" id="salesEvolution" aria-label="Évolution du chiffre d’affaires">
             <article class="decision-card decision-chart-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">TENDANCE</span><h3>CA quotidien</h3></div><span id="decisionCoverage" class="coverage-badge">—</span></div>
-              <svg id="decisionDailyChart" viewBox="0 0 920 300" aria-label="Évolution quotidienne des ventes"></svg>
-            </article>
-          </div>
-          <div class="decision-grid">
-            <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">CONTRIBUTION NÉGATIVE</span><h3>Ce qui tire le CA vers le bas</h3></div></div>
-              <div id="negativeContributors" class="contributor-list"></div>
+              <div class="decision-card-head"><h3>Chiffre d’affaires par jour</h3><span id="decisionCoverage" class="coverage-badge">—</span></div>
+              <div class="sales-chart-legend"><span>Période sélectionnée</span><span>Période comparée</span></div>
+              <svg id="decisionDailyChart" viewBox="0 0 920 300" role="img" aria-label="Évolution quotidienne des ventes"></svg>
             </article>
             <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">CONTRIBUTION POSITIVE</span><h3>Ce qui compense / accélère</h3></div></div>
-              <div id="positiveContributors" class="contributor-list"></div>
+              <div class="decision-card-head"><h3>Ce qui explique l’écart</h3></div>
+              <div id="salesDriversWaterfall" class="waterfall-list"></div>
+              <a class="sales-detail-link" href="#salesProof">Examiner les magasins, départements et articles ↓</a>
             </article>
-          </div>
+          </section>
           <section id="salesProof" aria-label="Détail des ventes"></section>
-          <div class="decision-card hourly-intelligence-card">
+          <details class="decision-card hourly-intelligence-card" id="salesByHour">
+            <summary>Ventes par heure</summary>
             <div class="decision-card-head">
               <div><span class="mini-kicker">VENTES PAR HEURE</span><h3>Quand je vends quoi ?</h3></div>
               <div class="hourly-filter-bar">
@@ -314,12 +309,17 @@
             <div id="hourlySalesBars" class="hourly-sales-bars"></div>
             <div class="decision-table-wrap hourly-top-table">
               <table class="decision-table">
-                <thead><tr><th>Heure</th><th>CA</th><th>Poids</th><th>Top article</th><th>CA top article</th></tr></thead>
+                <thead><tr><th>Heure</th><th>CA</th><th>Part du CA</th><th>Top article</th><th>CA top article</th></tr></thead>
                 <tbody id="hourlyTopBody"><tr><td colspan="5"><div class="table-loading">Chargement des ventes horaires…</div></td></tr></tbody>
               </table>
             </div>
-          </div>
+          </details>
         </section>
+
+<section data-widget="customerBi" id="biWorkspace" class="bi-workspace" hidden><nav aria-label="Analyse des paniers" id="biTabs"><button data-tab="global" class="active">Vue globale</button><button data-tab="article">Article 360°</button></nav>
+<form id="bi-filters" hidden><label>Magasin<select id="bi-stores"><option value="ALL">Tous mes magasins</option></select></label><label>Analyse du<input id="bi-start" type="date" required></label><label>Au<input id="bi-end" type="date" required></label><label>Comparaison du<input id="bi-beforeStart" type="date" required></label><label>Au<input id="bi-beforeEnd" type="date" required></label><button type="submit" class="primary">Analyser</button></form>
+<section id="basketDirection" class="decision-studio"><h2>Rapport direction sur les paniers</h2><p>Comparer deux articles, leurs achats associés et les clients avant et après. Le rapport utilise les périodes et magasins sélectionnés ci-dessus.</p><label>Articles à analyser<input id="directionProducts" value="HS-006590, HS-006585" aria-label="Codes articles du rapport" maxlength="140"></label><button type="button" id="directionRun">Préparer le rapport et les tickets</button><p id="directionStatus" role="status"></p><div id="directionContent"></div></section>
+<section id="pricingLab" data-widget="pricingLab" class="decision-studio" hidden><div class="studio-heading"><div><span class="studio-kicker">PRICING · CONTEXTE CONFIGURÉ</span><h2>Quel prix s’applique, où et quand ?</h2><p>Fiche article, trade agreements, promotions et conditions de panier restent identifiables séparément du prix réalisé.</p></div></div><form id="pricingContextForm" class="studio-filters"><label>Article<input id="pricingContextSku" placeholder="Code article" required maxlength="64"></label><label>Magasin<select id="pricingContextStore"></select></label><label>Date de validité<input id="pricingContextDate" type="date" required></label><button type="submit">Vérifier les prix applicables</button></form><p id="pricingContextStatus" role="status"></p><div id="pricingContextCards" class="studio-cards"></div><div id="pricingContextDetails"></div><details class="competitor-intro"><summary>Positionnement concurrence · Casablanca</summary><p>Enseignes suivies : Marjane et Carrefour. Un prix concurrent doit avoir un produit et conditionnement vérifiés, une unité, un point de vente, une date et une source. Les offres d’un catalogue national ou d’une livraison ne sont pas automatiquement des prix rayon Casablanca.</p><a href="https://www.marjane.ma/promotions" target="_blank" rel="noopener">Relevés Marjane</a> · <a href="https://www.bringo.ma/fr_MA/stores/carrefour-supermarket" target="_blank" rel="noopener">Relevés Carrefour / Bringo</a><p id="competitorCoverage">Aucun relevé comparable validé chargé : aucun indice prix n’est calculé.</p><button id="competitorLoad" type="button">Voir les relevés de cet article</button><div id="competitorRows"></div><form id="competitorForm" class="studio-filters"><label>Enseigne<select id="competitorRetailer"><option>Marjane</option><option>Carrefour</option></select></label><label>Point de vente Casablanca<input id="competitorShop" required placeholder="Nom du magasin concurrent"></label><label>Comparabilité<select id="competitorMatch"><option value="IDENTICAL_GTIN">Même code-barres / conditionnement</option><option value="EQUIVALENT">Produit équivalent à qualifier</option></select></label><label>Code-barres<input id="competitorEan" inputmode="numeric"></label><label>Prix TTC MAD<input id="competitorPrice" type="number" min="0" step="0.01" required></label><label>Unité<select id="competitorUnit"><option>PC</option><option>KG</option><option>G</option><option>L</option><option>ML</option></select></label><label>Pour quantité<input id="competitorQuantity" type="number" value="1" min="0.001" step="0.001" required></label><label>Date du relevé<input id="competitorDate" type="date" required></label><label>Source / preuve HTTPS<input id="competitorSource" type="url" required placeholder="Lien produit, catalogue ou preuve du relevé"></label><label>Promotion<input id="competitorPromotion" type="checkbox"></label><button type="submit">Enregistrer le relevé sourcé</button></form><p class="studio-note">L’article et votre magasin sont ceux du contexte Pricing ci-dessus. Un produit équivalent reste hors indice de comparaison identique ; aucune valeur n’est importée sans relevé.</p></details></section>
 
         <section class="decision-dashboard store-benchmark" id="storeBenchmark" data-widget="storeBenchmark" hidden>
           <div class="decision-head">
