@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {executivePresentation,executivePresentationParts} from '../../frontend/analytics/executive-presentation.js';
+const model={period:'Réseau & magasins',kpis:[['CA TTC','525 000 DH','+8 %']],decision:{title:'Comparer les magasins',text:'Vérifier l’écart'},quality:'2/2 magasins',signals:[]};
+const options={ranking:[{label:'Frais < PGC',sales:'90 000 DH',share:'17 %',change:'+4 000 DH'}]};
+const parts=new Map(executivePresentationParts(model,options));
+assert.match(parts.get('ppt/slides/slide1.xml'),/Réseau &amp; magasins.*<a:t>525 000 DH<\/a:t>/);
+assert.match(parts.get('ppt/slides/slide2.xml'),/<a:tbl>.*Frais &lt; PGC/);
+assert.doesNotMatch(parts.get('ppt/slides/slide1.xml'),/<p:pic>/);
+const file=await executivePresentation(model,options);
+assert.equal(file.type,'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+assert.equal(new DataView(await file.arrayBuffer()).getUint32(0,true),0x04034b50);
+console.log('PASS editable PowerPoint slides and native ranking table');

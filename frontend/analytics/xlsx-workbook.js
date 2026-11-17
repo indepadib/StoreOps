@@ -15,7 +15,7 @@ async function compressed(bytes){
   return{method:8,data:zlib.slice(2,-4)}; // ZIP requires raw DEFLATE, not the zlib wrapper.
  }catch{return{method:0,data:bytes}}
 }
-async function zip(files){
+export async function zip(files,mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'){
  const parts=[],central=[];let offset=0;
  for(const [filename,body] of files){
   const name=utf8.encode(filename),plain=utf8.encode(body),{method,data}=await compressed(plain),crc=crc32(plain);
@@ -34,7 +34,7 @@ async function zip(files){
  for(const x of central){parts.push(x);offset+=x.length}
  const end=[];uint32(end,0x06054b50);uint16(end,0);uint16(end,0);uint16(end,files.length);uint16(end,files.length);
  uint32(end,offset-start);uint32(end,start);uint16(end,0);parts.push(new Uint8Array(end));
- return new Blob(parts,{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+ return new Blob(parts,{type:mime})
 }
 // StoreOps returns percentages already expressed on a 0..100 scale
 // (3.35 means 3.35%). Excel/Numbers expects 0..1 for a true '%' format.

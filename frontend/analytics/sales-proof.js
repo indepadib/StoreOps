@@ -41,6 +41,11 @@ function install(host){
  host.innerHTML=`<header class="sales-proof-header"><div><h3>Détail des ventes</h3><p data-sales-scope></p></div><button type="button" class="ghost-light-btn" data-sales-export disabled>Exporter ce tableau</button></header>
  <div class="sales-proof-views" role="group" aria-label="Détail des ventes par niveau">${Object.entries(sections).map(([key,item])=>`<button type="button" data-sales-view="${key}" aria-pressed="${key===section}">${item.label}</button>`).join('')}</div>
  <div class="sales-proof-title"><div><h4 data-sales-title></h4><p data-sales-note></p></div><label><input type="checkbox" data-sales-filter-toggle> Filtres par colonne</label></div>
+ <div class="sales-proof-variations" role="group" aria-label="Filtrer selon la variation du CA">
+  <button type="button" data-sales-variation="" aria-pressed="true">Toutes les lignes</button>
+  <button type="button" data-sales-variation="<0" aria-pressed="false">En baisse</button>
+  <button type="button" data-sales-variation=">0" aria-pressed="false">En hausse</button>
+ </div>
  <div class="sales-proof-evidence" data-sales-evidence></div>
  <div class="sales-proof-table" tabindex="0" role="region" aria-label="Tableau détaillé des ventes"><table class="decision-table" aria-label="Détail des ventes"><thead></thead><tbody></tbody></table></div>
  <footer class="sales-proof-footer"><span data-sales-count aria-live="polite"></span><button type="button" class="ghost-light-btn" data-sales-clear hidden>Effacer les filtres</button><button type="button" class="ghost-light-btn" data-sales-step="-1">Précédent</button><button type="button" class="ghost-light-btn" data-sales-step="1">Suivant</button></footer>`;
@@ -53,6 +58,8 @@ function install(host){
  }
 
  function renderRows(){
+  for(const control of host.querySelectorAll('[data-sales-variation]'))control.setAttribute('aria-pressed',String(control.dataset.salesVariation===(filters.delta||'')));
+
   const columns=getColumns();
   filtered=filterAndSortRows(source?.[section]||[],columns,filters,sort);
   const pages=Math.max(1,Math.ceil(filtered.length/size));
@@ -104,6 +111,12 @@ function install(host){
 
  host.addEventListener('click',event=>{
   const button=event.target.closest('button');if(!button)return;
+  if(button.hasAttribute('data-sales-variation')){
+   filters.delta=button.dataset.salesVariation;
+   sort=filters.delta?{key:'delta',desc:filters.delta==='>0'}:{};
+   page=0;drawHead();renderRows();
+   return;
+  }
   if(button.dataset.salesView){
    section=button.dataset.salesView;page=0;filters={};sort={};
    for(const view of host.querySelectorAll('[data-sales-view]'))view.setAttribute('aria-pressed',String(view===button));

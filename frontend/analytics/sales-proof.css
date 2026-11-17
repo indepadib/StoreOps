@@ -15,3 +15,8 @@
 .sales-proof-table th button{font:inherit;color:inherit;cursor:pointer;background:none;border:0;padding:8px 2px;text-align:left}
 .sales-proof-table input{width:100%;min-width:6.75rem;padding:6px;box-sizing:border-box}
 .sales-proof-footer button:disabled,.sales-proof-header button:disabled{opacity:.5}
+
+.sales-proof-variations{display:flex;flex-wrap:wrap;gap:7px;margin:8px 0}
+.sales-proof-variations button{border:1px solid #cbd8e9;background:#fff;color:#2a456b;border-radius:8px;padding:6px 10px;font:inherit;font-weight:650;cursor:pointer}
+.sales-proof-variations button[aria-pressed=true]{background:#253f65;color:#fff;border-color:#253f65}
+.sales-proof-variations button:focus-visible{outline:2px solid #294c83;outline-offset:2px}

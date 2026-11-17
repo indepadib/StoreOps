@@ -115,7 +115,7 @@ function renderBrief(){
   <button type="button" data-studio-section="${esc(card.section)}">${esc(card.action)} <span aria-hidden="true">↗</span></button>
  </article>`).join('');
  $('briefQuality').textContent=m.quality;
- $('briefPng').disabled=!state.data;$('briefPrint').disabled=!state.data;
+ $('briefPptx').disabled=!state.data;$('briefPng').disabled=!state.data;$('briefPrint').disabled=!state.data;
 }
 function renderCustomerSalesBridge(report){
  const bridge=report.summary.customerSalesBridge;
@@ -480,7 +480,21 @@ $('briefSignals')?.addEventListener('click',async event=>{
  renderBrief();
  if(scope().section==='overview'&&feedback.startsWith('Détention historique incomplète'))$('briefQuality').textContent=feedback;
 });
-$('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
+$('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPptx').addEventListener('click',async ()=>{
+ const button=$('briefPptx'),model=briefModel(),level=executiveLevel,filename=`storeops-direction-${scope().periodStart}-${scope().periodEnd}.pptx`;
+ button.disabled=true;
+ try{
+  const {executivePresentation}=await import('./executive-presentation.js');
+  const file=await executivePresentation(model,{rankingLabel:rankingLevels.find(([id])=>id===level)[1],ranking:model.rankings?.[level]||[]});
+  const url=URL.createObjectURL(file),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+ }catch(error){
+  console.error('Executive PowerPoint export failed',error);
+  $('briefQuality').textContent='Export PowerPoint indisponible. Réessayez.';
+ }finally{button.disabled=!state.data;}
+});
+$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();
 if(state.data)loadExecutiveCatalog();
