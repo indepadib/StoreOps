@@ -174,7 +174,7 @@ export async function handleCustomerBiApi({req,url,user}){
  const span=(a,b)=>Math.round((Date.parse(b)-Date.parse(a))/86400000)+1,currentDays=span(start,end),previousDays=span(beforeStart,beforeEnd);
  if(currentDays>31||previousDays>31)return{status:400,data:{error:'31 jours maximum par fenêtre.'}};
  if(!stores.length)return{status:422,data:{error:'Aucun magasin du périmètre ne dispose de connexion ventes configurée.',excludedStores}};
- const includeNonreturn=url.searchParams.get('nonreturn')==='1', cacheVersion=includeNonreturn?'customer-bi-nonreturn-v1':'customer-bi-v4';
+ const includeNonreturn=url.searchParams.get('nonreturn')==='1', cacheVersion=includeNonreturn?'customer-bi-nonreturn-v2':'customer-bi-v5';
  const key=analyticsCacheKey(cacheVersion,[stores.map(s=>s.id).sort().join(','),start,end,beforeStart,beforeEnd]);const cached=await readAnalyticsCache(key);if(cached)return{status:200,data:cached};
  if(url.searchParams.get('preparedOnly')==='1'){
   const tasks=[];for(const store of stores)for(const [a,b] of [[start,end],[beforeStart,beforeEnd]]){const exact=await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[store.id,a,b]));if(exact)continue;for(let date=a;date<=b;){if(!await readAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[store.id,date,date])))tasks.push({storeId:store.id,date});const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+1);date=d.toISOString().slice(0,10)}}

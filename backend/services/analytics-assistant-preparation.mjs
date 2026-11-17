@@ -11,5 +11,5 @@ export async function missingDiagnosticSources(stores,input,{read,catalogReader,
  for(const s of stores){const u=await read(analyticsCacheKey('detention-universe-v3',[s.id]));if((!u?.stockComplete||!u?.supplyComplete||!u?.referenceComplete||!catalog.complete)&&!taskFailed(input,'stock',s.id))tasks.push({kind:'stock',storeId:s.id});
   for(const kind of includeHistory?['store','supply']:[]){const h=await historyReader(s.id,kind),key=kind+'|'+(h?.warehouseId||s.id);if(seen.has(key))continue;seen.add(key);if(!h?.complete&&!taskFailed(input,'history',s.id))tasks.push({kind:'history',storeId:s.id,historyKind:kind});}
  }
- const key=analyticsCacheKey('customer-bi-v4',[stores.map(s=>s.id).sort().join(','),input.start,input.end,input.compareStart,input.compareEnd]);if(includeBaskets&&!await read(key)&&!taskFailed(input,'baskets'))tasks.push({kind:'baskets',storeIds:stores.map(s=>s.id),start:input.start,end:input.end,compareStart:input.compareStart,compareEnd:input.compareEnd});return tasks;
+ const key=analyticsCacheKey('customer-bi-v5',[stores.map(s=>s.id).sort().join(','),input.start,input.end,input.compareStart,input.compareEnd]);if(includeBaskets&&!await read(key)&&!taskFailed(input,'baskets'))tasks.push({kind:'baskets',storeIds:stores.map(s=>s.id),start:input.start,end:input.end,compareStart:input.compareStart,compareEnd:input.compareEnd});return tasks;
 }
