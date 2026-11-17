@@ -262,33 +262,32 @@
 
 
         <section class="decision-dashboard sales-diagnostic" id="salesDiagnostic" data-widget="decisionSales" hidden>
-          <header class="sales-workspace-head">
-            <div>
-              <h2>Comprendre les ventes</h2>
-              <p>Suivez le chiffre d’affaires, mesurez son évolution et retrouvez les lignes qui l’expliquent.</p>
-            </div>
-            <nav class="decision-toolbar" aria-label="Sections de la page Ventes">
-              <a href="#decisionSalesKpis">Résultats</a>
-              <a href="#salesEvolution">Évolution</a>
-              <a href="#salesProof">Détail</a>
-              <a href="#salesByHour">Par heure</a>
-              <a href="#biWorkspace">Paniers</a>
-              <a href="#pricingLab">Prix</a>
-            </nav>
-          </header>
-          <div class="decision-kpis" id="decisionSalesKpis" aria-label="Indicateurs de ventes"></div>
-          <p id="salesScopeStatus" class="sales-scope-status" role="status"></p>
-          <details class="sales-margin-details">
-            <summary>Source et couverture de la marge</summary>
-            <div class="margin-status" id="marginStatusBadge"></div>
-          </details>
+          <section class="sales-overview" aria-labelledby="salesTitle">
+            <header class="sales-workspace-head">
+              <h2 id="salesTitle">Performance des ventes</h2>
+              <a class="sales-primary-link" href="#salesProof">Explorer le détail <span aria-hidden="true">↓</span></a>
+            </header>
+            <div class="decision-kpis" id="decisionSalesKpis" aria-label="Indicateurs de ventes"></div>
+            <p id="salesScopeStatus" class="sales-scope-status" role="status"></p>
+            <details class="sales-margin-details">
+              <summary>Source et couverture de la marge</summary>
+              <div class="margin-status" id="marginStatusBadge"></div>
+            </details>
+          </section>
+          <nav class="sales-section-nav" aria-label="Sections de la page Ventes">
+            <a href="#salesEvolution">Évolution</a>
+            <a href="#salesProof">Détail des ventes</a>
+            <a href="#salesByHour">Par heure</a>
+            <a href="#biWorkspace">Paniers</a>
+            <a href="#pricingLab">Prix</a>
+          </nav>
           <section class="decision-grid sales-evolution" id="salesEvolution" aria-label="Évolution du chiffre d’affaires">
             <article class="decision-card decision-chart-card">
               <div class="decision-card-head"><h3>Chiffre d’affaires par jour</h3><span id="decisionCoverage" class="coverage-badge">—</span></div>
               <div class="sales-chart-legend"><span>Période sélectionnée</span><span>Période comparée</span></div>
               <svg id="decisionDailyChart" viewBox="0 0 920 300" role="img" aria-label="Évolution quotidienne des ventes"></svg>
             </article>
-            <article class="decision-card">
+            <article class="decision-card sales-drivers">
               <div class="decision-card-head"><h3>Ce qui explique l’écart</h3></div>
               <div id="salesDriversWaterfall" class="waterfall-list"></div>
               <a class="sales-detail-link" href="#salesProof">Examiner les magasins, départements et articles ↓</a>

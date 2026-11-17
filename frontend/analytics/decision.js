@@ -575,7 +575,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
         const i=position(row.date,start),value=safe(row.sales);
         if(!Number.isInteger(i)||i<0||i>=days||value==null)continue;
         path+=`${i===preceding+1?'L':'M'} ${x(i)} ${y(value)} `;
-        points+=`<circle class="${cls}" cx="${x(i)}" cy="${y(value)}" r="3"><title>${api.escapeHtml(row.date+' · '+api.money(value))}</title></circle>`;
+        points+=`<circle class="${cls}" cx="${x(i)}" cy="${y(value)}" r="${days>45?2:3}"><title>${api.escapeHtml(row.date+' · '+api.money(value))}</title></circle>`;
         preceding=i;
       }
       return `<path class="${cls}" d="${path}"/>`+points;
