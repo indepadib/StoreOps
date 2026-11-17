@@ -116,8 +116,42 @@ function executiveRankings(data,current,comparable,catalog){
  return {rankings,coverage};
 }
 
+function salesComposition(products,total){
+ const units=new Map([
+  ...['PC','PCS','EA','EACH','PIECE','PIECES','UNIT','UN','U'].map(unit=>[unit,['pièce',1]]),
+  ['KG',['kg',1]],['G',['kg',.001]],['GR',['kg',.001]],
+  ['L',['L',1]],['LT',['L',1]],['ML',['L',.001]]
+ ]);
+ const rows=(products||[]).filter(row=>finite(row.sales));
+ const sum=rows.reduce((n,row)=>n+row.sales,0);
+ if(!finite(total)||total<=0||Math.abs(sum-total)>Math.max(1,total*.005))return null;
+ const groups=new Map();
+ for(const row of rows){
+  const raw=Object.entries(row.quantityByUnit||{}).filter(([,quantity])=>finite(quantity)&&quantity!==0);
+  const quantities=raw.length?raw:[[row.quantityUnit,row.units]];
+  const parts=quantities.map(([unit,quantity])=>{
+   const mapped=units.get(String(unit||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase());
+   return mapped&&finite(quantity)&&quantity>0?[mapped[0],quantity*mapped[1]]:null;
+  });
+  if(parts.some(part=>!part)||new Set(parts.map(([unit])=>unit)).size!==1||row.sales<0)continue;
+  const unit=parts[0][0],amount=parts.reduce((n,[,quantity])=>n+quantity,0);
+  const group=groups.get(unit)||{sales:0,volume:0};
+  group.sales+=row.sales;group.volume+=amount;
+  groups.set(unit,group);
+ }
+ const covered=[...groups.values()].reduce((n,group)=>n+group.sales,0);
+ if(!groups.size)return null;
+ return {title:'Composition du CA',section:'categories',action:'Voir le détail par produit',
+  note:`Prix TTC réalisé · ${number(Math.min(100,covered/total*100))} % du CA couvert`,
+  rows:[...groups].sort((a,b)=>b[1].sales-a[1].sales).map(([unit,{sales,volume}])=>({
+   label:`${number(volume,2)} ${unit==='pièce'?'pièces':unit} · ${number(sales/total*100)} % du CA`,
+   value:`${number(sales/volume,2)} DH / ${unit}`,tone:''
+  }))};
+}
+
 function businessSignals(data,current,comparable,stock,reading){
- const cards=[];
+ const composition=salesComposition(data.products,current.sales);
+ const cards=composition?[composition]:[];
  const row=(label,value,tone='')=>({label,value,tone});
  const signedMoney=value=>(value>0?'+':'')+money(value);
  const add=(title,rows,section,action)=>{if(rows.length)cards.push({title,rows,section,action});};

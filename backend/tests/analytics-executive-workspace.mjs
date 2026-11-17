@@ -69,3 +69,12 @@ assert.equal(enriched.rankings.rayon[0].label,'Crèmerie');
 assert.equal(enriched.rankings.family[0].label,'Yaourts');
 assert.equal(enriched.rankingCoverage.rayon,70);
 assert.equal(enriched.rankings.rayon[0].change,'—');
+
+const composition=model('2026-11-13',{products:[
+ {key:'A',sales:120,units:12,quantityUnit:'PC'},
+ {key:'B',sales:40,quantityByUnit:{G:1000,KG:1}},
+ {key:'C',sales:40,quantityByUnit:{PC:1,KG:1}}
+]}).signals.find(card=>card.title==='Composition du CA');
+assert.match(composition.note,/80 %/);
+assert.deepEqual(composition.rows.map(row=>row.value),['10 DH / pièce','20 DH / kg']);
+assert.ok(!model('2026-11-13',{products:[{key:'A',sales:40,units:4,quantityUnit:'PC'}]}).signals.some(card=>card.title==='Composition du CA'));
