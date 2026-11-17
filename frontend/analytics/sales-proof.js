@@ -60,7 +60,7 @@ function install(host){
  const getColumns=(all=showAllColumns)=>sections[section].columns.filter(([key])=>all||essentialColumns[section].includes(key)).map(([key,label,type])=>({key,label,type,numeric:!text(type),value:row=>row[key]}));
 
  function drawHead(){
-  head.innerHTML='<tr>'+getColumns().map(c=>`<th scope="col"><button type="button" data-sales-sort="${c.key}">${c.label}</button></th>`).join('')+'</tr><tr data-sales-filter-row>'+getColumns().map(c=>`<td><input data-sales-filter="${c.key}" aria-label="Filtrer ${c.label}" placeholder="${c.numeric?'Ex. <0':c.type==='date'?'AAAA-MM-JJ':'Filtrer'}" value="${escape(filters[c.key]||'')}"></td>`).join('')+'</tr>';
+  head.innerHTML='<tr>'+getColumns().map(c=>`<th scope="col"${c.numeric?' data-numeric':''}><button type="button" data-sales-sort="${c.key}">${c.label}</button></th>`).join('')+'</tr><tr data-sales-filter-row>'+getColumns().map(c=>`<td><input data-sales-filter="${c.key}" aria-label="Filtrer ${c.label}" placeholder="${c.numeric?'Ex. <0':c.type==='date'?'AAAA-MM-JJ':'Filtrer'}" value="${escape(filters[c.key]||'')}"></td>`).join('')+'</tr>';
  }
 
  function renderRows(){
@@ -74,7 +74,7 @@ function install(host){
   const empty=source?'Aucune ligne pour ces filtres.':'Détail en attente des données du périmètre sélectionné.';
   body.innerHTML=filtered.slice(start,start+size).map(row=>'<tr>'+columns.map(c=>{
    const value=c.value(row),label=escape(format(value,c.type));
-   return '<td'+(c.key==='delta'&&typeof value==='number'&&value!==0?` class="${value<0?'metric-negative':'metric-positive'}"`:'')+'>'+label+'</td>';
+   return '<td'+(c.numeric?' data-numeric':'')+(c.key==='delta'&&typeof value==='number'&&value!==0?` class="${value<0?'metric-negative':'metric-positive'}"`:'')+'>'+label+'</td>';
   }).join('')+'</tr>').join('')||`<tr><td colspan="${columns.length}">${empty}</td></tr>`;
   el('[data-sales-count]').textContent=filtered.length?`${start+1}–${Math.min(start+size,filtered.length)} sur ${filtered.length} lignes`:'0 ligne';
   el('[data-sales-step="-1"]').disabled=page===0;

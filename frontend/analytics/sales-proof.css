@@ -219,3 +219,29 @@
   .sales-overview #decisionSalesKpis { grid-template-columns: minmax(0, 1fr); }
   .sales-overview .performance-card .metric-value { font-size: 1.55rem; }
 }
+.sales-evolution .decision-axis { font-size: 11px; fill: #516176; }
+.sales-evolution .decision-gridline { stroke: #e6ebf2; }
+.sales-evolution path.decision-line-current { stroke-width: 2.5; }
+.sales-evolution path.decision-line-previous { stroke-width: 1.75; }
+.sales-chart-legend { margin-bottom: 6px; }
+.sales-diagnostic .sales-proof-table :is(th, td)[data-numeric] { text-align: right; }
+.sales-diagnostic .sales-proof-table tr { --sales-row-fill: #fff; }
+.sales-diagnostic .sales-proof-table thead tr { --sales-row-fill: #f5f7fa; }
+.sales-diagnostic .sales-proof-table tbody tr:nth-child(even) { --sales-row-fill: #f8fafc; }
+.sales-diagnostic .sales-proof-table tbody tr:hover { --sales-row-fill: #fff1f6; }
+.sales-diagnostic .sales-proof-table :is(th, td):first-child:not([colspan]) {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  max-width: clamp(105px, 26vw, 230px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  background: var(--sales-row-fill);
+  box-shadow: inset -1px 0 var(--sales-border);
+}
+.sales-diagnostic .sales-proof-table td:first-child:not([colspan]) { font-weight: 700; }
+@media (max-width: 600px) {
+  .sales-section-nav { gap: 0 10px; }
+  .sales-section-nav a { padding-block: 10px; }
+  .sales-evolution .decision-card-head { row-gap: 6px; }
+}
