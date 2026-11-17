@@ -97,9 +97,8 @@ const bootstrap=readFileSync(new URL('../../frontend/analytics/bootstrap.js',imp
 const design=readFileSync(new URL('../../frontend/analytics/business-experience.css',import.meta.url),'utf8');
 const companion=readFileSync(new URL('../../frontend/analytics/companion-dictionary.js',import.meta.url),'utf8');
 const answerUI=readFileSync(new URL('../../frontend/analytics/assistant-query-ui.js',import.meta.url),'utf8');
-assert.match(ui,/id="businessStory"/);
+assert.match(ui,/id="salesEvolution"/);
 assert.match(ui,/id="assistantKpiDictionary"/);
-assert.match(bootstrap,/business-story\.js/);
 assert.match(bootstrap,/companion-dictionary\.js/);
 assert.match(design,/prefers-reduced-motion:reduce/);
 assert.match(design,/focus-visible/);

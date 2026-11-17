@@ -2,7 +2,7 @@ import {buildExecutiveBrief,rankingLevels} from './executive-brief.js';
 import {compareObservedPrice} from './competitor-comparison.js';
 import {promptsForSection,sectionGuide} from './assistant-section-prompts.js';
 import {buildReliableCategories} from './category-reconciliation.js';
-import {marginEvidence,promotionEvidence,evolution,performanceCard} from './performance-evidence.js';
+import {promotionEvidence,evolution,performanceCard} from './performance-evidence.js';
 import {requestAssistant} from './assistant-preparation.js';
 import {renderQueryResult,applyQueryScope} from './assistant-query-ui.js';
 import {investigationContext,requestInvestigation,renderInvestigation,initInvestigation} from './assistant-investigation.js?v=4';
@@ -115,7 +115,7 @@ function renderBrief(){
   <button type="button" data-studio-section="${esc(card.section)}">${esc(card.action)} <span aria-hidden="true">↗</span></button>
  </article>`).join('');
  $('briefQuality').textContent=m.quality;
- $('briefPng').disabled=!state.data;$('briefPrint').disabled=!state.data;
+ $('briefPptx').disabled=!state.data;$('briefPng').disabled=!state.data;$('briefPrint').disabled=!state.data;
 }
 function renderCustomerSalesBridge(report){
  const bridge=report.summary.customerSalesBridge;
@@ -326,7 +326,6 @@ function renderStudio(){
  else if(['loyalty','crm'].includes(section)){title='Comprendre les habitudes, puis travailler le retour';subtitle='Population identifiée uniquement ; les nouveaux clients du réseau ne se déduisent pas de la première visite dans cette fenêtre.';const cr=d?.crm||{},b=state.baskets?.summary;cards=[['Tickets identifiés',pct(c.identifiedTicketRate),'Mesurer l’exécution de l’identification en caisse'],['Poids CA identifié',pct(c.identifiedSalesShare),'Avant : '+pct(p.identifiedSalesShare)+' · écart '+number(c.identifiedSalesShare!=null&&p.identifiedSalesShare!=null?c.identifiedSalesShare-p.identifiedSalesShare:null)+' points'],['Récurrence observée',pct(cr.repeatRate),'Au moins deux visites dans la période'],['Acheteurs non revus',number(b?.previousCustomersNotObserved),'Fenêtre et périmètre limités, pas un départ certain']];if(b?.customerSalesBridge){cards=[];subtitle='CA des tickets, contributions des clients et lecture par magasin sur les deux périodes affichées.';}details=customerDecision()+actionCards([{title:'Identifier les habitués qui changent de panier',detail:'Dans Ventes → Article 360 : comparer rachat, retour sans article et absence inhabituelle selon le rythme de visite.'},{title:'Analyser les motifs avant une action commerciale',detail:'Croiser prix, promotions, disponibilité, jours de visite et couverture d’identification.'}])}
  else if(section==='cashiers'){title='Exécution caisse : identification et qualité de lecture';subtitle='Les noms viennent du référentiel personnes Dynamics ; les identifiants restent visibles pour le rapprochement.';const rows=d?.cashiers?.items||[];cards=[['Caissiers observés',number(rows.length),'Sur ventes éligibles uniquement'],['Noms résolus',number(rows.filter(x=>x.name&&x.name!==x.staffId).length),'Les correspondances absentes restent signalées'],['Identification réseau',pct(c.identifiedTicketRate),'Interpréter les écarts à volume comparable'],['Échantillons limités',number(rows.filter(x=>x.tickets<30).length),'Moins de 30 tickets : éviter un classement définitif']];details=table(['Caissier','Identifiant','Tickets','Identification','Action'],rows.map(x=>[esc(x.name||'Nom à rapprocher'),esc(x.staffId),number(x.tickets),pct(x.identifiedTicketRate),esc(x.tickets<30?'Observer davantage de tickets':x.identifiedTicketRate<c.identifiedTicketRate?'Accompagner le geste d’identification et vérifier la clientèle':'Partager les pratiques et vérifier le recrutement réel')]))}
  else if(section==='promotions'){title='Mesurer ce que la promotion change';subtitle='La preuve d’une remise vient des lignes de ticket. Le CA d’un article en offre n’est pas automatiquement du CA promotionnel.';const b=state.baskets?.summary||{promotionSales:c.promotionSales,previousPromotionSales:p.promotionSales,promotionTickets:c.promotionTickets,previousPromotionTickets:p.promotionTickets,promotionSalesSharePct:c.sales&&c.promotionSales!=null?c.promotionSales/c.sales*100:null,discountAmount:c.discountAmount};cards=[['Ventes remisées périodiques',money(b?.promotionSales),'Avant : '+money(b?.previousPromotionSales)+' · évolution '+pct(change(b?.promotionSales,b?.previousPromotionSales))],['Poids dans le CA',pct(b?.promotionSalesSharePct),'Écart : '+number(promotionEvidence(d).shareDelta)+' points vs comparaison'],['Tickets concernés',number(b?.promotionTickets),'Avant : '+number(b?.previousPromotionTickets)+' · évolution '+pct(change(b?.promotionTickets,b?.previousPromotionTickets))],['Remises enregistrées',money(b?.discountAmount),'Toutes remises ; pas un ROI comptable']];details='<p>Mesures chargées automatiquement sur la période et les magasins sélectionnés. La variation observée compare les ventes avec remise ; elle ne mesure pas à elle seule l’effet causal de la promotion. Explorez les paniers et les acheteurs dans Article 360.</p><button data-studio-section="sales">Ouvrir Pricing / Article 360 dans Ventes</button><p class="studio-note">ROI causal, cannibalisation et rentabilité incrémentale exigent des coûts, une attribution des offres et un contrefactuel validés.</p>'}
- else if(section==='sales'){title='Une lecture prix → demande → panier → retour client';subtitle='Les cartes Pricing et Article 360 sont regroupées ici. Commencer par le prix configuré, puis examiner le prix réalisé et les habitudes observées.';cards=[['Effet trafic',money(d?.summary?.drivers?.trafficEffect),'Fréquentation à panier comparable'],['Effet panier',money(d?.summary?.drivers?.basketEffect),'Valeur par visite à fréquentation actuelle'],[marginEvidence(d).kind==='PARTIAL'?'Taux de marge HT · couvert':'Taux de marge HT',pct(marginEvidence(d).rate),money(marginEvidence(d).value)+' HT · coût couvert '+pct(marginEvidence(d).coverage)+(marginEvidence(d).kind==='PARTIAL'?' · non extrapolée':'')],['Qualité des chiffres',d?.quality?.status||'Chargement','Les écarts de rapprochement restent visibles']];details=actionCards((d?.quality?.issues||[]).map(x=>({title:x.code,detail:x.message})).slice(0,5))}
  else{return}
  if(section==='promotions'){$('decisionStudio').hidden=true;return}
  $('studioTitle').textContent=title;$('studioSubtitle').textContent=subtitle;$('studioCards').innerHTML=cards.map(x=>card(...x)).join('');$('studioDetails').innerHTML=details;
@@ -480,7 +479,21 @@ $('briefSignals')?.addEventListener('click',async event=>{
  renderBrief();
  if(scope().section==='overview'&&feedback.startsWith('Détention historique incomplète'))$('briefQuality').textContent=feedback;
 });
-$('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
+$('studioStockRefresh').addEventListener('click',()=>loadStockBrief(true));$('briefPptx').addEventListener('click',async ()=>{
+ const button=$('briefPptx'),model=briefModel(),level=executiveLevel,filename=`storeops-direction-${scope().periodStart}-${scope().periodEnd}.pptx`;
+ button.disabled=true;
+ try{
+  const {executivePresentation}=await import('./executive-presentation.js');
+  const file=await executivePresentation(model,{rankingLabel:rankingLevels.find(([id])=>id===level)[1],ranking:model.rankings?.[level]||[]});
+  const url=URL.createObjectURL(file),link=document.createElement('a');
+  link.href=url;link.download=filename;document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+ }catch(error){
+  console.error('Executive PowerPoint export failed',error);
+  $('briefQuality').textContent='Export PowerPoint indisponible. Réessayez.';
+ }finally{button.disabled=!state.data;}
+});
+$('briefPng').addEventListener('click',exportBrief);$('briefPrint').addEventListener('click',()=>{core.navigate('overview');window.print()});$('pricingContextForm').addEventListener('submit',loadPricing);
 $('analyticsAssistantToggle').addEventListener('click',()=>setAssistant($('analyticsAssistant').hidden));$('analyticsAssistantClose').addEventListener('click',()=>setAssistant(false));$('analyticsAssistantForm').addEventListener('submit',askAssistant);
 changed();
 if(state.data)loadExecutiveCatalog();

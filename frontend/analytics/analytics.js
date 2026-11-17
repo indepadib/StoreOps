@@ -7,7 +7,7 @@
 
   const SECTION_WIDGETS = {
     overview: ['executiveOnePager'],
-    sales: ['decisionSales','customerBi','pricingLab','decisionStudio'],
+    sales: ['decisionSales','customerBi','pricingLab'],
     network: ['storeBenchmark','decisionStudio'],
     categories: ['productPerformance','decisionStudio'],
     reference: ['articleReference'],

@@ -46,7 +46,7 @@ assert.doesNotMatch(css,/animation:\s*[^;]*infinite/,'No gratuitous infinite das
 assert.match(boot,/experience-navigation\.js/);
 assert.match(html,/experience-navigation\.css/);
 // All existing widgets and report loading remain in the original shell.
-for(const id of ['analyticsContent','filterbar','crmIntelligence','customerResearch','salesDiagnostic','businessStory','executiveOnePager','analyticsAssistant','fullExportBtn','exportBtn']){
+for(const id of ['analyticsContent','filterbar','crmIntelligence','customerResearch','salesDiagnostic','salesEvolution','executiveOnePager','analyticsAssistant','fullExportBtn','exportBtn']){
  assert.match(html,new RegExp('id="'+id+'"'),'Core UI contract must be preserved: '+id)
 }
 // Existing section switches and data exports must remain independent of UI modes.

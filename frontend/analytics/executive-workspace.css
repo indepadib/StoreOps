@@ -333,3 +333,6 @@ body[data-analytics-section="overview"] #periodSummary{
  #executiveOnePager .brief-workspace-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:2mm 4mm;gap:3mm}
  #executiveOnePager .brief-workspace-story{gap:2mm}
 }
+
+#executiveOnePager .brief-tools .brief-export-primary:not(:disabled){background:#fff;color:#20395f;border-color:#fff}
+#executiveOnePager .brief-tools .brief-export-primary:not(:disabled):hover{background:#edf3ff}
