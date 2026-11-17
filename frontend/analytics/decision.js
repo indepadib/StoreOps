@@ -379,6 +379,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
 
   function resetSalesPanels(message){
     if(sectionState()?.section!=='sales')return;
+    redrawSalesChart=null;
     for(const id of ['salesDriversWaterfall','decisionCoverage','marginStatusBadge','coveredMarginEvidence','hourlyKpis','hourlySalesBars','hourlyTopBody','decisionDailyChart']){
       const node=$('#'+id);
       if(node)node.textContent='';
@@ -534,7 +535,8 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       {label:rateLabel,value:currentReady?displayRate:null,previous:comparable&&!margin.partial&&!estimated&&basis.kind==='FULL'&&!basis.estimated?basis.rate:null,unit:'percent',estimated,changeMode:margin.partial?'none':'points',note:currentReady&&displayMargin!=null?'Montant HT '+api.money(displayMargin):''}
     ].map(metric=>performanceCard({...metric,scope:scopeForCard})).join('');
     renderWaterfall(comparable,currentReady&&comparisonReady?'L’écart exige deux périodes terminées de même durée.':'L’écart sera disponible quand les deux périodes seront complètes.');
-    renderDailyChart(currentReady,comparable,selected);
+    redrawSalesChart=()=>renderDailyChart(currentReady,comparable,selected);
+    redrawSalesChart();
     renderHourlyIntelligence();
   }
 
@@ -551,13 +553,20 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     }).join('');
   }
 
+  let redrawSalesChart=null;
+
   function renderDailyChart(currentReady,comparisonReady,scope){
     const svg=$('#decisionDailyChart'),api=core(),cur=currentReady?(state.data?.daily?.current||[]):[],prev=comparisonReady?(state.data?.daily?.previous||[]):[];
     if(!svg)return;
+    const w=Math.max(240,Math.floor(svg.clientWidth)||640),h=w>=540?282:228;
+    const p={l:w>=540?56:44,r:20,t:18,b:32};
+    svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
     const legend=svg.previousElementSibling;
     if(legend?.lastElementChild)legend.lastElementChild.hidden=!prev.length;
-    if(!scope||!cur.length){svg.innerHTML='<text x="460" y="150" text-anchor="middle" class="decision-axis">Pas de série quotidienne disponible</text>';return}
-    const w=920,h=300,p={l:70,r:28,t:25,b:34};
+    if(!scope||!cur.some(row=>safe(row.sales)!=null)){
+      svg.innerHTML=`<text x="${w/2}" y="${h/2}" text-anchor="middle" class="decision-axis">Pas de série quotidienne disponible</text>`;
+      return;
+    }
     const values=[...cur,...prev].map(row=>safe(row.sales)).filter(value=>value!=null);
     const max=Math.max(1,...values),min=Math.min(0,...values);
     const days=rangeDays(scope.periodStart,scope.periodEnd);
@@ -575,15 +584,17 @@ import {contributions,summarizeCategories} from './category-analysis.js';
         const i=position(row.date,start),value=safe(row.sales);
         if(!Number.isInteger(i)||i<0||i>=days||value==null)continue;
         path+=`${i===preceding+1?'L':'M'} ${x(i)} ${y(value)} `;
-        points+=`<circle class="${cls}" cx="${x(i)}" cy="${y(value)}" r="3"><title>${api.escapeHtml(row.date+' · '+api.money(value))}</title></circle>`;
+        points+=`<circle class="${cls}" cx="${x(i)}" cy="${y(value)}" r="${days>45?2:3}"><title>${api.escapeHtml(row.date+' · '+api.money(value))}</title></circle>`;
         preceding=i;
       }
       return `<path class="${cls}" d="${path}"/>`+points;
     };
     if(prev.length)html+=line(prev,scope.compareStart,'decision-line-previous');
     html+=line(cur,scope.periodStart,'decision-line-current');
-    const step=Math.max(1,Math.ceil(days/7));
-    for(let i=0;i<days;i+=step){
+    const slots=Math.max(2,Math.floor((w-p.l-p.r)/68)+1);
+    const tickCount=Math.min(days,slots);
+    for(let tick=0;tick<tickCount;tick++){
+      const i=tickCount===1?0:Math.round(tick*(days-1)/(tickCount-1));
       const day=new Date(Date.parse(scope.periodStart)+i*86400000).toISOString().slice(0,10);
       html+=`<text class="decision-axis" x="${x(i)}" y="${h-10}" text-anchor="middle">${day.slice(8)}/${day.slice(5,7)}</text>`;
     }
@@ -1103,6 +1114,17 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     $('#clearProductFilters')?.addEventListener('click',()=>{categoryTrail.length=0;state.filters={department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''};state.search='';if($('#performanceSearch'))$('#performanceSearch').value='';renderPerformance()});
     $('#performanceMetric')?.addEventListener('change',e=>{state.metric=e.target.value;if(state.metric==='units'&&state.level!=='product'){state.level='product';if($('#performanceLevel'))$('#performanceLevel').value='product'}renderPerformance()});
     $('#performanceSearch')?.addEventListener('input',e=>{state.search=e.target.value||'';renderPerformance()});
+    const dailyChart=$('#decisionDailyChart');
+    if(dailyChart&&typeof ResizeObserver==='function'){
+      let lastWidth=0;
+      const observer=new ResizeObserver(([entry])=>{
+        const width=Math.floor(entry.contentRect.width);
+        if(!width||width===lastWidth)return;
+        lastWidth=width;
+        if(sectionState()?.section==='sales')redrawSalesChart?.();
+      });
+      observer.observe(dailyChart);
+    }
     $('#hourlyDepartmentFilter')?.addEventListener('change',e=>{state.hourly.department=e.target.value||'';state.hourly.rayon='';state.hourly.product='';renderHourlyIntelligence()});
     $('#hourlyRayonFilter')?.addEventListener('change',e=>{state.hourly.rayon=e.target.value||'';state.hourly.product='';renderHourlyIntelligence()});
     $('#hourlyProductFilter')?.addEventListener('change',e=>{state.hourly.product=e.target.value||'';renderHourlyIntelligence()});
