@@ -1,10 +1,12 @@
 import {config} from '../config.mjs';
+import {articleBusinessAttributes,supplierOrigin} from './article-business-attributes.mjs';
 import {odataGetAll} from './dynamics.mjs';
 import {referenceIndex} from './analytics-detention.mjs';
 import {readAnalyticsCatalog} from './analytics-catalog.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
 const esc=x=>String(x).replaceAll("'","''");
 const finite=x=>x==null||x===''?null:Number.isFinite(Number(x))?Number(x):null;
+const businessData=data=>({...data,items:data.items.map(row=>({...row,businessAttributes:articleBusinessAttributes(row.productNumber),supplierOrigin:supplierOrigin(row.vendorName)}))});
 export function latestInvoicePurchases(rows=[]){
  const result=new Map();
  for(const r of [...rows].sort((a,b)=>String(b.InvoiceDate).localeCompare(String(a.InvoiceDate))||String(b.CreatedOn).localeCompare(String(a.CreatedOn))||String(b.SourceKey).localeCompare(String(a.SourceKey)))){
@@ -34,9 +36,9 @@ export async function readArticleReference({offset=0,limit=40,expectedSnapshot=n
  const products=[...index.products].sort();
  const {createHash}=await import('node:crypto');const snapshot=createHash('sha256').update(products.join('|')).digest('hex');
  if(expectedSnapshot&&snapshot!==expectedSnapshot)throw Object.assign(new Error('Le référentiel a changé. Relancer la lecture pour garder un export cohérent.'),{status:409});
- const page=products.slice(offset,offset+limit),key=analyticsCacheKey('article-reference-v2',[snapshot,offset,limit]);let cached=await readAnalyticsCache(key);if(cached)return cached;
+ const page=products.slice(offset,offset+limit),key=analyticsCacheKey('article-reference-v3',[snapshot,offset,limit]);let cached=await readAnalyticsCache(key);if(cached)return businessData(cached);
  const [catalog,buy,bars]=page.length?await Promise.all([readAnalyticsCatalog(page),purchases(page),barcodes(page)]):[{items:[]},{status:'READY',items:[]},{status:'READY',items:[]}];
  const prices=new Map(buy.items),checkedAt=new Date().toISOString();
  const data={schemaVersion:1,snapshot,checkedAt,company:config.dynamics.dataAreaId,offset,total:products.length,nextOffset:offset+page.length<products.length?offset+page.length:null,purchaseStatus:buy.status,purchaseError:buy.error||null,items:catalog.items.map(r=>({...r,barcodes:[...new Set(bars.items.filter(x=>x[0]===r.productNumber).map(x=>x[1]))],barcodeStatus:bars.status,lastPurchase:prices.get(r.productNumber)||null,lastPurchaseStatus:buy.status==='READY'?prices.get(r.productNumber)?.status||'NOT_FOUND':buy.status,salesPriceSource:r.salesPrice==null?null:'D365/ReleasedProductsV2.SalesPrice',salesPriceEffectiveDate:r.salesPriceDate||null,checkedAt})),semantics:{salesPrice:'Prix de vente de la fiche article, hors conditions magasin et promotions. Date de prix de fiche exposée si disponible ; ce prix ne constitue pas le prix effectif magasin/date avec accords et promotions.',lastPurchase:'Dernière ligne d’achat facturée positive de la société, HT par unité d’achat. Absence de facture ou lecture incomplète = N/D.',cost:'Coût actuel de référence, distinct du dernier achat facturé.',hierarchy:'Classement Dynamics ; classement partiel ou absent conservé et signalé.'}};
- await writeAnalyticsCache(key,'article-reference-v2',data,900);return data;
+ await writeAnalyticsCache(key,'article-reference-v3',data,900);return businessData(data);
 }

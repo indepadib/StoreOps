@@ -159,11 +159,13 @@ export async function generateReplenishmentOrder(input,{progress=(_label,_comple
    if(inbound===null){reject('Quantité, date ou unité d’un arrivage à confirmer');continue;}
    const calculated=calculateMinMax({mode,usage,leadDays,safetyDays:policy.safetyDays,reviewDays,available,inbound,sourceAvailable:supply,pack:policy.packSize,minimumOrder:mode==='PO'?policy.minOrderQty:0});
    if(!calculated.need)continue;
-   if(!calculated.quantity){reject('Stock entrepôt insuffisant pour un colis');continue;}
+   const coverageDays=available/usage;
+   const urgency=available===0?'RUPTURE':coverageDays<=leadDays?'RUPTURE AVANT LIVRAISON':'PROCHE RUPTURE';
+   const reason=calculated.quantity===0?'Besoin magasin confirmé · entrepôt insuffisant pour un colis':calculated.shortfall>0?'Transfert partiel · complément à approvisionner':'Réapprovisionnement proposé';
    const leadSource=source.leadTimeDays.ruleId?source.leadTimeDays.label:mode==='PO'?'Historique réception':'Règle par défaut';
-   rows.push({sku,name,supplier:mode==='PO'?supplier:null,warehouse,store:mode==='TO'?store.name:null,destination:mode==='TO'?store.destination:warehouse,unit,usage,available,inbound,leadDays,leadSource,pack:policy.packSize,...calculated});
+   rows.push({sku,name,supplier:mode==='PO'?supplier:null,warehouse,store:mode==='TO'?store.name:null,destination:mode==='TO'?store.destination:warehouse,unit,usage,available,inbound,sourceAvailable:supply,coverageDays,urgency,reason,leadDays,leadSource,pack:policy.packSize,...calculated});
   }
  }
- rows.sort((a,b)=>String(a.supplier||'').localeCompare(String(b.supplier||''))||a.sku.localeCompare(b.sku));
+ rows.sort((a,b)=>a.coverageDays-b.coverageDays||String(a.supplier||'').localeCompare(String(b.supplier||''))||a.sku.localeCompare(b.sku));
  return {mode,warehouse,store:mode==='TO'?store.name:null,stores:stores.map(s=>s.name),start,end,reviewDays,rows,blocked,examined:demand.size,assortmentBasis:'Détention · références déjà réceptionnées en magasin',demandBasis:mode==='PO'?'Consommation estimée par les ventes des magasins desservis':'Ventes magasin sur 28 jours clos'};
 }

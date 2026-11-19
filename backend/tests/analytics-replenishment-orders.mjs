@@ -45,4 +45,13 @@ assert.deepEqual(historical.rows.map(row=>[row.sku,row.usage]),[['HS-0',10],['HS
 await assert.rejects(generateReplenishmentOrder({mode:'TO',warehouse:'DC',stores:[stores[0]]},{
  ...sources,readHistory:async()=>({complete:false,products:[{productNumber:'HS-0'}]}),
 }),{code:'REPLENISHMENT_INCOMPLETE',message:/Détention incomplet/});
+const emptyWarehouse=await generateReplenishmentOrder({mode:'TO',warehouse:'DC',stores:[stores[0]]},{...sources,readWarehouse:async()=>readyStock([])});
+assert.equal(emptyWarehouse.rows.length,136,'warehouse shortage must not hide store demand');
+assert.equal(emptyWarehouse.rows[0].quantity,0);
+assert(emptyWarehouse.rows[0].need>0);
+assert.equal(emptyWarehouse.rows[0].shortfall,emptyWarehouse.rows[0].need);
+assert.equal(emptyWarehouse.rows[0].urgency,'RUPTURE');
+const beforeStockout=await generateReplenishmentOrder({mode:'TO',warehouse:'DC',stores:[stores[0]]},{...sources,readStore:async()=>readyStock(products.map(productNumber=>({productNumber,availableOnHandQuantity:1})))});
+assert(beforeStockout.rows.length>0,'orders must be proposed before the store reaches zero');
+assert(beforeStockout.rows.every(row=>row.available>0&&row.need>0),'positive stock below the calculated minimum must trigger replenishment');
 console.log('PASS whole-scope PO/TO, network demand, warehouse stock cap, dated inbound and missing data gates');

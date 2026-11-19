@@ -1,7 +1,7 @@
 import {filterAndSortRows} from './table-analysis.js';
 const apiPath='/api/analytics/replenishment';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-const tableColumns=[['sku','Code'],['name','Article'],['quantity','Qté proposée'],['unit','Unité'],['available','Disponible'],['inbound','Arrivages'],['usage','Consommation / jour'],['leadDays','Délai (j)'],['min','Min'],['max','Max'],['shortfall','Reste à couvrir'],['pack','Colisage'],['leadSource','Source du délai']];
+const tableColumns=[['urgency','Priorité'],['sku','Code'],['name','Article'],['need','Besoin marchandise'],['requested','Besoin arrondi'],['quantity','Qté transférable / commandable'],['shortfall','Besoin non couvert'],['unit','Unité'],['available','Stock destination'],['sourceAvailable','Stock entrepôt'],['coverageDays','Couverture (j)'],['inbound','Arrivages confirmés'],['usage','Ventes / jour'],['leadDays','Délai (j)'],['min','Seuil de commande'],['max','Stock cible'],['pack','Colisage'],['reason','Explication'],['leadSource','Source du délai']];
 
 function element(tag,text,className){
  const node=document.createElement(tag);
@@ -27,21 +27,25 @@ function renderTable(rows,number){
  const wrapper=element('div',null,'table-wrap repl-table');
  const table=element('table'),head=element('thead'),headRow=element('tr'),filtersRow=element('tr'),body=element('tbody');
  const controls=element('div',null,'repl-table-controls'),filterToggle=element('button','Filtres par colonne'),more=element('button','Afficher 50 lignes de plus');
+ const detailsToggle=element('button','Détail du calcul');detailsToggle.type='button';detailsToggle.setAttribute('aria-pressed','false');
+ detailsToggle.onclick=()=>{const full=wrapper.classList.toggle('repl-full');detailsToggle.setAttribute('aria-pressed',String(full));};
+ const essential=new Set(['urgency','sku','name','need','quantity','shortfall','unit','available','coverageDays']);
  const live=element('span');live.setAttribute('role','status');
  filterToggle.type=more.type='button';filtersRow.hidden=true;filterToggle.setAttribute('aria-expanded','false');
  filterToggle.onclick=()=>{filtersRow.hidden=!filtersRow.hidden;filterToggle.setAttribute('aria-expanded',String(!filtersRow.hidden));};
  const sort={key:null,desc:false},filters={};
  let limit=50;
- const columns=tableColumns.map(([key,label])=>({key,label,value:r=>r[key],numeric:!['sku','name','unit','leadSource'].includes(key)}));
+ const columns=tableColumns.map(([key,label])=>({key,label,value:r=>r[key],numeric:!['sku','name','unit','urgency','reason','leadSource'].includes(key)}));
  const headers=new Map();
  for(const {key,label,numeric} of columns){
-  const th=element('th');th.scope='col';
+  const th=element('th');th.scope='col';if(!essential.has(key))th.dataset.detail='true';
   const button=element('button',label);button.type='button';th.append(button);headRow.append(th);
   headers.set(key,{th,button,label});
   button.onclick=()=>{sort.desc=sort.key===key?!sort.desc:numeric;sort.key=key;limit=50;render();};
   const cell=element('td'),input=element('input');input.type='text';input.placeholder=numeric?'Ex. >10':'Filtrer';
   input.setAttribute('aria-label','Filtrer '+label);
   input.oninput=()=>{filters[key]=input.value;limit=50;render();};
+  if(!essential.has(key))cell.dataset.detail='true';
   cell.append(input);filtersRow.append(cell);
  }
  function render(){
@@ -61,7 +65,7 @@ function renderTable(rows,number){
   more.hidden=limit>=matches.length;
  }
  more.onclick=()=>{limit+=50;render();};
- controls.append(filterToggle,live);head.append(headRow,filtersRow);table.append(head,body);
+ controls.append(detailsToggle,filterToggle,live);head.append(headRow,filtersRow);table.append(head,body);
  wrapper.append(controls,table,more);render();return wrapper;
 }
 
@@ -69,27 +73,32 @@ function renderResult(result,summary,rows,number){
  const proposed=rows.filter(row=>row.status==='PROPOSED'),blocked=rows.filter(row=>row.status==='BLOCKED');
  const title=summary.mode==='PO'?`Projets PO · ${summary.warehouse}`:`Projet TO · ${summary.warehouse} → ${summary.store}`;
  const heading=element('div',null,'repl-result-heading');heading.append(element('h3',title));
- if(proposed.length){const exportButton=element('button','Exporter les propositions','primary');exportButton.type='button';exportButton.onclick=()=>download(summary,proposed);heading.append(exportButton);}
+ if(proposed.length){const exportButton=element('button','Télécharger le besoin complet (CSV)','primary-btn');exportButton.type='button';exportButton.onclick=()=>download(summary,proposed);heading.append(exportButton);}
  const facts=element('div',null,'repl-facts');
- for(const [label,count] of [['Références examinées',summary.examined],['Lignes proposées',proposed.length],['À vérifier',blocked.length]]){
+ for(const [label,count] of [['Références examinées',summary.examined],['Besoins anticipés',proposed.filter(row=>row.available>0).length],['Ruptures à traiter',proposed.filter(row=>row.available===0).length],['Besoin non couvert',proposed.filter(row=>row.shortfall>0).length],['À vérifier',blocked.length]]){
   const card=element('div',null,'repl-fact');card.append(element('strong',number(count)),element('span',label));facts.append(card);
  }
  result.replaceChildren(heading,facts,element('p',[summary.assortmentBasis,`${summary.demandBasis} · ${summary.start} au ${summary.end}.`].filter(Boolean).join(' · '),'repl-source'));
+ result.append(element('p',summary.mode==='TO'?'Besoin = stock cible − stock magasin − arrivages confirmés. Le transfert est limité au stock disponible à l’entrepôt. Les besoins sans stock entrepôt restent visibles.':'Besoin = stock cible de l’entrepôt − stock entrepôt − arrivages confirmés. La consommation provient des ventes des magasins desservis.','repl-explanation'));
  if(!proposed.length)result.append(element('p',blocked.length?'Aucune ligne chiffrée. Consulte les références à vérifier.':'Aucun besoin détecté sur les références examinées.','repl-empty'));
  const groups=new Map();
  for(const row of proposed){const key=summary.mode==='PO'?row.supplier:summary.store;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(row);}
  for(const [key,items] of groups){
-  const details=element('details',null,'repl-group');details.open=groups.size===1;
+  const details=element('details',null,'repl-group');details.open=true;
   const label=summary.mode==='PO'?`Fournisseur ${key}`:key;
   const content=element('div');
+  const exportGroup=element('button','Télécharger ce '+summary.mode+' (CSV)','repl-download');
+  exportGroup.type='button';exportGroup.onclick=()=>download(summary,items);content.append(exportGroup);
   function showLines(){
-   if(!details.open||content.childElementCount)return;
+   if(!details.open||content.querySelector('table'))return;
    content.append(renderTable(items,number));
   }
   details.addEventListener('toggle',showLines);
   details.append(element('summary',`${label} · ${items.length} ligne(s)`),content);result.append(details);showLines();
  }
  if(blocked.length){
+  const exportBlocked=element('button','Télécharger les références à vérifier (CSV)','repl-download');
+  exportBlocked.type='button';exportBlocked.onclick=()=>download(summary,blocked);result.append(exportBlocked);
   const details=element('details',null,'repl-group repl-blocked'),list=element('ul');details.open=!proposed.length;
   for(const row of blocked)list.append(element('li',`${row.sku} · ${row.name} — ${row.reason}`));
   details.append(element('summary',`${blocked.length} référence(s) à vérifier`),list);result.append(details);

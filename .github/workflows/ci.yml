@@ -34,6 +34,7 @@ jobs:
         run: |
           node backend/tests/analytics-action-intelligence.mjs
           node backend/tests/analytics-replenishment-orders.mjs
+          node backend/tests/glovo-product-sync.mjs
           node backend/tests/analytics-decision-priorities.mjs
           node backend/tests/basket-direction-report.mjs
           node backend/tests/analytics-analysis-axes.mjs

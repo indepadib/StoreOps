@@ -97,7 +97,7 @@ const handoff=mod.mobilePrintJob({jobId:mobileJob.id,user:admin,action:'prepare'
 assert.equal(handoff.status,'PRINTING');
 assert.equal(handoff.payload_format,'ESCPOS_RASTER_BASE64');
 assert.deepEqual([...Buffer.from(handoff.payload,'base64').subarray(0,2)],[27,64]);
-assert.ok(Buffer.from(handoff.payload,'base64').includes(Buffer.from('250HS-002345')));
+assert.equal(Buffer.from(handoff.payload,'base64').length,11530,'one fixed 30 mm raster per label');
 assert.throws(()=>mod.mobilePrintJob({jobId:mobileJob.id,user:admin,action:'prepare'}),e=>e.status===409);
 assert.throws(()=>mod.mobilePrintJob({jobId:mobileJob.id,user:admin,action:'confirm'}),e=>e.status===409);
 assert.equal(mod.mobilePrintJob({jobId:mobileJob.id,user:admin,action:'confirm',confirmed:true}).status,'PRINTED');
@@ -111,9 +111,9 @@ assert.deepEqual(Buffer.from(rawbtLink(Buffer.from(testBytes).toString('base64')
 const escaped=escposLabelBytes({label_kind:'MD20',barcode_content:'250HS-002345',product_name:'Café\x1b@',original_price:10,final_price:8,expiry_date:'2026-11-01'});
 const sanitized=escposLabelBytes({label_kind:'MD20',barcode_content:'250HS-002345',product_name:'Cafe @',original_price:10,final_price:8,expiry_date:'2026-11-01'});
 assert.deepEqual(escaped,sanitized,'product text must not inject ESC commands');
-assert.ok(Buffer.from(escaped).includes(Buffer.from('Cafe @')));
+assert.deepEqual([...escaped.subarray(2,10)],[29,118,48,0,48,0,240,0]);
 assert.ok(!Buffer.from(escaped).includes(Buffer.from('DLC ')),'no expiry on ESC/POS label');
-assert.ok(Buffer.from(escaped).includes(Buffer.from('8.00 DH')));
+assert.notDeepEqual(escaped,escposLabelBytes({label_kind:'MD20',barcode_content:'250HS-002345',product_name:'Cafe @',original_price:10,final_price:7}),'changing the price must change the printed pixels');
 assert.throws(()=>escposLabelBytes({label_kind:'MD20',barcode_content:'x'.repeat(20)}),/largeur/);
 // Old queued ZPL is converted from immutable line snapshots, never sent as text.
 const legacyOp=mod.createMarkdownOperation({dlcId:created[0].id,user:admin,quantity:1,markdownCode:'MD20',originalPrice:10,idempotencyKey:'legacy-one'});
@@ -123,14 +123,24 @@ const converted=mod.mobilePrintJob({jobId:legacyJob.id,user:admin,action:'prepar
 assert.equal(converted.payload_format,'ESCPOS_RASTER_BASE64');
 assert.ok(!Buffer.from(converted.payload,'base64').includes(Buffer.from('^XA')));
 assert.equal(converted.total_labels,1);
-assert.ok(!Buffer.from(escaped).includes(Buffer.from('{B')),'no native barcode subset prefix sent to printer');
+
+
+db.prepare("UPDATE store_label_printers SET is_default=CASE WHEN id=? THEN 1 ELSE 0 END WHERE store_id='val-fleuri'").run(mobile.id);
+const largeJob=mod.createDirectLabelJob({storeId:'val-fleuri',user:admin,label:{productName:'Cafe',originalPrice:10,finalPrice:8,barcode:'250HS-002345',discountPercent:20,productNumber:'HS-002345'},markdownCode:'MD20',reason:'FRAIS',quantity:50,idempotencyKey:'raster-50-job'});
+const largeHandoff=mod.mobilePrintJob({jobId:largeJob.id,user:admin,action:'prepare'});
+assert.equal(largeHandoff.batches.length,4,'50 labels must remain printable within the RawBT link limit');
+const batchBytes=largeHandoff.batches.map(value=>Buffer.from(value,'base64'));
+assert(batchBytes.every(value=>value.length<=180000&&value.length%11530===0));
+assert.deepEqual(Buffer.concat(batchBytes),Buffer.from(largeHandoff.payload,'base64'),'batch splitting preserves all labels in order');
+
 const {code128Symbols,barcodeRaster}=await import('../../frontend/js/code128-raster.js');
 const payload='250HS-005943';
 const symbols=code128Symbols(payload);
 assert.equal(symbols[0],104);assert.equal(symbols.at(-1),106);
 assert.equal(symbols.slice(1,-2).map(n=>String.fromCharCode(n+32)).join(''),payload,'encoded content exactly matches POS payload');
 assert.equal(symbols.at(-2),(104+symbols.slice(1,-2).reduce((s,n,i)=>s+n*(i+1),0))%103);
-const raster=barcodeRaster(payload);assert.deepEqual([...raster.slice(0,8)],[29,118,48,0,48,0,64,0]);
+const raster=barcodeRaster(payload);
+assert.deepEqual(Buffer.from(escaped).subarray(10+151*48,10+199*48),Buffer.from(barcodeRaster('250HS-002345',48)).subarray(8),'barcode bars remain byte exact inside the composed label');assert.deepEqual([...raster.slice(0,8)],[29,118,48,0,48,0,64,0]);
 assert.ok(raster.slice(8,10).every(x=>x===0),'quiet zone on left');
 assert.ok(raster.slice(54,56).every(x=>x===0),'quiet zone on right');
 mod.validatePosProfile({markdownCode:'MD50',user:admin,symbology:'CODE128',roundingDecimals:2,evidenceNote:'AUTOMATED fixture',confirmed:true});

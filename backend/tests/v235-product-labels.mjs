@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 process.env.STOREOPS_DB=process.env.STOREOPS_DB||`/tmp/storeops-product-label-${process.pid}.db`;
-const {releasedProductDisplayName}=await import('../services/released-product-sourcing.mjs');
+const {releasedProductDisplayName,releasedArticleAttributes}=await import('../services/released-product-sourcing.mjs');
 
 assert.deepEqual(releasedProductDisplayName({ProductName:'Yaourt nature 4x110g',ProductDescription:'Yaourt nature 4x110g',SearchName:'DANONE'}),{field:'ProductName',name:'Yaourt nature 4x110g',quality:'DISPLAY_NAME'});
 assert.deepEqual(releasedProductDisplayName({ProductDescription:'Lait entier 1L',SearchName:'CENTRALE DANONE'}),{field:'ProductDescription',name:'Lait entier 1L',quality:'DISPLAY_NAME'});
@@ -16,3 +16,6 @@ assert.match(fn,/ProductDescription/);
 assert.doesNotMatch(fn,/for\(const field of \['ProductSearchName','SearchName'\]/);
 
 console.log('Product label contract: business name, search-only identity remains missing: OK');
+
+const attrs=releasedArticleAttributes({CreatedDateTime:'2026-01-03T10:00:00Z',ModifiedDateTime:'2026-02-04T10:00:00Z',ProductLifecycleStateId:'ACTIF',OriginCountryRegionId:'MAR'});
+assert.equal(attrs.createdAt,'2026-01-03T10:00:00Z');assert.equal(attrs.lifecycleState,'ACTIF');assert.equal(attrs.sources.createdAt,'CreatedDateTime');assert.equal(releasedArticleAttributes({SalesPriceDate:'2026-01-03',CreatedDateTime:'1900-01-01T00:00:00Z'}).createdAt,null,'price modification is never used as creation');

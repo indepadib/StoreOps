@@ -1,5 +1,6 @@
 import {api} from '../api.js';
 import {app} from '../state.js';
+import {mountGlovoPriceTest} from '../glovo-price-test.js';
 import {$,esc,toast} from '../ui.js';
 
 let data=null,lastResult=null,filter='ALL',query='',testSku='',testConfirmed=false,testBusy=false,jobWatch=0;
@@ -68,6 +69,7 @@ function draw(){
  $('#glovoSearch')?.addEventListener('input',e=>{query=e.target.value||'';renderList()});
  document.querySelectorAll('[data-glovo-filter]').forEach(b=>b.addEventListener('click',()=>{filter=b.dataset.glovoFilter||'ALL';draw()}));
  renderList();
+ mountGlovoPriceTest(host,app.storeId,()=>testSku);
 }
 async function verify(){
  const b=$('#verifyGlovo');if(b?.disabled)return;b.disabled=true;const old=b.textContent;b.textContent='Test en cours…';
