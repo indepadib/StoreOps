@@ -75,7 +75,7 @@ function renderResult(result,summary,rows,number){
  const heading=element('div',null,'repl-result-heading');heading.append(element('h3',title));
  if(proposed.length){const exportButton=element('button','Télécharger le besoin complet (CSV)','primary-btn');exportButton.type='button';exportButton.onclick=()=>download(summary,proposed);heading.append(exportButton);}
  const facts=element('div',null,'repl-facts');
- for(const [label,count] of [['Références examinées',summary.examined],['Lignes proposées',proposed.length],['En rupture',proposed.filter(row=>row.available===0).length],['Besoin non couvert',proposed.filter(row=>row.shortfall>0).length],['À vérifier',blocked.length]]){
+ for(const [label,count] of [['Références examinées',summary.examined],['Besoins anticipés',proposed.filter(row=>row.available>0).length],['Ruptures à traiter',proposed.filter(row=>row.available===0).length],['Besoin non couvert',proposed.filter(row=>row.shortfall>0).length],['À vérifier',blocked.length]]){
   const card=element('div',null,'repl-fact');card.append(element('strong',number(count)),element('span',label));facts.append(card);
  }
  result.replaceChildren(heading,facts,element('p',[summary.assortmentBasis,`${summary.demandBasis} · ${summary.start} au ${summary.end}.`].filter(Boolean).join(' · '),'repl-source'));

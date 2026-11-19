@@ -1,5 +1,5 @@
 export const normalize=s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-export const origin=r=>!r?.vendorName?'UNKNOWN':normalize(r.vendorName).includes('EXTENCINTERNATIONAL')?'IMPORT':'LOCAL';
+export const origin=r=>!r?.vendorName?'UNKNOWN':normalize(r.vendorName).includes('EXTENC')?'IMPORT':'LOCAL';
 export const isPGC=r=>/^(PGC|PRODUITSGRANDECONSOMMATION|PRODUITSDEGRANDECONSOMMATION)$/.test(normalize(r.hierarchy?.department?.label));
 export function relativeMetric(rows,{complete=false}={}){
  const pgc=rows.filter(isPGC),eligible=pgc.filter(r=>r.warehouseAvailable>0),unknown=pgc.filter(r=>r.warehouseAvailable==null||r.warehouseAvailable>0&&r.storeAvailable==null).length;

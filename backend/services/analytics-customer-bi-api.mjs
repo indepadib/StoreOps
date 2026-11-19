@@ -1,6 +1,8 @@
 import {prepareReceiptHistory,readReceiptHistory} from './analytics-receipt-history.mjs';
 import {prepareAnalyticsStock} from './dynamics-stock.mjs';
 import {readArticleReference} from './analytics-article-reference.mjs';
+import {saveArticleBusinessAttributes} from './article-business-attributes.mjs';
+import {readStoreSalesRange} from './dynamics-sales.mjs';
 import {db} from '../db.mjs';
 import {canAccessStore} from './permissions.mjs';
 import {readStoreBasketEvidence,salesIntegrationConfig} from './dynamics-sales.mjs';
@@ -18,6 +20,24 @@ export function intelligenceScope(user,requested,stores){
  const found=allowed.filter(s=>s.id===requested);if(!found.length)throw Object.assign(new Error('Magasin interdit ou inconnu.'),{status:403});return found;
 }
 export async function handleCustomerBiApi({req,url,user}){
+ const attributes=url.pathname.match(/^\/api\/analytics\/article-reference\/([A-Za-z0-9_-]+)\/attributes$/);
+ if(attributes&&req.method==='POST'){
+  if(user?.role!=='ops_director'&&user?.permissions_profile!=='platform_admin')return{status:403,data:{error:'Modification réservée à la Direction.'}};
+  let raw='';for await(const part of req){raw+=part;if(raw.length>4096)return{status:413,data:{error:'Attributs trop volumineux.'}};}
+  let input;try{input=JSON.parse(raw)}catch{return{status:400,data:{error:'JSON invalide.'}};}
+  return{status:200,data:saveArticleBusinessAttributes(attributes[1],input,user)};
+ }
+ if(url.pathname==='/api/analytics/detention/sales'&&req.method==='GET'){
+  const storeId=url.searchParams.get('storeId');
+  if(!canAccessStore(user,storeId))return{status:403,data:{error:'Magasin interdit.'}};
+  if(!db.prepare('SELECT id FROM stores WHERE id=? AND active=1').get(storeId))return{status:404,data:{error:'Magasin introuvable.'}};
+  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date());
+  const endDate=new Date(Date.parse(today)-86400000).toISOString().slice(0,10);
+  const startDate=new Date(Date.parse(endDate)-27*86400000).toISOString().slice(0,10);
+  const sales=await readStoreSalesRange(storeId,{startDate,endDate,exportLean:true});
+  if(sales.status!=='READY'||sales.diagnostics?.truncated||sales.days!==28)return{status:409,data:{error:'Ventes incomplètes. Les invendus ne peuvent pas être identifiés.'}};
+  return{status:200,data:{storeId,startDate,endDate,status:'READY',products:sales.products.map(row=>({productNumber:row.key,sales:row.sales,units:row.units,quantityByUnit:row.quantityByUnit}))}};
+ }
  if(req.method!=='GET'||!['/api/analytics/customer-intelligence','/api/analytics/detention','/api/analytics/detention/prepare','/api/analytics/detention/history','/api/analytics/detention/history/prepare','/api/analytics/article-reference','/api/analytics/intelligence-scope','/api/analytics/customer-intelligence/prepare','/api/analytics/customer-research','/api/analytics/customer-base','/api/analytics/customer-base/prepare'].includes(url.pathname))return null;
  const all=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all();let stores=intelligenceScope(user,url.searchParams.get('storeId'),all);
  const requestedIds=(url.searchParams.get('storeIds')||'').split(',').filter(Boolean);

@@ -42,7 +42,7 @@ export function parseRetailFinancialDimension(value){
  return{raw,retailScope,rayonCode,rayonLabel:rayonCode?`Rayon ${rayonCode}`:null}
 }
 export function releasedArticleAttributes(row={}){
- const fields={createdAt:['CreatedDateTime','CreatedOn'],modifiedAt:['ModifiedDateTime','ModifiedOn'],lifecycleState:['ProductLifecycleStateId'],originCountry:['OriginCountryRegionId'],defaultPurchaseWarehouse:['DefaultPurchaseWarehouseId']};
+ const fields={createdAt:['CreatedDateTime','CreatedOn'],modifiedAt:['ModifiedDateTime','ModifiedOn'],lifecycleState:['ProductLifecycleStateId'],originCountry:['OriginCountryRegionId'],defaultPurchaseWarehouse:['DefaultPurchaseWarehouseId'],assortmentDepth:[process.env.D365_ASSORTMENT_DEPTH_FIELD,'AssortmentDepth','AssortmentDepthId'].filter(Boolean)};
  const values={},sources={};
  for(const [key,candidates] of Object.entries(fields)){
   const field=valueField(row,candidates),value=field?clean(row[field]):'';
