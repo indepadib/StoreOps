@@ -27,6 +27,7 @@ export async function readAnalyticsCatalog(productNumbers=[]){
     const ref=refs.get(productNumber)||{productNumber},hierarchy=resolveRetailHierarchy(productNumber,context,ref),cost=salesUnitCost(ref);
     return{
       productNumber,
+      articleAttributes:ref.articleAttributes||null,
       productName:ref.productName||null,
       productNameSource:ref.productNameSource||ref.source||null,
       nameStatus:ref.productName?'RESOLVED':ref.identityStatus==='SEARCH_ONLY'?'SEARCH_ONLY':'MISSING',

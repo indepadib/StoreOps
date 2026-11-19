@@ -184,8 +184,17 @@ function bind(){
   if(!isAndroid())throw new Error('Ouvre StoreOps sur le PDA Android équipé de RawBT.');
   const job=await api(`/api/label-print-jobs/${encodeURIComponent(b.dataset.mdRawbt)}/rawbt`,{method:'POST',body:{action:'prepare'}});
   const host=document.querySelector(`[data-md-rawbt-host="${CSS.escape(job.id)}"]`);
-  host.innerHTML=`<p>RawBT doit utiliser ESC/POS general, 203 dpi. Après impression, reviens confirmer la sortie. Aucun renvoi automatique.</p><a class="btn brand" href="${esc(rawbtLink(job.payload,job.payload_format))}">Ouvrir RawBT et imprimer</a><button class="btn soft" data-md-mobile-done>Vérifier la sortie</button>`;
-  host.querySelector('a').addEventListener('click',e=>{if(e.currentTarget.dataset.sent){e.preventDefault();return}e.currentTarget.dataset.sent='1';e.currentTarget.textContent='Transmis à RawBT · vérifier la sortie';});
+  host.innerHTML=`<p>RawBT doit utiliser ESC/POS general, 203 dpi. Après impression, reviens confirmer la sortie. Aucun renvoi automatique.</p><a class="btn brand" href="${esc(rawbtLink((job.batches||[job.payload])[0],job.payload_format))}">Ouvrir RawBT et imprimer</a><button class="btn soft" data-md-mobile-done>Vérifier la sortie</button>`;
+  const first=host.querySelector('a'),links=[first];
+  for(const [index,payload] of (job.batches||[job.payload]).entries()){
+   if(index===0)continue;
+   const link=document.createElement('a');link.className='btn brand';link.href=rawbtLink(payload,job.payload_format);
+   link.textContent=`Imprimer le lot ${index+1} / ${job.batches.length}`;link.setAttribute('aria-disabled','true');host.append(link);links.push(link);
+  }
+  links.forEach((link,index)=>link.addEventListener('click',event=>{
+   if(link.dataset.sent||index>0&&!links[index-1].dataset.sent){event.preventDefault();return;}
+   link.dataset.sent='1';link.textContent=`Lot ${index+1} transmis · vérifier la sortie`;links[index+1]?.removeAttribute('aria-disabled');
+  }));
   host.querySelector('[data-md-mobile-done]').addEventListener('click',()=>reload().catch(e=>toast(e.message)));
  }catch(e){toast(e.message);b.disabled=false}}));
  for(const [attr,action,message] of [['confirm','confirm','Toutes les étiquettes sont-elles sorties correctement ?'],['failed','failed','Après contrôle physique, confirmer une sortie absente ou incomplète ? Une relance peut dupliquer les étiquettes déjà sorties.']])document.querySelectorAll(`[data-md-${attr}]`).forEach(b=>b.addEventListener('click',async()=>{if(!confirm(message))return;b.disabled=true;try{await api(`/api/label-print-jobs/${encodeURIComponent(b.dataset[attr==='confirm'?'mdConfirm':'mdFailed'])}/rawbt`,{method:'POST',body:{action,confirmed:true}});await reload()}catch(e){toast(e.message);b.disabled=false}}));

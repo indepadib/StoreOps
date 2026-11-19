@@ -58,10 +58,21 @@ export function renderDirectLabels(){
     if(!isAndroid())throw new Error('Ouvre cette page sur le PDA Android pour imprimer avec RawBT.');
     const path=`/api/label-print-jobs/${encodeURIComponent(job.id)}/rawbt`;
     const prepared=await api(path,{method:'POST',body:{action:'prepare'}});
-    const link=document.createElement('a');link.className='btn brand';link.href=rawbtLink(prepared.payload,prepared.payload_format);link.textContent='Ouvrir RawBT et imprimer';
+    const batches=prepared.batches||[prepared.payload],links=batches.map((payload,index)=>{
+     const link=document.createElement('a');link.className='btn brand';
+     link.href=rawbtLink(payload,prepared.payload_format);
+     link.textContent=batches.length===1?'Ouvrir RawBT et imprimer':`Imprimer le lot ${index+1} / ${batches.length}`;
+     if(index>0)link.setAttribute('aria-disabled','true');
+     return link;
+    });
     const confirm=document.createElement('button');confirm.className='btn soft';confirm.type='button';confirm.textContent='Confirmer la sortie';confirm.disabled=true;
     const failed=document.createElement('button');failed.className='btn soft';failed.type='button';failed.textContent='Impression manquante ou incomplète';
-    link.addEventListener('click',e=>{if(link.dataset.sent){e.preventDefault();return}link.dataset.sent='1';confirm.disabled=false;});
+    links.forEach((link,index)=>link.addEventListener('click',event=>{
+     if(link.dataset.sent||index>0&&!links[index-1].dataset.sent){event.preventDefault();return;}
+     link.dataset.sent='1';link.textContent=`Lot ${index+1} transmis · vérifier la sortie`;
+     links[index+1]?.removeAttribute('aria-disabled');
+     confirm.disabled=!links.every(item=>item.dataset.sent);
+    }));
     async function finish(action){
      if(action==='failed'&&!window.confirm('Après contrôle du rouleau, confirmer que l’impression manque ou est incomplète ?'))return;
      confirm.disabled=true;failed.disabled=true;
@@ -69,11 +80,11 @@ export function renderDirectLabels(){
       await api(path,{method:'POST',body:{action,confirmed:true}});
       status.textContent=action==='confirm'?'Impression confirmée.':'Échec enregistré. Vérifie le rouleau avant de préparer une nouvelle impression.';
       showNextArticle();
-     }catch(error){status.textContent=error.message;confirm.disabled=!link.dataset.sent;failed.disabled=false;}
+     }catch(error){status.textContent=error.message;confirm.disabled=!links.every(item=>item.dataset.sent);failed.disabled=false;}
     }
     confirm.addEventListener('click',()=>finish('confirm'));
     failed.addEventListener('click',()=>finish('failed'));
-    result.replaceChildren(link,confirm,failed);
+    result.replaceChildren(...links,confirm,failed);
     status.textContent='Étiquettes prêtes. Ouvre RawBT.';
    }else{
     status.textContent=`${job.quantity} étiquette(s) en file pour le relais magasin.`;

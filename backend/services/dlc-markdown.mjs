@@ -352,8 +352,17 @@ function zplEscape(value){return String(value??'').replace(/[\^~]/g,' ').replace
 function labelZpl(op,record,profile,printer){
  if(profile.symbology!=='CODE128')throw Object.assign(new Error('Symbologie POS non compatible avec le générateur ZPL.'),{status:409,code:'PRINT_SYMBOLOGY_UNSUPPORTED'});
  const width=Math.max(300,Math.round(Number(printer.media_width_mm||60)/25.4*Number(printer.dpi||203))),height=Math.max(200,Math.round(Number(printer.media_height_mm||40)/25.4*Number(printer.dpi||203)));
- const name=zplEscape(record.product_name).slice(0,34),expiry=zplEscape(record.expiry_date),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
- return ['^XA','^CI28','^PW'+width,'^LL'+height,'^FO13,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO14,8^A0N,26,26^FD-'+Math.round(op.discount_percent)+'%^FS','^FO13,41^A0N,17,15^FB'+(width-26)+',2,2,L,0^FD'+name+'^FS','^FO13,84^A0N,15,14^FD'+oldPrice+' DH  >  '+newPrice+' DH^FS','^FO24,112^BY2,2,52^BCN,52,Y,N,N^FD'+code+'^FS','^XZ'].join('\n');
+ const scale=Number(printer.dpi||203)/203,dot=value=>Math.round(value*scale);
+ const name=zplEscape(record.product_name).slice(0,60),code=zplEscape(op.barcode_content),oldPrice=Number(op.original_price).toFixed(2),newPrice=Number(op.final_price).toFixed(2);
+ return ['^XA','^CI28','^PW'+width,'^LL'+height,
+  `^FO${dot(14)},${dot(8)}^A0N,${dot(32)},${dot(30)}^FB${width-dot(28)},1,0,C,0^FD-${Math.round(op.discount_percent)}%^FS`,
+  `^FO${dot(15)},${dot(8)}^A0N,${dot(32)},${dot(30)}^FB${width-dot(28)},1,0,C,0^FD-${Math.round(op.discount_percent)}%^FS`,
+  `^FO${dot(14)},${dot(47)}^A0N,${dot(17)},${dot(12)}^FB${width-dot(28)},2,2,C,0^FD${name}^FS`,
+  `^FO${dot(14)},${dot(92)}^A0N,${dot(16)},${dot(12)}^FB${width-dot(28)},1,0,C,0^FD${oldPrice} DH^FS`,
+  `^FO${Math.round((width-dot((oldPrice.length+3)*12))/2)},${dot(99)}^GB${dot((oldPrice.length+3)*12)},${dot(2)},${dot(2)}^FS`,
+  `^FO${dot(14)},${dot(115)}^A0N,${dot(28)},${dot(23)}^FB${width-dot(28)},1,0,C,0^FD${newPrice} DH^FS`,
+  `^FO${dot(24)},${dot(154)}^BY${Math.max(2,dot(2))},2,${dot(43)}^BCN,${dot(43)},Y,N,N^FD${code}^FS`,'^XZ'].join('\n');
+
 }
 export function directLabel({productNumber,productName,basePrice,markdownCode}){
  const profile=db.prepare('SELECT * FROM markdown_pos_profiles WHERE markdown_code=?').get(markdownCode);
@@ -374,7 +383,7 @@ export function createDirectLabelJob({storeId,user,label,markdownCode,reason,qua
  if(mobile&&!canOpenRawBt)throw Object.assign(new Error('Ouvre cette page sur le PDA Android pour imprimer avec RawBT.'),{status:409,code:'RAWBT_ANDROID_REQUIRED'});
  const fields={label_kind:markdownCode,product_name:label.productName,original_price:label.originalPrice,final_price:label.finalPrice,barcode_content:label.barcode,discount_percent:label.discountPercent};
  const bytes=mobile?Buffer.from(escposLabelBytes(fields)):null;
- if(mobile&&bytes.length*quantity>180000)throw Object.assign(new Error('Réduis la quantité pour imprimer sur RawBT.'),{status:409});
+ if(mobile&&bytes.length*quantity>600000)throw Object.assign(new Error('Réduis la quantité pour imprimer sur RawBT.'),{status:409});
  const payload=mobile?Buffer.concat(Array(quantity).fill(bytes)).toString('base64'):Array(quantity).fill(labelZpl(fields,fields,{symbology:'CODE128'},{...printer,media_width_mm:50,media_height_mm:30})).join('\n');
  const id=uid('print');
  db.prepare('INSERT INTO label_print_jobs(id,store_id,printer_id,idempotency_key,status,payload_format,payload,total_labels,created_by) VALUES(?,?,?,?,?,?,?,?,?)').run(id,storeId,printer.id,key,'PENDING',mobile?'ESCPOS_RASTER_BASE64':'ZPL',payload,quantity,user.id);
@@ -428,12 +437,21 @@ export function mobilePrintJob({jobId,user,action,confirmed=false}={}){
    const chunks=[];for(const item of items){const label=Buffer.from(escposLabelBytes(item));for(let i=0;i<item.quantity;i++)chunks.push(label)}
    payload=Buffer.concat(chunks).toString('base64');
   }
-  if(Buffer.from(payload,'base64').length>180000)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
+  const binary=Buffer.from(payload,'base64'),batches=[];
+  const labelLength=2+8+48*240;
+  if(binary.length>180000){
+   if(binary.length>600000||binary.length%labelLength!==0)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
+   for(let offset=0;offset<binary.length;offset+=labelLength){
+    if(!binary.subarray(offset,offset+10).equals(Buffer.from([27,64,29,118,48,0,48,0,240,0])))throw Object.assign(new Error('Format du lot non compatible avec une impression fractionnée.'),{status:409});
+   }
+   const batchLength=Math.floor(180000/labelLength)*labelLength;
+   for(let offset=0;offset<binary.length;offset+=batchLength)batches.push(binary.subarray(offset,offset+batchLength).toString('base64'));
+  }else batches.push(payload);
   const result=db.prepare("UPDATE label_print_jobs SET status='PRINTING',payload=?,payload_format='ESCPOS_RASTER_BASE64',attempts=attempts+1,claimed_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='PENDING'").run(payload,jobId);
   if(!result.changes)throw Object.assign(new Error('Job déjà transmis ou terminé. Vérifier la sortie physique avant toute reprise.'),{status:409});
   db.prepare("UPDATE dlc_markdown_operations SET status='PRINTING',updated_at=CURRENT_TIMESTAMP WHERE id IN (SELECT operation_id FROM label_print_job_items WHERE job_id=?)").run(jobId);
   audit({storeId:job.store_id,userId:user.id,action:'LABEL_RAWBT_PREPARED',entityType:'LABEL_PRINT_JOB',entityId:jobId});
-  return{id:jobId,payload,payload_format:'ESCPOS_RASTER_BASE64',total_labels:job.total_labels,status:'PRINTING'};
+  return{id:jobId,payload,batches,payload_format:'ESCPOS_RASTER_BASE64',total_labels:job.total_labels,status:'PRINTING'};
  }
  if(!['confirm','failed'].includes(action)||!confirmed||job.status!=='PRINTING')throw Object.assign(new Error('Confirmation explicite et job en cours requis.'),{status:409});
  const result=completePrintJob({jobId,bridgeKey:job.bridge_key,success:action==='confirm',error:'Sortie vérifiée par opérateur : impression absente ou incomplète. Ne relancer qu’après contrôle des étiquettes.'});
