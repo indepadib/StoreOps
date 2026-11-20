@@ -146,12 +146,12 @@ assert.equal(compact.slice(8,-2).map(n=>String(n).padStart(2,'0')).join(''),payl
 assert.equal(compact.at(-2),(104+compact.slice(1,-2).reduce((sum,n,i)=>sum+n*(i+1),0))%103);
 assert.deepEqual([...escaped.subarray(0,labelPrefix.length)],[...labelPrefix],'print area and alignment must be explicitly reset for each label');
 const pixels=escaped.subarray(labelPrefix.length+8);
-assert(pixels.subarray(2*48,3*48).some(value=>value!==0),'discount begins near the top');
+assert(pixels.subarray(0,48).some(value=>value!==0),'discount begins at the top of the printable image');
 assert(pixels.subarray(175*48).every(value=>value===0),'bottom reserve accommodates a physical printer top offset without clipping the barcode');
 for(let y=0;y<240;y++)if(pixels.subarray(y*48,(y+1)*48).some(value=>value!==0))assert(y+32<240,'all printed content must fit even with 4 mm of hardware advance');
 for(let y=0;y<240;y++)for(let x=0;x<32;x++){assert.equal(pixels[y*48+(x>>3)]&(128>>(x%8)),0,'left printable margin');assert.equal(pixels[y*48+((383-x)>>3)]&(128>>((383-x)%8)),0,'right printable margin');}
 const raster=barcodeRaster(payload);
-assert.deepEqual(Buffer.from(escaped).subarray(labelPrefix.length+8+112*48,labelPrefix.length+8+154*48),Buffer.from(barcodeRaster('250HS-002345',42,{compact:true})).subarray(8),'barcode bars remain byte exact inside the composed label');assert.deepEqual([...raster.slice(0,8)],[29,118,48,0,48,0,64,0]);
+assert.deepEqual(Buffer.from(escaped).subarray(labelPrefix.length+8+104*48,labelPrefix.length+8+146*48),Buffer.from(barcodeRaster('250HS-002345',42,{compact:true})).subarray(8),'barcode bars remain byte exact inside the composed label');assert.deepEqual([...raster.slice(0,8)],[29,118,48,0,48,0,64,0]);
 assert.ok(raster.slice(8,10).every(x=>x===0),'quiet zone on left');
 assert.ok(raster.slice(54,56).every(x=>x===0),'quiet zone on right');
 mod.validatePosProfile({markdownCode:'MD50',user:admin,symbology:'CODE128',roundingDecimals:2,evidenceNote:'AUTOMATED fixture',confirmed:true});
