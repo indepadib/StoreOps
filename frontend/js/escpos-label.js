@@ -1,4 +1,5 @@
 import {thermalLabelRaster} from './thermal-label-raster.js';
+export const labelPrefix=Uint8Array.from([27,64,29,76,0,0,29,87,128,1,27,97,1]);
 const header=[27,64,27,77,0,27,51,24,29,76,0,0,29,87,128,1];
 const bytes=text=>[...text].map(character=>character.charCodeAt(0));
 export function escposTestBytes(){
@@ -11,5 +12,5 @@ export function escposLabelBytes(item){
  if(percent===null)throw new Error('Niveau de demarque inconnu.');
  if(![item.original_price,item.final_price].every(value=>value!=null&&Number.isFinite(Number(value))&&Number(value)>=0))throw new Error('Prix étiquette invalide.');
  const raster=thermalLabelRaster({...item,barcode_content:code},percent);
- return Uint8Array.from([27,64,...raster]);
+ return Uint8Array.from([...labelPrefix,...raster]);
 }

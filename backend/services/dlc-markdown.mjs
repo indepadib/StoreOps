@@ -1,4 +1,4 @@
-import {escposLabelBytes} from '../../frontend/js/escpos-label.js';
+import {escposLabelBytes,labelPrefix} from '../../frontend/js/escpos-label.js';
 import { db, uid, audit, todayISO } from '../db.mjs';
 import { createDlcRecord } from './dlc.mjs';
 
@@ -438,11 +438,13 @@ export function mobilePrintJob({jobId,user,action,confirmed=false}={}){
    payload=Buffer.concat(chunks).toString('base64');
   }
   const binary=Buffer.from(payload,'base64'),batches=[];
-  const labelLength=2+8+48*240;
+  const legacy=binary.subarray(0,4).equals(Buffer.from([27,64,29,118]));
+  const prefix=legacy?Buffer.from([27,64]):Buffer.from(labelPrefix);
+  const labelLength=prefix.length+8+48*240;
   if(binary.length>180000){
    if(binary.length>600000||binary.length%labelLength!==0)throw Object.assign(new Error('Lot trop volumineux pour RawBT. Réduire la sélection.'),{status:409});
    for(let offset=0;offset<binary.length;offset+=labelLength){
-    if(!binary.subarray(offset,offset+10).equals(Buffer.from([27,64,29,118,48,0,48,0,240,0])))throw Object.assign(new Error('Format du lot non compatible avec une impression fractionnée.'),{status:409});
+    if(!binary.subarray(offset,offset+prefix.length+8).equals(Buffer.concat([prefix,Buffer.from([29,118,48,0,48,0,240,0])])))throw Object.assign(new Error('Format du lot non compatible avec une impression fractionnée.'),{status:409});
    }
    const batchLength=Math.floor(180000/labelLength)*labelLength;
    for(let offset=0;offset<binary.length;offset+=batchLength)batches.push(binary.subarray(offset,offset+batchLength).toString('base64'));
