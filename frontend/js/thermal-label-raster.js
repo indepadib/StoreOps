@@ -54,13 +54,16 @@ const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036
 export function thermalLabelRaster(item,percent){
  const pixels=new Uint8Array(48*240);
  function dot(x,y){if(x>=0&&x<384&&y>=0&&y<240)pixels[y*48+(x>>3)]|=128>>(x%8);}
- function text(value,y,scale,strike=false){
-  const label=normalize(value),width=(label.length*6-1)*scale,start=Math.floor((384-width)/2);
+ function text(value,y,scale,strike=false,bold=false){
+  const label=normalize(value),width=(label.length*6-1)*scale+(bold?1:0),start=Math.floor((384-width)/2);
   if(width>304)throw new Error('Texte trop large pour une étiquette 50 × 30 mm.');
   [...label].forEach((character,i)=>{
    (font[character]||font[' ']).forEach((row,dy)=>{
     [...row].forEach((pixel,dx)=>{
-     if(pixel==='1')for(let sy=0;sy<scale;sy++)for(let sx=0;sx<scale;sx++)dot(start+i*6*scale+dx*scale+sx,y+dy*scale+sy);
+     if(pixel==='1')for(let sy=0;sy<scale;sy++)for(let sx=0;sx<scale;sx++){
+      const x=start+i*6*scale+dx*scale+sx,row=y+dy*scale+sy;
+      dot(x,row);if(bold)dot(x+1,row);
+     }
     });
    });
   });
@@ -75,14 +78,14 @@ export function thermalLabelRaster(item,percent){
   lines.push(remaining.slice(0,end));remaining=remaining.slice(end).trim();
  }
  if(remaining)lines[1]=lines[1].slice(0,22)+'...';
- text('-'+percent+'%',18,3);
- lines.forEach((line,i)=>text(line,50+i*17,2));
- text(Number(item.original_price).toFixed(2)+' DH',89,2,true);
+ text('-'+percent+'%',2,3,false,true);
+ lines.forEach((line,i)=>text(line,30+i*17,2));
+ text(Number(item.original_price).toFixed(2)+' DH',65,2,true);
  const price=Number(item.final_price).toFixed(2)+' DH';
- text(price,111,(price.length*6-1)*3<=304?3:2);
+ text(price,84,(price.length*6-1)*3<=304?3:2);
  const barcode=barcodeRaster(item.barcode_content,42,{compact:true}).subarray(8);
- pixels.set(barcode,143*48);
- text(item.barcode_content,195,2);
+ pixels.set(barcode,112*48);
+ text(item.barcode_content,161,2);
  const raster=new Uint8Array(8+pixels.length);
  raster.set([29,118,48,0,48,0,240,0]);raster.set(pixels,8);
  return raster;
