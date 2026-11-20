@@ -78,14 +78,14 @@ export function thermalLabelRaster(item,percent){
   lines.push(remaining.slice(0,end));remaining=remaining.slice(end).trim();
  }
  if(remaining)lines[1]=lines[1].slice(0,22)+'...';
- text('-'+percent+'%',2,3,false,true);
- lines.forEach((line,i)=>text(line,30+i*17,2));
- text(Number(item.original_price).toFixed(2)+' DH',65,2,true);
+ text('-'+percent+'%',0,3,false,true);
+ lines.forEach((line,i)=>text(line,26+i*17,2));
+ text(Number(item.original_price).toFixed(2)+' DH',61,2,true);
  const price=Number(item.final_price).toFixed(2)+' DH';
- text(price,84,(price.length*6-1)*3<=304?3:2);
+ text(price,78,(price.length*6-1)*3<=304?3:2);
  const barcode=barcodeRaster(item.barcode_content,42,{compact:true}).subarray(8);
- pixels.set(barcode,112*48);
- text(item.barcode_content,161,2);
+ pixels.set(barcode,104*48);
+ text(item.barcode_content,153,2);
  const raster=new Uint8Array(8+pixels.length);
  raster.set([29,118,48,0,48,0,240,0]);raster.set(pixels,8);
  return raster;
