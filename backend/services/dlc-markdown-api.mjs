@@ -1,4 +1,4 @@
-import { db } from '../db.mjs';
+import { db,audit } from '../db.mjs';
 import { canAccessStore, isPlatformAdmin } from './permissions.mjs';
 import { getBaseSalesPriceByItem } from './dynamics-price.mjs';
 import { getProductByEan } from './dynamics.mjs';
@@ -47,6 +47,11 @@ export async function handleDlcMarkdownApi({req,url,user}){
   const label=directLabel({productNumber,productName,basePrice:price,markdownCode});
   if(req.method==='GET')return {status:200,data:label};
   if(input.expectedPrice!==label.finalPrice)throw Object.assign(new Error('Le prix a changé. Vérifie le nouvel aperçu avant impression.'),{status:409});
+  if(input.output==='DOCUMENT'){
+   if(!['CASSE','FRAIS'].includes(input.reason)||!Number.isInteger(input.quantity)||input.quantity<1||input.quantity>50)throw Object.assign(new Error('Choisis un motif et une quantité de 1 à 50.'),{status:400});
+   audit({storeId:p.storeId,userId:user.id,action:'LABEL_DOCUMENT_PREPARED',entityType:'ARTICLE',entityId:productNumber,details:{quantity:input.quantity,markdownCode,reason:input.reason,basePrice:label.originalPrice,finalPrice:label.finalPrice}});
+   return{status:200,data:{document:true,label:{...label,markdownCode},quantity:input.quantity}};
+  }
   const job=createDirectLabelJob({storeId:p.storeId,user,label,markdownCode,reason:input.reason,quantity:input.quantity,idempotencyKey:input.idempotencyKey,canOpenRawBt:input.canOpenRawBt!==false});
   const printer=listPrinters(p.storeId).find(x=>x.id===job.printer_id);
   return {status:201,data:{id:job.id,status:job.status,quantity:job.total_labels,mobile:printer?.protocol!=='ZPL_BRIDGE'}};

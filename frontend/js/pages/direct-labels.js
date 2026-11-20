@@ -1,6 +1,7 @@
 import {api} from '../api.js';
 import {app} from '../state.js';
 import {rawbtLink,isAndroid} from '../rawbt-print.js';
+import {documentPrintControls} from '../label-document.js';
 
 export function renderDirectLabels(){
  const host=document.getElementById('dlcMarkdownContent');
@@ -13,12 +14,16 @@ export function renderDirectLabels(){
     <div class="field"><label for="labelDiscount">Remise</label><select id="labelDiscount" name="markdownCode"><option value="MD20">−20 %</option><option value="MD50">−50 %</option></select></div>
     <div class="field"><label for="labelReason">Motif</label><select id="labelReason" name="reason" required><option value="">Choisir</option><option value="CASSE">Casse</option><option value="FRAIS">Frais</option></select></div>
     <div class="field"><label for="labelQuantity">Étiquettes</label><input id="labelQuantity" name="quantity" type="number" min="1" max="50" step="1" value="1" required></div>
+    <div class="field"><label for="labelPrintApp">Impression</label><select id="labelPrintApp" name="printApp"><option value="RONGTA">Rongta · fichier étiquette</option><option value="EXISTING">Impression magasin / RawBT</option></select></div>
    </div>
    <p role="status" aria-live="polite"></p><button class="btn brand" type="submit">Vérifier le prix</button><div data-print-result></div>
  </form>`;
  const form=host.querySelector('form'),button=form.querySelector('button'),status=form.querySelector('[role=status]'),result=form.querySelector('[data-print-result]');
  const fields=[...form.querySelectorAll('input, select')];
  const article=form.elements.namedItem('code'),quantity=form.elements.namedItem('quantity');
+ const printApp=form.elements.namedItem('printApp');
+ try{printApp.value=localStorage.getItem('storeops:label-print-app')==='EXISTING'?'EXISTING':'RONGTA';}catch{}
+ printApp.addEventListener('change',()=>{try{localStorage.setItem('storeops:label-print-app',printApp.value)}catch{}});
  let preview=null,job=null,requestKey=null,revision=0;
  function resetPreview(){
   revision++;
@@ -26,13 +31,14 @@ export function renderDirectLabels(){
   status.textContent='';result.replaceChildren();button.textContent='Vérifier le prix';
  }
  form.addEventListener('input',resetPreview);
+ function nextArticle(){
+  article.value='';quantity.value='1';
+  resetPreview();fields.forEach(field=>field.disabled=false);button.disabled=false;article.focus();
+ }
  function showNextArticle(){
   const next=document.createElement('button');
   next.className='btn brand';next.type='button';next.textContent='Article suivant';
-  next.addEventListener('click',()=>{
-   article.value='';quantity.value='1';
-   resetPreview();fields.forEach(field=>field.disabled=false);button.disabled=false;article.focus();
-  });
+  next.addEventListener('click',nextArticle);
   result.replaceChildren(next);
  }
  form.addEventListener('submit',async event=>{
@@ -53,8 +59,11 @@ export function renderDirectLabels(){
     return;
    }
    requestKey??=crypto.randomUUID();
-   job??=await api(endpoint,{method:'POST',body:{...input,quantity:Number(input.quantity),expectedPrice:preview.finalPrice,idempotencyKey:requestKey,canOpenRawBt:isAndroid()}});
-   if(job.mobile){
+   job??=await api(endpoint,{method:'POST',body:{...input,output:input.printApp==='RONGTA'?'DOCUMENT':undefined,quantity:Number(input.quantity),expectedPrice:preview.finalPrice,idempotencyKey:requestKey,canOpenRawBt:isAndroid()}});
+   if(job.document){
+    documentPrintControls(result,job.label,job.quantity,nextArticle);
+    status.textContent='Étiquettes prêtes pour Rongta. Le PDF contient uniquement les étiquettes, sans en-tête de page.';
+   }else if(job.mobile){
     if(!isAndroid())throw new Error('Ouvre cette page sur le PDA Android pour imprimer avec RawBT.');
     const path=`/api/label-print-jobs/${encodeURIComponent(job.id)}/rawbt`;
     const prepared=await api(path,{method:'POST',body:{action:'prepare'}});
