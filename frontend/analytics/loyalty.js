@@ -1,3 +1,4 @@
+import {loadLoyaltyPeriod} from './loyalty-period.mjs';
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -15,7 +16,8 @@
     walletStores: [],
     enrollmentKey: null,
     enrollmentLoading: false,
-    enrollmentData: null
+    enrollmentData: null,
+    enrollmentProgress: ''
   };
 
   function safe(v) {
@@ -46,9 +48,12 @@
     state.enrollmentKey=key;
     state.enrollmentLoading=true;
     state.enrollmentData=null;
+    state.enrollmentProgress='';
     try{
-      const qs=new URLSearchParams({start:scope.start,end:scope.end,storeIds:ids.join(',')});
-      const data=await withTimeout(api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true}),25000,'Inscriptions fidélité');
+      const data=await loadLoyaltyPeriod(scope.start,scope.end,ids,async range=>{
+        const qs=new URLSearchParams({start:range.start,end:range.end,storeIds:ids.join(',')});
+        return withTimeout(api.api('/api/analytics/loyalty-range?'+qs,{noRetry:true}),25000,'Fidélité');
+      },(done,total)=>{if(state.enrollmentKey===key){state.enrollmentProgress=`${done}/${total} périodes lues`;renderLoyalty();}});
       if(state.enrollmentKey===key)state.enrollmentData=data;
     }catch{
       if(state.enrollmentKey===key)state.enrollmentData={status:'UNAVAILABLE',stores:[]};
@@ -118,9 +123,11 @@
 
     ];
 
+    const loyalty=state.enrollmentData,accountEvidence=loyalty?.accountCreationEvidence;
+    const accountNote=state.enrollmentLoading?state.enrollmentProgress||'Lecture des comptes clients…':loyalty?.accountCreations==null?'Lecture D365 indisponible':accountEvidence?.scope==='NETWORK'?`Comptes distincts créés · ${api.number(accountEvidence.unattributed||0)} sans magasin attribué`:loyalty.accountCreationStatus==='PARTIAL'?'Comptes attribués · affectation réseau incomplète':'Comptes distincts créés dans la période';
     const priority=[
-      ['Créations de comptes','N/D','Source de création de compte à confirmer'],
-      ['Cashback crédité · earn','N/D','Journal des crédits Wallet à confirmer'],
+      ['Créations de comptes',state.enrollmentLoading?'…':loyalty?.accountCreations==null?'N/D':api.number(loyalty.accountCreations),accountNote],
+      ['Cashback crédité · earn',state.enrollmentLoading?'…':loyalty?.earn==null?'N/D':api.money(loyalty.earn,true),state.enrollmentLoading?'Lecture du journal Wallet…':loyalty?.earnStatus==='READY'?'Crédits nets · journal D365 en DH':'Lecture du journal D365 indisponible'],
       ['Cashback consommé · burn',walletBurn==null?'N/D':api.money(walletBurn,true),state.walletLoading?'Lecture des paiements…':walletBurn==null?`${walletReady.length}/${totalStores} magasins couverts`:api.number(walletTx)+' paiements Wallet'],
     ];
     cards.unshift(...priority);
@@ -181,7 +188,7 @@
     const identityLabels={CUSTOMER_ACCOUNT:'Par compte inscrit',LOYALTY_CARD:'Par carte inscrite',MIXED_ACCOUNT_AND_CARD:'Compte ou carte selon la ligne'};
     const enrollmentStatus={TRUNCATED:'Lecture incomplète',INCOMPLETE_IDENTITY:'Identifiants manquants'};
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="12"><div class="table-loading">Données fidélité indisponibles.</div></td></tr>';
+      body.innerHTML = '<tr><td colspan="13"><div class="table-loading">Données fidélité indisponibles.</div></td></tr>';
       return;
     }
 
@@ -196,7 +203,8 @@
         <td>${api.money(r.nonMemberBasket)}</td>
         <td>${api.percent(r.uplift)}</td>
         <td>${r.enrollment?.enrollments==null?(enrollmentStatus[r.enrollment?.status]||'N/D'):`${api.number(r.enrollment.enrollments)} <small>${identityLabels[r.enrollment.enrollmentIdentityBasis]||'Inscription enregistrée'}</small>`}</td>
-        <td>N/D</td>
+        <td title="Affectation par le magasin de la première carte ; date de création issue du compte client">${r.enrollment?.accountCreations==null?'N/D':api.number(r.enrollment.accountCreations)}${r.enrollment?.accountCreationStatus==='PARTIAL'?'<small>Affectation incomplète</small>':''}</td>
+        <td>${r.enrollment?.earnStatus==='READY'?api.money(r.enrollment.earn,true):'N/D'}</td>
         <td>${api.money(r.walletBurn,true)}</td>
         <td>${api.number(r.walletTransactions)}</td>
       </tr>

@@ -154,7 +154,8 @@ export async function handleAnalyticsApi({ req, url, user }){
     const allowed=db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all().filter(store=>canAccessStore(user,store.id));
     const stores=requestedIds.length?allowed.filter(store=>requestedIds.includes(store.id)):allowed;
     if(requestedIds.length&&stores.length!==requestedIds.length)return{status:403,data:{error:'Un ou plusieurs magasins sont interdits ou inconnus.'}};
-    return{status:200,data:await readLoyaltyRange(stores,{startDate,endDate,includeStaff,force})};
+    const networkScope=stores.length>0&&stores.length===db.prepare('SELECT COUNT(*) AS n FROM stores WHERE active=1').get().n;
+    return{status:200,data:await readLoyaltyRange(stores,{startDate,endDate,includeStaff,force,networkScope})};
   }
 
   if(req.method==='GET'&&url.pathname==='/api/analytics/suppliers'){

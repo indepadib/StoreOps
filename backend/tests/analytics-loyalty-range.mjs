@@ -10,6 +10,8 @@ const dependencies={
  readStaff:async id=>({status:'READY',truncated:id==='b',items:[{staffId:'x',recruitments:3}]}),
  readCache:async()=>null,
  writeCache:async()=>{},
+ readAccounts:async()=>({status:'UNAVAILABLE'}),
+ readEarn:async()=>({status:'UNAVAILABLE'}),
 };
 const result=await readLoyaltyRange(stores,options,dependencies);
 assert.equal(result.status,'PARTIAL');
@@ -23,3 +25,15 @@ assert.deepEqual(result.stores.map(s=>[s.status,s.enrollments,s.recruitments]),[
 assert.deepEqual(result.stores[0].staff,[{staffId:'x',cardEnrollments:3,recruitments:null}]);
 assert.deepEqual(result.stores[1].staff,[]);
 assert.ok(!JSON.stringify(result).includes('private-id'));
+const liveDependencies={...dependencies,
+ readAccounts:async()=>({status:'PARTIAL',total:8,networkTotal:10,unattributed:2,source:'D365/CustTableCDREntities',dateField:'SysCreatedDateTime',stores:[{storeId:'a',total:3},{storeId:'b',total:4},{storeId:'c',total:1}]}),
+ readEarn:async()=>({status:'READY',earn:10.25,source:'D365/journal'})};
+const network=await readLoyaltyRange(stores,{...options,networkScope:true},liveDependencies);
+assert.equal(network.accountCreations,10);assert.equal(network.accountCreationStatus,'READY');
+assert.equal(network.accountCreationEvidence.unattributed,2);
+assert.equal(network.earn,30.75);assert.equal(network.stores[0].accountCreations,3);
+const scoped=await readLoyaltyRange(stores,options,liveDependencies);
+assert.equal(scoped.accountCreations,8);assert.equal(scoped.accountCreationStatus,'PARTIAL');
+assert.equal(scoped.accountCreationEvidence.unattributed,null,'restricted scopes must not expose counts from other stores');
+const failedEarn=await readLoyaltyRange(stores,options,{...liveDependencies,readEarn:async()=>({status:'TRUNCATED',earn:999})});
+assert.equal(failedEarn.earn,null);assert.equal(failedEarn.stores[0].earn,null);
