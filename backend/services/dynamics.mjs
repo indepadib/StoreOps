@@ -81,7 +81,7 @@ async function d365Fetch(path,{method='GET',body=null,headers={},forceToken=fals
   if(config.dynamics.mode!=='live') throw Object.assign(new Error('Dynamics est en mode simulé'),{status:409,code:'D365_SIMULATED'});
   const token=await acquireToken({force:forceToken});
   const url=path.startsWith('http')?path:`${config.dynamics.baseUrl}${path.startsWith('/')?'':'/'}${path}`;
-  const isStock=path.startsWith('/data/'+encodeURIComponent(config.dynamics.stock?.entity||'WarehousesOnHandV2')+'?'),timeoutMs=isStock?Math.max(6500,Math.min(20000,Number(process.env.D365_STOCK_REQUEST_TIMEOUT_MS)||15000)):Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const isStock=new URL(url).pathname.endsWith('/data/'+encodeURIComponent(config.dynamics.stock?.entity||'WarehousesOnHandV2')),timeoutMs=isStock?Math.max(6500,Math.min(20000,Number(process.env.D365_STOCK_REQUEST_TIMEOUT_MS)||15000)):Math.max(1500,Math.min(15000,Number(process.env.D365_REQUEST_TIMEOUT_MS)||6500)),controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   let r;
   try{r=await fetch(url,{method,headers:{authorization:`Bearer ${token}`,accept:'application/json','content-type':'application/json',...headers},body:body?JSON.stringify(body):undefined,signal:controller.signal})}
   catch(error){if(error?.name==='AbortError')throw Object.assign(new Error(`Dynamics n’a pas répondu en ${timeoutMs} ms.`),{status:504,code:'D365_REQUEST_TIMEOUT',details:{path,timeoutMs}});throw error}
@@ -130,7 +130,22 @@ export async function probeDataEntity(entity,{top=1,filter='',extra=''}={}){
   return{ok:true,entity:name,filter:appliedFilter||null,latencyMs:Date.now()-started,rowCount:Array.isArray(rows)?rows.length:0,rows:Array.isArray(rows)?rows.slice(0,safeTop):[]};
 }
 
-export async function odataGet(entity,{filter='',select='',top=50,extra=''}={}){
+export function odataContinuationUrl(entity,continuation,{filter='',select='',extra=''}={}){
+  const invalid=()=>Object.assign(new Error('Lien de pagination Dynamics invalide.'),{status:502,code:'D365_CONTINUATION_INVALID'});
+  if(!/^[A-Za-z0-9_]+$/.test(entity)||typeof continuation!=='string'||!continuation.trim())throw invalid();
+  let expected,url;
+  try{expected=new URL(`${config.dynamics.baseUrl.replace(/\/$/,'')}/data/${encodeURIComponent(entity)}`);url=new URL(continuation,expected);}catch{throw invalid();}
+  if(url.origin!==expected.origin||url.pathname!==expected.pathname||url.username||url.password||url.hash)throw invalid();
+  // Preserve opaque server cursor values. Scope is reapplied independently of
+  // whether Dynamics repeats it in its continuation URL.
+  if(filter)url.searchParams.set('$filter',filter);
+  if(select)url.searchParams.set('$select',select);
+  const company=new URLSearchParams(extra).get('cross-company');if(company!==null)url.searchParams.set('cross-company',company);
+  return url.href;
+}
+
+export async function odataGet(entity,{filter='',select='',top=50,extra='',continuation=null}={}){
+  if(continuation)return d365Fetch(odataContinuationUrl(entity,continuation,{filter,select,extra}));
   const qs=new URLSearchParams(); if(filter)qs.set('$filter',filter); if(select)qs.set('$select',select); if(top)qs.set('$top',String(top));
   const suffix=[qs.toString(),extra].filter(Boolean).join('&');
   return d365Fetch(`/data/${encodeURIComponent(entity)}${suffix?'?'+suffix:''}`);

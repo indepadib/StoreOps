@@ -1,8 +1,8 @@
 import {readOperationalWarehouseStock} from './operational-stock.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import { config } from '../config.mjs';
-import { getProductByEan,getProductByReference,odataGetAll,odataGet } from './dynamics.mjs';
+import { getProductByEan,getProductByReference,odataGetAll,odataGet,odataContinuationUrl } from './dynamics.mjs';
 import { storeOperationalSettings,allStoreOperationalSettings,networkOperationalSettings } from './store-settings.mjs';
 import { rememberProductIdentity,cachedProductByEan,noteProductIdentityFailure } from './product-cache.mjs';
 
@@ -13,7 +13,6 @@ const stockSnapshotCache=new Map(),stockSnapshotInflight=new Map();
 const stockSnapshotCacheMs=()=>Math.max(10_000,Math.min(300_000,Number(process.env.STOREOPS_STOCK_SNAPSHOT_CACHE_MS)||45_000));
 
 function escapeOData(v){return String(v).replaceAll("'","''")}
-function n(v){const x=Number(v);return Number.isFinite(x)?x:0}
 function clean(v){return String(v??'').trim()}
 function stockLive(){return config.dynamics.mode==='live'&&config.dynamics.read?.stock==='live'}
 function stockEntity(){return config.dynamics.stock.entity||STOCK_ENTITY}
@@ -26,6 +25,15 @@ function stockFields(){return{
   location:config.dynamics.stock.locationField||'',
   status:config.dynamics.stock.statusField||''
 }}
+export function preparedAnalyticsStockKey(warehouseId){
+ const context=[config.dynamics.baseUrl,config.dynamics.dataAreaId,config.dynamics.dataAreaField,stockEntity(),stockFields(),clean(warehouseId)];
+ return analyticsCacheKey('prepared-stock-v2',[createHash('sha256').update(JSON.stringify(context)).digest('hex')]);
+}
+function sumKnown(rows,field){
+ let total=0;
+ for(const row of rows){const value=row[field];if(value==null||String(value).trim()===''||!Number.isFinite(Number(value)))return null;total+=Number(value);}
+ return total;
+}
 function mappedWarehouseForStore(storeId){return storeOperationalSettings(storeId).storeWarehouseId||null}
 export function supplyWarehouseForStore(storeId){return storeOperationalSettings(storeId).supplyWarehouseId||null}
 
@@ -63,7 +71,10 @@ export function aggregateDimensionRows(rows,fields){
   for(const row of rows){
     const batch=fields.batch?clean(row[fields.batch]):'',location=fields.location?clean(row[fields.location]):'',status=fields.status?clean(row[fields.status]):'',key=`${batch}|${location}|${status}`;
     const cur=groups.get(key)||{batch:batch||null,location:location||null,status:status||null,onHandQuantity:0,availableOnHandQuantity:0,reservedOnHandQuantity:0,rowCount:0};
-    cur.onHandQuantity+=n(row[fields.onHand]);cur.availableOnHandQuantity+=n(row[fields.availableOnHand]);cur.reservedOnHandQuantity+=n(row.ReservedOnHandQuantity);cur.rowCount+=1;groups.set(key,cur)
+    for(const [name,field] of [['onHandQuantity',fields.onHand],['availableOnHandQuantity',fields.availableOnHand],['reservedOnHandQuantity','ReservedOnHandQuantity']]){
+     const value=row[field];if(value==null||String(value).trim()===''||!Number.isFinite(Number(value)))cur[name]=null;else if(cur[name]!==null)cur[name]+=Number(value);
+    }
+    cur.rowCount+=1;groups.set(key,cur)
   }
   return [...groups.values()].sort((a,b)=>b.availableOnHandQuantity-a.availableOnHandQuantity)
 }
@@ -77,7 +88,7 @@ async function getWarehouseStockByProductNumber(warehouseId,productNumber,{mappi
   const select=[fields.item,fields.warehouse,fields.onHand,fields.availableOnHand,fields.batch,fields.location,fields.status,'ReservedOnHandQuantity','OrderedQuantity','AvailableOrderedQuantity','ReservedOrderedQuantity','OnOrderQuantity','TotalAvailableQuantity',config.dynamics.dataAreaId?config.dynamics.dataAreaField:''].filter(Boolean).filter((v,i,a)=>a.indexOf(v)===i).join(',');
   const fetched=await odataGetAll(entity,{filter:filters.join(' and '),select,extra:config.dynamics.dataAreaId?'cross-company=true':'',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows});
   if(fetched.truncated)throw Object.assign(new Error(`Stock ${mappingType.toLowerCase()} incomplet pour ${productNumber}: limite OData atteinte.`),{status:409,code:'D365_STOCK_TRUNCATED',details:{warehouseId,productNumber,rowCount:fetched.rowCount,maxRows:config.dynamics.stock.maxRows,mappingType}});
-  const rows=fetched.value||[],sum=field=>rows.reduce((s,r)=>s+n(r[field]),0);
+  const rows=fetched.value||[],sum=field=>sumKnown(rows,field);
   return {warehouseId,dataAreaId:rows[0]?.[config.dynamics.dataAreaField]||rows[0]?.dataAreaId||config.dynamics.dataAreaId||null,rowCount:rows.length,pages:fetched.pages,complete:true,onHandQuantity:sum(fields.onHand),availableOnHandQuantity:sum(fields.availableOnHand),reservedOnHandQuantity:sum('ReservedOnHandQuantity'),orderedQuantity:sum('OrderedQuantity'),availableOrderedQuantity:sum('AvailableOrderedQuantity'),reservedOrderedQuantity:sum('ReservedOrderedQuantity'),onOrderQuantity:sum('OnOrderQuantity'),totalAvailableQuantity:sum('TotalAvailableQuantity'),batches:aggregateDimensionRows(rows,fields),source:`D365/${entity}`,mappingType}
 }
 
@@ -97,7 +108,7 @@ export async function readStoreStockSnapshot(storeId,{force=false}={}){
   for(const row of fetched.value||[]){
    const productNumber=clean(row[fields.item]);if(!productNumber)continue;
    const cur=map.get(productNumber)||{productNumber,name:clean(nameField?row[nameField]:'')||productNumber,ean:clean(eanField?row[eanField]:'')||null,onHandQuantity:0,availableOnHandQuantity:0,rowCount:0};
-   for(const [name,field] of [['onHandQuantity',fields.onHand],['availableOnHandQuantity',fields.availableOnHand]]){const v=row[field];if(v==null||v===''||!Number.isFinite(Number(v)))cur[name]=null;else if(cur[name]!==null)cur[name]+=Number(v)}cur.rowCount+=1;
+   for(const [name,field] of [['onHandQuantity',fields.onHand],['availableOnHandQuantity',fields.availableOnHand]]){const v=row[field];if(v==null||String(v).trim()===''||!Number.isFinite(Number(v)))cur[name]=null;else if(cur[name]!==null)cur[name]+=Number(v)}cur.rowCount+=1;
    if(cur.name===productNumber&&nameField&&clean(row[nameField]))cur.name=clean(row[nameField]);
    if(!cur.ean&&eanField&&clean(row[eanField]))cur.ean=clean(row[eanField]);
    map.set(productNumber,cur)
@@ -113,7 +124,7 @@ export async function readWarehouseStockSnapshot(warehouseId,{strict=false}={}){
  const f=stockFields(),filters=[`${f.warehouse} eq '${escapeOData(warehouseId)}'`];
  if(config.dynamics.dataAreaId)filters.push(`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`);
  const result=await odataGetAll(stockEntity(),{filter:filters.join(' and '),select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),extra:'cross-company=true',pageSize:config.dynamics.stock.pageSize,maxRows:config.dynamics.stock.maxRows,strict});
- const items=new Map();for(const row of result.value){const sku=clean(row[f.item]);if(!sku)continue;const x=items.get(sku)||{productNumber:sku,onHandQuantity:0,availableOnHandQuantity:0};for(const [name,field] of [['onHandQuantity',f.onHand],['availableOnHandQuantity',f.availableOnHand]]){const v=row[field];if(v==null||v===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}items.set(sku,x)}
+ const items=new Map();for(const row of result.value){const sku=clean(row[f.item]);if(!sku)continue;const x=items.get(sku)||{productNumber:sku,onHandQuantity:0,availableOnHandQuantity:0};for(const [name,field] of [['onHandQuantity',f.onHand],['availableOnHandQuantity',f.availableOnHand]]){const v=row[field];if(v==null||String(v).trim()===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}items.set(sku,x)}
  return{status:result.truncated?'TRUNCATED':'READY',complete:!result.truncated,warehouseId,items:[...items.values()],checkedAt:new Date().toISOString(),source:`D365/${stockEntity()}`};
 }
 export async function getSupplyStockByProductNumber(storeId,productNumber){return getWarehouseStockByProductNumber(supplyWarehouseForStore(storeId),productNumber,{mappingType:'SUPPLY'})}
@@ -139,26 +150,34 @@ export async function getStoreProductByEan(storeId,ean,{allowReference=false}={}
   return {...product,identityFallback,identityError,stock:stock?.onHandQuantity??null,availableStock:stock?.availableOnHandQuantity??null,reservedStock:stock?.reservedOnHandQuantity??null,orderedStock:stock?.orderedQuantity??null,availableOrderedStock:stock?.availableOrderedQuantity??null,reservedOrderedStock:stock?.reservedOrderedQuantity??null,onOrderStock:stock?.onOrderQuantity??null,totalAvailableStock:stock?.totalAvailableQuantity??null,warehouseId:stock?.warehouseId??mappedWarehouseForStore(storeId),stockRowCount:stock?.rowCount??null,stockPages:stock?.pages??null,stockSource:stock?.source||'D365',batches:stock?.batches||[],stockComplete:stock?.complete===true}
 }
 
-export async function prepareAnalyticsStock(storeId,{kind='store',offset=0,snapshot=null,force=false}={}){
- const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId);
- if(!warehouseId||!stockLive())throw Object.assign(new Error('Connexion stock ou dépôt non configuré.'),{status:422});
- const readyKey=analyticsCacheKey('prepared-stock-v1',[warehouseId]),ready=await readAnalyticsCache(readyKey);
+export async function prepareAnalyticsStock(storeId,{kind='store',offset=0,snapshot=null,force=false}={},dependencies={}){
+ const warehouseId=dependencies.warehouse??(kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId));
+ const read=dependencies.read||readAnalyticsCache,write=dependencies.write||writeAnalyticsCache,get=dependencies.get||odataGet;
+ if(!warehouseId||!(dependencies.live??stockLive()))throw Object.assign(new Error('Connexion stock ou dépôt non configuré.'),{status:422});
+ if(!Number.isInteger(offset)||offset<0)throw Object.assign(new Error('Page de stock invalide.'),{status:400});
+ const readyKey=preparedAnalyticsStockKey(warehouseId),ready=await read(readyKey);
  if(!snapshot&&offset===0&&ready&&(!force||Date.now()-Date.parse(ready.checkedAt)<30000))return{status:'READY',nextOffset:null,snapshot:ready.checkedAt,warehouseId,rows:ready.items.length};
  if(snapshot&&!/^[a-f0-9-]{36}$/.test(snapshot))throw Object.assign(new Error('Image stock invalide.'),{status:400});
- const token=snapshot||randomUUID(),key=analyticsCacheKey('stock-preparation-v1',[warehouseId,token]);
- let acc=offset===0?{items:[],nextOffset:0,startedAt:new Date().toISOString()}:await readAnalyticsCache(key);
+ const token=snapshot||randomUUID(),key=nextOffset=>analyticsCacheKey('stock-preparation-v2',[readyKey,token,nextOffset]);
+ let acc=offset===0?{items:[],nextOffset:0,startedAt:new Date().toISOString()}:await read(key(offset));
  if(!acc||acc.nextOffset!==offset)throw Object.assign(new Error('Préparation stock expirée ou page hors séquence. Relancer.'),{status:409});
+ acc=structuredClone(acc);
  const f=stockFields(),filter=[`${f.warehouse} eq '${escapeOData(warehouseId)}'`,config.dynamics.dataAreaId?`${config.dynamics.dataAreaField} eq '${escapeOData(config.dynamics.dataAreaId)}'`:''].filter(Boolean).join(' and ');
- const payload=await odataGet(stockEntity(),{filter,select:[f.item,f.warehouse,f.onHand,f.availableOnHand].join(','),top:1000,extra:`cross-company=true&$skip=${offset}`}),rows=payload.value||[];
+ const select=[f.item,f.warehouse,f.onHand,f.availableOnHand,config.dynamics.dataAreaId?config.dynamics.dataAreaField:null].filter(Boolean).join(','),extra=`cross-company=true&$skip=${offset}`;
+ const payload=await get(stockEntity(),{filter,select,top:1000,extra,continuation:acc.nextLink||null});
+ if(!Array.isArray(payload?.value)||!payload.value.length&&payload['@odata.nextLink'])throw Object.assign(new Error('Page de stock incomplète. Relancer la lecture.'),{status:502,code:'D365_STOCK_INVALID_PAGE'});
+ const rows=payload.value;
+ if(rows.some(row=>!clean(row[f.item])||clean(row[f.warehouse])!==clean(warehouseId)||config.dynamics.dataAreaId&&clean(row[config.dynamics.dataAreaField])&&clean(row[config.dynamics.dataAreaField]).toUpperCase()!==clean(config.dynamics.dataAreaId).toUpperCase()))throw Object.assign(new Error('Le stock reçu ne correspond pas au dépôt ou à la société demandés.'),{status:502,code:'D365_STOCK_SCOPE_MISMATCH'});
  if(offset+rows.length>100000)throw Object.assign(new Error('Stock trop volumineux : lecture complète non garantie.'),{status:422});
- acc.items.push(...rows.map(r=>({productNumber:clean(r[f.item]),onHandQuantity:r[f.onHand],availableOnHandQuantity:r[f.availableOnHand]})));acc.nextOffset=rows.length<1000?null:offset+rows.length;
+ const nextLink=payload['@odata.nextLink']?odataContinuationUrl(stockEntity(),payload['@odata.nextLink'],{filter,select,extra}):null;
+ acc.items.push(...rows.map(r=>({productNumber:clean(r[f.item]),onHandQuantity:r[f.onHand],availableOnHandQuantity:r[f.availableOnHand]})));acc.nextLink=nextLink;acc.nextOffset=rows.length<1000&&!nextLink?null:offset+rows.length;
  if(acc.nextOffset===null){
-  const map=new Map();for(const r of acc.items){if(!r.productNumber)continue;const x=map.get(r.productNumber)||{productNumber:r.productNumber,onHandQuantity:0,availableOnHandQuantity:0};for(const name of ['onHandQuantity','availableOnHandQuantity']){const v=r[name];if(v==null||v===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}map.set(r.productNumber,x)}
-  await writeAnalyticsCache(readyKey,'prepared-stock-v1',{status:'READY',complete:true,warehouseId,items:[...map.values()],checkedAt:new Date().toISOString(),startedAt:acc.startedAt,source:`D365/${stockEntity()}`},900);
- }else await writeAnalyticsCache(key,'stock-preparation-v1',acc,900);
+  const map=new Map();for(const r of acc.items){if(!r.productNumber)continue;const x=map.get(r.productNumber)||{productNumber:r.productNumber,onHandQuantity:0,availableOnHandQuantity:0};for(const name of ['onHandQuantity','availableOnHandQuantity']){const v=r[name];if(v==null||String(v).trim()===''||!Number.isFinite(Number(v)))x[name]=null;else if(x[name]!==null)x[name]+=Number(v)}map.set(r.productNumber,x)}
+  await write(readyKey,'prepared-stock-v2',{status:'READY',complete:true,warehouseId,items:[...map.values()],checkedAt:new Date().toISOString(),startedAt:acc.startedAt,source:`D365/${stockEntity()}`},900);
+ }else await write(key(acc.nextOffset),'stock-preparation-v2',acc,900);
  return{status:acc.nextOffset==null?'READY':'PREPARING',nextOffset:acc.nextOffset,snapshot:token,warehouseId,rows:acc.items.length};
 }
 export async function readPreparedAnalyticsStock(storeId,kind='store'){
- const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId),value=warehouseId?await readAnalyticsCache(analyticsCacheKey('prepared-stock-v1',[warehouseId])):null;
+ const warehouseId=kind==='supply'?supplyWarehouseForStore(storeId):mappedWarehouseForStore(storeId),value=warehouseId?await readAnalyticsCache(preparedAnalyticsStockKey(warehouseId)):null;
  if(!value)throw Object.assign(new Error('Préparer les pages de stock avant la lecture de détention.'),{status:409,code:'STOCK_PREPARATION_REQUIRED'});return value;
 }

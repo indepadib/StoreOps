@@ -4,6 +4,8 @@ import {filterAndSortRows} from './table-analysis.js';
 const scope=()=>window.RETAIL_INTELLIGENCE?.getState?.();
 const currentDecision=()=>window.RETAIL_DECISION_INTELLIGENCE?.getData?.();
 const modelCache=new WeakMap();
+const catalog=new Map();
+let catalogTenant=null;
 const size=25;
 const common=[['sales','CA actuel','money'],['previousSales','CA comparé','money'],['delta','Écart CA','money'],['change','Évolution CA','percent']];
 const trade=[['tickets','Tickets','number'],['previousTickets','Tickets comparés','number'],['ticketsDelta','Écart tickets','number'],['averageBasket','Panier','money'],['previousBasket','Panier comparé','money'],['basketDelta','Écart panier','money']];
@@ -107,7 +109,9 @@ function install(host){
   if(selected?.section!=='sales')return;
   if(sameScope(data,selected)){
    if(!modelCache.has(data))modelCache.set(data,buildSalesProof(data));
-   source=modelCache.get(data);
+   const model=modelCache.get(data);
+   if(catalogTenant!==selected.tenant){catalog.clear();catalogTenant=selected.tenant;}
+   source={...model,products:model.products.map(row=>{const ref=catalog.get(row.code);return ref?.productName?{...row,name:ref.productName}:row;})};
   }else source=null;
   const selection=api.getStoreScopeLabel();
   const coverage=source&&typeof data.coverage?.storesRequested==='number'?` · Magasins chargés ${data.coverage.currentStoresReady??'N/A'}/${data.coverage.storesRequested} actuel, ${data.coverage.comparisonStoresReady??'N/A'}/${data.coverage.storesRequested} comparé`:'';
@@ -155,6 +159,13 @@ function install(host){
   renderRows();
  });
  drawHead();renderEvidence();renderRows();
+ document.addEventListener('retail-intelligence:catalog',event=>{
+  const tenant=scope()?.tenant;
+  if(event.detail?.tenant!=null&&event.detail.tenant!==tenant)return;
+  if(catalogTenant!==tenant){catalog.clear();catalogTenant=tenant;}
+  for(const item of event.detail?.items||[])if(item?.productNumber)catalog.set(item.productNumber,item);
+  update();
+ });
  for(const event of ['decision','section','period'])document.addEventListener('retail-intelligence:'+event,update);
  update();
 }
