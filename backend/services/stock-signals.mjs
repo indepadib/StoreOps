@@ -14,6 +14,7 @@ import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analyt
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
+const knownStockQuantity=value=>value==null||String(value).trim()===''||!Number.isFinite(Number(value))?null:Math.round((Number(value)+Number.EPSILON)*1000)/1000;
 const validField=v=>/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean(v));
 const esc=v=>String(v).replaceAll("'","''");
 const assortmentMaxAgeHours=()=>Math.max(1,Math.min(24*30,Number(process.env.STOREOPS_ASSORTMENT_MAX_AGE_HOURS)||36));
@@ -23,7 +24,7 @@ const ghostSilenceDays=()=>Math.max(2,Math.min(14,Number(process.env.STOREOPS_GH
 const ghostMinDailySales=()=>Math.max(.1,Math.min(1000,Number(process.env.STOREOPS_GHOST_MIN_DAILY_SALES)||1));
 const signalCache=new Map();
 const signalInflight=new Map();
-export function resolvedSupplyAvailability(supply,readReady){return supply?Math.round((num(supply.availableQty)+Number.EPSILON)*1000)/1000:(readReady?0:null)}
+export function resolvedSupplyAvailability(supply,readReady){return readReady?supply?knownStockQuantity(supply.availableQty):0:null;}
 function daysBetween(a,b){const x=Date.parse(`${a}T00:00:00Z`),y=Date.parse(`${b}T00:00:00Z`);return Number.isFinite(x)&&Number.isFinite(y)?Math.max(0,Math.round((x-y)/86400000)):null}
 function roundMoney(v){return Math.round((num(v)+Number.EPSILON)*100)/100}
 export function stockSignalRisk24h({type,dailySalesValue=0,coverageDays=null}={}){
@@ -65,13 +66,15 @@ function supplierHistory(){
   return map
 }
 
-function aggregateRows(rows,c){
+export function aggregateStockSignalRows(rows,c){
   const byProduct=new Map();
   for(const row of rows||[]){
     const productNumber=clean(row[c.productField]);if(!productNumber)continue;
     const current=byProduct.get(productNumber)||{productNumber,product:clean(c.nameField?row[c.nameField]:'')||productNumber,ean:clean(c.eanField?row[c.eanField]:'')||null,availableQty:0,physicalQty:0,rowCount:0};
-    current.availableQty+=num(row[c.availableField]);
-    current.physicalQty+=c.physicalField?num(row[c.physicalField]):num(row[c.availableField]);
+    const available=row[c.availableField];
+    if(available==null||String(available).trim()===''||!Number.isFinite(Number(available)))current.availableQty=null;else if(current.availableQty!==null)current.availableQty+=Number(available);
+    const physical=c.physicalField?row[c.physicalField]:null;
+    if(physical==null||String(physical).trim()===''||!Number.isFinite(Number(physical)))current.physicalQty=null;else if(current.physicalQty!==null)current.physicalQty+=Number(physical);
     current.rowCount+=1;
     if(!current.ean&&c.eanField)current.ean=clean(row[c.eanField])||null;
     if((!current.product||current.product===productNumber)&&c.nameField)current.product=clean(row[c.nameField])||productNumber;
@@ -81,8 +84,8 @@ function aggregateRows(rows,c){
 }
 
 function signalFromClassification(x,warehouse,classification){
-  const available=Math.round((num(x.availableQty)+Number.EPSILON)*1000)/1000;
-  const physical=Math.round((num(x.physicalQty)+Number.EPSILON)*1000)/1000;
+  const available=knownStockQuantity(x.availableQty);
+  const physical=knownStockQuantity(x.physicalQty);
   const assortmentStatus=classification.membership?.status||'UNKNOWN';
   if(classification.state==='STOCK_ANOMALY')return {id:`neg-${warehouse}-${x.productNumber}`,type:'NEGATIVE',priority:'P0',product:x.product,productNumber:x.productNumber,ean:x.ean,qty:available,availableQty:available,physicalQty:physical,warehouse,assortmentStatus,detail:`Stock disponible ${available} · anomalie système à contrôler immédiatement`};
   if(classification.state==='OUT_OF_STOCK')return {id:`oos-${warehouse}-${x.productNumber}`,type:'OUT',priority:'P1',product:x.product,productNumber:x.productNumber,ean:x.ean,qty:0,availableQty:0,physicalQty:physical,warehouse,assortmentStatus,detail:'Rupture assortiment · stock disponible 0 · vérifier rayon, réserve et réapprovisionnement'};
@@ -123,8 +126,8 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const supplyFetched=supplyResult.status==='fulfilled'?supplyResult.value:{value:[],rowCount:0,pages:0,truncated:false,error:supplyResult.reason?.message||String(supplyResult.reason||'')};
   const supplyReadReady=!!supplyWarehouse&&supplyResult.status==='fulfilled'&&supplyFetched.status==='READY'&&!supplyFetched.truncated;
   const salesActivity=salesResult.status==='fulfilled'?salesResult.value:{status:'UNAVAILABLE',products:[],error:{code:salesResult.reason?.code||'D365_SALES_ACTIVITY_READ_FAILED',message:salesResult.reason?.message||String(salesResult.reason||'')}};
-  const aggregated=aggregateRows(fetched.value,{productField,availableField,physicalField,nameField,eanField});
-  const supplyAggregated=aggregateRows(supplyFetched.value,{productField,availableField,physicalField,nameField,eanField});
+  const aggregated=aggregateStockSignalRows(fetched.value,{productField,availableField,physicalField,nameField,eanField});
+  const supplyAggregated=aggregateStockSignalRows(supplyFetched.value,{productField,availableField,physicalField,nameField,eanField});
   const supplyByProduct=new Map(supplyAggregated.map(x=>[clean(x.productNumber),x]));
   let sourcingByProduct=new Map();
   const suppliers=supplierHistory();
@@ -135,11 +138,11 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const effectiveDay=clean(businessDate)||new Date().toISOString().slice(0,10);const enrich=x=>{const key=clean(x.productNumber),sale=salesByProduct.get(key),supply=supplyByProduct.get(key),history=suppliers.get(key)||{},sourcing=sourcingByProduct.get(key)||{status:'UNAVAILABLE',supplyMode:null},isDc=sourcing.supplyMode==='WAREHOUSE',isDirect=sourcing.supplyMode==='DIRECT_SUPPLIER',centralStock=isDc?resolvedSupplyAvailability(supply,supplyReadReady):null,salesValue30d=Number(sale?.salesValue||0),salesUnits30=Number(sale?.units||0),dailySales=salesUnits30>0?Math.round((salesUnits30/30+Number.EPSILON)*1000)/1000:null,dailySalesValue=salesValue30d>0?roundMoney(salesValue30d/30):null,lastSaleDate=sale?.lastSaleDate||null,lastSaleDaysAgo=lastSaleDate?daysBetween(effectiveDay,lastSaleDate):null,supplierAccount=sourcing.primaryVendorAccount||history.supplierAccount||null,supplier=history.supplier||null;const releasedName=clean(sourcing.productName),salesName=clean(sale?.name),stockName=clean(x.product),validName=v=>v&&v!==key&&!/^article(?:\s|$)/i.test(v)&&!/^item(?:\s|$)/i.test(v)&&!/^product(?:\s|$)/i.test(v),resolvedName=validName(releasedName)?releasedName:validName(salesName)?salesName:validName(stockName)?stockName:key,nameSource=validName(releasedName)?'RELEASED_PRODUCTS':validName(salesName)?'POS_SALES':validName(stockName)?'STOCK_SNAPSHOT':'ITEM_NUMBER';return{...x,product:resolvedName,productNameSource:sourcing.productNameSource||nameSource,identityStatus:nameSource==='ITEM_NUMBER'?'MISSING':validName(releasedName)?sourcing.identityStatus||'RESOLVED':'RESOLVED',sold30d:!!sale,salesValue30d,salesUnits30,dailySales,dailySalesValue,lastSaleDate,lastSaleDaysAgo,supplyMode:sourcing.supplyMode||null,sourcingStatus:sourcing.status||'UNAVAILABLE',sourcingField:sourcing.field||null,sourcingRawValue:sourcing.rawValue??null,supplierAccount,supplier,supplierSource:sourcing.primaryVendorAccount?'RELEASED_PRODUCTS_PRIMARY_VENDOR':history.supplierSource||null,retailScope:sourcing.retailScope||null,rayonCode:sourcing.rayonCode||null,rayonLabel:sourcing.rayonLabel||null,financialDimension:sourcing.financialDimension||null,inventoryUnit:sourcing.inventoryUnit||null,salesUnit:sourcing.salesUnit||sale?.salesUnit||null,purchaseUnit:sourcing.purchaseUnit||null,baseSalesPrice:sourcing.salesPrice??null,centralStock,supplyWarehouse:isDc?(supplyWarehouse||'LVE Lakhya'):null,supplyReadStatus:isDirect?'NOT_APPLICABLE':isDc?(supplyReadReady?'READY':supplyWarehouse?'UNAVAILABLE':'UNMAPPED'):'SOURCING_UNKNOWN'}};
   const negativeAll=allSignals.filter(x=>x.type==='NEGATIVE').map(enrich).sort((a,b)=>Number(b.sold30d)-Number(a.sold30d)||Number(b.salesValue30d)-Number(a.salesValue30d)||a.availableQty-b.availableQty);
   const residualAll=allSignals.filter(x=>x.type==='OUTSIDE_ASSORTMENT');
-  const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&Number(x.product.availableQty)===0).length;
+  const unknownZero=classified.filter(x=>x.classification.state==='ASSORTMENT_UNKNOWN'&&x.product.availableQty===0).length;
   const stockByProduct=new Map(aggregated.map(x=>[clean(x.productNumber),x]));
   const ruptureReady=salesActivity?.status==='READY'&&!fetched.truncated;
   const outAll=ruptureReady?(salesActivity.products||[]).map(sale=>{
-    const productNumber=clean(sale.productNumber),stock=stockByProduct.get(productNumber),available=stock?Math.round((num(stock.availableQty)+Number.EPSILON)*1000)/1000:0,physical=stock?Math.round((num(stock.physicalQty)+Number.EPSILON)*1000)/1000:0;
+    const productNumber=clean(sale.productNumber),stock=stockByProduct.get(productNumber),available=stock?knownStockQuantity(stock.availableQty):0,physical=stock?knownStockQuantity(stock.physicalQty):null;
     if(index.status==='READY'&&!index.included.has(productNumber))return null;
     if(available!==0)return null;
     const enriched=enrich({id:`oos30-${warehouse}-${productNumber}`,type:'OUT',priority:'P1',product:clean(stock?.product)||clean(sale.name)||productNumber,productNumber,ean:stock?.ean||null,qty:0,availableQty:0,physicalQty:physical,warehouse,assortmentStatus:index.status==='READY'?'ASSORTED':'UNKNOWN',ruptureBasis:'SALES_30D_ZERO_STOCK',salesWindowDays:30,stockEvidence:stock?'WAREHOUSE_SNAPSHOT':'NO_ON_HAND_ROW',detail:'Vendu sur les 30 derniers jours · stock disponible magasin 0 · rupture à traiter'});return{...enriched,salesRisk24h:stockSignalRisk24h({type:'OUT',dailySalesValue:enriched.dailySalesValue})};
@@ -148,17 +151,17 @@ async function computeStockSignals(storeId,{businessDate=null}={}){
   const lowAll=ruptureReady?(salesActivity.products||[]).map(sale=>{
     const productNumber=clean(sale.productNumber),stock=stockByProduct.get(productNumber);if(!stock)return null;
     if(index.status==='READY'&&!index.included.has(productNumber))return null;
-    const available=Math.round((num(stock.availableQty)+Number.EPSILON)*1000)/1000,daily=Number(sale.units||0)/30;if(!(available>0)||!(daily>0))return null;
+    const available=knownStockQuantity(stock.availableQty),daily=Number(sale.units||0)/30;if(!(available>0)||!(daily>0))return null;
     const cover=Math.round((available/daily+Number.EPSILON)*100)/100;if(cover>lowThreshold)return null;
-    const enriched=enrich({id:`low30-${warehouse}-${productNumber}`,type:'LOW',priority:cover<=1?'P0':'P1',product:clean(stock.product)||clean(sale.name)||productNumber,productNumber,ean:stock.ean||null,qty:available,availableQty:available,physicalQty:Math.round((num(stock.physicalQty)+Number.EPSILON)*1000)/1000,warehouse,assortmentStatus:index.status==='READY'?'ASSORTED':'UNKNOWN',ruptureBasis:'SALES_30D_LOW_COVERAGE',salesWindowDays:30,coverageDays:cover,detail:`Proche rupture · environ ${cover} jour(s) de couverture au rythme récent`});return{...enriched,salesRisk24h:stockSignalRisk24h({type:'LOW',dailySalesValue:enriched.dailySalesValue,coverageDays:cover})};
+    const enriched=enrich({id:`low30-${warehouse}-${productNumber}`,type:'LOW',priority:cover<=1?'P0':'P1',product:clean(stock.product)||clean(sale.name)||productNumber,productNumber,ean:stock.ean||null,qty:available,availableQty:available,physicalQty:knownStockQuantity(stock.physicalQty),warehouse,assortmentStatus:index.status==='READY'?'ASSORTED':'UNKNOWN',ruptureBasis:'SALES_30D_LOW_COVERAGE',salesWindowDays:30,coverageDays:cover,detail:`Proche rupture · environ ${cover} jour(s) de couverture au rythme récent`});return{...enriched,salesRisk24h:stockSignalRisk24h({type:'LOW',dailySalesValue:enriched.dailySalesValue,coverageDays:cover})};
   }).filter(Boolean).sort((a,b)=>Number(a.coverageDays)-Number(b.coverageDays)||Number(b.salesValue30d)-Number(a.salesValue30d)):[];
   const ghostSilence=ghostSilenceDays(),ghostVelocity=ghostMinDailySales();
   const ghostAll=ruptureReady?classified.map(({product,classification})=>{
     if(classification.state!=='AVAILABLE')return null;
     const productNumber=clean(product.productNumber),sale=salesByProduct.get(productNumber);if(!sale)return null;
-    const available=Math.round((num(product.availableQty)+Number.EPSILON)*1000)/1000,daily=Number(sale.units||0)/30,lastSaleDate=sale.lastSaleDate||null,lastSaleDaysAgo=lastSaleDate?daysBetween(effectiveDay,lastSaleDate):null,cover=daily>0?available/daily:null;
+    const available=knownStockQuantity(product.availableQty),daily=Number(sale.units||0)/30,lastSaleDate=sale.lastSaleDate||null,lastSaleDaysAgo=lastSaleDate?daysBetween(effectiveDay,lastSaleDate):null,cover=daily>0?available/daily:null;
     if(!isGhostStockCandidate({available,dailySales:daily,lastSaleDaysAgo,coverageDays:cover,silenceDays:ghostSilence,minDailySales:ghostVelocity,lowThreshold}))return null;
-    const enriched=enrich({id:`ghost30-${warehouse}-${productNumber}`,type:'GHOST',priority:lastSaleDaysAgo>=ghostSilence+2?'P0':'P1',product:clean(product.product)||clean(sale.name)||productNumber,productNumber,ean:product.ean||null,qty:available,availableQty:available,physicalQty:Math.round((num(product.physicalQty)+Number.EPSILON)*1000)/1000,warehouse,assortmentStatus:index.status==='READY'?'ASSORTED':'UNKNOWN',ruptureBasis:'POSITIVE_STOCK_SALES_SILENCE',salesWindowDays:30,coverageDays:Math.round((cover+Number.EPSILON)*100)/100,lastSaleDate,lastSaleDaysAgo,detail:`Stock positif mais aucune vente depuis ${lastSaleDaysAgo} jour(s) malgré une rotation habituelle · vérifier rayon et réserve`});
+    const enriched=enrich({id:`ghost30-${warehouse}-${productNumber}`,type:'GHOST',priority:lastSaleDaysAgo>=ghostSilence+2?'P0':'P1',product:clean(product.product)||clean(sale.name)||productNumber,productNumber,ean:product.ean||null,qty:available,availableQty:available,physicalQty:knownStockQuantity(product.physicalQty),warehouse,assortmentStatus:index.status==='READY'?'ASSORTED':'UNKNOWN',ruptureBasis:'POSITIVE_STOCK_SALES_SILENCE',salesWindowDays:30,coverageDays:Math.round((cover+Number.EPSILON)*100)/100,lastSaleDate,lastSaleDaysAgo,detail:`Stock positif mais aucune vente depuis ${lastSaleDaysAgo} jour(s) malgré une rotation habituelle · vérifier rayon et réserve`});
     return{...enriched,salesRisk24h:stockSignalRisk24h({type:'GHOST',dailySalesValue:enriched.dailySalesValue})}
   }).filter(Boolean).sort((a,b)=>Number(b.salesRisk24h)-Number(a.salesRisk24h)||Number(b.lastSaleDaysAgo)-Number(a.lastSaleDaysAgo)):[];
   const negativeLimit=Math.max(5,Math.min(25,Number(process.env.STOREOPS_NEGATIVE_STOCK_PREVIEW_LIMIT)||12)),outLimit=Math.max(20,Math.min(500,Number(process.env.STOREOPS_RUPTURE_PREVIEW_LIMIT)||300)),lowLimit=Math.max(5,Math.min(50,Number(process.env.STOREOPS_LOW_STOCK_PREVIEW_LIMIT)||25)),ghostLimit=Math.max(5,Math.min(30,Number(process.env.STOREOPS_GHOST_STOCK_PREVIEW_LIMIT)||15)),residualLimit=Math.max(0,Math.min(20,Number(process.env.STOREOPS_RESIDUAL_STOCK_PREVIEW_LIMIT)||8));

@@ -36,7 +36,7 @@ export const semanticMetrics=Object.freeze([
  kpi('gross_margin_rate','MARGE','Taux de marge brute HT','Marge brute HT / CA HT valorisé × 100','%','D365 coût, taxes et ventes','CONDITIONAL','Le taux sur seules ventes couvertes n’est pas le taux global.', ['taux marge','taux de marge','taux de marge brute']),
  kpi('cost_coverage','QUALITÉ','Couverture des coûts','CA dont le coût est valorisable / CA total du même périmètre × 100','%','D365 coût et ventes','CONDITIONAL','Ne pas confondre couverture des coûts et certitude comptable.', ['couverture cout','cout couvert']),
  kpi('stockout_current','STOCK','Rupture de stock actuelle','Références actives avec stock disponible = 0, selon périmètre et configuration','articles','D365 stocks et assortiment','CONDITIONAL','Une photo de stock actuelle ne permet pas d’expliquer une vente historique.', ['rupture','stock zero']),
- kpi('on_hand_available','STOCK','Stock disponible actuel','Stock physique moins quantités réservées selon mapping du magasin','unités','D365 OnHand, dimensions magasin/entrepôt','CONDITIONAL','Stock actuel ; unités et dimensions à contrôler avant approvisionnement.', ['stock disponible'])
+ kpi('on_hand_available','STOCK','Stock disponible actuel','Quantité AvailableOnHandQuantity renvoyée par D365 pour le dépôt','unités','D365 OnHand, dimensions magasin/entrepôt','CONDITIONAL','Stock disponible actuel, dans l’unité propre à chaque article ; dimensions magasin et entrepôt à contrôler avant approvisionnement.', ['stock disponible'])
 ]);
 // Logical target star schema: design contract, NOT a claim that these
 // datasets already exist as persisted/materalized tables in StoreOps.

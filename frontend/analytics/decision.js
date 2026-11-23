@@ -5,7 +5,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
-  const state={data:null,key:null,freshKey:null,loading:false,loadingKey:null,reloadPending:false,pendingForce:false,controller:null,level:'product',metric:'sales',search:'',catalog:new Map(),catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',hourly:{department:'',rayon:'',product:''},affinity:{department:'',rayon:''},filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
+  const state={data:null,key:null,freshKey:null,loading:false,loadingKey:null,reloadPending:false,pendingForce:false,controller:null,level:'product',metric:'sales',search:'',catalog:new Map(),catalogTenant:null,catalogKey:null,catalogLoading:false,supplierOps:null,supplierOpsKey:null,supplierOpsLoading:false,supplierMode:'',supplierSearch:'',hourly:{department:'',rayon:'',product:''},affinity:{department:'',rayon:''},filters:{department:'',rayon:'',family:'',subfamily:'',subsubfamily:'',ub:'',product:'',vendor:'',supplyMode:''}};
 
   const safe=v=>v===null||v===undefined||!Number.isFinite(Number(v))?null:Number(v);
   const signed=(api,v,kind='percent')=>{
@@ -20,7 +20,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   function storeScopeKey(s){return selectedStoreIds(s).sort().join(',')}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
   const decisionCachePrefix='retail-intelligence:decision:v36:';
-  const catalogCacheKey='retail-intelligence:catalog:v10';
+  const catalogCachePrefix='retail-intelligence:catalog:v11:';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
   function cachedDecision(key){
@@ -42,13 +42,28 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       &&data.coverage.comparisonStoresReady===storeCount;
   }
   function saveDecisionCache(key,data){writeJsonStorage(decisionCachePrefix+key,{at:Date.now(),data})}
-  function hydrateCatalogCache(){
-    const hit=readJsonStorage(catalogCacheKey),items=Array.isArray(hit?.items)?hit.items:[];
-    for(const item of items)if(item?.productNumber)state.catalog.set(item.productNumber,item)
+  function hydrateCatalogCache(tenant=sectionState()?.tenant){
+    if(state.catalogTenant!==tenant)state.catalog.clear();
+    state.catalogTenant=tenant;
+    const hit=readJsonStorage(catalogCachePrefix+tenant),items=Array.isArray(hit?.items)?hit.items:[];
+    for(const item of items)if(item?.productNumber)state.catalog.set(item.productNumber,item);
+  }
+  function catalogNeedsRefresh(sku,now=Date.now()){
+    const item=state.catalog.get(sku);
+    if(!item)return true;
+    const age=now-Number(item.catalogFetchedAt);
+    const incomplete=!item.productName||!item.primaryVendorAccount||!item.vendorName;
+    return !Number.isFinite(age)||age<0||age>=(incomplete?60_000:15*60_000);
+  }
+  function cacheCatalogItems(items,tenant){
+    if(sectionState()?.tenant!==tenant||state.catalogTenant!==tenant)return false;
+    const catalogFetchedAt=Date.now();
+    for(const item of items)if(item?.productNumber)state.catalog.set(item.productNumber,{...item,catalogFetchedAt});
+    return true;
   }
   function persistCatalogCache(){
     const items=[...state.catalog.values()].slice(-1800);
-    writeJsonStorage(catalogCacheKey,{at:Date.now(),items})
+    writeJsonStorage(catalogCachePrefix+state.catalogTenant,{at:Date.now(),items});
   }
   function addDays(iso,days){const d=new Date(`${iso}T12:00:00Z`);d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
   function rangeDays(start,end){return Math.max(1,Math.floor((Date.parse(`${end}T12:00:00Z`)-Date.parse(`${start}T12:00:00Z`))/86400000)+1)}
@@ -245,7 +260,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     await Promise.all(Array.from({length:workers},worker));
     return blocks===1?results[0]:mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
   }
-  function catalogItem(sku){return state.catalog.get(String(sku||''))||null}
+  function catalogItem(sku){return state.catalogTenant===sectionState()?.tenant?state.catalog.get(String(sku||''))||null:null}
   function productLabel(sku,fallback=''){
     const ref=catalogItem(sku),raw=String(fallback||'').trim(),code=String(sku||'').trim();
     if(ref?.productName)return ref.productName;
@@ -278,7 +293,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     if(section==='sales'){
       for(const p of d.contributors?.negativeProducts||[])add(p.key);
       for(const p of d.contributors?.positiveProducts||[])add(p.key);
-      for(const p of (d.products||[]).slice(0,100))add(p.key);
+      for(const p of d.products||[])add(p.key);
     }else if(section==='categories'||section==='suppliers'){
       for(const p of (d.products||[]))add(p.key);
     }else if(section==='crm'){
@@ -293,15 +308,15 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   }
   async function loadCatalog(force=false){
     const api=core(),s=sectionState();if(!api||!state.data||state.catalogLoading)return;
-    const key=queryKey(s)+'|'+(s?.section||'overview');if(!state.catalog.size)hydrateCatalogCache();
-    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>!state.catalog.has(sku));
-    if(!missing.length){document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{items:[...state.catalog.values()]}}));state.catalogKey=key;safeRenderPart('catalog-cache-render',render);return}
+    const key=queryKey(s)+'|'+(s?.section||'overview');if(state.catalogTenant!==s.tenant||!state.catalog.size)hydrateCatalogCache(s.tenant);
+    const skus=catalogSkuList(),missing=force?skus:skus.filter(sku=>catalogNeedsRefresh(sku));
+    if(!missing.length){document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{tenant:state.catalogTenant,items:[...state.catalog.values()]}}));state.catalogKey=key;safeRenderPart('catalog-cache-render',render);return}
     state.catalogLoading=true;
     const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
     let cursor=0,progressiveRendered=false;
-    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;safeRenderPart('catalog-first-visible',render)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
+    const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});if(!cacheCatalogItems(data.items||[],s.tenant))continue;persistCatalogCache();if(!progressiveRendered){progressiveRendered=true;document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{tenant:state.catalogTenant,items:[...state.catalog.values()]}}));safeRenderPart('catalog-first-visible',render)}}catch(error){console.error('Catalog batch failed',batch.slice(0,3),error)}}};
     await Promise.all(Array.from({length:Math.min(3,batches.length)},worker));
-    state.catalogKey=key;state.catalogLoading=false;document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{items:[...state.catalog.values()]}}));safeRenderPart('catalog-visible-enrichment',render);const current=sectionState(),currentKey=current?queryKey(current)+'|'+(current.section||'overview'):key;if(currentKey!==key&&sectionNeedsCatalog(current))setTimeout(()=>loadCatalog(false).catch(()=>{}),0)
+    state.catalogKey=key;state.catalogLoading=false;if(sectionState()?.tenant===s.tenant){document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{tenant:state.catalogTenant,items:[...state.catalog.values()]}}));safeRenderPart('catalog-visible-enrichment',render)}const current=sectionState(),currentKey=current?queryKey(current)+'|'+(current.section||'overview'):key;if(currentKey!==key&&sectionNeedsCatalog(current))setTimeout(()=>loadCatalog(false).catch(()=>{}),0)
   }
 
   function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','suppliers','crm','loyalty','cashiers','promotions'].includes(s?.section)}
@@ -314,13 +329,13 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   function prewarmFullCatalog(){
     if(!state.data||state.catalogLoading||sectionState()?.section==='overview')return;
     const all=(state.data.products||[]).slice(0,750).map(x=>String(x.key||'').trim()).filter(Boolean);
-    const missing=all.filter(sku=>!state.catalog.has(sku));if(!missing.length)return;
-    const api=core();if(!api)return;
+    const missing=all.filter(sku=>catalogNeedsRefresh(sku));if(!missing.length)return;
+    const api=core(),s=sectionState();if(!api||!s)return;
     const run=async()=>{
       if(state.loading||state.catalogLoading||sectionState()?.section==='overview')return;
       const batches=[];for(let i=0;i<missing.length;i+=240)batches.push(missing.slice(i,i+240));
       let cursor=0;
-      const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});for(const item of data.items||[])state.catalog.set(item.productNumber,item);persistCatalogCache()}catch(error){console.debug('Catalog prewarm skipped',error?.code||error?.message)}}};
+      const worker=async()=>{while(cursor<batches.length){const batch=batches[cursor++];try{const q=new URLSearchParams({products:batch.join(',')}),data=await api.api('/api/analytics/catalog?'+q,{noRetry:true});if(!cacheCatalogItems(data.items||[],s.tenant))continue;persistCatalogCache()}catch(error){console.debug('Catalog prewarm skipped',error?.code||error?.message)}}};
       await Promise.all(Array.from({length:Math.min(2,batches.length)},worker));
       if(sectionNeedsCatalog())safeRenderPart('catalog-prewarm',render)
     };
@@ -340,14 +355,14 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     const cached=cachedScopeMatches(candidate,s)?candidate:null;
     if(reuseExecutive&&canReuseExecutiveCache(cached,s)){
       state.data=cached;state.key=key;state.freshKey=null;
-      if(!state.catalog.size)hydrateCatalogCache();
+      if(state.catalogTenant!==s.tenant||!state.catalog.size)hydrateCatalogCache(s.tenant);
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
       return;
     }
     if(cached&&state.key!==key){
-      state.data=cached;state.key=key;if(!state.catalog.size)hydrateCatalogCache();
+      state.data=cached;state.key=key;if(state.catalogTenant!==s.tenant||!state.catalog.size)hydrateCatalogCache(s.tenant);
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
@@ -361,7 +376,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
     try{
       const fresh=await loadDecisionChunked(api,s,force,controller.signal);
       if(controller.signal.aborted||queryKey(sectionState())!==key)return;
-      state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);if(!state.catalog.size)hydrateCatalogCache();
+      state.data=fresh; state.key=key; state.freshKey=key; saveDecisionCache(key,fresh);if(state.catalogTenant!==s.tenant||!state.catalog.size)hydrateCatalogCache(s.tenant);
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:false}}));
       maybeLoadCatalog(force);

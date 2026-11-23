@@ -8,7 +8,7 @@ export function detentionSheets(report){
  const headers=['Vision','Périmètre','Axe','Département / origine','Base références','Détenues','Absentes','Inconnues','Détention','État des sources'];
  const summaries=detentionSummaryRows(report),primary=summaries.filter(r=>r.axis==='Global'||r.axis==='Département'&&['PGC','APLS'].includes(r.group.toUpperCase())||r.vision==='Entrepôt'&&r.axis==='Origine');
  const summaryRows=list=>[headers,...list.map((r,i)=>[r.vision,r.scope,r.axis,r.group,r.base,r.held,r.missing,r.unknown,r.rate==null?r.status:{formula:`F${i+2}/E${i+2}`,value:r.rate,percent:true},r.status])];
- const detailHead=['Vision','Périmètre','Département','Rayon','Famille','UB','Code article','Libellé','Fournisseur','Origine','Stock actuel','Unité','Détenue (1/0)','Stock plateforme','Première réception connue','Preuve de présence','Sources'];
+ const detailHead=['Vision','Périmètre','Département','Rayon','Famille','UB','Code article','Libellé','Fournisseur','Origine','Disponible actuel','Unité','Détenue (1/0)','Disponible plateforme','Première réception connue','Preuve de présence','Sources'];
  const details=detentionBusinessRows(report);
  return [
   {name:'Synthèse',rows:summaryRows(primary),note:'Entrepôt partagé compté une fois. Chaque magasin conserve sa base. Historique accessible ; couverture depuis ouverture non certifiée.'},
