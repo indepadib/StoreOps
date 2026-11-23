@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {loyaltyWindows,loadLoyaltyPeriod,mergeLoyaltyWindows} from '../../frontend/analytics/loyalty-period.mjs';
+const windows=loyaltyWindows('2026-08-25','2026-11-22');
+assert.equal(windows.length,7);assert.deepEqual(windows[0],{start:'2026-08-25',end:'2026-09-07'});assert.equal(windows.at(-1).end,'2026-11-22');
+for(let i=1;i<windows.length;i++)assert.equal(Date.parse(windows[i].start)-Date.parse(windows[i-1].end),86400000,'windows must be disjoint and continuous');
+const sample={accountCreations:10,accountCreationStatus:'READY',earn:1.23,accountCreationEvidence:{scope:'NETWORK',unattributed:2},stores:[{storeId:'a',accountCreations:8,accountCreationStatus:'PARTIAL',earn:1.23,enrollments:9,status:'READY'}]};
+let active=0,maxActive=0,calls=0;
+const result=await loadLoyaltyPeriod('2026-08-25','2026-11-22',['a'],async()=>{active++;maxActive=Math.max(maxActive,active);calls++;await new Promise(resolve=>setTimeout(resolve,1));active--;return sample;});
+assert.equal(calls,7);assert.equal(maxActive,2);assert.equal(result.accountCreations,70);assert.equal(result.earn,8.61);assert.equal(result.accountCreationEvidence.unattributed,14);assert.equal(result.stores[0].accountCreations,56);
+const incomplete=mergeLoyaltyWindows([sample,{stores:[]}],['a']);
+assert.equal(incomplete.accountCreations,null);assert.equal(incomplete.earn,null);assert.equal(incomplete.stores[0].accountCreations,null);
+console.log('Loyalty long-period windows, concurrency, rounding and incomplete-source gates passed.');

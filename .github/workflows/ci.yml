@@ -48,6 +48,9 @@ jobs:
           node backend/tests/analytics-query-agent.mjs
           node backend/tests/analytics-customer-research.mjs
           node backend/tests/analytics-loyalty-range.mjs
+          node backend/tests/dynamics-account-creations.mjs
+          node backend/tests/dynamics-wallet-earn.mjs
+          node backend/tests/loyalty-period-loading.mjs
           node backend/tests/analytics-customer-journey-v2.mjs
           node backend/tests/analytics-experience-navigation.mjs
           node backend/tests/analytics-table-analysis.mjs
