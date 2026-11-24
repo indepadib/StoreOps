@@ -1,4 +1,5 @@
 import {loadLoyaltyPeriod} from './loyalty-period.mjs';
+import {loyaltyPresentationScopeKey} from './loyalty-presentation.js';
 (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -17,7 +18,8 @@ import {loadLoyaltyPeriod} from './loyalty-period.mjs';
     enrollmentKey: null,
     enrollmentLoading: false,
     enrollmentData: null,
-    enrollmentProgress: ''
+    enrollmentProgress: '',
+    presentationLoading:false
   };
 
   function safe(v) {
@@ -103,6 +105,7 @@ import {loadLoyaltyPeriod} from './loyalty-period.mjs';
   function renderLoyalty() {
     const api = core();
     if (!api || !$('#loyaltyKpis')) return;
+    for(const id of ['loyaltyPresentation','crmPresentation']){const button=$('#'+id);if(button){button.disabled=state.presentationLoading||state.enrollmentLoading||state.walletLoading;button.textContent=state.presentationLoading?'Préparation de la présentation…':'Présentation fidélité & CRM';}}
     const a = loyaltyAggregate();
     const totalStores = api.getSelectedStores?.().length || 0;
 
@@ -444,7 +447,26 @@ import {loadLoyaltyPeriod} from './loyalty-period.mjs';
     `).join('');
   }
 
+  async function exportLoyaltyPresentation(){
+    if(state.presentationLoading||state.enrollmentLoading||state.walletLoading)return;
+    const scope=cashierScope(),key=loyaltyPresentationScopeKey(scope);
+    const status=text=>{for(const id of ['loyaltyPresentationStatus','crmPresentationStatus']){const node=$('#'+id);if(node)node.textContent=text;}};
+    state.presentationLoading=true;renderLoyalty();status('Préparation des 3 diapositives PowerPoint…');
+    try{
+      await Promise.all([loadEnrollments(),loadWallet()]);
+      if(loyaltyPresentationScopeKey(cashierScope())!==key)throw Error('Les filtres ont changé. Relancez la présentation sur le nouveau périmètre.');
+      const {loyaltyPresentationModel,loyaltyPresentation}=await import('./loyalty-presentation.js');
+      const model=loyaltyPresentationModel({scope,decision:decisionData(),loyalty:state.enrollmentData,wallet:state.walletStores});
+      const blob=await loyaltyPresentation(model),url=URL.createObjectURL(blob),link=document.createElement('a');
+      link.href=url;link.download=`storeops-fidelite-crm-${scope.start}-${scope.end}.pptx`;document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
+      status('Présentation PowerPoint téléchargée : 3 diapositives modifiables.');
+    }catch(error){status(error.message||'Présentation indisponible. Réessayez.');}
+    finally{state.presentationLoading=false;renderLoyalty();}
+  }
+
   function bind() {
+    $('#loyaltyPresentation')?.addEventListener('click',exportLoyaltyPresentation);
+    $('#crmPresentation')?.addEventListener('click',exportLoyaltyPresentation);
     $('#cashierWindow')?.addEventListener('change', e => {
       state.cashierDays = Math.max(1, Math.min(90, Number(e.target.value) || 30));
       state.cashierKey = null;
