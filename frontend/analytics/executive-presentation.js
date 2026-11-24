@@ -41,6 +41,10 @@ export function executivePresentationParts(model,{rankingLabel='Départements',r
   second.push(panel(6.72+index%2*3.18,1.36+Math.floor(index/2)*h,3.09,h-.09,[[card.title,15,true],...[...(card.note?[[card.note,11]]:[]),...card.rows.map(row=>[`${row.label} · ${row.value}`,12])]]));
  });
  const slides=[first,second];
+ return editablePresentationParts(slides);
+}
+
+export function editablePresentationParts(slides){
  const types=`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${contentType('ppt/presentation.xml','presentation.main')}${contentType('ppt/slideMasters/slideMaster1.xml','slideMaster')}${contentType('ppt/slideLayouts/slideLayout1.xml','slideLayout')}${slides.map((_,i)=>contentType(`ppt/slides/slide${i+1}.xml`,'slide')).join('')}</Types>`;
  return [
   ['[Content_Types].xml',types],['_rels/.rels',relations(['rId1','officeDocument','ppt/presentation.xml'])],
