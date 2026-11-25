@@ -9,6 +9,9 @@ function verify(){
  assert(s.profiles[0].netMinor===13000&&s.profiles[0].purchaseTickets===1&&s.profiles[0].recencyDays===24,'RFM and refunds');
  assert(previewSegment(s,{tenantId:'demo',minNetMinor:13000,maxRecencyDays:24}).length===1,'segment match');
  assert(previewSegment(s,{tenantId:'demo',maxRecencyDays:23}).length===0,'segment exclusion');
+ assert(previewSegment(s,{tenantId:'demo',maxPurchaseTickets:1}).length===1,'single observed purchase');
+ assert(previewSegment(s,{tenantId:'demo',maxPurchaseTickets:0}).length===0,'maximum purchase exclusion');
+ let invalidRange=false;try{previewSegment(s,{tenantId:'demo',minPurchaseTickets:2,maxPurchaseTickets:1})}catch{invalidRange=true}assert(invalidRange,'conflicting purchase range');
  for(const patch of [{coverageComplete:false},{tickets:[{...t,tenantId:'other'}]},{tickets:[t,{...t,netMinor:999}]}]){let rejected=false;try{buildProfiles({...data,...patch})}catch{rejected=true}assert(rejected,'invalid input must fail')}
  const c={tenantId:'demo',customerToken:'synthetic-a',channel:'email',purpose:'marketing',at:'2026-11-01T12:00:00Z',status:'granted',proofId:'synthetic-proof'};
  const opt={tenantId:'demo',customerToken:'synthetic-a',channel:'email',asOf:'2026-11-25T12:00:00Z',consents:[c]};
