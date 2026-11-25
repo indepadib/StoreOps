@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {readCrmAudience} from '../services/one-crm-readonly-adapter.mjs';
+const tenantId='synthetic',storeIds=['demo-a'],allowedStoreIds=['demo-a'],windowStart='2026-11-01',asOf='2026-11-02';
+const readVerifiedDay=async ({tenantId,storeId,date})=>({tenantId,storeId,date,currency:'MAD',netAmountBasis:'verified-net-signed',coverageComplete:true,rejectedIdentity:0,tickets:[{tenantId,storeId,date,ticketId:date,customerToken:'synthetic-id',netMinor:10000}]});
+const input={tenantId,storeIds,allowedStoreIds,windowStart,asOf,readVerifiedDay,rules:{minPurchaseTickets:2}};
+const output=await readCrmAudience(input);
+assert.equal(output.audienceCount,1);assert.equal(output.audienceNetMinor,20000);assert.equal(output.activationEnabled,false);assert.ok(!JSON.stringify(output).includes('synthetic-id'));
+await assert.rejects(()=>readCrmAudience({...input,allowedStoreIds:[]}),/Forbidden/);
+for(const patch of [{coverageComplete:false},{currency:'EUR'},{rejectedIdentity:1},{netAmountBasis:'unknown'},{date:'2026-11-03'}])await assert.rejects(()=>readCrmAudience({...input,readVerifiedDay:async q=>({...await readVerifiedDay(q),...patch})}),/unverified/);
+await assert.rejects(()=>readCrmAudience({...input,readVerifiedDay:async q=>({...await readVerifiedDay(q),tickets:[{tenantId:'other',storeId:q.storeId,date:q.date}]})}),/partition/);
+console.log('CRM read-only source boundary passed');
