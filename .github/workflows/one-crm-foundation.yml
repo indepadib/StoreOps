@@ -1,0 +1,21 @@
+name: ONE CRM foundation
+on:
+  pull_request:
+    paths:
+      - 'backend/services/one-crm-*.mjs'
+      - 'backend/tests/one-crm-*.mjs'
+      - 'frontend/crm/**'
+      - '.github/workflows/one-crm-foundation.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/tests/one-crm-foundation.mjs
+      - run: node backend/tests/one-crm-readonly-adapter.mjs
+      - run: node --check backend/services/one-crm-readonly-adapter.mjs
