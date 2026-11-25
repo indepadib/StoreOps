@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {compileSegment,evaluateSegment} from '../services/one-crm-segment-engine.mjs';
+const profiles=[{tenantId:'demo',recencyDays:12,purchaseTickets:5,netMinor:100000,stores:['A']},{tenantId:'demo',recencyDays:60,purchaseTickets:2,netMinor:20000,stores:['B']},{tenantId:'demo',recencyDays:35,purchaseTickets:1,netMinor:50000,stores:['A']},{tenantId:'demo',recencyDays:null,purchaseTickets:0,netMinor:-500,stores:[]}];
+const rule=(field,op,value)=>({kind:'rule',field,op,value});
+const group=(match,...children)=>({kind:'group',match,children});
+const snapshot={tenantId:'demo',profiles};
+const expression=group('all',rule('purchaseTickets','gte',2),group('any',rule('recencyDays','lte',14),rule('stores','contains','B')));
+assert.deepEqual(evaluateSegment(snapshot,{tenantId:'demo',expression}),profiles.slice(0,2));
+assert.equal(evaluateSegment(snapshot,{tenantId:'demo',expression:rule('netMinor','lt',0)}).length,0);
+assert.throws(()=>evaluateSegment(snapshot,{tenantId:'other',expression}));
+assert.throws(()=>evaluateSegment({...snapshot,profiles:[{...profiles[0],tenantId:'other'}]},{tenantId:'demo',expression}));
+assert.throws(()=>compileSegment(rule('__proto__','eq',0)));
+assert.throws(()=>compileSegment(rule('netMinor','gte','10')));
+assert.throws(()=>compileSegment(group('any')));
+assert.throws(()=>compileSegment(rule('stores','contains','')));
+let deep=rule('netMinor','gte',0);for(let i=0;i<7;i++)deep=group('all',deep);assert.throws(()=>compileSegment(deep));
+assert.equal(compileSegment(rule('averageNetMinor','gte',0))(profiles[0]),false);
+console.log('ONE CRM segment engine: OK');
