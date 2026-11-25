@@ -19,12 +19,13 @@ export function buildProfiles({tenantId,asOf,windowStart,coverageComplete,ticket
  return {tenantId,asOf,windowStart,anonymousTickets,uniqueTickets:seen.size,profiles:[...profiles.values()].map(p=>({...p,stores:[...p.stores].sort(),recencyDays:p.lastPurchase?Math.round((Date.parse(asOf)-Date.parse(p.lastPurchase))/86400000):null,averageNetMinor:p.purchaseTickets?Math.round(p.netMinor/p.purchaseTickets):null}))};
 }
 
-export function previewSegment(snapshot,{tenantId,maxRecencyDays,minRecencyDays,minPurchaseTickets,minNetMinor}){
+export function previewSegment(snapshot,{tenantId,maxRecencyDays,minRecencyDays,minPurchaseTickets,maxPurchaseTickets,minNetMinor}){
  if(snapshot.tenantId!==tenantId)throw Error('Tenant mismatch');
- for(const v of [maxRecencyDays,minRecencyDays,minPurchaseTickets])if(v!==undefined&&(!Number.isSafeInteger(v)||v<0))throw Error('Invalid segment threshold');
+ for(const v of [maxRecencyDays,minRecencyDays,minPurchaseTickets,maxPurchaseTickets])if(v!==undefined&&(!Number.isSafeInteger(v)||v<0))throw Error('Invalid segment threshold');
  if(minNetMinor!==undefined&&!Number.isSafeInteger(minNetMinor))throw Error('Invalid monetary threshold');
  if(minRecencyDays!==undefined&&maxRecencyDays!==undefined&&minRecencyDays>maxRecencyDays)throw Error('Conflicting recency limits');
- return snapshot.profiles.filter(p=>p.recencyDays!==null&&(maxRecencyDays===undefined||p.recencyDays<=maxRecencyDays)&&(minRecencyDays===undefined||p.recencyDays>=minRecencyDays)&&(minPurchaseTickets===undefined||p.purchaseTickets>=minPurchaseTickets)&&(minNetMinor===undefined||p.netMinor>=minNetMinor));
+ if(minPurchaseTickets!==undefined&&maxPurchaseTickets!==undefined&&minPurchaseTickets>maxPurchaseTickets)throw Error('Conflicting purchase limits');
+ return snapshot.profiles.filter(p=>p.recencyDays!==null&&(maxRecencyDays===undefined||p.recencyDays<=maxRecencyDays)&&(minRecencyDays===undefined||p.recencyDays>=minRecencyDays)&&(minPurchaseTickets===undefined||p.purchaseTickets>=minPurchaseTickets)&&(maxPurchaseTickets===undefined||p.purchaseTickets<=maxPurchaseTickets)&&(minNetMinor===undefined||p.netMinor>=minNetMinor));
 }
 
 export function marketingEligibility({tenantId,customerToken,channel,asOf,consents,suppressed=false}){
