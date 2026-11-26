@@ -32,6 +32,9 @@ export function marketingEligibility({tenantId,customerToken,channel,asOf,consen
  if(suppressed||!tenantId||!customerToken||!['email','whatsapp','sms','push'].includes(channel)||typeof asOf!=='string'||!Number.isFinite(Date.parse(asOf))||!Array.isArray(consents))return false;
  const scoped=consents.filter(c=>c.tenantId===tenantId&&c.customerToken===customerToken&&c.channel===channel&&c.purpose==='marketing');
  if(scoped.some(c=>!Number.isFinite(Date.parse(c.at))||!['granted','revoked'].includes(c.status)))return false;
- const events=scoped.filter(c=>Date.parse(c.at)<=Date.parse(asOf)).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at)||(a.status==='revoked'?-1:1));
- return !!(events[0]?.status==='granted'&&typeof events[0].proofId==='string'&&events[0].proofId.trim());
+ // Legacy helper accepts proof references only; never use it for dispatch.
+ const events=scoped.filter(c=>Date.parse(c.at)<=Date.parse(asOf));
+ if(!events.length)return false;
+ const latest=events.reduce((n,c)=>Math.max(n,Date.parse(c.at)),-Infinity);
+ return events.filter(c=>Date.parse(c.at)===latest).every(c=>c.status==='granted'&&typeof c.proofId==='string'&&!!c.proofId.trim());
 }
