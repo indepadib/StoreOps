@@ -19,3 +19,10 @@ const item=(productNumber,positiveTtc)=>({productNumber,productName:null,positiv
 const t=(storeId,date,items)=>({storeId,date,items,positiveTtc:items.reduce((n,i)=>n+i.positiveTtc,0)});
 const b=summarizeCustomerBehavior([t('a','2026-11-26',[item('X',5),item('X',3)]),t('a','2026-11-26',[item('Y',8)]),t('b','2026-11-16',[item('X',8)])],'2026-11-26T12:00:00Z');
 assert.equal(b.shoppingDays,2);assert.equal(b.averageDaysBetweenVisits,10);assert.equal(b.favoriteStore,'a');assert.equal(b.topProducts[0].tickets,2);assert.equal(b.distinctProducts,2);assert.equal(b.recencyDays,0);assert.equal(b.ticketsLast30Days,3);
+
+import {scoreObservedRfm} from '../services/one-crm-customer-rfm.mjs';
+const high=scoreObservedRfm({recencyDays:7,tickets90:12,positiveTtc90:2500});assert.deepEqual(high.scores,{r:5,f:5,m:5});assert.equal(high.segment,'HIGH_VALUE_ACTIVE');
+const old=scoreObservedRfm({recencyDays:100,tickets90:0,positiveTtc90:0});assert.equal(old.segment,'NO_RECENT_PURCHASE');assert.deepEqual(old.scores,{r:1,f:1,m:1});
+assert.equal(scoreObservedRfm({recencyDays:null,tickets90:0,positiveTtc90:0}).scores,null);
+assert.throws(()=>scoreObservedRfm({recencyDays:5,tickets90:0,positiveTtc90:0}));
+assert.equal(b.rfm.positiveTtc90,24);assert.equal(b.rfm.tickets90,3);assert.equal(b.rfm.segment,'REGULAR_ACTIVE');
