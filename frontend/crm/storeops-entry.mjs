@@ -23,6 +23,7 @@ export async function openCrmPilot(){
  document.getElementById('crmPilotRetry').onclick=()=>location.reload();
  const r=await check();setGate(r.status);
  if(r.status!=='AUTHORIZED')return false;
+ setupCustomerDirectory();
  setupNavigation();
  setupLiveObservation();
  let busy=false,closed=false,timer;
@@ -52,7 +53,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -151,6 +152,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -161,3 +163,20 @@ function setupNavigation(){
  document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();open()}});
  go('overview');
 }
+
+let directoryGeneration=0,directoryPage=1,directoryLoaded=false,directoryBusy=false;
+function clearDirectory(){directoryGeneration++;directoryPage=1;directoryLoaded=false;directoryBusy=false;el('crmDirectoryRows')?.replaceChildren();for(const id of ['crmDirectoryTotal','crmMasterKpi'])if(el(id))el(id).textContent='—';if(el('crmDirectoryPager'))el('crmDirectoryPager').hidden=true;if(el('crmDirectoryStatus'))el('crmDirectoryStatus').textContent='Session à vérifier. Actualisez le référentiel.';if(el('crmDirectoryRead'))el('crmDirectoryRead').disabled=false}
+function loadDirectoryIfNeeded(){if(!directoryLoaded&&!directoryBusy)readDirectory(1)}
+async function readDirectory(page){
+ if(!document.documentElement.classList.contains('crm-pilot-open')||directoryBusy)return;
+ const g=++directoryGeneration,rows=el('crmDirectoryRows'),status=el('crmDirectoryStatus'),btn=el('crmDirectoryRead');if(!rows||!status||!btn)return;
+ directoryBusy=true;btn.disabled=true;rows.replaceChildren();el('crmDirectoryPager').hidden=true;status.textContent='Lecture du référentiel permanent Dynamics…';
+ try{
+  const x=await api('/api/crm/customer-directory?'+new URLSearchParams({page:String(page)}),{noRetry:true,cache:'no-store'});if(g!==directoryGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
+  if(x?.status!=='READY'||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.identityBasis!=='D365_LEGAL_ENTITY_ACCOUNT'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!Number.isFinite(Date.parse(x.checkedAt))||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0||x.page!==page||x.pageSize!==50||!Array.isArray(x.rows)||x.rows.length!==Math.min(50,Math.max(0,x.totalAccounts-(page-1)*50))||x.rows.some(r=>typeof r.accountRef!=='string'||!r.accountRef.trim()||r.accountRef.length>160||!Number.isFinite(Date.parse(r.createdAt))))throw Error('Invalid customer master');
+  for(const r of x.rows){const tr=document.createElement('tr');for(const v of [r.accountRef,new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(r.createdAt)),'À raccorder']){const td=document.createElement('td');td.textContent=v;tr.append(td)}rows.append(tr)}
+  const total=Math.max(1,Math.ceil(x.totalAccounts/50));directoryPage=page;directoryLoaded=true;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent=fmt(x.totalAccounts);
+  status.textContent='D365 · Tous les comptes Retail de l’entité juridique · extraction '+x.checkedAt;el('crmDirectoryPage').textContent='Page '+page+' / '+total;el('crmDirectoryPrev').disabled=page===1;el('crmDirectoryNext').disabled=page===total;el('crmDirectoryPager').hidden=false;
+ }catch{if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent='Référentiel indisponible ou accès réseau incomplet. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
+}
+function setupCustomerDirectory(){el('crmDirectoryRead').onclick=()=>readDirectory(1);el('crmDirectoryPrev').onclick=()=>readDirectory(directoryPage-1);el('crmDirectoryNext').onclick=()=>readDirectory(directoryPage+1)}

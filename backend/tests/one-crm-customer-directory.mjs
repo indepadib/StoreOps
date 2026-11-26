@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {normalizeCustomerMaster,projectCustomerMaster,makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
+const checkedAt='2026-11-26T10:00:00Z',company='demo-company';
+const rows=Array.from({length:53},(_,i)=>({AccountNum:'account-'+String(i).padStart(2,'0'),SysDataAreaId:company,SysCreatedDateTime:i===0?'2020-01-01T00:00:00Z':'2026-11-26T00:00:00Z',CustGroup:'Retail',Party:'private-party',Email:'private-email'}));
+const master=normalizeCustomerMaster([...rows,rows[0]],{company,checkedAt});
+assert.equal(master.rows.length,53);assert.equal(master.rows[0].createdAt,'2020-01-01T00:00:00.000Z');assert.equal(projectCustomerMaster(master,2).rows.length,3);assert.ok(!JSON.stringify(master).includes('private-'));
+assert.throws(()=>normalizeCustomerMaster([...rows,{...rows[0],SysDataAreaId:'other'}],{company,checkedAt}));assert.throws(()=>normalizeCustomerMaster([...rows,{...rows[0],CustGroup:'Wholesale'}],{company,checkedAt}));assert.throws(()=>normalizeCustomerMaster([...rows,{...rows[0],SysCreatedDateTime:'2021-01-01T00:00:00Z'}],{company,checkedAt}));
+let reads=0;const deps={listStores:()=>[{id:'val-fleuri'},{id:'trefle'}],canAccessStore:()=>true,readMaster:async()=>{reads++;return master},pilotStores:'val-fleuri,trefle'};
+const gate=makeCustomerDirectoryGateway(deps),req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams()};
+assert.equal((await gate(req)).data.totalAccounts,53);
+for(const patch of [{session:{mode:'demo',user:{role:'ops_director'}}},{session:{mode:'entra',user:{role:'employee'}}},{dynamicsMode:'simulated'},{method:'POST'},{query:new URLSearchParams({date:'2026-11-25'})},{query:new URLSearchParams({storeId:'val-fleuri'})}])assert.notEqual((await gate({...req,...patch})).data.status,'READY');
+assert.equal((await makeCustomerDirectoryGateway({...deps,canAccessStore:(_,id)=>id==='val-fleuri'})(req)).status,403);
+assert.equal((await makeCustomerDirectoryGateway({...deps,listStores:()=>[{id:'val-fleuri'},{id:'trefle'},{id:'other'}]})(req)).status,403);
+assert.equal(reads,1);console.log('CRM all-time company retail master contract passed');
