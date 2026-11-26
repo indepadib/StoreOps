@@ -2,6 +2,8 @@ import {config} from '../config.mjs';
 import {odataGetAll,probeDataEntity} from './dynamics.mjs';
 import {resolveWorkers} from './dynamics-staff-performance.mjs';
 import {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache} from './analytics-persistent-cache.mjs';
+import {createCustomerNameCache} from './customer-name-cache.mjs';
+const cachedCustomerNames=createCustomerNameCache();
 const esc=v=>String(v).replaceAll("'","''");
 export async function enrichDecisionNames(customers=[],cashiers=[]){
  if(config.dynamics.mode!=='live')return{status:'UNAVAILABLE'};
@@ -12,6 +14,9 @@ export async function enrichDecisionNames(customers=[],cashiers=[]){
  return{customersResolved:customers.filter(c=>c.customerName).length,cashiersResolved:cashiers.filter(c=>c.name).length};
 }
 async function customerNames(ids){
+ return cachedCustomerNames([config.dynamics.baseUrl,config.dynamics.dataAreaId,process.env.D365_CUSTOMER_ENTITY||'CustomersV3'],ids,readCustomerNames);
+}
+async function readCustomerNames(ids){
  const out=new Map();if(!ids.length)return out;
  const entity=process.env.D365_CUSTOMER_ENTITY||'CustomersV3';let fields;
  try{const p=await probeDataEntity(entity,{top:1,extra:'cross-company=true'}),r=p.rows?.[0]||{},keys=Object.keys(r),pick=names=>names.find(k=>keys.includes(k));fields={id:pick(['CustomerAccount','CustomerAccountNumber','AccountNum']),org:pick(['OrganizationName','Name']),first:pick(['PersonFirstName','FirstName']),last:pick(['PersonLastName','LastName']),company:pick([config.dynamics.dataAreaField,'dataAreaId'])};if(!fields.id)return out;}catch{return out}
