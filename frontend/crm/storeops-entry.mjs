@@ -296,7 +296,7 @@ async function readIdentitySearch(page){
  }catch{if(active())status.textContent='Recherche indisponible. La liste des comptes reste accessible.'}finally{if(active())btn.disabled=false}
 }
 
-function clearBehavior(){
+function clearBehavior(){if(el('crmRfmPanel'))el('crmRfmPanel').hidden=true;el('crmRfmMetrics')?.replaceChildren();if(el('crmRfmSegment'))el('crmRfmSegment').textContent='';
  if(el('crmBehaviorPanel'))el('crmBehaviorPanel').hidden=true;
  for(const id of ['crmBehaviorMetrics','crmBehaviorStores','crmBehaviorProducts'])el(id)?.replaceChildren();
 }
@@ -314,5 +314,14 @@ function renderBehavior(x){
  const append=(id,values)=>{const tr=document.createElement('tr');for(const v of values){const td=document.createElement('td');td.textContent=v;tr.append(td)}el(id).append(tr)};
  for(const r of b.storeBreakdown)append('crmBehaviorStores',[storeName(r.storeId),fmt(r.tickets),money(r.positiveTtc)]);
  for(const r of b.topProducts)append('crmBehaviorProducts',[r.productName?r.productName+' · '+r.productNumber:r.productNumber,fmt(r.tickets),money(r.positiveTtc)]);
- el('crmBehaviorPanel').hidden=false;
+ el('crmBehaviorPanel').hidden=false;renderRfm(b);
+}
+
+function renderRfm(b){
+ const r=b.rfm;if(!r)return;
+ const labels={NO_OBSERVED_PURCHASE:'Aucun achat observé',NO_RECENT_PURCHASE:'Aucun achat depuis 90 jours',HIGH_VALUE_ACTIVE:'Actif à forte valeur observée',REGULAR_ACTIVE:'Actif régulier',RECENT_SINGLE_TICKET:'Achat récent unique sur 90 jours',INACTIVE_30_PLUS:'Inactif depuis plus de 30 jours',OTHER_OBSERVED:'Autre profil observé'};
+ const validScore=v=>Number.isInteger(v)&&v>=1&&v<=5;
+ if(r.policy!=='FRANPRIX_PILOT_RULES_V1'||r.windowDays!==90||r.activationEnabled!==false||!Object.hasOwn(labels,r.segment)||r.recencyDays!==b.recencyDays||r.tickets90!==b.ticketsLast90Days||typeof r.positiveTtc90!=='number'||!Number.isFinite(r.positiveTtc90)||r.positiveTtc90<0||!(r.scores===null&&b.recencyDays===null||r.scores&&b.recencyDays!==null&&[r.scores.r,r.scores.f,r.scores.m].every(validScore)))return;
+ el('crmRfmSegment').textContent=labels[r.segment];
+ const out=el('crmRfmMetrics');metric(out,'R · Récence',r.scores?r.scores.r+' / 5':'Non calculable');metric(out,'F · Fréquence',r.scores?r.scores.f+' / 5':'Non calculable');metric(out,'M · Montant',r.scores?r.scores.m+' / 5':'Non calculable');metric(out,'Dépenses TTC positives · 90 j',money(r.positiveTtc90));el('crmRfmPanel').hidden=false;
 }
