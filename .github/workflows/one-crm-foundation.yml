@@ -35,6 +35,7 @@ jobs:
       - run: node backend/tests/one-crm-experimentation.mjs
       - run: node backend/tests/one-crm-journey-graph.mjs
       - run: node backend/tests/one-crm-omnichannel.mjs
+      - run: node backend/tests/one-crm-churn.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
