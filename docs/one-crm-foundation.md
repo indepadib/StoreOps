@@ -83,3 +83,6 @@ The StoreOps seed defines internal IDs `val-fleuri` and `trefle`; confirm agains
 
 ## R0.40 — pilot readiness workspace
 The standalone synthetic Data Hub now includes a four-step readiness overview and acceptance criteria, explicitly not a live status monitor. No new live integration or data processing is claimed. Browser regression asserts visibility and disclosure. Actual deployment and CI status must be checked separately.
+
+## Hosted deployment incident — 2026-11-26
+The operator supplied the Netlify build diagnosis: createSiteDatabaseBranch returned HTTP 403, active database branch limit reached for feat/one-crm-foundation. The operator reports deleting three obsolete preview database branches. PRs 340–343 are verified merged on main; the exact three deleted were not specified. Retry the candidate without altering database migrations, credentials or the production branch. Daily retention review is configured separately; never delete production or active/retained test previews. R0.40 CRM, StoreOps CI and offline packaging checks passed on 0b5f166. Hosted retry and authenticated acceptance remain required.
