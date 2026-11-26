@@ -118,3 +118,6 @@ Uses Microsoft documented CustomersV3 OData collection (https://learn.microsoft.
 
 ## R0.48 — account-attributed wallet Earn
 Reuse documented monetary reward definitions and signed Earn deduplication for an exact authorized Retail account and approved operating units, no date filter. Coverage is CustomerAccount field only, not card-only events; do not call it total lifetime wallet. Burn from tender payments and available balance remain explicitly unconnected. No raw card IDs exposed. Independent on-demand UI and synthetic tests; production live reads require validation.
+
+## R0.49 — directory name enrichment
+A separate authorized request reloads the same paginated source scope and enriches up to 50 account IDs via CustomersV3 in groups of 10, with three concurrent reads at most. Match exact account + company + Retail group; reject duplicate or mismatched source rows. The directory remains visible if identity data fails, names are not inferred from account references, and contact details remain individual-only. Names in the list and profile header are rendered as text, never HTML. Standard fields documented by Microsoft; actual tenant support and latency remain to be confirmed. No name search or extra address/demographic field claims.
