@@ -44,6 +44,7 @@ jobs:
       - run: node backend/tests/one-crm-signed-export.mjs
       - run: node backend/tests/one-crm-access.mjs
       - run: node backend/tests/one-crm-generative.mjs
+      - run: node backend/tests/one-crm-dispatch.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
