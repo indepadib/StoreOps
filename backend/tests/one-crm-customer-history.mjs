@@ -29,3 +29,12 @@ const item=(productNumber,positiveTtc)=>({productNumber,productName:null,positiv
 const t=(storeId,date,items)=>({storeId,date,items,positiveTtc:items.reduce((n,i)=>n+i.positiveTtc,0)});
 const b=summarizeCustomerBehavior([t('a','2026-11-26',[item('X',5),item('X',3)]),t('a','2026-11-26',[item('Y',8)]),t('b','2026-11-16',[item('X',8)])],'2026-11-26T12:00:00Z');
 assert.equal(b.shoppingDays,2);assert.equal(b.averageDaysBetweenVisits,10);assert.equal(b.favoriteStore,'a');assert.equal(b.topProducts[0].tickets,2);assert.equal(b.distinctProducts,2);assert.equal(b.recencyDays,0);assert.equal(b.ticketsLast30Days,3);
+
+import {projectRfmPopulation} from '../services/one-crm-rfm-population.mjs';
+assert.equal(b.rfm.positiveTtc90,24);assert.equal(b.rfm.tickets90,3);assert.equal(b.rfm.segment,'REGULAR_ACTIVE');
+const populationAccounts=[{accountRef:'A'},{accountRef:'B'},{accountRef:'C'}];
+const sourceRange={status:'READY',source:'D365/RetailTransactionSalesTransBIEntities',storeId:'a',startDate:'2026-08-29',endDate:'2026-11-26',diagnostics:{truncated:false,filterCoverage:{parentTransaction:true},mappedFields:{customer:true}},customers:[{customerAccount:'A',sales:1200,tickets:8,lastDate:'2026-11-25'},{customerAccount:'OUTSIDE',sales:10,tickets:1,lastDate:'2026-11-25'}]};
+const population=projectRfmPopulation({accounts:populationAccounts,stores:['a','b'],asOf:'2026-11-26',ranges:[sourceRange,{...sourceRange,storeId:'b',customers:[{customerAccount:'A',sales:300,tickets:2,lastDate:'2026-11-26'},{customerAccount:'B',sales:90,tickets:1,lastDate:'2026-10-01'}]}]});
+assert.equal(population.totalAccounts,3);assert.equal(population.coverage.coveredStoreDays,180);assert.equal(population.coverage.unmatchedPurchaseAccounts,1);assert.equal(population.rows[0].rfm.tickets90,10);assert.equal(population.rows[0].rfm.positiveTtc90,1500);assert.equal(population.rows[0].rfm.recencyDays,0);assert.equal(population.rows[2].status,'NO_PURCHASE_IN_OBSERVED_90_DAYS');assert.equal(population.rows[2].recencyLowerBoundDays,90);
+const incomplete=projectRfmPopulation({accounts:populationAccounts,stores:['a','b'],asOf:'2026-11-26',ranges:[sourceRange]});assert.equal(incomplete.status,'PARTIAL');assert.ok(incomplete.rows.every(x=>x.status==='HISTORY_INCOMPLETE'&&x.rfm===null));
+assert.throws(()=>projectRfmPopulation({accounts:populationAccounts,stores:['a'],asOf:'2026-11-26',ranges:[sourceRange,sourceRange]}));
