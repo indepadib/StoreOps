@@ -38,5 +38,7 @@ export function buildCustomerEvidence({tenantId,customerToken,windowStart,asOf,t
  }
  const ranked=map=>[...map.values()].sort((a,b)=>b.netMinor-a.netMinor||a.key.localeCompare(b.key));
  const profile={recencyDays:lastPurchase?Math.round((Date.parse(asOf)-Date.parse(lastPurchase))/86400000):null,purchaseTickets,netMinor};
- return {profile,rfm:scoreRfm(profile),categories:ranked(categories),products:ranked(products),timeline:timeline.sort((a,b)=>b.date.localeCompare(a.date)),method:'verified-observed-evidence',activationEnabled:false};
+ const categoryRanking=ranked(categories),productRanking=ranked(products);
+ const topThree=rows=>rows.filter(x=>x.netMinor>0).slice(0,3).map(x=>x.key);
+ return {profile,rfm:scoreRfm(profile),categories:categoryRanking,products:productRanking,segmentAttributes:{preferredCategories:topThree(categoryRanking),preferredProducts:topThree(productRanking)},timeline:timeline.sort((a,b)=>b.date.localeCompare(a.date)),method:'verified-observed-evidence',activationEnabled:false};
 }
