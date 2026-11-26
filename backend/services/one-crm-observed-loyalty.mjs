@@ -23,10 +23,9 @@ export function makeObservedLoyaltyGateway({listStores,canAccessStore,readRange,
    const accounts=['READY','PARTIAL'].includes(r.accountCreationStatus)&&e.source==='D365/CustTableCDREntities'&&e.dateField==='SysCreatedDateTime'&&e.attribution==='EARLIEST_LOYALTY_CARD_OPERATING_UNIT'&&count(r.accountCreations)?r.accountCreations:null;
    const cards=r.status==='READY'&&r.source==='D365/RetailLoyaltyCards'&&r.enrollmentIdentityBasis==='LOYALTY_CARD'&&count(r.enrollments)?r.enrollments:null;
    const earn=r.earnStatus==='READY'&&r.earnSource==='D365/RetailLoyaltyCardRewardPointTransactionV2'&&money(r.earn)?r.earn:null;
-   // Suppress small acquisition/card cohorts independently; no account-level rows.
-   const accountVisible=accounts!==null&&(accounts===0||accounts>=10),cardVisible=cards!==null&&(cards===0||cards>=10);
-   // Earn has no distinct-account count in this reader. Keep it unavailable until a privacy-safe cohort is verified.
-   return {status:200,data:{status:accountVisible||cardVisible?'READY':'UNAVAILABLE',storeId,date,checkedAt:x.generatedAt,currency:'MAD',accountCreations:accountVisible?accounts:null,cardEnrollments:cardVisible?cards:null,accountStatus:accounts===null?'UNAVAILABLE':accountVisible?r.accountCreationStatus:'SUPPRESSED',cardStatus:cards===null?'UNAVAILABLE':cardVisible?'READY':'SUPPRESSED',walletEarn:null,walletEarnStatus:earn===null?'UNAVAILABLE':'COHORT_NOT_VERIFIED',attribution:'EARLIEST_LOYALTY_CARD_OPERATING_UNIT',activationEnabled:false}};
+   // Operational counts and monetary totals are already available to these authorized
+   // roles through Store Analytics. No customer-level or staff records are released.
+   return {status:200,data:{status:accounts!==null||cards!==null||earn!==null?'READY':'UNAVAILABLE',storeId,date,checkedAt:x.generatedAt,currency:'MAD',accountCreations:accounts,cardEnrollments:cards,accountStatus:accounts===null?'UNAVAILABLE':r.accountCreationStatus,cardStatus:cards===null?'UNAVAILABLE':'READY',walletEarn:earn,walletEarnStatus:earn===null?'UNAVAILABLE':'READY',attribution:'EARLIEST_LOYALTY_CARD_OPERATING_UNIT',activationEnabled:false}};
   }catch{return {status:503,data:unavailable('LOYALTY_READ_FAILED')}}
  };
 }

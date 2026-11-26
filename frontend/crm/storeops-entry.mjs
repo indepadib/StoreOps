@@ -111,10 +111,11 @@ function setupLiveObservation(){
  loyalty.onclick=async()=>{
   if(!selection())return;const g=generation,lg=++loyaltyGeneration,id=store.value,day=date.value,out=el('crmLoyaltyMetrics'),status=el('crmLoyaltyStatus');out.replaceChildren();loyalty.disabled=true;status.textContent='Lecture fidélité Dynamics…';
   try{const x=await api('/api/crm/observed-loyalty?'+new URLSearchParams({storeId:id,date:day}),{noRetry:true,cache:'no-store'});if(g!==generation||lg!==loyaltyGeneration||!valid())return;
-   const count=v=>v===null||Number.isSafeInteger(v)&&(v===0||v>=10);
-   if(!['READY','UNAVAILABLE'].includes(x?.status)||x.storeId!==id||x.date!==day||!Number.isFinite(Date.parse(x.checkedAt))||x.currency!=='MAD'||x.attribution!=='EARLIEST_LOYALTY_CARD_OPERATING_UNIT'||x.activationEnabled!==false||!count(x.accountCreations)||!count(x.cardEnrollments)||x.walletEarn!==null||!['READY','PARTIAL','SUPPRESSED','UNAVAILABLE'].includes(x.accountStatus)||!['READY','SUPPRESSED','UNAVAILABLE'].includes(x.cardStatus))throw Error('Loyalty evidence unavailable');
-   const display=(value,state)=>value!==null?fmt(value):state==='SUPPRESSED'?'Masqué':'Non disponible';
-   metric(out,'Comptes créés attribués',display(x.accountCreations,x.accountStatus));metric(out,'Cartes inscrites',display(x.cardEnrollments,x.cardStatus));metric(out,'Wallet Earn','Non disponible');
+   const count=v=>v===null||Number.isSafeInteger(v)&&v>=0;
+   const walletValid=x.walletEarn===null&&x.walletEarnStatus==='UNAVAILABLE'||typeof x.walletEarn==='number'&&Number.isFinite(x.walletEarn)&&Number.isSafeInteger(Math.round(x.walletEarn*100))&&x.walletEarnStatus==='READY';
+   if(!['READY','UNAVAILABLE'].includes(x?.status)||x.storeId!==id||x.date!==day||!Number.isFinite(Date.parse(x.checkedAt))||x.currency!=='MAD'||x.attribution!=='EARLIEST_LOYALTY_CARD_OPERATING_UNIT'||x.activationEnabled!==false||!count(x.accountCreations)||!count(x.cardEnrollments)||!walletValid||!['READY','PARTIAL','UNAVAILABLE'].includes(x.accountStatus)||!['READY','UNAVAILABLE'].includes(x.cardStatus))throw Error('Loyalty evidence unavailable');
+   const display=value=>value!==null?fmt(value):'Non disponible';
+   metric(out,'Comptes créés attribués',display(x.accountCreations,x.accountStatus));metric(out,'Cartes inscrites',display(x.cardEnrollments,x.cardStatus));metric(out,'Wallet Earn net',x.walletEarn===null?'Non disponible':money(x.walletEarn));
    status.textContent='D365 · '+day+' · attribution '+(x.accountStatus==='PARTIAL'?'partielle':'selon première carte')+' · extraction '+x.checkedAt;
   }catch{if(g===generation&&lg===loyaltyGeneration&&valid()){out.replaceChildren();status.textContent='Données fidélité indisponibles.'}}finally{if(g===generation&&lg===loyaltyGeneration&&valid())loyalty.disabled=!selection()}
  };
@@ -177,6 +178,6 @@ async function readDirectory(page){
   for(const r of x.rows){const tr=document.createElement('tr');for(const v of [r.accountRef,new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(r.createdAt)),'À raccorder']){const td=document.createElement('td');td.textContent=v;tr.append(td)}rows.append(tr)}
   const total=Math.max(1,Math.ceil(x.totalAccounts/50));directoryPage=page;directoryLoaded=true;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent=fmt(x.totalAccounts);
   status.textContent='D365 · Tous les comptes Retail de l’entité juridique · extraction '+x.checkedAt;el('crmDirectoryPage').textContent='Page '+page+' / '+total;el('crmDirectoryPrev').disabled=page===1;el('crmDirectoryNext').disabled=page===total;el('crmDirectoryPager').hidden=false;
- }catch{if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent='Référentiel indisponible ou accès réseau incomplet. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
+ }catch(e){if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent=e.status===403?'Accès réseau refusé (403). Vérifiez votre habilitation CRM.':e.status===503?'Source Dynamics indisponible (503). Le référentiel n’a pas pu être lu.':'Lecture du référentiel impossible. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
 }
 function setupCustomerDirectory(){el('crmDirectoryRead').onclick=()=>readDirectory(1);el('crmDirectoryPrev').onclick=()=>readDirectory(directoryPage-1);el('crmDirectoryNext').onclick=()=>readDirectory(directoryPage+1)}
