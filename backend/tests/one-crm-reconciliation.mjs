@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {reconcileStoreDay,makeVerifiedDayReader} from '../services/one-crm-reconciliation.mjs';
+const scope={tenantId:'demo',storeId:'demo-a',date:'2026-11-20'};
+const t=(ticketId,netMinor,customerToken)=>({...scope,ticketId,netMinor,customerToken});
+const batch={...scope,source:'synthetic-lines',currency:'MAD',closed:true,coverageComplete:true,basis:'signed-retail-net',rejectedIdentity:0,tickets:[t('a',10000,'demo-1'),t('b',-2500,'demo-1'),t('c',6000,null)]};
+const control={...scope,source:'synthetic-control',currency:'MAD',closed:true,basis:'signed-retail-net',tickets:3,positiveMinor:16000,refundMinor:2500,netMinor:13500};
+const run=(b=batch,c=control)=>reconcileStoreDay({...scope,batch:b,control:c});
+const ok=run();assert.equal(ok.report.status,'VERIFIED');assert.equal(ok.report.metrics.identifiedNetMinor,7500);assert.equal(ok.report.metrics.anonymousTickets,1);assert.equal(ok.verifiedDay.tickets.length,3);assert.ok(!JSON.stringify(ok.report).includes('demo-1'));
+assert.equal(run({...batch,tickets:[...batch.tickets,batch.tickets[0]]}).report.status,'VERIFIED');
+assert.equal(run({...batch,tickets:[...batch.tickets,t('a',9000,'demo-1')]}).verifiedDay,null);
+assert.equal(run({...batch,tickets:batch.tickets.filter(x=>x.netMinor>0)}).verifiedDay,null);
+assert.equal(run({...batch,closed:false}).verifiedDay,null);
+assert.equal(run(batch,{...control,source:batch.source}).verifiedDay,null);
+assert.equal(run(batch,{...control,refundMinor:0}).verifiedDay,null);
+assert.equal(run({...batch,rejectedIdentity:1}).verifiedDay,null);
+assert.equal(run(batch,{...control,storeId:'other'}).verifiedDay,null);
+assert.throws(()=>run({...batch,tickets:[...batch.tickets,t('x',Number.MAX_SAFE_INTEGER,'demo-1')]},control),/overflow/);
+console.log('CRM signed-day reconciliation passed');
