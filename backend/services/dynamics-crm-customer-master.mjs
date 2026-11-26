@@ -57,3 +57,9 @@ export async function readCrmCustomerIdentity(row){
  const {readCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
  return readCustomerIdentity({...sourceDeps(),accountRef:row.accountRef});
 }
+
+export async function readCrmCustomerWallet(row,stores){
+ const {readCustomerWallet}=await import('./one-crm-customer-wallet.mjs');
+ const {storeOperationalSettings}=await import('./store-settings.mjs');
+ return readCustomerWallet({accountRef:row.accountRef,company:sourceDeps().company,stores,settings:storeOperationalSettings,readCollection:readCompleteCollection});
+}

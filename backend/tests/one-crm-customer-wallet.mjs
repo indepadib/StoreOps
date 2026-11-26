@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readCustomerWallet} from '../services/one-crm-customer-wallet.mjs';
+import {makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
+const accountRef="A'1",company='5001',stores=[{id:'a'}],reward={RewardPointId:'MAD',RewardPointType:'Amount',RewardPointCurrency:'MAD',Redeemable:'Yes'};
+const r={LoyaltyTransactionCompany:company,OperatingUnitNumber:'001',CustomerAccount:accountRef,EntryDate:'2026-01-01T12:00:00Z',EntryType:'Earn',RewardPointId:'MAD',RewardPointAmountQty:15,TransactionNumber:'1',LoyaltyTransactionLineNumber:1,CardNumber:'SECRET_CARD'};
+let rows=[r,{...r},{...r,TransactionNumber:'2',RewardPointAmountQty:-3},{...r,TransactionNumber:'3',EntryType:'Redeem',RewardPointAmountQty:-5}];
+const input={accountRef,company,stores,settings:()=>({d365:{legalEntityId:company,operatingUnitNumber:'001'}}),readCollection:async(entity,opts)=>{if(entity==='RetailLoyaltyRewardPoints')return [reward];assert.match(opts.filter,/CustomerAccount eq 'A''1'/);assert.ok(!opts.filter.includes('EntryDate'));return rows}};
+const x=await readCustomerWallet(input);assert.equal(x.status,'READY');assert.equal(x.earn,12);assert.equal(x.credits,15);assert.equal(x.reversals,-3);assert.equal(x.entryCount,2);assert.equal(x.burn,null);assert.equal(x.balance,null);assert.ok(!JSON.stringify(x).includes('SECRET_CARD'));
+rows=[{...r,CustomerAccount:'OTHER'}];assert.equal((await readCustomerWallet(input)).status,'UNAVAILABLE');rows=[r,{...r,RewardPointAmountQty:20}];assert.equal((await readCustomerWallet(input)).earn,null);rows=[];assert.equal((await readCustomerWallet(input)).earn,0);
+let reads=0;const gate=makeCustomerDirectoryGateway({listStores:()=>stores,canAccessStore:()=>true,pilotStores:'a',readPage:async()=>null,readCount:async()=>null,findAccount:async a=>a===accountRef?{accountRef}:null,readWallet:async(r,s)=>{reads++;assert.deepEqual(s,stores);return x}});
+const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({accountRef,wallet:'1'})};assert.equal((await gate(req)).data.earn,12);assert.equal((await gate({...req,session:{mode:'local',user:{role:'store_manager'}}})).status,403);assert.equal((await gate({...req,query:new URLSearchParams({accountRef,wallet:'1',identity:'1'})})).status,400);assert.equal(reads,1);
+console.log('CRM customer wallet earn contract passed');
