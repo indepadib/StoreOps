@@ -30,6 +30,7 @@ jobs:
       - run: node backend/tests/one-crm-stored-day-reader.mjs
       - run: node backend/tests/one-crm-promotion-intelligence.mjs
       - run: node backend/tests/one-crm-value-action.mjs
+      - run: node backend/tests/one-crm-loyalty-intelligence.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
