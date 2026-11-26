@@ -16,6 +16,7 @@ try{
  assert.match(await page.locator('#profileRfm').textContent(),/Récence/);assert.match(await page.locator('#profileRisk').textContent(),/RFM/);
  await page.locator('[data-profile-tab="history"]').click();assert.ok(await page.locator('#profileTimeline .timelineitem').count()>0);
  await page.locator('[data-profile-tab="affinity"]').click();assert.ok(await page.locator('#profileCategories .affinity-row').count()>0);
+ await page.locator('[data-profile-tab="promotion"]').click();assert.ok(await page.locator('#promoProfileMetrics').isVisible());assert.equal(await page.locator('#promoProfileMetrics > div').count(),4);assert.match(await page.locator('#promoProfileNote').textContent(),/Indicateur descriptif/);
  await page.locator('[data-profile-tab="consent"]').click();assert.equal(await page.locator('#profileConsentRows .timelineitem').count(),3);
  await page.locator('#close').click();
  await page.locator('nav [data-view="segments"]').click();await page.locator('#advancedMode').click();await page.locator('#advancedReset').click();
