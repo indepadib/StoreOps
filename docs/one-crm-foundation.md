@@ -124,3 +124,6 @@ A separate authorized request reloads the same paginated source scope and enrich
 
 ## R0.50 — global identity search
 Separate read-only authenticated POST endpoint for name and stored-format phone search in CustomersV3, with legal-entity/group filters and 50-row pagination; exact account membership is rechecked when opening a profile. Search inputs in request body rather than URL; results show account/name/type only. Does not replace the working account directory; no name or phone normalisation across alternate formats. No marketing activation. Actual tenant entity and contains support remain to be verified.
+
+## R0.51 — observed purchase behavior
+Compute positive-TTC basket average, local business-day recency, distinct shopping days, average gap between shopping days, trailing 30/90 calendar-day ticket counts (including current day), distinct product references, store breakdown and top 10 products ranked by distinct tickets then positive TTC. Favorite store only if uniquely highest ticket count. Uses complete accepted account history before UI paging, not a single ticket page. No new source reads or inferred churn/CLV; returns excluded and pilot scope retained. Future-dated rows fail the history rather than silently changing recency. Synthetic tests only; actual live history coverage still needs verification.
