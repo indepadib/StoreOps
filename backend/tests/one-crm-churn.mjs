@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {trainChurnDemo,scoreChurnDemo} from '../services/one-crm-churn.mjs';
+const rows=(n,prefix,asOf,labelThrough)=>Array.from({length:n},(_,i)=>({tenantId:'demo',customerToken:prefix+i,asOf,labelThrough,coverageComplete:true,recencyDays:i%90,purchaseTickets:2+i%10,netMinor:10000+i%40*1000,noPurchase30d:i%90>=45}));
+const train=rows(360,'train','2026-07-01','2026-07-31'),test=rows(180,'test','2026-09-01','2026-10-01');
+const input={tenantId:'demo',train,test,trainingCutoff:'2026-07-31',evaluationCutoff:'2026-10-01',syntheticOnly:true};
+const model=trainChurnDemo(input);assert.equal(model.trainSamples,360);assert.equal(model.testMetrics.samples,180);assert.ok(model.testMetrics.auc>.9);assert.ok(model.testMetrics.brier<model.baselineMetrics.brier);assert.equal(model.activationEnabled,false);
+const p={tenantId:'demo',coverageComplete:true,recencyDays:80,purchaseTickets:4,netMinor:30000};
+assert.ok(scoreChurnDemo(model,p).probability>scoreChurnDemo(model,{...p,recencyDays:5}).probability);assert.equal(scoreChurnDemo(model,p).contributions.length,3);assert.equal(scoreChurnDemo(model,p).activationEnabled,false);
+assert.throws(()=>trainChurnDemo({...input,syntheticOnly:false}));
+assert.throws(()=>trainChurnDemo({...input,test:[{...test[0],customerToken:train[0].customerToken},...test.slice(1)]}));
+assert.throws(()=>trainChurnDemo({...input,trainingCutoff:'2026-07-15'}));
+assert.throws(()=>trainChurnDemo({...input,test:[{...test[0],asOf:'2026-07-31',labelThrough:'2026-08-30'},...test.slice(1)]}));
+assert.throws(()=>trainChurnDemo({...input,test:[{...test[0],coverageComplete:false},...test.slice(1)]}));
+assert.throws(()=>trainChurnDemo({...input,test:test.map(r=>({...r,noPurchase30d:true}))}));
+assert.throws(()=>scoreChurnDemo(model,{...p,tenantId:'other'}));assert.throws(()=>scoreChurnDemo(model,{...p,coverageComplete:false}));assert.throws(()=>scoreChurnDemo(model,{...p,recencyDays:null}));
+console.log('CRM synthetic churn model passed');
