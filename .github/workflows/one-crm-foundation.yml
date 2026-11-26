@@ -41,6 +41,7 @@ jobs:
       - run: node backend/tests/one-crm-send-time.mjs
       - run: node backend/tests/one-crm-copilot.mjs
       - run: node backend/tests/one-crm-agent.mjs
+      - run: node backend/tests/one-crm-signed-export.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
