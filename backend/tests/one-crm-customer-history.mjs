@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readCustomerPositiveHistory} from '../services/one-crm-customer-history.mjs';
+import {makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
+const company='C1',accountRef="ACC'1",stores=[{id:'a'},{id:'b'}];
+const row=(store,tx,net=10,date='2025-01-01')=>({dataAreaId:company,store,terminalId:'T',transactionId:tx,custAccount:accountRef,businessDate:date,itemId:'SKU',net,qty:2,unit:'EA'});
+let rows=[row('A','t1'),row('A','t1',5),row('A','void'),row('A','ret',-5),row('B','t2',20,'2026-11-25')],calls=[];
+const deps={salesConfig:()=>({ready:true,entity:'RetailTransactionSalesTransBIEntities',fields:{store:'store',customer:'custAccount',date:'businessDate',product:'itemId',net:'net',quantity:'qty',salesUnit:'unit'}}),settings:id=>({d365:{storeNumber:id.toUpperCase(),legalEntityId:company}}),amount:r=>r.net,eligible:r=>r.net>0,readCollection:async(entity,opts)=>{calls.push(opts.filter);const store=opts.filter.includes("store eq 'A'")?'A':'B';if(entity==='RetailTransactionSalesTransBIEntities')return rows.filter(r=>r.store===store);return [...new Set(rows.filter(r=>r.store===store).map(r=>r.transactionId))].map(transactionId=>({dataAreaId:company,store,terminal:'T',transactionId,type:'SALES',entryStatus:transactionId==='void'?'VOIDED':'POSTED'}))}};
+const scope={accountRef,company,stores,page:1};
+let x=await readCustomerPositiveHistory(scope,deps);assert.equal(x.status,'READY');assert.equal(x.totalTickets,2);assert.equal(x.positiveTtc,35);assert.equal(x.firstPurchase,'2025-01-01');assert.equal(x.rows[1].items[0].quantity,4);assert.equal(x.rows[1].items[0].positiveTtc,15);assert.ok(calls[0].includes("custAccount eq 'ACC''1'"));assert.ok(!calls[0].includes('businessDate'));assert.ok(!JSON.stringify(x).includes('terminal'));
+rows.push({...row('A','bad'),custAccount:'OTHER'});assert.equal((await readCustomerPositiveHistory(scope,deps)).status,'UNAVAILABLE');rows=[];
+x=await readCustomerPositiveHistory(scope,deps);assert.equal(x.totalTickets,0);assert.equal(x.positiveTtc,0);assert.equal(x.firstPurchase,null);
+assert.equal((await readCustomerPositiveHistory(scope,{...deps,settings:()=>({d365:{storeNumber:'A',legalEntityId:company}})})).status,'UNAVAILABLE');
+let reads=0;const gateway=makeCustomerDirectoryGateway({listStores:()=>[...stores,{id:'c'}],canAccessStore:()=>true,readMaster:async()=>({rows:[{accountRef}]}),readHistory:async(r,s,p)=>{reads++;assert.deepEqual(s,stores);assert.equal(p,1);return {status:'READY',accountRef:r.accountRef}},pilotStores:'a,b'});
+const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({accountRef,history:'1',page:'1'})};assert.equal((await gateway(req)).data.status,'READY');assert.equal((await gateway({...req,query:new URLSearchParams({accountRef:'OTHER',history:'1'})})).status,404);assert.equal((await gateway({...req,session:{mode:'local',user:{role:'store_manager'}}})).status,403);assert.equal(reads,1);
+console.log('CRM customer positive history contract passed');

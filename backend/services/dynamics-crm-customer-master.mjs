@@ -26,7 +26,17 @@ export async function readCustomerProfile(row){
   const esc=v=>String(v).replaceAll("'","''");
   const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId',extra:'cross-company=true'},odataGet);
   if(accounts.length!==1||String(accounts[0].AccountNum).trim()!==accountRef||String(accounts[0].SysDataAreaId).trim()!==company||(row.createdAt!==null&&new Date(accounts[0].SysCreatedDateTime).toISOString()!==row.createdAt))return {...base,loyalty:unavailable};
-  const [parties,cards]=await Promise.all([readCompleteCollection('DirPartyTableBiEntities',{select:'PartyNumber,SourceKey'},odataGet),readCompleteCollection('RetailLoyaltyCards',{select:'CardNumber,PartyNumber,LoyaltyEnrollmentDate'},odataGet)]);
+  const partyKey=String(accounts[0].Party??'').trim();
+  if(!partyKey)return {...base,loyalty:{status:'UNVERIFIED',cardCount:null,firstEnrollmentAt:null}};
+  // SourceKey is a Dynamics numeric record reference in some environments; do not assume EDM type.
+  const filters=["SourceKey eq '"+esc(partyKey)+"'",...(/^\d+$/.test(partyKey)?['SourceKey eq '+partyKey]:[])];
+  let parties=null,lastError=null;
+  for(const filter of filters){try{parties=await readCompleteCollection('DirPartyTableBiEntities',{filter,select:'PartyNumber,SourceKey'},odataGet);break}catch(e){lastError=e;if(e?.details?.httpStatus!==400)throw e}}
+  if(!parties)throw lastError||Error('Party lookup failed');
+  const partyNumbers=[...new Set(parties.filter(p=>String(p.SourceKey).trim()===partyKey).map(p=>String(p.PartyNumber??'').trim()))];
+  if(partyNumbers.length!==1||!partyNumbers[0])return {...base,loyalty:{status:'UNVERIFIED',cardCount:null,firstEnrollmentAt:null}};
+  const cards=await readCompleteCollection('RetailLoyaltyCards',{filter:"PartyNumber eq '"+esc(partyNumbers[0])+"'",select:'CardNumber,PartyNumber,LoyaltyEnrollmentDate'},odataGet);
+  if(cards.some(c=>String(c.PartyNumber??'').trim()!==partyNumbers[0]))return {...base,loyalty:unavailable};
   const {projectLoyaltyIdentity}=await import('./one-crm-customer-profile.mjs');
   return {...base,loyalty:projectLoyaltyIdentity({account:accounts[0],parties,cards})};
  }catch{return {...base,loyalty:unavailable}}
