@@ -329,3 +329,48 @@ async function loadWalletBurnRange(storeId,{startDate,endDate,force=false}={}){
   const value={status:selectedMeta?.truncated?'TRUNCATED':burn.amount===null?(walletMappingKnown?'SIGN_VALIDATION_REQUIRED':'PAYMENT_MIX_READY_WALLET_UNMAPPED'):'READY',storeId,startDate:start,endDate:end,days,burn:selectedMeta?.truncated?null:burn.amount,signMode:burn.signMode,walletTransactions:walletRows.length,allPaymentRows:selectedRows.length,paymentMix:mix,source:`D365/${schema.entity}`,entity:schema.entity,fields:schema.fields,walletIds:resolvedWalletIds,tenderTypeSource:tenderTypes.status==='READY'?tenderTypes.entity:null,signProfile:profile,diagnostics:{storeIdentifierKind:selectedMeta?.identifier?.kind||null,storeIdentifier:selectedMeta?.identifier?.value||null,dateMode:selectedMeta?.dateMode||null,rowCount:selectedMeta?.rowCount??selectedRows.length,pages:selectedMeta?.pages||0,truncated:!!selectedMeta?.truncated,chunks:selectedMeta?.chunks||chunks.length},checkedAt:new Date().toISOString()};
   cache.set(key,{value,expiresAt:Date.now()+ttlMs()});return{...value,cache:{status:'MISS'}}
 }
+
+
+/** CRM: reuse Analytics tender classification and signs, on exact authorized receipt keys. */
+export async function readCustomerTicketBurn(storeId,{company,tickets}){
+ const base={basis:'ANALYTICS_WALLET_TENDER_ON_OBSERVED_TICKETS',currency:'MAD',burn:null,status:'UNAVAILABLE'};
+ if(config.dynamics.mode!=='live'||!company||company!==clean(config.dynamics.dataAreaId)||!Array.isArray(tickets)||!tickets.length||tickets.length>20)return base;
+ try{
+  const schema=await discoverPaymentSchema(),f=schema.fields,companyField=config.dynamics.dataAreaField;
+  if(schema.status!=='READY'||!f?.transaction||!f.terminal||!f.date||!f.currency||![f.transaction,f.terminal,f.date,f.store,f.currency,f.amount,f.tender,companyField].every(validName))return base;
+  const identifier=salesStoreIdentifiers(storeId,f.store)[0];
+  if(!identifier)return base;
+  const expectedKind=f.store.toLowerCase().includes('channel')?'RETAIL_CHANNEL':f.store.toLowerCase().includes('store')?'STORE_NUMBER':null;
+  if(!expectedKind||identifier.kind!==expectedKind)return base;
+  const ticketKey=(terminal,tx,date)=>JSON.stringify([terminal,tx,date]),byKey=new Map();
+  for(const t of tickets){
+   if(!t.terminal||!t.transactionRef||!/^\d{4}-\d{2}-\d{2}$/.test(t.date)||t.storeId!==storeId)return base;
+   const key=ticketKey(t.terminal,t.transactionRef,t.date);if(byKey.has(key))return base;byKey.set(key,[]);
+  }
+  const tenderTypes=await tenderNameMap(),walletIds=configuredWalletIds();
+  const resolvedWalletIds=[...new Set([...walletIds,...[...tenderTypes.map.entries()].filter(([,name])=>/(wallet|cashback|loyalty|fid[eé]lit[eé])/i.test(clean(name))).map(([id])=>id)])];
+  const select=unique([f.transaction,f.terminal,f.store,f.date,f.amount,f.tender,f.currency,companyField]).join(',');
+  let rows=null;
+  outer:for(const sf of storeFilters(f.store,identifier.value)){
+   for(const template of dateVariants(f.date,tickets[0].date)){
+    try{
+     const clauses=tickets.map(t=>'('+f.terminal+" eq '"+esc(t.terminal)+"' and "+f.transaction+" eq '"+esc(t.transactionRef)+"' and "+dateVariants(f.date,t.date).find(x=>x.mode===template.mode).filter+')');
+     const result=await odataGetAll(schema.entity,{filter:[sf,companyField+" eq '"+esc(company)+"'",'('+clauses.join(' or ')+')'].join(' and '),select,extra:'cross-company=true',pageSize:500,maxRows:5000});
+     if(!Array.isArray(result.value)||result.truncated)continue;
+     if(!result.value.length)continue;rows=result.value;break outer;
+    }catch{}
+   }
+  }
+  if(!rows)return base;
+  for(const row of rows){
+   const key=ticketKey(clean(row[f.terminal]),clean(row[f.transaction]),clean(row[f.date]).slice(0,10));
+   if(clean(row[companyField])!==company||clean(row[f.store])!==clean(identifier.value)||clean(row[f.currency]).toUpperCase()!=='MAD'||!byKey.has(key)||!clean(row[f.tender])||row[f.amount]==null||clean(row[f.amount])===''||!Number.isFinite(Number(row[f.amount])))return base;
+   byKey.get(key).push(row);
+  }
+  // Every receipt must have payment evidence; missing receipts are never zero.
+  if([...byKey.values()].some(x=>!x.length))return base;
+  const walletRows=rows.filter(row=>isWalletValue(row[f.tender],tenderTypes.map,resolvedWalletIds));
+  const profile=signProfile(walletRows,f.amount),derived=derivedBurn(profile);
+  return {...base,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount,signMode:derived.signMode,walletTransactions:walletRows.length,receiptCount:tickets.length};
+ }catch{return base}
+}
