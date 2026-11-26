@@ -115,3 +115,6 @@ User confirmed the R0.45.1 real account list is visible. Preserve its bounded so
 
 ## R0.47 — separate exact-account identity read
 Uses Microsoft documented CustomersV3 OData collection (https://learn.microsoft.com/en-us/dynamics365/fin-ops-core/dev-itpro/data-entities/entity-customers-v3-customerv3) for individual account/party type/names. Contact field candidates PrimaryContactEmail/Phone require live tenant confirmation. Queries only the exact previously authorized account + legal entity + Retail group, max 2 rows, strict partition checks, explicit select. On HTTP 400 fallback to name-only fields, mark PARTIAL. No raw payload/log exposure or contact export, no marketing activation; consent not verified. Separate click-driven identity load, clear on closing/changing session. No claim that entity/fields are live until verified.
+
+## R0.48 — account-attributed wallet Earn
+Reuse documented monetary reward definitions and signed Earn deduplication for an exact authorized Retail account and approved operating units, no date filter. Coverage is CustomerAccount field only, not card-only events; do not call it total lifetime wallet. Burn from tender payments and available balance remain explicitly unconnected. No raw card IDs exposed. Independent on-demand UI and synthetic tests; production live reads require validation.
