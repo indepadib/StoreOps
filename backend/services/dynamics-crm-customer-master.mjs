@@ -2,6 +2,7 @@ import {config} from '../config.mjs';
 import {odataGet} from './dynamics.mjs';
 import {readCompleteCollection} from './dynamics-account-creations.mjs';
 import {normalizeCustomerMaster} from './one-crm-customer-directory.mjs';
+import {isPreparedRfmRange} from './one-crm-rfm-population.mjs';
 let cache=null,inflight=null;
 export async function readCustomerMaster(){
  const company=String(config.dynamics.dataAreaId||'').trim();
@@ -109,9 +110,6 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
 
 }
 
-function isPreparedRfmRange(r,id,start,end){
- return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
-}
 export async function prepareCrmRfmDay(storeId,date){
  const asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<start||date>asOf||!Number.isFinite(Date.parse(date))||new Date(Date.parse(date)).toISOString().slice(0,10)!==date)return {status:'INVALID_DATE'};
