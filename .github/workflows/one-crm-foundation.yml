@@ -47,7 +47,7 @@ jobs:
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/001-foundation.draft.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-foundation.sql
   browser-contract:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
