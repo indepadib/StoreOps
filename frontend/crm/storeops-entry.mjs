@@ -25,6 +25,7 @@ export async function openCrmPilot(){
  if(r.status!=='AUTHORIZED')return false;
  setupCustomerDirectory();
  setupNavigation();
+ setupRfmPopulation();
  setupLiveObservation();
  let busy=false,closed=false,timer;
  const close=status=>{closed=true;clearInterval(timer);setGate(status);for(const d of document.querySelectorAll('dialog[open]'))d.close()};
@@ -53,7 +54,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -323,4 +324,32 @@ function renderBehavior(x){
  for(const r of b.storeBreakdown)append('crmBehaviorStores',[storeName(r.storeId),fmt(r.tickets),money(r.positiveTtc)]);
  for(const r of b.topProducts)append('crmBehaviorProducts',[r.productName?r.productName+' · '+r.productNumber:r.productNumber,fmt(r.tickets),money(r.positiveTtc)]);
  el('crmBehaviorPanel').hidden=false;
+}
+
+let rfmGeneration=0;
+function clearRfmPopulation(){rfmGeneration++;el('crmRfmRows')?.replaceChildren();if(el('crmRfmStatus'))el('crmRfmStatus').textContent='Actualisez la couverture des données.';if(el('crmRfmPrev'))el('crmRfmPrev').disabled=true;if(el('crmRfmNext'))el('crmRfmNext').disabled=true;if(el('crmRfmRead'))el('crmRfmRead').disabled=false}
+function setupRfmPopulation(){
+ const section=el('segments');if(!section)return;
+ const panel=document.createElement('div');panel.className='panel';
+ const h=document.createElement('h3');h.textContent='RFM · Référentiel complet';panel.append(h);
+ const p=document.createElement('p');p.className='muted';p.textContent='Achats positifs attribués sur les 90 derniers jours clôturés, magasins pilotes. Les périodes manquantes ne sont jamais assimilées à zéro.';panel.append(p);
+ const button=(id,label)=>{const b=document.createElement('button');b.id=id;b.type='button';b.className='secondary';b.textContent=label;return b};
+ const read=button('crmRfmRead','Actualiser la couverture RFM'),prev=button('crmRfmPrev','Précédent'),next=button('crmRfmNext','Suivant'),status=document.createElement('p');status.id='crmRfmStatus';status.setAttribute('aria-live','polite');status.textContent='Actualisez la couverture des données.';
+ const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr'),rows=document.createElement('tbody');wrap.className='tablewrap';rows.id='crmRfmRows';for(const label of ['Compte','Récence (j)','Fréquence 90 j','TTC positif 90 j','État']){const th=document.createElement('th');th.textContent=label;tr.append(th)}head.append(tr);table.append(head,rows);wrap.append(table);panel.append(read,status,wrap,prev,next);section.append(panel);
+ let page=1;
+ const load=async n=>{
+  const g=++rfmGeneration;read.disabled=true;prev.disabled=true;next.disabled=true;rows.replaceChildren();status.textContent='Vérification du référentiel et des périodes Analytics…';
+  try{
+   const x=await api('/api/crm/rfm-population?'+new URLSearchParams({page:String(n)}),{cache:'no-store',noRetry:true});
+   if(g!==rfmGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
+   if(!['READY','PARTIAL'].includes(x?.status)||x.basis!=='OBSERVED_POSITIVE_90_DAY_PILOT_RANGES'||x.activationEnabled!==false||x.page!==n||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0||!Array.isArray(x.rows)||x.rows.length>50||!Number.isSafeInteger(x.coverage?.coveredStoreDays)||!Number.isSafeInteger(x.coverage?.expectedStoreDays))throw Error('Invalid RFM result');
+   status.textContent=fmt(x.totalAccounts)+' comptes · '+x.coverage.coveredStoreDays+' / '+x.coverage.expectedStoreDays+' jours-magasins couverts · au '+x.asOf+(x.status==='PARTIAL'?' · historique incomplet : scores non publiés':' · couverture pilote disponible');
+   for(const r of x.rows){if(typeof r.accountRef!=='string')continue;const line=document.createElement('tr');const td=document.createElement('td'),open=button('',r.accountRef);open.onclick=()=>{document.querySelector('nav button[data-view="customers"]')?.click();readProfile({accountRef:r.accountRef})};td.append(open);line.append(td);
+    const q=r.rfm,labels={OBSERVED_90_DAY_RFM:'RFM observé',NO_PURCHASE_IN_OBSERVED_90_DAYS:'Aucun achat observé sur 90 j',HISTORY_INCOMPLETE:'Historique incomplet',EXCLUDED_ANONYMOUS_ACCOUNT:'Compte anonyme exclu'};
+    for(const v of [q?fmt(q.recencyDays):r.recencyLowerBoundDays===90?'≥ 90 (observé)':'—',q?fmt(q.tickets90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?'0':'—',q?money(q.positiveTtc90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?money(0):'—',labels[r.status]||'Non vérifié']){const td=document.createElement('td');td.textContent=v;line.append(td)}rows.append(line)
+   }
+   page=n;prev.disabled=n===1;next.disabled=n*50>=x.totalAccounts;
+  }catch{if(g===rfmGeneration)status.textContent='RFM indisponible : le référentiel individuel reste accessible.'}finally{if(g===rfmGeneration)read.disabled=false}
+ };
+ read.onclick=()=>load(1);prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);prev.disabled=true;next.disabled=true;
 }
