@@ -28,13 +28,20 @@ export async function persistVerifiedStoreDay({pool,tenantId,storeId,date,batch,
     }
     customerId=mapping.get(t.customerToken);
    }
-   rows.push({ticketId:t.ticketId,netMinor:t.netMinor,customerId});
+   rows.push({ticketId:t.ticketId,netMinor:t.netMinor,customerId,items:t.items||[]});
   }
   const m=report.metrics;
-  await client.query('INSERT INTO one_crm.verified_days(tenant_id,store_id,business_day,source_ref,control_ref,verified_at,ticket_count,positive_minor,refund_minor,net_minor) VALUES ($1,$2,$3,$4,$5,now(),$6,$7,$8,$9)',[tenantId,storeId,date,batch.source,control.source,m.tickets,m.positiveMinor,m.refundMinor,m.netMinor]);
+  await client.query('INSERT INTO one_crm.verified_days(tenant_id,store_id,business_day,source_ref,control_ref,verified_at,ticket_count,positive_minor,refund_minor,net_minor,item_evidence_complete) VALUES ($1,$2,$3,$4,$5,now(),$6,$7,$8,$9,$10)',[tenantId,storeId,date,batch.source,control.source,m.tickets,m.positiveMinor,m.refundMinor,m.netMinor,verifiedDay.itemEvidenceComplete]);
   for(let i=0;i<rows.length;i+=500){
    const part=rows.slice(i,i+500);
    await client.query('INSERT INTO one_crm.tickets(tenant_id,store_id,business_day,ticket_id,customer_id,net_minor) SELECT $1,$2,$3,x.ticket_id,x.customer_id,x.net_minor FROM unnest($4::text[],$5::uuid[],$6::bigint[]) AS x(ticket_id,customer_id,net_minor)',[tenantId,storeId,date,part.map(r=>r.ticketId),part.map(r=>r.customerId),part.map(r=>r.netMinor)]);
+  }
+  if(verifiedDay.itemEvidenceComplete){
+   const items=rows.flatMap(r=>r.items.map(x=>({...x,ticketId:r.ticketId})));
+   for(let i=0;i<items.length;i+=500){
+    const part=items.slice(i,i+500);
+    await client.query('INSERT INTO one_crm.ticket_items(tenant_id,store_id,business_day,ticket_id,line_id,product_id,category,net_minor) SELECT $1,$2,$3,x.ticket_id,x.line_id,x.product_id,x.category,x.net_minor FROM unnest($4::text[],$5::text[],$6::text[],$7::text[],$8::bigint[]) AS x(ticket_id,line_id,product_id,category,net_minor)',[tenantId,storeId,date,part.map(x=>x.ticketId),part.map(x=>x.lineId),part.map(x=>x.productId),part.map(x=>x.category),part.map(x=>x.netMinor)]);
+   }
   }
   await client.query('COMMIT');
   return {status:'PERSISTED',tenantId,storeId,date,metrics:m,activationEnabled:false};
