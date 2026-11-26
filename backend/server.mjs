@@ -92,6 +92,18 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
+  if(path==='/api/crm/rfm-population'){
+    if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
+    const {parseObservedPilotStores}=await import('./services/one-crm-observed-sales.mjs');
+    const scope=parseObservedPilotStores(process.env.ONE_CRM_PILOT_STORE_IDS||''),stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all();
+    if(!scope.size||!stores.length||stores.some(s=>!canAccessStore(user,s.id))||[...scope].some(id=>!stores.some(s=>s.id===id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    const page=Number(url.searchParams.get('page')||1);
+    if(!Number.isSafeInteger(page)||page<1||page>2000)return json(req,res,400,{error:'Page invalide.'});
+    const {readCrmRfmPopulation}=await import('./services/dynamics-crm-customer-master.mjs');
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    try{return json(req,res,200,await readCrmRfmPopulation(stores.filter(s=>scope.has(s.id)),page))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
+  }
   if(path==='/api/crm/wallet-balance-sources'){
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
     if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});

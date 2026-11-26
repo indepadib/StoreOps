@@ -73,3 +73,29 @@ export async function searchCrmCustomerIdentity({query,by,page}){
  const {searchCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
  return searchCustomerIdentity({...sourceDeps(),query,by,page});
 }
+
+/** Reuse already prepared Analytics ranges; never launch a network-wide live scan on page load. */
+export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000))}={}){
+ const {projectRfmPopulation}=await import('./one-crm-rfm-population.mjs');
+ const {analyticsCacheKey,readAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const {salesIntegrationConfig}=await import('./dynamics-sales.mjs');
+ const [master,count]=await Promise.all([readCustomerMaster(),readCustomerCount()]);
+ if(count.totalAccounts!==master.rows.length)return {status:'UNAVAILABLE',reason:'CUSTOMER_MASTER_COUNT_MISMATCH',activationEnabled:false};
+ const storeIds=stores.map(s=>s.id);
+ const dates=Array.from({length:3},(_,i)=>{const end=Date.parse(asOf+'T00:00:00Z')-(2-i)*30*86400000;return [new Date(end-29*86400000).toISOString().slice(0,10),new Date(end).toISOString().slice(0,10)]});
+ const ranges=[];
+ for(const id of storeIds){
+  const cfg=salesIntegrationConfig(id);
+  if(!cfg.ready||cfg.entity!=='RetailTransactionSalesTransBIEntities')continue;
+  for(const [start,end] of dates){
+   const range=await readAnalyticsCache(analyticsCacheKey('sales-range-v32',[id,start,end]));
+   if(range?.storeId===id&&range.startDate===start&&range.endDate===end)ranges.push(range);
+  }
+ }
+ const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page});
+ try{
+  const names=await readCrmCustomerNames(population.rows.map(r=>r.accountRef)),byAccount=new Map((names.rows||[]).map(r=>[r.accountRef,r]));
+  return {...population,rows:population.rows.map(r=>({...r,displayName:byAccount.get(r.accountRef)?.displayName||null,nameStatus:byAccount.get(r.accountRef)?.status||'UNAVAILABLE'}))};
+ }catch{return population}
+
+}

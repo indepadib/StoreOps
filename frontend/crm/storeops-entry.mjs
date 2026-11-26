@@ -25,6 +25,7 @@ export async function openCrmPilot(){
  if(r.status!=='AUTHORIZED')return false;
  setupCustomerDirectory();
  setupNavigation();
+ setupRfmPopulation();
  setupLiveObservation();
  let busy=false,closed=false,timer;
  const close=status=>{closed=true;clearInterval(timer);setGate(status);for(const d of document.querySelectorAll('dialog[open]'))d.close()};
@@ -53,7 +54,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -318,9 +319,37 @@ function renderBehavior(x){
  if(b.basis!=='OBSERVED_POSITIVE_PURCHASE_HISTORY'||typeof b.asOf!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(b.asOf)||![b.averageBasket,b.recencyDays,b.averageDaysBetweenVisits].every(nullable)||![b.shoppingDays,b.ticketsLast30Days,b.ticketsLast90Days,b.distinctProducts].every(int)||b.shoppingDays>x.totalTickets||b.ticketsLast30Days>b.ticketsLast90Days||b.ticketsLast90Days>x.totalTickets||!(b.favoriteStore===null||x.storeIds.includes(b.favoriteStore))||!Array.isArray(b.storeBreakdown)||b.storeBreakdown.length>x.storeIds.length||new Set(b.storeBreakdown.map(r=>r.storeId)).size!==b.storeBreakdown.length||!b.storeBreakdown.every(r=>x.storeIds.includes(r.storeId)&&validRow(r))||b.storeBreakdown.reduce((n,r)=>n+r.tickets,0)!==x.totalTickets||!Array.isArray(b.topProducts)||b.topProducts.length>10||b.topProducts.length>b.distinctProducts||!b.topProducts.every(r=>label(r.productNumber)&&(r.productName===null||label(r.productName))&&validRow(r)))return;
  const storeName=id=>({'val-fleuri':'Val Fleuri',trefle:'Trèfle'}[id]||id);
  const out=el('crmBehaviorMetrics'),f=v=>v===null?'Non calculable':fmt(v);
- metric(out,'Panier moyen TTC positif',b.averageBasket===null?'Non calculable':money(b.averageBasket));metric(out,'Récence (jours)',f(b.recencyDays));metric(out,'Jours d’achat distincts',fmt(b.shoppingDays));metric(out,'Intervalle moyen (jours)',f(b.averageDaysBetweenVisits));metric(out,'Tickets sur 30 jours',fmt(b.ticketsLast30Days));metric(out,'Tickets sur 90 jours',fmt(b.ticketsLast90Days));metric(out,'Articles distincts',fmt(b.distinctProducts));metric(out,'Magasin favori (tickets)',b.favoriteStore?storeName(b.favoriteStore):'Non déterminé');
+ metric(out,'Panier moyen TTC positif',b.averageBasket===null?'Non calculable':money(b.averageBasket));metric(out,'Récence (jours)',f(b.recencyDays));metric(out,'Jours d’achat distincts',fmt(b.shoppingDays));metric(out,'Intervalle moyen (jours)',f(b.averageDaysBetweenVisits));metric(out,'Tickets sur 30 jours',fmt(b.ticketsLast30Days));metric(out,'Tickets sur 90 jours',fmt(b.ticketsLast90Days));metric(out,'Articles distincts',fmt(b.distinctProducts));metric(out,'Magasin favori (tickets)',b.favoriteStore?storeName(b.favoriteStore):'Non déterminé');const rfm=b.rfm;if(rfm?.policy==='FRANPRIX_PILOT_RULES_V1'&&rfm.windowDays===90&&rfm.recencyDays===b.recencyDays&&rfm.tickets90===b.ticketsLast90Days&&n(rfm.positiveTtc90)&&rfm.activationEnabled===false){metric(out,'Achats TTC positifs sur 90 jours',money(rfm.positiveTtc90));const segments={HIGH_VALUE_ACTIVE:'Actif à forte valeur',REGULAR_ACTIVE:'Actif régulier',RECENT_SINGLE_TICKET:'Achat récent unique',INACTIVE_30_PLUS:'Inactif depuis plus de 30 jours',NO_RECENT_PURCHASE:'Aucun achat récent observé',NO_OBSERVED_PURCHASE:'Aucun achat observé',OTHER_OBSERVED:'Autre profil observé'};if(segments[rfm.segment])metric(out,'Segment RFM indicatif',segments[rfm.segment]);if(rfm.scores&&['r','f','m'].every(k=>Number.isInteger(rfm.scores[k])&&rfm.scores[k]>=1&&rfm.scores[k]<=5))metric(out,'Score R / F / M (pilote)',[rfm.scores.r,rfm.scores.f,rfm.scores.m].join(' / '))}
  const append=(id,values)=>{const tr=document.createElement('tr');for(const v of values){const td=document.createElement('td');td.textContent=v;tr.append(td)}el(id).append(tr)};
  for(const r of b.storeBreakdown)append('crmBehaviorStores',[storeName(r.storeId),fmt(r.tickets),money(r.positiveTtc)]);
  for(const r of b.topProducts)append('crmBehaviorProducts',[r.productName?r.productName+' · '+r.productNumber:r.productNumber,fmt(r.tickets),money(r.positiveTtc)]);
  el('crmBehaviorPanel').hidden=false;
+}
+
+let rfmGeneration=0;
+function clearRfmPopulation(){rfmGeneration++;el('crmRfmRows')?.replaceChildren();if(el('crmRfmStatus'))el('crmRfmStatus').textContent='Actualisez la couverture des données.';if(el('crmRfmPrev'))el('crmRfmPrev').disabled=true;if(el('crmRfmNext'))el('crmRfmNext').disabled=true;if(el('crmRfmRead'))el('crmRfmRead').disabled=false}
+function setupRfmPopulation(){
+ const section=el('segments');if(!section)return;
+ const panel=document.createElement('div');panel.className='panel';
+ const h=document.createElement('h3');h.textContent='RFM · Référentiel complet';panel.append(h);
+ const p=document.createElement('p');p.className='muted';p.textContent='Achats positifs attribués sur les 90 derniers jours clôturés, magasins pilotes. Les périodes manquantes ne sont jamais assimilées à zéro.';panel.append(p);
+ const button=(id,label)=>{const b=document.createElement('button');b.id=id;b.type='button';b.className='secondary';b.textContent=label;return b};
+ const read=button('crmRfmRead','Actualiser la couverture RFM'),prev=button('crmRfmPrev','Précédent'),next=button('crmRfmNext','Suivant'),status=document.createElement('p');status.id='crmRfmStatus';status.setAttribute('aria-live','polite');status.textContent='Actualisez la couverture des données.';
+ const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr'),rows=document.createElement('tbody');wrap.className='tablewrap';rows.id='crmRfmRows';for(const label of ['Compte','Récence (j)','Fréquence 90 j','TTC positif 90 j','État']){const th=document.createElement('th');th.textContent=label;tr.append(th)}head.append(tr);table.append(head,rows);wrap.append(table);panel.append(read,status,wrap,prev,next);section.append(panel);
+ let page=1;
+ const load=async n=>{
+  const g=++rfmGeneration;read.disabled=true;prev.disabled=true;next.disabled=true;rows.replaceChildren();status.textContent='Vérification du référentiel et des périodes Analytics…';
+  try{
+   const x=await api('/api/crm/rfm-population?'+new URLSearchParams({page:String(n)}),{cache:'no-store',noRetry:true});
+   if(g!==rfmGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
+   if(!['READY','PARTIAL'].includes(x?.status)||x.basis!=='OBSERVED_POSITIVE_90_DAY_PILOT_RANGES'||x.activationEnabled!==false||x.page!==n||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0||!Array.isArray(x.rows)||x.rows.length>50||!Number.isSafeInteger(x.coverage?.coveredStoreDays)||!Number.isSafeInteger(x.coverage?.expectedStoreDays))throw Error('Invalid RFM result');
+   status.textContent=fmt(x.totalAccounts)+' comptes · '+x.coverage.coveredStoreDays+' / '+x.coverage.expectedStoreDays+' jours-magasins couverts · au '+x.asOf+(x.status==='PARTIAL'?' · historique incomplet : scores non publiés':' · couverture pilote disponible');
+   for(const r of x.rows){if(typeof r.accountRef!=='string')continue;const line=document.createElement('tr');const td=document.createElement('td');td.textContent=typeof r.displayName==='string'&&r.displayName.trim()?r.displayName+' · '+r.accountRef:r.accountRef+' · Nom '+(r.nameStatus==='NOT_FOUND'?'non renseigné':'non vérifié');line.append(td);
+    const q=r.rfm,labels={OBSERVED_90_DAY_RFM:'RFM observé',NO_PURCHASE_IN_OBSERVED_90_DAYS:'Aucun achat observé sur 90 j',HISTORY_INCOMPLETE:'Historique incomplet',EXCLUDED_ANONYMOUS_ACCOUNT:'Compte anonyme exclu'};
+    for(const v of [q?fmt(q.recencyDays):r.recencyLowerBoundDays===90?'≥ 90 (observé)':'—',q?fmt(q.tickets90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?'0':'—',q?money(q.positiveTtc90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?money(0):'—',labels[r.status]||'Non vérifié']){const td=document.createElement('td');td.textContent=v;line.append(td)}rows.append(line)
+   }
+   page=n;prev.disabled=n===1;next.disabled=n*50>=x.totalAccounts;
+  }catch{if(g===rfmGeneration)status.textContent='RFM indisponible : le référentiel individuel reste accessible.'}finally{if(g===rfmGeneration)read.disabled=false}
+ };
+ read.onclick=()=>load(1);prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);prev.disabled=true;next.disabled=true;
 }
