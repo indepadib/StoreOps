@@ -102,6 +102,7 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  const covered=new Set();for(const r of ranges){for(let t=Date.parse(r.startDate+'T00:00:00Z');t<=Date.parse(r.endDate+'T00:00:00Z');t+=86400000)covered.add(JSON.stringify([r.storeId,new Date(t).toISOString().slice(0,10)]))}
  const missing=[];for(const id of storeIds)for(let i=89;i>=0;i--){const date=new Date(Date.parse(asOf+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);if(!covered.has(JSON.stringify([id,date])))missing.push({storeId:id,date})}
  population.nextMissing=missing[0]||null;
+ population.missingStoreDays=missing.slice(0,180);
 
  try{
   const names=await readCrmCustomerNames(population.rows.map(r=>r.accountRef)),byAccount=new Map((names.rows||[]).map(r=>[r.accountRef,r]));
