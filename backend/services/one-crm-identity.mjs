@@ -30,9 +30,10 @@ export function resolveIdentityLinks({tenantId,records,links,allowedSystems}){
  }
  summary.canonicalCustomers=canonical.size;
  const issueCounts={};for(const i of issues)issueCounts[i.code]=(issueCounts[i.code]||0)+1;
- return {summary:{...summary,issueCounts,activationEnabled:false},mappings};
+ return {tenantId,summary:{...summary,issueCounts,activationEnabled:false},mappings};
 }
-export function identityLookup(result,system,accountToken){
+export function identityLookup(result,tenantId,system,accountToken){
+ if(!cleanId(tenantId)||result?.tenantId!==tenantId||!Array.isArray(result.mappings))throw Error('Identity lookup tenant mismatch');
  const matches=result.mappings.filter(r=>r.system===system&&r.accountToken===accountToken);
  return matches.length===1&&matches[0].status==='RESOLVED'?matches[0].customerToken:null;
 }
