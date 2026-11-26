@@ -77,10 +77,17 @@ jobs:
           node backend/tests/analytics-period-performance.mjs
           node backend/tests/analytics-startup-performance.mjs
           node backend/tests/analytics-multi-supplier-filters.mjs
+          node backend/tests/analytics-assortment-opportunities.mjs
+          node backend/tests/analytics-receipt-pagination.mjs
       - name: Analytics complete monthly N/N-1 export contract
         run: |
           node backend/tests/analytics-monthly-export-contract.mjs
           node backend/tests/analytics-xlsx-workbook.mjs
+      - name: Assortment comparison DOM and full export acceptance
+        # Test-only dependency, absent from the deployed application's dependencies.
+        run: |
+          npm install --prefix /tmp/storeops-dom --no-save --ignore-scripts --no-audit --no-fund linkedom@0.18.12
+          STOREOPS_TEST_DOM_MODULE=/tmp/storeops-dom/node_modules/linkedom/esm/index.js node backend/tests/analytics-assortment-dom.mjs
       - name: Sales parent tickets and fiscal inclusion
         run: |
           node backend/tests/sales-parent-parity.mjs

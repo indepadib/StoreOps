@@ -38,7 +38,7 @@ async function start(){
       'promotions','decision','supplier-purchases','sales-proof','workspace-bi',
       'article-reference','decision-studio','customer-research','companion-dictionary',
       'basket-direction','loss-inventory','detention-views','detention-sales',
-      'replenishment','experience-navigation','table-column-tools'
+      'replenishment','experience-navigation','table-column-tools','assortment-opportunities'
     ].map(name=>analyticsAsset('/analytics/'+name+'.js')));
 
     await import(analyticsAsset('/analytics/tenants.js'));
@@ -61,6 +61,7 @@ async function start(){
     await import(analyticsAsset('/analytics/loss-inventory.js'));
     await import(analyticsAsset('/analytics/detention-views.js'));
     await import(analyticsAsset('/analytics/detention-sales.js'));
+    await import(analyticsAsset('/analytics/assortment-opportunities.js'));
     await import(analyticsAsset('/analytics/replenishment.js'));
     await import(analyticsAsset('/analytics/experience-navigation.js'));
     await import(analyticsAsset('/analytics/table-column-tools.js'));

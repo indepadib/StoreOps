@@ -13,6 +13,7 @@ import {buildCustomerRetentionResearch} from './analytics-customer-research.mjs'
 import {buildCustomerJourneyEvidence} from './analytics-customer-journey-v2.mjs';
 import {readStoreLoyaltyEnrollments} from './dynamics-loyalty.mjs';
 import {createHash} from 'node:crypto';
+import {readAssortmentSalesSlice} from './analytics-assortment.mjs';
 const day=v=>{const x=String(v||''),d=new Date(x+'T12:00:00Z');return /^\d{4}-\d{2}-\d{2}$/.test(x)&&Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===x?x:null};
 export function intelligenceScope(user,requested,stores){
  const allowed=stores.filter(s=>canAccessStore(user,s.id));
@@ -20,6 +21,12 @@ export function intelligenceScope(user,requested,stores){
  const found=allowed.filter(s=>s.id===requested);if(!found.length)throw Object.assign(new Error('Magasin interdit ou inconnu.'),{status:403});return found;
 }
 export async function handleCustomerBiApi({req,url,user}){
+ if(url.pathname==='/api/analytics/assortment/sales'&&req.method==='GET'){
+  const storeId=url.searchParams.get('storeId');
+  if(!canAccessStore(user,storeId))return{status:403,data:{error:'Magasin interdit.'}};
+  if(!db.prepare('SELECT id FROM stores WHERE id=? AND active=1').get(storeId))return{status:404,data:{error:'Magasin introuvable.'}};
+  try{return{status:200,data:await readAssortmentSalesSlice(storeId,{start:url.searchParams.get('start'),end:url.searchParams.get('end')})}}catch(error){return{status:error.status||502,data:{error:error.message,code:error.code||'ASSORTMENT_READ_FAILED'}}}
+ }
  const attributes=url.pathname.match(/^\/api\/analytics\/article-reference\/([A-Za-z0-9_-]+)\/attributes$/);
  if(attributes&&req.method==='POST'){
   if(user?.role!=='ops_director'&&user?.permissions_profile!=='platform_admin')return{status:403,data:{error:'Modification réservée à la Direction.'}};

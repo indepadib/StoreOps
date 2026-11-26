@@ -1359,7 +1359,7 @@
   }
 
   async function downloadCsv(filename,rows){
-    const csv=rows.map(row=>row.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(';')).join('\n');
+    const csv=rows.map(row=>row.map(v=>`"${(typeof v==='string'?v.replace(/^\s*[=+@-]/,match=>"'"+match):String(v??'')).replace(/"/g,'""')}"`).join(';')).join('\n');
     const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
     const file=new File([blob],filename,{type:'text/csv;charset=utf-8'});
     // iOS/Safari is much more reliable when the native share sheet handles the file.
@@ -1377,8 +1377,9 @@
       const title=table.closest('[data-widget]')?.querySelector('h2,h3')?.textContent?.trim()||state.section;
       if(rows.length)rows.push([]);
       rows.push([title]);
-      const headers=$$('thead th',table).map(th=>th.textContent.trim());if(headers.length)rows.push(headers);
+      const headers=[...(table.tHead?.rows?.[0]?.cells||[])].map(th=>th.textContent.trim());if(headers.length)rows.push(headers);
       for(const tr of $$('tbody tr',table)){
+        if(tr.hidden||tr.style?.display==='none')continue;
         const cells=$$('td',tr).map(td=>td.textContent.replace(/\s+/g,' ').trim());
         if(cells.length&&cells.some(Boolean))rows.push(cells)
       }

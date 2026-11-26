@@ -26,6 +26,7 @@ export function mountTableColumnTools(){
  const observe=()=>observer.observe(document.body,{childList:true,subtree:true});
  function schedule(){if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;observer.disconnect();try{for(const table of document.querySelectorAll('main table'))enhance(table)}finally{observe()}})}
  function enhance(table){
+  if(table.hasAttribute('data-ri-native-table'))return;
   if(table.closest('[hidden]'))return;
   const head=table.tHead,body=table.tBodies[0],first=head?.rows[0];if(!body||!first||first.cells.length<2)return;
   // Native analytical tables already filter their full data model, including pages.
