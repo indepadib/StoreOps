@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {rankOfferScenarios} from '../services/one-crm-offers.mjs';
+const tenantId='demo',profile={tenantId,customerToken:'opaque',status:'active',eligibleChannels:['email'],preferredCategories:['A'],purchaseTickets:5};
+const offer=(id,patch={})=>({tenantId,id,label:id,channel:'email',category:'A',basketMinor:20000,marginBps:2500,conversionBps:3000,rewardMinor:500,contactCostMinor:10,available:true,...patch});
+const offers=[offer('small'),offer('large',{rewardMinor:3000}),offer('other',{category:'B'}),offer('wa',{channel:'whatsapp'}),offer('none',{rewardMinor:0,conversionBps:2000})];
+const run=(patch={})=>rankOfferScenarios({tenantId,profile,offers,baselineConversionBps:1000,budgetMinor:5000,consentComplete:true,evidenceComplete:true,...patch});
+const x=run();assert.equal(x.recommendation.id,'small');assert.equal(x.recommendation.incrementalContributionMinor,840);assert.equal(x.recommendation.expectedCostMinor,160);assert.equal(x.recommendation.maxCostMinor,510);assert.equal(x.recommendation.requiresApproval,true);assert.equal(x.activationEnabled,false);
+assert.equal(x.candidates.find(c=>c.id==='other').reason,'NO_AFFINITY');assert.equal(x.candidates.find(c=>c.id==='wa').reason,'NO_CONSENT');assert.equal(run({budgetMinor:10}).recommendation.id,'none');
+assert.equal(run({baselineConversionBps:3000}).recommendation,null);assert.equal(run({consentComplete:false}).status,'BLOCKED');assert.equal(run({evidenceComplete:false}).status,'BLOCKED');assert.equal(run({profile:{...profile,status:'quarantined'}}).recommendation,null);assert.equal(run({profile:{...profile,purchaseTickets:1}}).status,'BLOCKED');
+assert.equal(run({offers:[offer('bad',{rewardMinor:6000})],budgetMinor:10000}).candidates[0].reason,'MARGIN_GUARD');assert.equal(run({offers:[offer('off',{available:false})]}).candidates[0].reason,'UNAVAILABLE');
+assert.throws(()=>run({offers:[offers[0],offers[0]]}));assert.throws(()=>run({offers:[offer('foreign',{tenantId:'other'})]}));assert.throws(()=>run({offers:[offer('invalid',{conversionBps:10001})]}));assert.throws(()=>run({offers:[offer('negative',{rewardMinor:-1})]}));
+console.log('CRM offer scenarios passed');

@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {scanOpportunities,reviewOpportunity} from '../services/one-crm-agent.mjs';
+const tenantId='demo',p=(customerToken,recencyDays,purchaseTickets,rfmTotal,eligibleChannels=['email','sms','whatsapp'],patch={})=>({tenantId,customerToken,recencyDays,purchaseTickets,rfmTotal,eligibleChannels,netMinor:50000,stores:['Val Fleuri'],status:'active',...patch});
+const profiles=[p('a',70,4,7),p('b',75,3,7,[]),p('c',8,7,13),p('d',4,1,5),p('e',40,4,8),p('f',60,3,6,['whatsapp'],{status:'quarantined'})];
+const run=(patch={})=>scanOpportunities({tenantId,profiles,allowedStores:['Val Fleuri','Trèfle'],coverageComplete:true,consentComplete:true,minEligible:1,contactCostsMinor:{email:10,sms:40,whatsapp:70},budgetMinor:100,...patch});
+const x=run(),w=x.opportunities.find(o=>o.id==='winback');assert.equal(x.status,'SCANNED');assert.equal(x.scanned,6);assert.equal(x.opportunities.length,4);assert.equal(w.audience,3);assert.equal(w.eligible,1);assert.equal(w.excluded,2);assert.equal(w.historicalNetMinor,50000);assert.equal(w.estimatedContactCostMinor,70);assert.equal(w.state,'READY_FOR_REVIEW');assert.equal(x.activationEnabled,false);
+assert.equal(run({budgetMinor:0}).opportunities.find(o=>o.id==='winback').state,'OVER_BUDGET');assert.equal(run({minEligible:2}).opportunities.find(o=>o.id==='winback').state,'INSUFFICIENT_AUDIENCE');assert.equal(run({coverageComplete:false}).status,'BLOCKED');assert.equal(run({consentComplete:false}).opportunities.length,0);assert.equal(run({store:'Trèfle'}).scanned,0);
+assert.equal(reviewOpportunity({report:x,opportunityId:'winback',decision:'prepare',expectedEligible:1}).state,'DRAFT_AUTHORIZED');
+assert.equal(reviewOpportunity({report:x,opportunityId:'winback',decision:'dismiss',expectedEligible:1}).activationEnabled,false);
+assert.throws(()=>reviewOpportunity({report:x,opportunityId:'winback',decision:'prepare',expectedEligible:2}));assert.throws(()=>reviewOpportunity({report:run({budgetMinor:0}),opportunityId:'winback',decision:'prepare',expectedEligible:1}));assert.throws(()=>run({profiles:[...profiles,profiles[0]]}));assert.throws(()=>run({profiles:[{...profiles[0],tenantId:'other'}]}));assert.throws(()=>run({store:'outside'}));
+console.log('CRM opportunity agent passed');

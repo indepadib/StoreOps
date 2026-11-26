@@ -1,0 +1,78 @@
+name: StoreOps Netlify build isolation
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/storeops-netlify-build-isolation.yml'
+      - 'netlify.toml'
+      - 'frontend/netlify-build.sh'
+      - 'frontend/crm/**'
+      - 'backend/server.mjs'
+      - 'backend/services/one-crm-observed-sales.mjs'
+      - 'netlify/functions/**'
+      - 'package*.json'
+permissions:
+  contents: read
+concurrency:
+  group: storeops-netlify-build-isolation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  compare:
+    name: Offline Netlify build (${{ matrix.revision }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [baseline, candidate]
+    env:
+      CI: 'true'
+      NETLIFY_TELEMETRY_DISABLED: '1'
+      STOREOPS_API_BASE: 'https://example.invalid'
+      AUTH_MODE: 'entra'
+      D365_MODE: 'simulated'
+      CONTEXT: 'deploy-preview'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.revision == 'baseline' && github.event.pull_request.base.sha || github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify version and lockfile
+        run: |
+          node --version
+          npm --version
+          git rev-parse HEAD
+          git ls-files -s frontend/netlify-build.sh
+      - name: Install exact application dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated Netlify CLI
+        run: npm install --prefix "$RUNNER_TEMP/netlify-build-cli" --no-audit --no-fund netlify-cli@27.17.0
+      - name: Execute the actual configured frontend build
+        run: cd frontend && ./netlify-build.sh
+      - name: Package every Netlify function independently of database provisioning
+        run: |
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {pathToFileURL} from 'node:url';
+          import {join} from 'node:path';
+          import assert from 'node:assert/strict';
+          const cliRequire=createRequire(join(process.env.RUNNER_TEMP,'netlify-build-cli','package.json'));
+          let zisiPath;
+          try { zisiPath=cliRequire.resolve('@netlify/zip-it-and-ship-it'); }
+          catch { const buildRequire=createRequire(cliRequire.resolve('@netlify/build'));zisiPath=buildRequire.resolve('@netlify/zip-it-and-ship-it'); }
+          const {zipFunctions}=await import(pathToFileURL(zisiPath).href);
+          const result=await zipFunctions(join(process.cwd(),'netlify/functions'),join(process.env.RUNNER_TEMP,'storeops-function-bundles'),{archiveFormat:'zip',config:{'*':{nodeBundler:'esbuild',nodeVersion:'22.x'}},basePath:process.cwd()});
+          const names=result.map(f=>f.name).sort();console.log('Packaged functions:',names.join(', '));
+          for(const name of ['api','analytics-export-background','analytics-replenishment-background','dlc-monitor','hs-contract-reader-background'])assert.ok(names.includes(name),'Missing '+name);
+          NODE
+      - name: Verify compiled CRM pilot on candidate only
+        if: matrix.revision == 'candidate'
+        run: |
+          grep -q 'if(await openCrmPilot())' frontend/crm/index.html
+          grep -q 'id="crmLiveObservation"' frontend/crm/index.html
+          node --check backend/server.mjs
+      - name: Record diagnostic limitations
+        if: always()
+        run: echo 'Frontend build + direct Netlify function packaging do not validate hosted database branching, plugins, environment or real login. No deploy performed. Prior offline full-build failure is preserved in run 45799184586.' >> "$GITHUB_STEP_SUMMARY"

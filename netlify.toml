@@ -106,3 +106,15 @@
   for = "/centrale-achat"
   [headers.values]
     Cache-Control = "no-store, max-age=0"
+
+[[headers]]
+  for = "/crm/*"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/crm"
+  [headers.values]
+    Cache-Control = "no-store, max-age=0"
+    X-Robots-Tag = "noindex, nofollow"

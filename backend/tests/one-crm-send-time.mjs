@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import {analyzeSendTime} from '../services/one-crm-send-time.mjs';
+const tenantId='demo',customerToken='opaque',channel='email';
+const event=(i,sentAt,responded)=>({tenantId,customerToken,channel,source:'demo',eventId:String(i),sentAt,outcomeThrough:new Date(Date.parse(sentAt)+86400000).toISOString().replace('.000Z','Z'),delivered:true,responded});
+const events=[...Array.from({length:6},(_,i)=>event(i,'2026-11-02T09:00:00Z',i<5)),...Array.from({length:6},(_,i)=>event(10+i,'2026-11-03T12:00:00Z',i<2)),event(20,'2026-11-04T15:00:00Z',true)];
+const run=(patch={})=>analyzeSendTime({tenantId,customerToken,channel,timeZone:'UTC',windowStart:'2026-11-01T00:00:00Z',asOf:'2026-11-26T12:00:00Z',events,coverageComplete:true,consentVerified:true,...patch});
+const x=run();assert.equal(x.status,'OBSERVED');assert.equal(x.contacts,13);assert.equal(x.responses,8);assert.equal(x.slots.length,56);assert.equal(x.recommendation.day,'Mon');assert.equal(x.recommendation.hour,9);assert.equal(x.recommendation.contacts,6);assert.equal(x.activationEnabled,false);assert.ok(x.recommendation.smoothedRate<x.recommendation.observedRate);
+assert.equal(run({minSlotContacts:7}).status,'INSUFFICIENT_HISTORY');assert.equal(run({startHour:12}).recommendation.day,'Tue');assert.equal(run({consentVerified:false}).status,'BLOCKED');assert.equal(run({coverageComplete:false}).recommendation,null);assert.equal(run({events:[]}).recommendation,null);assert.equal(run({events:[...events,events[0]]}).contacts,13);
+assert.throws(()=>run({events:[...events,{...events[0],responded:false}]}));assert.throws(()=>run({events:[{...events[0],tenantId:'other'}]}));assert.throws(()=>run({events:[{...events[0],customerToken:'other'}]}));assert.throws(()=>run({events:[{...events[0],outcomeThrough:'2026-11-30T00:00:00Z'}]}));assert.throws(()=>run({timeZone:'Invalid/Zone'}));assert.throws(()=>run({events:[{...events[0],delivered:false}]}));
+assert.equal(run({timeZone:'Africa/Casablanca'}).recommendation.hour,9);
+console.log('CRM send time observation passed');

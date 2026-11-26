@@ -92,6 +92,20 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
+  if(path==='/api/crm/observed-sales'){
+    const {makeObservedSalesGateway}=await import('./services/one-crm-observed-sales.mjs');
+    const {readStoreBasketEvidence,salesIntegrationConfig}=await import('./services/dynamics-sales.mjs');
+    const gateway=makeObservedSalesGateway({
+      listStores:()=>db.prepare('SELECT id,name FROM stores WHERE active=1 ORDER BY name').all(),
+      canAccessStore,sourceReady:id=>{const c=salesIntegrationConfig(id);return c.ready&&c.entity==='RetailTransactionSalesTransBIEntities'},
+      readDay:(id,date)=>readStoreBasketEvidence(id,{startDate:date,endDate:date}),
+      pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||'',
+      today:()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())
+    });
+    const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    return json(req,res,result.status,result.data);
+  }
   if(path==='/api/session')return json(req,res,200,{user:{id:user.id,name:user.name,email:user.email,role:user.role,store_id:user.store_id,permissions_profile:user.permissions_profile||null},authMode:session.mode,availableDemoUsers:session.mode==='demo'?db.prepare(`SELECT id,name,role,store_id,permissions_profile FROM users WHERE active=1 ORDER BY role,name`).all():[]});
   if(path==='/api/config')return json(req,res,200,{authMode:config.authMode,dynamicsMode:config.dynamics.mode,version:config.appVersion});
   if(path==='/api/dynamics/health'){ensureDirector(user);return json(req,res,200,await getDynamicsHealth())}

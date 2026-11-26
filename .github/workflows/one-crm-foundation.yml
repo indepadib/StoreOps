@@ -1,0 +1,114 @@
+name: ONE CRM foundation
+on:
+  pull_request:
+    paths:
+      - 'backend/services/one-crm-*.mjs'
+      - 'backend/server.mjs'
+      - 'backend/tests/one-crm-*.mjs'
+      - 'backend/scripts/one-crm-*.mjs'
+      - 'frontend/crm/**'
+      - 'frontend/js/auth.js'
+      - 'frontend/netlify-build.sh'
+      - 'frontend/_redirects'
+      - 'netlify.toml'
+      - 'backend/crm-schema/**'
+      - '.github/workflows/one-crm-foundation.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node backend/tests/one-crm-foundation.mjs
+      - run: node backend/tests/one-crm-readonly-adapter.mjs
+      - run: node --check backend/services/one-crm-readonly-adapter.mjs
+      - run: node backend/tests/one-crm-campaign-planner.mjs
+      - run: node backend/tests/one-crm-segment-engine.mjs
+      - run: node backend/tests/one-crm-reconciliation.mjs
+      - run: node backend/tests/one-crm-identity.mjs
+      - run: node backend/tests/one-crm-persistence.mjs
+      - run: node backend/tests/one-crm-consent.mjs
+      - run: node backend/tests/one-crm-customer-intelligence.mjs
+      - run: node backend/tests/one-crm-stored-day-reader.mjs
+      - run: node backend/tests/one-crm-promotion-intelligence.mjs
+      - run: node backend/tests/one-crm-value-action.mjs
+      - run: node backend/tests/one-crm-loyalty-intelligence.mjs
+      - run: node backend/tests/one-crm-basket-analysis.mjs
+      - run: node backend/tests/one-crm-experimentation.mjs
+      - run: node backend/tests/one-crm-journey-graph.mjs
+      - run: node backend/tests/one-crm-omnichannel.mjs
+      - run: node backend/tests/one-crm-churn.mjs
+      - run: node backend/tests/one-crm-purchase-prediction.mjs
+      - run: node backend/tests/one-crm-offers.mjs
+      - run: node backend/tests/one-crm-send-time.mjs
+      - run: node backend/tests/one-crm-copilot.mjs
+      - run: node backend/tests/one-crm-agent.mjs
+      - run: node backend/tests/one-crm-signed-export.mjs
+      - run: node backend/tests/one-crm-private-reconcile.mjs
+      - run: node backend/tests/one-crm-access.mjs
+      - run: node backend/tests/one-crm-generative.mjs
+      - run: node backend/tests/one-crm-dispatch.mjs
+      - run: node backend/tests/one-crm-pilot-session.mjs
+      - run: node backend/tests/one-crm-observed-sales.mjs
+      - run: node --check backend/server.mjs
+  postgres-contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: crm_test
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d crm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply draft and test default-deny constraints on disposable database
+        run: |
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/001-foundation.draft.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-foundation.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/002-ticket-items.draft.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-ticket-items.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/003-memberships.draft.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-memberships.sql
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run persisted data roundtrip
+        env:
+          CRM_DISPOSABLE_DB: crm_test
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/one-crm-pg" --no-audit --no-fund pg@8.13.1
+          CRM_PG_MODULE="$RUNNER_TEMP/one-crm-pg/node_modules/pg" node backend/tests/one-crm-postgres-roundtrip.mjs
+  browser-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install disposable browser test environment
+        run: |
+          mkdir -p "$RUNNER_TEMP/one-crm-browser"
+          npm install --prefix "$RUNNER_TEMP/one-crm-browser" --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/one-crm-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Test P0 browser workflows
+        run: |
+          cp backend/tests/one-crm-browser-smoke.mjs "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
+          CRM_HTML="$GITHUB_WORKSPACE/frontend/crm/index.html" node "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
+      - name: Build and test StoreOps authenticated pilot shell
+        run: |
+          (cd frontend && sh netlify-build.sh)
+          cp backend/tests/one-crm-pilot-browser.mjs "$RUNNER_TEMP/one-crm-browser/pilot.mjs"
+          CRM_FRONTEND="$GITHUB_WORKSPACE/frontend" node "$RUNNER_TEMP/one-crm-browser/pilot.mjs"

@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {analyzeBaskets} from '../services/one-crm-basket-analysis.mjs';
+const scope={tenantId:'demo',storeId:'s',date:'2026-11-20'};
+const t=(ticketId,products,minor=100)=>({...scope,ticketId,netMinor:minor*products.length,items:products.map((productId,i)=>({lineId:String(i),productId,netMinor:minor}))});
+const tickets=[t('1',['A','B']),t('2',['A','B']),t('3',['A']),t('4',['C']),t('5',['A','A','B']),t('6',['A','B'],-100)];
+const run=(patch={})=>analyzeBaskets({tenantId:'demo',storeIds:['s'],allowedStoreIds:['s'],windowStart:'2026-11-01',asOf:'2026-11-26',tickets,itemEvidenceComplete:true,minPairCount:2,minLift:0,...patch});
+const x=run();assert.equal(x.baskets,5);assert.equal(x.excludedTickets,1);assert.equal(x.distinctProducts,3);assert.equal(x.qualifiedRules,2);
+const ab=x.rules.find(r=>r.from==='A');assert.equal(ab.pairCount,3);assert.equal(ab.supportBps,6000);assert.equal(ab.confidenceBps,7500);assert.equal(ab.lift,1.25);
+assert.equal(x.rules.find(r=>r.from==='B').confidenceBps,10000);
+assert.equal(run({productId:'A'}).rules.length,1);assert.equal(run({minPairCount:4}).rules.length,0);assert.equal(run({minLift:1.3}).rules.length,0);
+assert.equal(run({minConfidenceBps:9000}).rules.length,1);assert.equal(run({tickets:[...tickets,tickets[0]]}).baskets,5);
+assert.equal(run({itemEvidenceComplete:false}).status,'UNAVAILABLE');assert.equal(run({tickets:[]}).baskets,0);assert.equal(x.activationEnabled,false);
+assert.throws(()=>run({allowedStoreIds:[]}));assert.throws(()=>run({tickets:[{...tickets[0],tenantId:'other'}]}));assert.throws(()=>run({tickets:[{...tickets[0],netMinor:1}]}));assert.throws(()=>run({tickets:[...tickets,t('1',['A','C'])]}));
+assert.throws(()=>run({tickets:[{...tickets[0],items:[tickets[0].items[0],tickets[0].items[0]]}]}));
+console.log('CRM basket analysis passed');

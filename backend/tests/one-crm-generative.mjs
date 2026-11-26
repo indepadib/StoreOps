@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {validateCopilotPlan,renderCopilotEvidence,makeGenerativeCopilot} from '../services/one-crm-generative.mjs';
+import {makeGatewayPlanner} from '../services/one-crm-gateway-planner.mjs';
+const raw=JSON.stringify({intent:'draft',store:'a',days:45,channel:'whatsapp'}),stores=['a','b'];
+const p=validateCopilotPlan(raw,stores);assert.equal(p.intent,'draft');assert.deepEqual(p.storeIds,['a']);assert.equal(p.rules.expression.children[0].children[0].value,45);assert.equal(p.activationEnabled,false);
+for(const patch of [{intent:'send'},{store:'outside'},{days:999},{channel:'fax'},{sql:'SELECT *'},{audienceCount:2000},{intent:'count'}])assert.throws(()=>validateCopilotPlan(JSON.stringify({...JSON.parse(raw),...patch}),stores));
+assert.throws(()=>validateCopilotPlan('not json',stores));
+const evidence={status:'READY',currency:'MAD',storeIds:['a'],audienceCount:20,audienceNetMinor:12000,windowStart:'2026-11-01',asOf:'2026-11-02',activationEnabled:false,customerToken:'secret'};
+const result=renderCopilotEvidence(p,evidence);assert.equal(result.audienceCount,20);assert.equal(result.draftProposal.requiresReview,true);assert.ok(!JSON.stringify(result).includes('secret'));assert.equal(renderCopilotEvidence(p,{status:'SUPPRESSED'}).status,'SUPPRESSED');assert.throws(()=>renderCopilotEvidence(p,{...evidence,audienceCount:9}));assert.throws(()=>renderCopilotEvidence(p,{...evidence,storeIds:['b']}));
+let modelCalls=0,reads=0,reservations=0,reply=raw;
+const run=makeGenerativeCopilot({authorizeScope:async ({session,tenantId,storeIds})=>session==='valid'?{tenantId,storeIds,syntheticOnly:true,providerApproved:true}:null,reserveQuery:async()=>{reservations++;return true},proposePlan:async()=>{modelCalls++;return reply},readAudience:async()=>{reads++;return evidence}});
+const request={question:'Prépare un brouillon de réactivation',tenantId:'demo',storeIds:['a','b'],windowStart:'2026-11-01',asOf:'2026-11-02'};
+assert.equal((await run({session:'valid',request})).status,'READY');assert.equal(modelCalls,1);assert.equal(reads,1);assert.equal(reservations,1);await assert.rejects(()=>run({session:'invalid',request}));assert.equal(modelCalls,1);reply='{"intent":"send"}';await assert.rejects(()=>run({session:'valid',request}));assert.equal(reads,1);
+let sent;const gateway=makeGatewayPlanner({apiKey:'synthetic-key',model:'demo/model',approvedModels:['demo/model'],fetchImpl:async(url,options)=>{sent={url,options};return {ok:true,json:async()=>({choices:[{finish_reason:'stop',message:{content:raw}}]})}}});assert.equal(await gateway({question:'demo',allowedStores:['a']}),raw);assert.equal(sent.url,'https://ai-gateway.vercel.sh/v1/chat/completions');assert.equal(JSON.parse(sent.options.body).model,'demo/model');assert.equal(JSON.parse(sent.options.body).max_tokens,500);
+assert.throws(()=>makeGatewayPlanner({apiKey:'x',model:'unapproved',approvedModels:[]}));await assert.rejects(()=>makeGatewayPlanner({apiKey:'x',model:'demo/model',approvedModels:['demo/model'],fetchImpl:async()=>({ok:false})})({question:'demo',allowedStores:['a']}));
+console.log('CRM generative copilot contract passed');

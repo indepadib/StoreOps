@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {prepareDispatch,simulateDispatch,applyMockReceipt} from '../services/one-crm-dispatch.mjs';
+const tenantId='demo-a',at='2026-11-26T12:00:00Z';
+const p=(customerToken,patch={})=>({tenantId,customerToken,eligible:true,frequencyAllowed:true,contactable:true,...patch});
+const input={tenantId,campaignId:'demo-campaign',author:'demo-author',reviewer:'demo-reviewer',approvedRevision:1,revision:1,channel:'email',templateApproved:true,consentComplete:true,historyComplete:true,budgetMinor:20,costMinor:10,recipients:[p('demo-1'),p('demo-2'),p('demo-3'),p('demo-4',{eligible:false})]};
+const run=patch=>prepareDispatch({...input,...patch});
+const x=run();assert.equal(x.jobs.length,2);assert.equal(x.reservedMinor,20);assert.equal(x.excluded,2);assert.equal(x.activationEnabled,false);
+for(const patch of [{reviewer:'demo-author'},{approvedRevision:2},{templateApproved:false},{consentComplete:false},{historyComplete:false}])assert.equal(run(patch).status,'BLOCKED');
+assert.throws(()=>run({recipients:[input.recipients[0],input.recipients[0]]}));assert.throws(()=>run({recipients:[p('demo-1',{tenantId:'demo-b'})]}));
+const j=x.jobs[0],opts={tenantId,at,consentVerified:true,frequencyAllowed:true,contactable:true,killSwitch:false,providerResult:'accepted',providerId:'demo-message'};
+const dispatch=patch=>simulateDispatch(j,{...opts,...patch});
+assert.equal(dispatch().state,'submitted');assert.equal(dispatch({consentVerified:false}).state,'blocked');assert.equal(dispatch({killSwitch:true}).state,'blocked');assert.equal(dispatch({frequencyAllowed:false}).state,'blocked');assert.equal(dispatch({providerResult:'unknown'}).state,'unknown');assert.equal(simulateDispatch(dispatch({providerResult:'unknown'}),opts).state,'unknown');
+assert.equal(dispatch({providerResult:'rejected'}).state,'failed');assert.throws(()=>dispatch({tenantId:'demo-b'}));
+const e={tenantId,eventId:'demo-event',providerId:'demo-message',verified:true,at:'2026-11-26T12:01:00Z',type:'delivered'},d=applyMockReceipt(dispatch(),e);
+assert.equal(d.state,'delivered');assert.equal(applyMockReceipt(d,e),d);assert.throws(()=>applyMockReceipt(d,{...e,type:'failed'}));assert.throws(()=>applyMockReceipt(dispatch(),{...e,verified:false}));assert.throws(()=>applyMockReceipt(dispatch(),{...e,providerId:'demo-other'}));assert.equal(applyMockReceipt(d,{...e,eventId:'demo-stop',type:'unsubscribed'}).suppressed,true);
+console.log('CRM dispatch simulation passed');

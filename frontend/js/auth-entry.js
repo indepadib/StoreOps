@@ -68,6 +68,16 @@ async function preloadBootstrap(apiCall,authMode){
   }
 }
 
+// Optional pilot entry: never interrupt the StoreOps bootstrap if CRM is unavailable.
+async function addCrmPilotLink(){
+ try{
+  const {app}=await import('./state.js');
+  const user=app.user,host=document.querySelector('.top-controls');
+  if(!['entra','local'].includes(app.authMode)||!user||!host||document.querySelector('#oneCrmPilotLink'))return;
+  if(user.role!=='ops_director'&&user.permissions_profile!=='platform_admin')return;
+  const link=document.createElement('a');link.id='oneCrmPilotLink';link.className='btn ghost';link.href='/crm/';link.textContent='ONE CRM · Pilote';host.append(link);
+ }catch(e){console.warn('Accès pilote CRM indisponible')}
+}
 async function start(){
   await prepareBoot();
 
@@ -92,6 +102,7 @@ async function start(){
     await preloadBootstrap(api,'local');
     await loadApp();
     addLogoutControl();
+    await addCrmPilotLink();
     return;
   }
   if(h.authMode!=='entra'){
@@ -108,6 +119,7 @@ async function start(){
     await preloadBootstrap(api,'entra');
     await loadApp();
     addLogoutControl();
+    await addCrmPilotLink();
   }catch(e){
     console.error(e);
     renderStartupFailure(e);
