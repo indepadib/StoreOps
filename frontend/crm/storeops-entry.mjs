@@ -23,6 +23,7 @@ export async function openCrmPilot(){
  document.getElementById('crmPilotRetry').onclick=()=>location.reload();
  const r=await check();setGate(r.status);
  if(r.status!=='AUTHORIZED')return false;
+ setupNavigation();
  setupLiveObservation();
  let busy=false,closed=false,timer;
  const close=status=>{closed=true;clearInterval(timer);setGate(status);for(const d of document.querySelectorAll('dialog[open]'))d.close()};
@@ -40,8 +41,9 @@ const liveStatus=()=>el('crmLiveStatus');
 const money=n=>new Intl.NumberFormat('fr-MA',{style:'currency',currency:'MAD',maximumFractionDigits:2}).format(n);
 const fmt=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:3}).format(n);
 let generation=0,ticketGeneration=0,loyaltyGeneration=0,summary=null,currentPage=1;
-function metric(container,label,value){const d=document.createElement('div'),b=document.createElement('strong');d.append(document.createTextNode(label));b.textContent=String(value);d.append(b);container.append(d)}
+function metric(container,label,value){const d=document.createElement('div'),b=document.createElement('strong');if(container.id==='crmLiveMetrics')d.className='metric';d.append(document.createTextNode(label));b.textContent=String(value);d.append(b);container.append(d)}
 function clearDetails(){
+ if(el('orbitCount'))el('orbitCount').textContent='—';if(el('crmScopeDate'))el('crmScopeDate').textContent='—';if(el('crmScopeLabel'))el('crmScopeLabel').textContent='Franprix';
  ticketGeneration++;loyaltyGeneration++;summary=null;currentPage=1;
  el('crmTicketRows')?.replaceChildren();el('crmLoyaltyMetrics')?.replaceChildren();
  if(el('crmTicketPager'))el('crmTicketPager').hidden=true;
@@ -98,6 +100,7 @@ function setupLiveObservation(){
    if(x?.status==='SUPPRESSED'){liveStatus().textContent='Résultat masqué : cohorte trop petite.';return}
    if(!validateObservationResponse(x,{storeId:id,date:day}))throw Error('Evidence unavailable');
    summary=x;
+   if(el('orbitCount'))el('orbitCount').textContent=fmt(x.identifiedCustomers);if(el('crmScopeDate'))el('crmScopeDate').textContent=day;if(el('crmScopeLabel'))el('crmScopeLabel').textContent='Franprix · '+store.selectedOptions[0].textContent;
    for(const [label,v] of [['Clients identifiés observés',fmt(x.identifiedCustomers)],['Tickets observés',fmt(x.tickets)],['Tickets identifiés',fmt(x.identifiedTickets)],['Ventes TTC positives',money(x.positiveSales)],['Ventes positives identifiées',money(x.identifiedPositiveSales)],['Panier positif moyen',money(x.averagePositiveBasket)]])metric(metrics,label,v);
    liveStatus().textContent='D365 · '+day+' · extraction '+x.checkedAt+' · rapprochement financier non vérifié. Retours exclus.';
    await readTickets(1);
@@ -114,4 +117,22 @@ function setupLiveObservation(){
   }catch{if(g===generation&&lg===loyaltyGeneration&&valid()){out.replaceChildren();status.textContent='Données fidélité indisponibles.'}}finally{if(g===generation&&lg===loyaltyGeneration&&valid())loyalty.disabled=!selection()}
  };
  load.click();
+}
+
+function setupNavigation(){
+ const buttons=[...document.querySelectorAll('nav button[data-view]')],views=[...document.querySelectorAll('[data-live-view]')],dialog=el('crmModuleSearch'),input=el('crmModuleQuery'),results=el('crmModuleResults');
+ const descriptions={overview:'Pilotage client · données Dynamics',customers:'Référentiel et historique d’achat',segments:'Construction des audiences',transactions:'Tickets et contenu des paniers',loyalty:'Franprix Connect · recrutements',basket:'Affinités entre produits',churn:'Risque de non-retour',purchase:'Anticipation des achats',offers:'Personnalisation des offres',sendtime:'Optimisation des contacts',copilot:'Assistant marketing',agent:'Recommandations et décisions',campaigns:'Préparation des campagnes',omnichannel:'Orchestration des canaux',dispatch:'Suivi des diffusions',experiments:'Mesure de l’impact',journeys:'Parcours clients',data:'Sources et intégrations'};
+ function go(id){const button=buttons.find(b=>b.dataset.view===id);if(!button)return;
+  for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
+  for(const v of views)v.hidden=v.dataset.liveView!==id;
+  const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
+  el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
+ }
+ for(const b of buttons)b.onclick=()=>go(b.dataset.view);
+ for(const b of document.querySelectorAll('[data-go]'))b.onclick=()=>go(b.dataset.go);
+ function search(){results.replaceChildren();const q=input.value.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'');for(const b of buttons){const label=b.textContent.trim();if(!label.toLocaleLowerCase('fr').normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(q))continue;const item=document.createElement('button');item.type='button';item.className='secondary';item.textContent=label;item.onclick=()=>go(b.dataset.view);results.append(item)}if(!results.children.length)results.textContent='Aucun module correspondant.'}
+ function open(){if(!document.documentElement.classList.contains('crm-pilot-open'))return;input.value='';search();if(!dialog.open)dialog.showModal();input.focus()}
+ el('navSearch').onclick=open;el('topSearch').onclick=open;el('crmSearchClose').onclick=()=>dialog.close();input.oninput=search;
+ document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();open()}});
+ go('overview');
 }
