@@ -5,6 +5,7 @@ on:
       - 'backend/services/one-crm-*.mjs'
       - 'backend/server.mjs'
       - 'backend/tests/one-crm-*.mjs'
+      - 'backend/scripts/one-crm-*.mjs'
       - 'frontend/crm/**'
       - 'frontend/js/auth.js'
       - 'frontend/netlify-build.sh'
@@ -47,6 +48,7 @@ jobs:
       - run: node backend/tests/one-crm-copilot.mjs
       - run: node backend/tests/one-crm-agent.mjs
       - run: node backend/tests/one-crm-signed-export.mjs
+      - run: node backend/tests/one-crm-private-reconcile.mjs
       - run: node backend/tests/one-crm-access.mjs
       - run: node backend/tests/one-crm-generative.mjs
       - run: node backend/tests/one-crm-dispatch.mjs
