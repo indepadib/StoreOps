@@ -89,13 +89,39 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
   if(!cfg.ready||cfg.entity!=='RetailTransactionSalesTransBIEntities')continue;
   for(const [start,end] of dates){
    const range=await readAnalyticsCache(analyticsCacheKey('sales-range-v32',[id,start,end]));
-   if(range?.storeId===id&&range.startDate===start&&range.endDate===end)ranges.push(range);
+   if(isPreparedRfmRange(range,id,start,end)){ranges.push(range);continue}
+   const dates=Array.from({length:30},(_,i)=>new Date(Date.parse(start+'T00:00:00Z')+i*86400000).toISOString().slice(0,10));
+   for(let i=0;i<dates.length;i+=8){
+    const daily=await Promise.all(dates.slice(i,i+8).map(date=>readAnalyticsCache(analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,id,date]))));
+    for(let j=0;j<daily.length;j++){const date=dates[i+j];if(isPreparedRfmRange(daily[j],id,date,date))ranges.push(daily[j])}
+   }
   }
  }
  const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page});
+ const covered=new Set();for(const r of ranges){for(let t=Date.parse(r.startDate+'T00:00:00Z');t<=Date.parse(r.endDate+'T00:00:00Z');t+=86400000)covered.add(JSON.stringify([r.storeId,new Date(t).toISOString().slice(0,10)]))}
+ const missing=[];for(const id of storeIds)for(let i=89;i>=0;i--){const date=new Date(Date.parse(asOf+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);if(!covered.has(JSON.stringify([id,date])))missing.push({storeId:id,date})}
+ population.nextMissing=missing[0]||null;
+
  try{
   const names=await readCrmCustomerNames(population.rows.map(r=>r.accountRef)),byAccount=new Map((names.rows||[]).map(r=>[r.accountRef,r]));
   return {...population,rows:population.rows.map(r=>({...r,displayName:byAccount.get(r.accountRef)?.displayName||null,nameStatus:byAccount.get(r.accountRef)?.status||'UNAVAILABLE'}))};
  }catch{return population}
 
+}
+
+function isPreparedRfmRange(r,id,start,end){
+ return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
+}
+export async function prepareCrmRfmDay(storeId,date){
+ const asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<start||date>asOf||!Number.isFinite(Date.parse(date))||new Date(Date.parse(date)).toISOString().slice(0,10)!==date)return {status:'INVALID_DATE'};
+ const {readStoreSalesRange}=await import('./dynamics-sales.mjs');
+ const {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const key=analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,storeId,date]);
+ if(isPreparedRfmRange(await readAnalyticsCache(key),storeId,date,date))return {status:'READY',storeId,date,reused:true};
+ const r=await readStoreSalesRange(storeId,{startDate:date,endDate:date});
+ if(!isPreparedRfmRange(r,storeId,date,date))return {status:'UNAVAILABLE',reason:'DAY_SOURCE_INCOMPLETE'};
+ const {status,source,startDate,endDate,diagnostics}=r,customers=r.customers.map(({customerAccount,sales,tickets,lastDate})=>({customerAccount,sales,tickets,lastDate}));
+ const stored=await writeAnalyticsCache(key,'crm-rfm-day-v1',{status,source,storeId,startDate,endDate,diagnostics:{truncated:diagnostics.truncated,filterCoverage:{parentTransaction:diagnostics.filterCoverage.parentTransaction},mappedFields:{customer:diagnostics.mappedFields.customer}},customers},date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10)?10800:604800);
+ return stored?{status:'READY',storeId,date}:{status:'UNAVAILABLE',reason:'DAY_STORAGE_UNAVAILABLE'};
 }
