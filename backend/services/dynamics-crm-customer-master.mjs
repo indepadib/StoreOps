@@ -68,3 +68,8 @@ export async function readCrmCustomerNames(accounts){
  const {readCustomerNames}=await import('./one-crm-customer-identity-source.mjs');
  return readCustomerNames({...sourceDeps(),accounts});
 }
+
+export async function searchCrmCustomerIdentity({query,by,page}){
+ const {searchCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
+ return searchCustomerIdentity({...sourceDeps(),query,by,page});
+}

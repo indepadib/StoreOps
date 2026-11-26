@@ -92,12 +92,15 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
-  if(path==='/api/crm/customer-directory'){
+  if(path==='/api/crm/customer-directory'||path==='/api/crm/customer-identity-search'){
+    const identitySearchRoute=path==='/api/crm/customer-identity-search';
+    if(identitySearchRoute?req.method!=='POST':req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
+    if(identitySearchRoute&&(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin')))return json(req,res,403,{error:'Accès professionnel requis.'});
     const {makeCustomerDirectoryGateway}=await import('./services/one-crm-customer-directory.mjs');
-    const {readCustomerPage,readCustomerCount,findCustomerAccount,readCustomerProfile,readCrmCustomerIdentity,readCrmCustomerWallet,readCrmCustomerNames}=await import('./services/dynamics-crm-customer-master.mjs');
+    const {readCustomerPage,readCustomerCount,findCustomerAccount,readCustomerProfile,readCrmCustomerIdentity,readCrmCustomerWallet,readCrmCustomerNames,searchCrmCustomerIdentity}=await import('./services/dynamics-crm-customer-master.mjs');
     const {readCrmCustomerHistory}=await import('./services/dynamics-sales.mjs');
-    const gateway=makeCustomerDirectoryGateway({listStores:()=>db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all(),canAccessStore,readPage:readCustomerPage,readCount:readCustomerCount,findAccount:findCustomerAccount,readProfile:readCustomerProfile,readHistory:readCrmCustomerHistory,readIdentity:readCrmCustomerIdentity,readWallet:readCrmCustomerWallet,readNames:readCrmCustomerNames,pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||''});
-    const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
+    const gateway=makeCustomerDirectoryGateway({listStores:()=>db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all(),canAccessStore,readPage:readCustomerPage,readCount:readCustomerCount,findAccount:findCustomerAccount,readProfile:readCustomerProfile,readHistory:readCrmCustomerHistory,readIdentity:readCrmCustomerIdentity,readWallet:readCrmCustomerWallet,readNames:readCrmCustomerNames,searchIdentity:searchCrmCustomerIdentity,pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||''});
+    const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams,identitySearch:identitySearchRoute?await body(req):null});
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     return json(req,res,result.status,result.data);
   }

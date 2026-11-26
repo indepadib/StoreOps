@@ -50,3 +50,30 @@ export async function readCustomerNames({accounts,company,read}){
  for(let i=0;i<groups.length;i+=3)await Promise.all(groups.slice(i,i+3).map(batch));
  const rows=accounts.map(a=>results.get(a));return {...base,status:rows.every(r=>r.status==='READY')?'READY':'PARTIAL',rows};
 }
+
+/** Separate directory search. Query is sent in an authenticated POST body to avoid URLs containing contact data. */
+export async function searchCustomerIdentity({company,query,by,page=1,read}){
+ const base={source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false,by,page,pageSize:50};
+ const fail=reason=>({...base,status:'UNAVAILABLE',reason,rows:[],hasMore:false});
+ if(!safe(company)||!safe(query,100)||!['name','phone'].includes(by)||!Number.isSafeInteger(page)||page<1||page>1000)return fail('IDENTITY_SEARCH_INVALID');
+ const q=query.trim(),tokens=q.split(/\s+/);
+ if(by==='name'&&(q.length<3||tokens.length>5)||by==='phone'&&(!/^[+0-9 ()-]+$/.test(q)||q.replace(/\D/g,'').length<5))return fail('IDENTITY_SEARCH_INVALID');
+ const keys=by==='name'?['PersonFirstName','PersonLastName','OrganizationName']:['PrimaryContactPhone'];
+ const contains=(key,t)=>'contains('+key+','+quote(t)+')';
+ // Use separate words for multi-part names; phone lookup uses the stored formatting.
+ const terms=by==='name'?tokens:[q];
+ const filter='dataAreaId eq '+quote(company)+" and CustomerGroupId eq 'Retail' and "+terms.map(t=>'('+keys.map(k=>contains(k,t)).join(' or ')+')').join(' and ');
+ try{
+  const raw=await read('CustomersV3',{filter,select:fields+(by==='phone'?',PrimaryContactPhone':''),top:51,extra:'cross-company=true&$orderby=CustomerAccount%20asc&$skip='+((page-1)*50)});
+  if(!Array.isArray(raw?.value)||raw.value.length>51||raw['@odata.nextLink']&&raw.value.length<50)return fail('IDENTITY_SEARCH_INCOMPLETE');
+  const rows=[],seen=new Set();
+  for(const r of raw.value){
+   const accountRef=safe(r.CustomerAccount),kind=clean(r.PartyType).split('.').pop().replace(/^'|'$/g,'').toLowerCase();
+   if(!accountRef||clean(r.dataAreaId)!==company||clean(r.CustomerGroupId)!=='Retail'||seen.has(accountRef))return fail('IDENTITY_SEARCH_SCOPE_MISMATCH');seen.add(accountRef);
+   const displayName=kind==='person'?[safe(r.PersonFirstName),safe(r.PersonLastName)].filter(Boolean).join(' ')||null:kind==='organization'?safe(r.OrganizationName):null;
+   if(by==='name'&&(!displayName||!terms.every(t=>displayName.toLowerCase().includes(t.toLowerCase())))||by==='phone'&&!clean(r.PrimaryContactPhone).includes(q))return fail('IDENTITY_SEARCH_SCOPE_MISMATCH');
+   rows.push({accountRef,displayName,partyType:kind==='person'?'PERSON':kind==='organization'?'ORGANIZATION':null});
+  }
+  return {...base,status:'READY',rows:rows.slice(0,50),hasMore:rows.length>50||!!raw['@odata.nextLink']};
+ }catch(e){return fail(e?.code==='D365_REQUEST_TIMEOUT'?'IDENTITY_SEARCH_TIMEOUT':'IDENTITY_SEARCH_SOURCE_UNAVAILABLE')}
+}
