@@ -22,3 +22,31 @@ export async function readCustomerIdentity({accountRef,company,read}){
   return {...base,status:contacts?'READY':'PARTIAL',reason:contacts?null:'CONTACT_FIELDS_UNAVAILABLE',partyType:kind==='person'?'PERSON':'ORGANIZATION',firstName:kind==='person'?safe(r.PersonFirstName):null,lastName:kind==='person'?safe(r.PersonLastName):null,organizationName:kind==='organization'?safe(r.OrganizationName):null,email,phone};
  }catch(e){return fail(e?.code==='D365_REQUEST_TIMEOUT'?'IDENTITY_SOURCE_TIMEOUT':Number(e?.details?.httpStatus)===403?'IDENTITY_SOURCE_FORBIDDEN':'IDENTITY_SOURCE_UNAVAILABLE')}
 }
+
+/** Enrich a previously authorized master page without making directory availability depend on CustomersV3. */
+export async function readCustomerNames({accounts,company,read}){
+ const base={source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false};
+ if(!safe(company)||!Array.isArray(accounts)||accounts.length>50||accounts.some(a=>!safe(a)||a!==a.trim())||new Set(accounts).size!==accounts.length)return {...base,status:'UNAVAILABLE',rows:[]};
+ const results=new Map(),groups=[];
+ for(let i=0;i<accounts.length;i+=10)groups.push(accounts.slice(i,i+10));
+ async function batch(ids){
+  const filter='dataAreaId eq '+quote(company)+" and CustomerGroupId eq 'Retail' and ("+ids.map(a=>'CustomerAccount eq '+quote(a)).join(' or ')+')';
+  try{
+   const p=await read('CustomersV3',{filter,select:fields,top:ids.length+1,extra:'cross-company=true'});
+   if(!Array.isArray(p?.value)||p.value.length>ids.length||p['@odata.nextLink'])throw Error('Incomplete identity page');
+   const seen=new Set(),mapped=[];
+   for(const r of p.value){
+    const a=clean(r.CustomerAccount);
+    if(!ids.includes(a)||clean(r.dataAreaId)!==company||clean(r.CustomerGroupId)!=='Retail'||seen.has(a))throw Error('Invalid identity scope');seen.add(a);
+    const kind=clean(r.PartyType).split('.').pop().replace(/^'|'$/g,'').toLowerCase();
+    const name=kind==='person'?[safe(r.PersonFirstName),safe(r.PersonLastName)].filter(Boolean).join(' ')||null:kind==='organization'?safe(r.OrganizationName):null;
+    mapped.push({accountRef:a,displayName:name,partyType:kind==='person'?'PERSON':kind==='organization'?'ORGANIZATION':null,status:name?'READY':'NOT_VERIFIED'});
+   }
+   for(const r of mapped)results.set(r.accountRef,r);
+   for(const a of ids)if(!results.has(a))results.set(a,{accountRef:a,displayName:null,partyType:null,status:'NOT_FOUND'});
+  }catch(e){for(const a of ids)results.set(a,{accountRef:a,displayName:null,partyType:null,status:e?.code==='D365_REQUEST_TIMEOUT'?'TIMEOUT':'UNAVAILABLE'})}
+ }
+ // At most three concurrent source calls, no unbounded fan-out.
+ for(let i=0;i<groups.length;i+=3)await Promise.all(groups.slice(i,i+3).map(batch));
+ const rows=accounts.map(a=>results.get(a));return {...base,status:rows.every(r=>r.status==='READY')?'READY':'PARTIAL',rows};
+}

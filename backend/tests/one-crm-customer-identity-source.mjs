@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {readCustomerIdentity} from '../services/one-crm-customer-identity-source.mjs';
+import {readCustomerIdentity,readCustomerNames} from '../services/one-crm-customer-identity-source.mjs';
 import {makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
 const accountRef="ACCOUNT'1",company='5001';
 const row={CustomerAccount:accountRef,dataAreaId:company,CustomerGroupId:'Retail',PartyType:'Person',PersonFirstName:'Test',PersonLastName:'Client',PrimaryContactEmail:'sample@example.invalid',PrimaryContactPhone:'+212000000000',OrganizationName:'wrong',PrivateOtherField:'never return'};
@@ -15,3 +15,9 @@ const gate=makeCustomerDirectoryGateway({listStores:()=>[{id:'a'}],canAccessStor
 const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({accountRef,identity:'1'})};
 assert.equal((await gate(req)).data.firstName,'Test');assert.equal((await gate({...req,session:{mode:'local',user:{role:'store_manager'}}})).status,403);assert.equal((await gate({...req,query:new URLSearchParams({accountRef:'missing',identity:'1'})})).status,404);assert.equal((await gate({...req,query:new URLSearchParams({accountRef,identity:'1',history:'1'})})).status,400);assert.equal(calls,1);
 console.log('CRM exact account identity source and authorization passed');
+
+const accounts=Array.from({length:50},(_,i)=>'AC-'+i);let batchCalls=0;
+const names=await readCustomerNames({accounts,company,read:async(_,opts)=>{batchCalls++;const ids=accounts.filter(a=>opts.filter.includes("CustomerAccount eq '"+a+"'"));assert.ok(ids.length<=10);return {value:ids.map(a=>({...row,CustomerAccount:a}))}}});assert.equal(batchCalls,5);assert.equal(names.rows.length,50);assert.ok(names.rows.every(r=>r.displayName==='Test Client'));assert.ok(!JSON.stringify(names).includes(row.PrimaryContactEmail));
+const bad=await readCustomerNames({accounts:['AC-1'],company,read:async()=>({value:[{...row,CustomerAccount:'AC-1',dataAreaId:'other'}]})});assert.equal(bad.rows[0].displayName,null);assert.equal(bad.status,'PARTIAL');
+const pageGate=makeCustomerDirectoryGateway({listStores:()=>[{id:'a'}],canAccessStore:()=>true,pilotStores:'a',readPage:async()=>({status:'READY',rows:[{accountRef}]}),readCount:async()=>null,findAccount:async()=>null,readNames:async a=>{assert.deepEqual(a,[accountRef]);return names}});
+assert.equal((await pageGate({...req,query:new URLSearchParams({names:'1',page:'1'})})).data.status,'READY');assert.equal((await pageGate({...req,query:new URLSearchParams({names:'1',accountRef})})).status,400);
