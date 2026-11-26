@@ -46,3 +46,20 @@ jobs:
         run: |
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/001-foundation.draft.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-foundation.sql
+  browser-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install disposable browser test environment
+        run: |
+          mkdir -p "$RUNNER_TEMP/one-crm-browser"
+          npm install --prefix "$RUNNER_TEMP/one-crm-browser" --no-audit --no-fund playwright@1.56.1
+          "$RUNNER_TEMP/one-crm-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Test P0 browser workflows
+        run: |
+          cp backend/tests/one-crm-browser-smoke.mjs "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
+          CRM_HTML="$GITHUB_WORKSPACE/frontend/crm/index.html" node "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
