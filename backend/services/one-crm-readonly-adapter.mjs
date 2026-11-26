@@ -1,4 +1,5 @@
 import {buildProfiles,previewSegment} from './one-crm-foundation.mjs';
+import {evaluateSegment} from './one-crm-segment-engine.mjs';
 
 // Internal adapter only. Never mount as a public route; caller must provide
 // server-derived authorization and a verified source/currency reconciliation.
@@ -18,7 +19,8 @@ export async function readCrmAudience({tenantId,storeIds,allowedStoreIds,windowS
   }
  }
  const snapshot=buildProfiles({tenantId,asOf,windowStart,coverageComplete:true,tickets});
- const audience=previewSegment(snapshot,{...rules,tenantId});
+ const audience=rules.expression?evaluateSegment(snapshot,{tenantId,expression:rules.expression}):previewSegment(snapshot,{...rules,tenantId});
+ const audienceNetMinor=audience.reduce((n,p)=>{const total=n+p.netMinor;if(!Number.isSafeInteger(total))throw Error('Audience monetary overflow');return total},0);
  // No contact information or customer identifiers cross this boundary.
- return {status:'READY',currency:'MAD',windowStart,asOf,storeIds:[...storeIds],observedCustomers:snapshot.profiles.length,anonymousTickets:snapshot.anonymousTickets,uniqueTickets:snapshot.uniqueTickets,audienceCount:audience.length,audienceNetMinor:audience.reduce((n,p)=>n+p.netMinor,0),activationEnabled:false};
+ return {status:'READY',currency:'MAD',windowStart,asOf,storeIds:[...storeIds],observedCustomers:snapshot.profiles.length,anonymousTickets:snapshot.anonymousTickets,uniqueTickets:snapshot.uniqueTickets,audienceCount:audience.length,audienceNetMinor,activationEnabled:false};
 }
