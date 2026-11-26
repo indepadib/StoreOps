@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {allocateDemo,evaluateExperiment} from '../services/one-crm-experimentation.mjs';
+const audience=Array.from({length:100},(_,i)=>({id:String(i),eligible:i<80}));
+const a=allocateDemo({audience,holdoutPct:20,seed:'demo'});
+assert.equal(a.control.length,16);assert.equal(a.treatment.length,64);assert.equal(a.excluded,20);assert.equal(new Set([...a.control,...a.treatment]).size,80);assert.deepEqual(a,allocateDemo({audience:[...audience].reverse(),holdoutPct:20,seed:'demo'}));assert.equal(allocateDemo({audience:[audience[0]],holdoutPct:20,seed:'demo'}).treatment.length,0);assert.throws(()=>allocateDemo({audience:[audience[0],audience[0]],holdoutPct:20,seed:'demo'}));
+const input={treatment:{assigned:800,converted:160,netRevenueMinor:4000000,contributionBeforeCampaignMinor:1000000,campaignCostMinor:200000},control:{assigned:200,converted:20,netRevenueMinor:500000,contributionBeforeCampaignMinor:125000,campaignCostMinor:0},outcomesComplete:true,assignmentVerified:true,windowClosed:true};
+const x=evaluateExperiment(input);assert.equal(x.absoluteLift,.1);assert.equal(x.relativeLift,1);assert.equal(x.incrementalConversions,80);assert.equal(x.incrementalRevenueMinor,2000000);assert.equal(x.incrementalContributionMinor,300000);assert.equal(x.roi,1.5);assert.equal(x.interpretation,'POSITIVE_CONVERSION_SIGNAL');assert.ok(x.interval95[0]>0);assert.equal(x.activationEnabled,false);
+assert.equal(evaluateExperiment({...input,outcomesComplete:false}).status,'BLOCKED');assert.equal(evaluateExperiment({...input,assignmentVerified:false}).status,'BLOCKED');assert.equal(evaluateExperiment({...input,windowClosed:false}).status,'BLOCKED');
+assert.equal(evaluateExperiment({...input,control:{...input.control,converted:0}}).relativeLift,null);
+assert.equal(evaluateExperiment({...input,control:{assigned:0,converted:0,netRevenueMinor:0,contributionBeforeCampaignMinor:0,campaignCostMinor:0}}).status,'INSUFFICIENT_SAMPLE');
+assert.equal(evaluateExperiment({...input,control:{...input.control,assigned:20,converted:2}}).interpretation,'INSUFFICIENT_SAMPLE');
+assert.equal(evaluateExperiment({...input,treatment:{...input.treatment,campaignCostMinor:0}}).roi,null);
+assert.throws(()=>evaluateExperiment({...input,treatment:{...input.treatment,converted:801}}));
+assert.equal(evaluateExperiment({...input,treatment:{...input.treatment,converted:80}}).interpretation,'INCONCLUSIVE');
+console.log('CRM experiment lab passed');
