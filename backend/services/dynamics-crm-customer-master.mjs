@@ -24,10 +24,21 @@ export async function readCustomerProfile(row){
  if(config.dynamics.mode!=='live'||!company)return {...base,loyalty:unavailable};
  try{
   const esc=v=>String(v).replaceAll("'","''");
-  const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet);
-  if(accounts.length!==1||String(accounts[0].AccountNum).trim()!==accountRef||String(accounts[0].SysDataAreaId).trim()!==company||String(accounts[0].CustGroup).trim()!=='Retail'||new Date(accounts[0].SysCreatedDateTime).toISOString()!==row.createdAt)return {...base,loyalty:unavailable};
+  const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId',extra:'cross-company=true'},odataGet);
+  if(accounts.length!==1||String(accounts[0].AccountNum).trim()!==accountRef||String(accounts[0].SysDataAreaId).trim()!==company||(row.createdAt!==null&&new Date(accounts[0].SysCreatedDateTime).toISOString()!==row.createdAt))return {...base,loyalty:unavailable};
   const [parties,cards]=await Promise.all([readCompleteCollection('DirPartyTableBiEntities',{select:'PartyNumber,SourceKey'},odataGet),readCompleteCollection('RetailLoyaltyCards',{select:'CardNumber,PartyNumber,LoyaltyEnrollmentDate'},odataGet)]);
   const {projectLoyaltyIdentity}=await import('./one-crm-customer-profile.mjs');
   return {...base,loyalty:projectLoyaltyIdentity({account:accounts[0],parties,cards})};
  }catch{return {...base,loyalty:unavailable}}
 }
+
+import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount} from './one-crm-customer-source.mjs';
+const sourceDeps=()=>({company:String(config.dynamics.dataAreaId||'').trim(),read:odataGet});
+export const readCustomerPage=(page,search)=>readDirectorySourcePage({...sourceDeps(),page,search});
+let countCache=null;
+export async function readCustomerCount(){
+ const deps=sourceDeps(),key=JSON.stringify([config.dynamics.baseUrl,deps.company]);
+ if(countCache?.key===key&&countCache.expires>Date.now())return countCache.value;
+ const value=await readDirectorySourceCount(deps);countCache={key,value,expires:Date.now()+300000};return value;
+}
+export const findCustomerAccount=accountRef=>findDirectorySourceAccount({...sourceDeps(),accountRef});
