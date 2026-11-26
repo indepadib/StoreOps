@@ -27,6 +27,7 @@ jobs:
       - run: node backend/tests/one-crm-persistence.mjs
       - run: node backend/tests/one-crm-consent.mjs
       - run: node backend/tests/one-crm-customer-intelligence.mjs
+      - run: node backend/tests/one-crm-stored-day-reader.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
@@ -35,6 +36,8 @@ jobs:
         env:
           POSTGRES_PASSWORD: synthetic-ci-only
           POSTGRES_DB: crm_test
+        ports:
+          - 5432/tcp
         options: >-
           --health-cmd "pg_isready -U postgres -d crm_test"
           --health-interval 5s
@@ -48,6 +51,16 @@ jobs:
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-foundation.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/002-ticket-items.draft.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-ticket-items.sql
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run persisted data roundtrip
+        env:
+          CRM_DISPOSABLE_DB: crm_test
+          PGPORT: ${{ job.services.postgres.ports[5432] }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/one-crm-pg" --no-audit --no-fund pg@8.13.1
+          CRM_PG_MODULE="$RUNNER_TEMP/one-crm-pg/node_modules/pg" node backend/tests/one-crm-postgres-roundtrip.mjs
   browser-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
