@@ -8,7 +8,7 @@ export function buildProfiles({tenantId,asOf,windowStart,coverageComplete,ticket
   if(t.tenantId!==tenantId)throw Error('Tenant mismatch');
   if(!t.storeId||!t.ticketId||!validDay(t.date)||t.date<windowStart||t.date>asOf||!Number.isSafeInteger(t.netMinor))throw Error('Invalid ticket');
   if(t.customerToken!=null&&(typeof t.customerToken!=='string'||!t.customerToken.trim()))throw Error('Invalid customer token');
-  const key=JSON.stringify([t.storeId,t.ticketId]),signature=JSON.stringify([t.date,t.netMinor,t.customerToken??null]);
+  const key=JSON.stringify([t.storeId,t.date,t.ticketId]),signature=JSON.stringify([t.date,t.netMinor,t.customerToken??null]);
   if(seen.has(key)){if(seen.get(key)!==signature)throw Error('Conflicting duplicate ticket');continue}seen.set(key,signature);
   if(!t.customerToken){anonymousTickets++;continue}
   const p=profiles.get(t.customerToken)||{tenantId,customerToken:t.customerToken,netMinor:0,purchaseTickets:0,refundOrZeroTickets:0,lastPurchase:null,stores:new Set()};
