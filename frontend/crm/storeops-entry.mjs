@@ -40,11 +40,12 @@ const el=id=>document.getElementById(id);
 const liveStatus=()=>el('crmLiveStatus');
 const money=n=>new Intl.NumberFormat('fr-MA',{style:'currency',currency:'MAD',maximumFractionDigits:2}).format(n);
 const fmt=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:3}).format(n);
-let generation=0,ticketGeneration=0,loyaltyGeneration=0,summary=null,currentPage=1;
+let generation=0,ticketGeneration=0,loyaltyGeneration=0,insightGeneration=0,customerPage=1,summary=null,currentPage=1;
 function metric(container,label,value){const d=document.createElement('div'),b=document.createElement('strong');if(container.id==='crmLiveMetrics')d.className='metric';d.append(document.createTextNode(label));b.textContent=String(value);d.append(b);container.append(d)}
 function clearDetails(){
  if(el('orbitCount'))el('orbitCount').textContent='—';if(el('crmScopeDate'))el('crmScopeDate').textContent='—';if(el('crmScopeLabel'))el('crmScopeLabel').textContent='Franprix';
- ticketGeneration++;loyaltyGeneration++;summary=null;currentPage=1;
+ ticketGeneration++;loyaltyGeneration++;insightGeneration++;summary=null;currentPage=1;customerPage=1;
+ for(const id of ['crmCustomersRows','crmAssociationsRows'])el(id)?.replaceChildren();for(const id of ['crmCustomersRead','crmAssociationsRead'])if(el(id))el(id).disabled=true;if(el('crmCustomersPager'))el('crmCustomersPager').hidden=true;for(const id of ['crmCustomersStatus','crmAssociationsStatus'])if(el(id))el(id).textContent='Chargez une journée réelle.';
  el('crmTicketRows')?.replaceChildren();el('crmLoyaltyMetrics')?.replaceChildren();
  if(el('crmTicketPager'))el('crmTicketPager').hidden=true;
  if(el('crmTicketStatus'))el('crmTicketStatus').textContent='Aucun ticket affiché. Chargez une journée.';
@@ -99,7 +100,7 @@ function setupLiveObservation(){
    if(g!==generation||!valid())return;
    if(x?.status==='SUPPRESSED'){liveStatus().textContent='Résultat masqué : cohorte trop petite.';return}
    if(!validateObservationResponse(x,{storeId:id,date:day}))throw Error('Evidence unavailable');
-   summary=x;
+   summary=x;el('crmCustomersRead').disabled=false;el('crmAssociationsRead').disabled=false;
    if(el('orbitCount'))el('orbitCount').textContent=fmt(x.identifiedCustomers);if(el('crmScopeDate'))el('crmScopeDate').textContent=day;if(el('crmScopeLabel'))el('crmScopeLabel').textContent='Franprix · '+store.selectedOptions[0].textContent;
    for(const [label,v] of [['Clients identifiés observés',fmt(x.identifiedCustomers)],['Tickets observés',fmt(x.tickets)],['Tickets identifiés',fmt(x.identifiedTickets)],['Ventes TTC positives',money(x.positiveSales)],['Ventes positives identifiées',money(x.identifiedPositiveSales)],['Panier positif moyen',money(x.averagePositiveBasket)]])metric(metrics,label,v);
    liveStatus().textContent='D365 · '+day+' · extraction '+x.checkedAt+' · rapprochement financier non vérifié. Retours exclus.';
@@ -116,6 +117,30 @@ function setupLiveObservation(){
    status.textContent='D365 · '+day+' · attribution '+(x.accountStatus==='PARTIAL'?'partielle':'selon première carte')+' · extraction '+x.checkedAt;
   }catch{if(g===generation&&lg===loyaltyGeneration&&valid()){out.replaceChildren();status.textContent='Données fidélité indisponibles.'}}finally{if(g===generation&&lg===loyaltyGeneration&&valid())loyalty.disabled=!selection()}
  };
+ const insightValid=(x,id,day,expected)=>x?.status==='READY'&&x.storeId===id&&x.date===day&&x.checkedAt===expected.checkedAt&&x.currency==='MAD'&&x.source==='D365/RetailTransactionSalesTransBIEntities'&&x.basis==='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'&&x.activationEnabled===false&&Array.isArray(x.rows);
+ const number=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+ const text=v=>typeof v==='string'&&v.length>0&&v.length<=160;
+ function tableRow(container,values){const tr=document.createElement('tr');for(const v of values){const td=document.createElement('td');td.textContent=String(v);tr.append(td)}container.append(tr)}
+ const readInsight=async(kind,page=1)=>{
+  if(!selection()||!summary)return;
+  const g=generation,ig=++insightGeneration,id=store.value,day=date.value,expected=summary,customer=kind==='customers',prefix=customer?'crmCustomers':'crmAssociations',out=el(prefix+'Rows'),status=el(prefix+'Status'),button=el(prefix+'Read');
+  out.replaceChildren();if(customer)el('crmCustomersPager').hidden=true;status.textContent='Lecture des observations Dynamics…';button.disabled=true;
+  try{
+   const x=await api('/api/crm/observed-'+kind+'?'+new URLSearchParams({storeId:id,date:day,page:String(page)}),{noRetry:true,cache:'no-store'});if(g!==generation||ig!==insightGeneration||!valid())return;
+   if(!insightValid(x,id,day,expected))throw Error('Source mismatch');
+   if(customer){
+    if(x.identityBasis!=='EXTRACTION_LOCAL_ORDINAL'||x.totalCustomers!==expected.identifiedCustomers||x.page!==page||x.pageSize!==20||x.rows.length!==Math.min(20,x.totalCustomers-(page-1)*20)||!x.rows.every((r,i)=>r.ordinal===(page-1)*20+i+1&&Number.isSafeInteger(r.tickets)&&r.tickets>0&&number(r.positiveTtc)&&Number.isSafeInteger(r.distinctProducts)&&r.distinctProducts>0))throw Error('Invalid customer observations');
+    for(const r of x.rows)tableRow(out,['Client observé '+r.ordinal,fmt(r.tickets),money(r.positiveTtc),fmt(r.distinctProducts)]);
+    customerPage=page;const total=Math.ceil(x.totalCustomers/20);el('crmCustomersPage').textContent='Page '+page+' / '+total;el('crmCustomersPrev').disabled=page===1;el('crmCustomersNext').disabled=page===total;el('crmCustomersPager').hidden=false;
+    status.textContent=fmt(x.totalCustomers)+' clients identifiés observés · '+day+' · identification limitée à l’extraction.';
+   }else{
+    if(x.method!=='IDENTIFIED_POSITIVE_BASKET_COOCCURRENCE'||x.minimumDistinctCustomers!==10||!Number.isSafeInteger(x.baskets)||x.baskets<1||x.baskets>expected.identifiedTickets||x.rows.length>30||!x.rows.every(r=>text(r.productA)&&text(r.productB)&&Number.isSafeInteger(r.together)&&r.together>=10&&r.together<=x.baskets&&number(r.supportPct)&&r.supportPct<=100&&number(r.confidencePct)&&r.confidencePct<=100&&number(r.lift)))throw Error('Invalid associations');
+    for(const r of x.rows)tableRow(out,[r.productA,r.productB,fmt(r.together),fmt(r.supportPct)+' %',fmt(r.confidencePct)+' %',fmt(r.lift)]);
+    status.textContent=x.rows.length?fmt(x.baskets)+' paniers identifiés analysés · '+day:'Aucune paire ne franchit le seuil de publication pour cette journée.';
+   }
+  }catch{if(g===generation&&ig===insightGeneration&&valid()){out.replaceChildren();status.textContent='Observations indisponibles ou extraction différente. Rechargez la journée.'}}finally{if(g===generation&&valid())button.disabled=!summary}
+ };
+ el('crmCustomersRead').onclick=()=>readInsight('customers');el('crmCustomersPrev').onclick=()=>readInsight('customers',customerPage-1);el('crmCustomersNext').onclick=()=>readInsight('customers',customerPage+1);el('crmAssociationsRead').onclick=()=>readInsight('associations');
  load.click();
 }
 

@@ -95,3 +95,5 @@ The generated StoreOps CRM index no longer includes or initializes the synthetic
 
 ## R0.42 — restore the CRM workspace
 Restore original ONE CRM visual system, full original sixteen-module navigation, dashboard hero and action tiles; add Transactions and Fidélité as dedicated views. All eighteen views remain accessible with a shared real-store/day context and searchable navigation. Real sales/transaction/loyalty reads are preserved. Unconnected modules show explicit empty states and links instead of synthetic results; their original full interactive workflows have not yet been connected to live data. No CRM activation or customer identity release. Production deploy requires CI and preview success.
+
+R0.42 also adds scoped observed-customer and observed-association views from the existing Dynamics positive-basket reader. Customer display ordinals are extraction-local; never export source customer tokens or imply verified customer identities. Associations are based on identified positive baskets, at least ten distinct customers per pair, bounded work and top 30; not causal or signed-net. These two live views are not yet verified with a real session.
