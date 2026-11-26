@@ -3,7 +3,7 @@ import {api,health,isShowcase} from '/js/api.js';
 import {ensureAccessToken,ensureLocalSession,logout} from '/js/auth.js';
 import {checkPilotAccess} from './pilot-session.mjs';
 const gate=document.getElementById('crmPilotGate'),title=document.getElementById('crmPilotTitle'),detail=document.getElementById('crmPilotDetail'),login=document.getElementById('crmPilotLogin');
-const states={LOGIN_REQUIRED:['Connectez-vous à StoreOps','Utilisez votre compte professionnel habituel pour accéder au pilote CRM.'],DENIED:['Accès réservé','Ce pilote est réservé aux profils de direction d’exploitation et administrateurs de plateforme explicitement habilités.'],UNAVAILABLE:['Session indisponible','Impossible de vérifier votre session professionnelle. Aucun accès automatique en mode démo.']};
+const states={SESSION_CHANGED:['Session modifiée','Votre compte professionnel a changé. Rechargez la page pour vérifier les droits du nouveau compte.'],LOGIN_REQUIRED:['Connectez-vous à StoreOps','Utilisez votre compte professionnel habituel pour accéder au pilote CRM.'],DENIED:['Accès réservé','Ce pilote est réservé aux profils de direction d’exploitation et administrateurs de plateforme explicitement habilités.'],UNAVAILABLE:['Session indisponible','Impossible de vérifier votre session professionnelle. Aucun accès automatique en mode démo.']};
 function setGate(status){
  if(status!=='AUTHORIZED')clearLiveObservation();
  document.documentElement.classList.toggle('crm-pilot-open',status==='AUTHORIZED');
@@ -14,26 +14,30 @@ async function check(){
  if(isShowcase())return {status:'UNAVAILABLE'};
  // API is same-origin only for this pilot. Refuse unexpected deployment config.
  try{if(new URL(window.STOREOPS_CONFIG.apiBase,location.origin).origin!==location.origin)return {status:'UNAVAILABLE'}}catch{return {status:'UNAVAILABLE'}}
- return checkPilotAccess({health,ensureAccessToken,ensureLocalSession,readSession:()=>api('/api/session',{cache:'no-store',noRetry:true}),setMode:mode=>{app.authMode=mode}});
+ let principal;
+ const result=await checkPilotAccess({health,ensureAccessToken,ensureLocalSession,readSession:async()=>{const session=await api('/api/session',{cache:'no-store',noRetry:true});principal=session?.user?.id;return session},setMode:mode=>{app.authMode=mode}});
+ return result.status==='AUTHORIZED'?{...result,principal,mode:app.authMode}:result;
 }
 export async function openCrmPilot(){
  login.onclick=()=>{sessionStorage.setItem('storeops_return_path','/crm/');location.assign('/')};
  document.getElementById('crmPilotRetry').onclick=()=>location.reload();
  const r=await check();setGate(r.status);
  if(r.status!=='AUTHORIZED')return false;
- document.getElementById('crmPilotLogout').onclick=()=>{setGate('LOGIN_REQUIRED');logout()};
  setupLiveObservation();
- let busy=false;
- const recheck=async()=>{if(busy)return;busy=true;try{const next=await check();if(next.status!=='AUTHORIZED'){setGate(next.status);for(const d of document.querySelectorAll('dialog[open]'))d.close()}}finally{busy=false}};
- const timer=setInterval(recheck,60000);
- document.addEventListener('visibilitychange',()=>{if(!document.hidden)recheck()});
- window.addEventListener('pagehide',()=>clearInterval(timer),{once:true});
+ let busy=false,closed=false,timer;
+ const close=status=>{closed=true;clearInterval(timer);setGate(status);for(const d of document.querySelectorAll('dialog[open]'))d.close()};
+ document.getElementById('crmPilotLogout').onclick=()=>{close('LOGIN_REQUIRED');logout()};
+ const recheck=async()=>{if(busy||closed)return;busy=true;try{const next=await check();if(closed)return;if(next.status!=='AUTHORIZED')close(next.status);else if(next.principal!==r.principal||next.mode!==r.mode)close('SESSION_CHANGED')}catch{close('UNAVAILABLE')}finally{busy=false}};
+ timer=setInterval(recheck,60000);
+ document.addEventListener('visibilitychange',()=>{if(document.hidden)clearLiveObservation();else recheck()});
+ window.addEventListener('pagehide',()=>close('UNAVAILABLE'),{once:true});
+ window.addEventListener('pageshow',event=>{if(event.persisted)location.reload()});
  return true;
 }
 
 const liveStatus=()=>document.getElementById('crmLiveStatus');
 let generation=0;
-function clearLiveObservation(){generation++;const results=document.getElementById('crmLiveMetrics');if(results)results.replaceChildren();if(liveStatus())liveStatus().textContent='Session à vérifier. Aucun résultat affiché.'}
+function clearLiveObservation(){generation++;const results=document.getElementById('crmLiveMetrics');if(results)results.replaceChildren();const store=document.getElementById('crmLiveStore'),run=document.getElementById('crmLiveRead');if(store)store.replaceChildren();if(run)run.disabled=true;if(liveStatus())liveStatus().textContent='Session à vérifier. Aucun résultat affiché.'}
 function setupLiveObservation(){
  const store=document.getElementById('crmLiveStore'),date=document.getElementById('crmLiveDate'),run=document.getElementById('crmLiveRead'),load=document.getElementById('crmLiveLoad'),metrics=document.getElementById('crmLiveMetrics');
  if(!store||!date||!run||!load||!metrics)return;

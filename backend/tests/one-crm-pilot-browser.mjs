@@ -9,14 +9,14 @@ assert.ok(root);
 const html=await readFile(join(root,'crm/index.html'),'utf8');
 assert.ok(html.includes('if(await openCrmPilot())'));
 const assets=new Set(['/crm/storeops-entry.mjs','/crm/pilot-session.mjs','/js/api.js','/js/state.js','/js/auth.js']);
-let mode='entra',role='ops_director',profile=null,sessionStatus=200,sessionReads=0,liveReads=0,liveResponse='READY';
+let principal='synthetic-user',mode='entra',role='ops_director',profile=null,sessionStatus=200,sessionReads=0,liveReads=0,liveResponse='READY';
 const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://localhost').pathname;
  const send=(status,type,body)=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store'});res.end(body)};
  if(path==='/crm/'||path==='/crm/index.html')return send(200,'text/html; charset=utf-8',html);
  if(path==='/analytics-runtime-config.js')return send(200,'text/javascript','window.STOREOPS_CONFIG={mode:"api",apiBase:location.origin,entra:{}};');
  if(path==='/api/health')return send(200,'application/json',JSON.stringify({authMode:mode}));
- if(path==='/api/session'){sessionReads++;if(!['Bearer synthetic-only','Basic synthetic-only'].includes(req.headers.authorization))return send(401,'application/json','{}');return send(sessionStatus,'application/json',JSON.stringify({authMode:mode,user:{id:'synthetic-user',role,permissions_profile:profile}}))}
+ if(path==='/api/session'){sessionReads++;if(!['Bearer synthetic-only','Basic synthetic-only'].includes(req.headers.authorization))return send(401,'application/json','{}');return send(sessionStatus,'application/json',JSON.stringify({authMode:mode,user:{id:principal,role,permissions_profile:profile}}))}
  if(path==='/api/crm/observed-sales'){
   liveReads++;if(!['Bearer synthetic-only','Basic synthetic-only'].includes(req.headers.authorization)||mode==='demo'||sessionStatus!==200||(role!=='ops_director'&&profile!=='platform_admin'))return send(403,'application/json','{}');
   const q=new URL(req.url,'http://localhost').searchParams;
@@ -38,6 +38,8 @@ try{
  await page.locator('#crmLiveLoad').click();await page.waitForFunction(()=>document.getElementById('crmLiveStore').options.length===1);assert.equal(await page.locator('#crmLiveStore').inputValue(),'demo-a');await page.locator('#crmLiveRead').click();await page.waitForFunction(()=>document.querySelectorAll('#crmLiveMetrics>div').length===6);assert.match(await page.locator('#crmLiveStatus').textContent(),/Retours exclus/);assert.equal(liveReads,2);
  liveResponse='SUPPRESSED';await page.locator('#crmLiveRead').click();await page.waitForFunction(()=>document.getElementById('crmLiveStatus').textContent.includes('masqué'));assert.equal(await page.locator('#crmLiveMetrics>div').count(),0);
  liveResponse='UNAVAILABLE';await page.locator('#crmLiveRead').click();await page.waitForFunction(()=>document.getElementById('crmLiveStatus').textContent.includes('indisponibles'));assert.equal(await page.locator('#crmLiveMetrics>div').count(),0);liveResponse='READY';
+ await page.locator('#crmLiveRead').click();await page.waitForFunction(()=>document.querySelectorAll('#crmLiveMetrics>div').length===6);
+ principal='synthetic-other';await page.evaluate(()=>document.dispatchEvent(new Event('visibilitychange')));await page.waitForFunction(()=>document.getElementById('crmPilotTitle').textContent==='Session modifiée');assert.equal(await page.locator('main').isVisible(),false);assert.equal(await page.locator('#crmLiveMetrics>div').count(),0);assert.equal(await page.locator('#crmLiveStore option').count(),0);principal='synthetic-user';
  role='store_manager';await page.reload();await page.waitForFunction(()=>document.getElementById('crmPilotTitle').textContent==='Accès réservé');assert.equal(await page.locator('main').isVisible(),false);
  role='employee';profile='platform_admin';await page.reload();await page.locator('main').waitFor({state:'visible'});assert.equal(await page.locator('#dashTotal').textContent(),'480');
  sessionStatus=401;await page.reload();await page.locator('#crmPilotLogin').waitFor({state:'visible'});assert.equal(await page.locator('main').isVisible(),false);
