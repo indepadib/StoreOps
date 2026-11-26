@@ -11,7 +11,11 @@ export async function readCrmAudience({tenantId,storeIds,allowedStoreIds,windowS
  if(!day(windowStart)||!day(asOf)||windowStart>asOf||Date.parse(asOf)-Date.parse(windowStart)>89*86400000)throw Error('Invalid observation period');
  if(typeof readVerifiedDay!=='function')throw Error('Verified source unavailable');
  const tickets=[],itemTickets=new Map();
- const needsItems=(()=>{if(!rules.expression)return false;compileSegment(rules.expression);const scan=n=>n.kind==='group'?n.children.some(scan):['preferredProducts','preferredCategories'].includes(n.field);return scan(rules.expression)})();
+ if(!rules||typeof rules!=='object'||Array.isArray(rules)||Object.getPrototypeOf(rules)!==Object.prototype&&Object.getPrototypeOf(rules)!==null)throw Error('Invalid segment rules');
+ const advanced=Object.hasOwn(rules,'expression'),simpleKeys=['maxRecencyDays','minRecencyDays','minPurchaseTickets','maxPurchaseTickets','minNetMinor'];
+ if(Object.keys(rules).some(k=>advanced?k!=='expression':!simpleKeys.includes(k)))throw Error('Unknown or mixed segment rules');
+ if(advanced)compileSegment(rules.expression);else previewSegment({tenantId,profiles:[]},{...rules,tenantId});
+ const needsItems=(()=>{if(!advanced)return false;const scan=n=>n.kind==='group'?n.children.some(scan):['preferredProducts','preferredCategories'].includes(n.field);return scan(rules.expression)})();
  for(const storeId of storeIds)for(let ts=Date.parse(windowStart);ts<=Date.parse(asOf);ts+=86400000){
   const date=new Date(ts).toISOString().slice(0,10),d=await readVerifiedDay({tenantId,storeId,date});
   if(d?.tenantId!==tenantId||d.storeId!==storeId||d.date!==date||d.coverageComplete!==true||d.currency!=='MAD'||d.netAmountBasis!=='verified-net-signed'||d.rejectedIdentity!==0||!Array.isArray(d.tickets))throw Error('Incomplete or unverified source');
@@ -34,7 +38,7 @@ export async function readCrmAudience({tenantId,storeIds,allowedStoreIds,windowS
    return {...p,...evidence.segmentAttributes};
   });
  }
- const audience=rules.expression?evaluateSegment(snapshot,{tenantId,expression:rules.expression}):previewSegment(snapshot,{...rules,tenantId});
+ const audience=advanced?evaluateSegment(snapshot,{tenantId,expression:rules.expression}):previewSegment(snapshot,{...rules,tenantId});
  const audienceNetMinor=audience.reduce((n,p)=>{const total=n+p.netMinor;if(!Number.isSafeInteger(total))throw Error('Audience monetary overflow');return total},0);
  // No contact information or customer identifiers cross this boundary.
  return {status:'READY',currency:'MAD',windowStart,asOf,storeIds:[...storeIds],observedCustomers:snapshot.profiles.length,anonymousTickets:snapshot.anonymousTickets,uniqueTickets:snapshot.uniqueTickets,audienceCount:audience.length,audienceNetMinor,activationEnabled:false};
