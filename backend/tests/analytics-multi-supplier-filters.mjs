@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {mkdtempSync,readFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {supplierPurchaseSummary} from '../../frontend/analytics/supplier-purchases.js';
+import {filterTableRecords,cellNumber} from '../../frontend/analytics/table-column-tools.js';
+process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'multi-supplier-')),'test.db');
+const {normalizeSupplierInvoices,readSupplierInvoicePage}=await import('../services/analytics-supplier-purchases.mjs');
+const m={company:'dataAreaId',id:'SourceKey',product:'ItemId',date:'InvoiceDate',invoice:'InvoiceId',vendor:'VendAccount',amount:'LineAmount',currency:'CurrencyCode',quantity:'Qty',unit:'PurchUnit'};
+const scope={company:'5001',start:'2026-11-01',end:'2026-11-30'};
+const raw=(id,vendor,amount=100)=>({dataAreaId:'5001',SourceKey:id,ItemId:'SKU',InvoiceDate:'2026-11-02T12:00:00Z',InvoiceId:'INV'+id,VendAccount:vendor,LineAmount:amount,CurrencyCode:'MAD',Qty:2,PurchUnit:'PC'});
+const rows=normalizeSupplierInvoices([raw('1','A'),raw('2','B'),raw('3','A',-20)],m,scope);
+const summary=supplierPurchaseSummary([...rows,rows[0]]);
+assert.equal(summary.lines,3);assert.equal(summary.items.length,2);assert.equal(summary.multiple.length,1);assert.deepEqual(summary.multiple[0].vendors,['A','B']);assert.equal(summary.items.find(v=>v.account==='A').amount,80);
+const mixed=supplierPurchaseSummary([...rows,{...rows[0],id:'4',currency:'EUR'}]);assert.equal(mixed.items.length,3,'never sum foreign currencies into MAD');
+assert.throws(()=>supplierPurchaseSummary([rows[0],{...rows[0],amountHT:99}]),/changé/);
+assert.throws(()=>normalizeSupplierInvoices([raw('1','A')],m,{...scope,company:'OTHER'}));
+assert.throws(()=>normalizeSupplierInvoices([{...raw('1','A'),LineAmount:null}],m,scope));
+const noVendor={...m,vendor:null};
+assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,{...scope,headers:[{invoice:'INV1',date:'2026-11-02',vendor:'A'},{invoice:'INV1',date:'2026-11-02',vendor:'B'}]})[0].vendorStatus,'AMBIGUOUS');
+assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,{...scope,headers:[{invoice:'INV1',date:'2026-11-02',vendor:'A'}]})[0].vendorAccount,'A');
+assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,scope)[0].vendorAccount,null,'no primary-vendor fallback');
+
+const cache=new Map();let gets=0;
+const deps={mode:'live',company:'5001',probe:async()=>({rows:[raw('0','A')]}),names:async()=>new Map(),write:async(k,g,p)=>{cache.set(k,p);return true},read:async k=>cache.get(k),get:async(e,q)=>{gets++;assert.equal(q.top,null,'do not cap the OData collection with a finite top');return q.continuation?{value:[raw('2','B')]}:{value:[raw('1','A')],'@odata.nextLink':'https://d365.invalid/next'}}};
+const page1=await readSupplierInvoicePage({userId:'U',...scope},deps).catch(e=>{throw e});
+// API date names are explicit and cannot be inferred from empty values.
+assert.ok(page1.nextCursor);const page2=await readSupplierInvoicePage({userId:'U',...scope,cursor:page1.nextCursor},deps);assert.equal(page2.nextCursor,null);assert.equal(page2.scanned,2);
+await readSupplierInvoicePage({userId:'U',...scope,cursor:page1.nextCursor},deps);assert.equal(gets,2,'retrying a cursor reuses the same page');
+await assert.rejects(readSupplierInvoicePage({userId:'OTHER',...scope,cursor:page1.nextCursor},deps),{status:409});
+await assert.rejects(readSupplierInvoicePage({userId:'U',...scope,start:'2026-10-01',cursor:page1.nextCursor},deps),{status:409});
+await assert.rejects(readSupplierInvoicePage({userId:'U',start:'2026-02-30',end:scope.end},deps),{status:400});
+
+assert.equal(cellNumber('1\u202f234,50 DH'),1234.5);assert.equal(cellNumber('−12,5 %'),-12.5);assert.equal(cellNumber('2026-11-02'),null);assert.equal(cellNumber('N/D'),null);
+assert.equal(cellNumber('2,5 KMAD'),2500);assert.equal(cellNumber('1,5 MDH'),1500000);assert.equal(cellNumber('12,50 EUR'),12.5);assert.equal(cellNumber('12,50 €'),12.5);
+const records=[{id:'A',cells:[{text:'Extenc'},{text:'1 200,00 DH'}]},{id:'B',cells:[{text:'Local'},{text:'50,00 DH'}]},{id:'C',cells:[{text:'Société Épicée'},{text:'N/D'}]}];
+assert.deepEqual(filterTableRecords(records,['Fournisseur','CA'],{'1':'>100'},{key:null}).map(r=>r.id),['A']);
+assert.deepEqual(filterTableRecords(records,['Fournisseur','CA'],{'0':'epicee'},{key:null}).map(r=>r.id),['C']);
+assert.deepEqual(filterTableRecords(records,['Fournisseur','CA'],{},{key:'1',desc:false}).map(r=>r.id),['B','A','C']);
+assert.equal(records[0].id,'A','sorting does not mutate source data');
+assert.deepEqual(filterTableRecords(records,['Fournisseur','CA'],{'1':'N/D'},{key:null}).map(r=>r.id),['C']);
+const {handleAnalyticsApi}=await import('../services/analytics-api.mjs');
+assert.equal((await handleAnalyticsApi({req:{method:'GET'},url:new URL('https://test.invalid/api/analytics/supplier-purchases?start=2026-11-01&end=2026-11-30'),user:{id:'manager',role:'store_manager',store_id:'A'}})).status,403,'store access must not disclose company-wide purchase invoices');
+const html=readFileSync(new URL('../../frontend/analytics/index.html',import.meta.url),'utf8');assert.match(html,/id="supplierPrimaryView" hidden/);assert.match(html,/Achats facturés · multi-fournisseurs/);
+console.log('PASS multi-supplier invoice evidence, signed credits, currencies, deduplication, ambiguous joins, pagination scope, retry, restricted access and column filters/sorts');

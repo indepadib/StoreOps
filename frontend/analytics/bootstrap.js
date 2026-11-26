@@ -39,6 +39,7 @@ async function start(){
     await import(analyticsAsset('/analytics/loyalty.js'));
     await import(analyticsAsset('/analytics/promotions.js'));
     await import(analyticsAsset('/analytics/decision.js'));
+    await import(analyticsAsset('/analytics/supplier-purchases.js'));
     await import(analyticsAsset('/analytics/sales-proof.js'));
     await import(analyticsAsset('/analytics/workspace-bi.js'));
     await import(analyticsAsset('/analytics/article-reference.js'));
@@ -52,6 +53,7 @@ async function start(){
     await import(analyticsAsset('/analytics/detention-sales.js'));
     await import(analyticsAsset('/analytics/replenishment.js'));
     await import(analyticsAsset('/analytics/experience-navigation.js'));
+    await import(analyticsAsset('/analytics/table-column-tools.js'));
 
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);

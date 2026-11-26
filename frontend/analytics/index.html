@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/analytics/promotions.css">
   <link rel="stylesheet" href="/analytics/polish.css">
   <link rel="stylesheet" href="/analytics/decision.css">
+  <link rel="stylesheet" href="/analytics/table-column-tools.css">
   <!-- analytics-production-refresh --> 
 <link rel="stylesheet" href="/analytics/workspace-bi.css">
 <link rel="stylesheet" href="/analytics/decision-studio.css">
@@ -424,11 +425,14 @@
         </section>
 
         <section class="decision-dashboard supplier-intelligence" id="supplierIntelligence" data-widget="supplierIntelligence" hidden>
+          <div class="decision-head"><div><h2>Fournisseurs et achats réels</h2><p>Un article peut être acheté auprès de plusieurs fournisseurs. Le fournisseur principal de sa fiche ne représente pas tout son historique.</p></div><label>Lecture<select id="supplierAttributionView"><option value="purchases">Achats facturés · multi-fournisseurs</option><option value="primary">Ventes regroupées par fournisseur principal de fiche</option></select></label></div>
+          <div id="supplierPurchasesView"><p>Achats de la société Dynamics, sur la période sélectionnée. Ils ne sont pas ventilés par magasin. Accès Direction requis.</p><button type="button" id="supplierPurchasesLoad">Lire les achats facturés</button><p id="supplierPurchasesStatus" role="status"></p><p id="supplierPurchasesSummary"></p><div class="table-wrap"><table aria-label="Achats facturés par fournisseur"><thead><tr><th>Fournisseur facturant</th><th>Compte</th><th>Devise</th><th>Achats HT signés</th><th>Articles</th><th>Factures distinctes</th><th>Lignes</th></tr></thead><tbody id="supplierPurchasesBody"></tbody></table></div><h3>Articles achetés à plusieurs fournisseurs</h3><div class="table-wrap"><table aria-label="Articles multi fournisseurs"><thead><tr><th>Article</th><th>Fournisseurs observés dans la période</th><th>Nombre</th></tr></thead><tbody id="supplierMultiSource"></tbody></table></div></div>
+          <div id="supplierPrimaryView" hidden>
           <div class="decision-head">
             <div>
               <span class="eyebrow">SUPPLIER INTELLIGENCE</span>
-              <h2>Fournisseurs, ventes et qualité d'approvisionnement</h2>
-              <p>Lecture CA, dynamique, dépendance fournisseur, Direct vs DC et suivi des réceptions. Le taux de service n'est affiché que lorsqu'il repose sur des lignes réceptionnées et contrôlées.</p>
+              <h2>Ventes par fournisseur principal de fiche</h2>
+              <p>Rattachement catalogue uniquement : le CA d’un article est regroupé sous son fournisseur principal actuel. Ce n’est ni son historique d’achats ni la preuve du fournisseur des marchandises vendues. Les autres fournisseurs d’un article figurent dans la lecture des achats facturés.</p>
             </div>
             <div class="decision-controls">
               <select id="supplierModeFilter">
@@ -442,7 +446,7 @@
           <div class="crm-kpis" id="supplierKpis"></div>
           <div class="decision-grid">
             <article class="decision-card">
-              <div class="decision-card-head"><div><span class="mini-kicker">DÉPENDANCE</span><h3>Poids des fournisseurs dans le CA</h3></div></div>
+              <div class="decision-card-head"><div><span class="mini-kicker">RATTACHEMENT CATALOGUE</span><h3>CA regroupé par fournisseur principal de fiche</h3></div></div>
               <div id="supplierConcentration" class="supplier-bars"></div>
             </article>
             <article class="decision-card">
@@ -452,11 +456,12 @@
           </div>
           <div class="decision-table-wrap">
             <table class="decision-table">
-              <thead><tr><th>Fournisseur</th><th>Appro</th><th>CA</th><th>Δ CA</th><th>Poids</th><th>SKU vendus</th><th>Top article</th><th>Marge</th><th>PO ouverts</th><th>Reste à recevoir</th><th>Taux service 90j</th></tr></thead>
+              <thead><tr><th>Fournisseur principal fiche</th><th>Appro</th><th>CA rattaché fiche</th><th>Δ CA</th><th>Poids du rattachement</th><th>SKU vendus</th><th>Top article</th><th>Marge</th><th>PO ouverts</th><th>Reste à recevoir</th><th>Taux service 90j</th></tr></thead>
               <tbody id="supplierBody"><tr><td colspan="11"><div class="table-loading">Chargement fournisseurs…</div></td></tr></tbody>
             </table>
           </div>
           <p class="metric-footnote" id="supplierServiceDefinition">Taux service : N/A tant que la couverture réception contrôlée n'est pas suffisante.</p>
+          </div>
         </section>
 
         <section class="decision-dashboard crm-intelligence" id="crmIntelligence" data-widget="crmIntelligence" hidden>
