@@ -211,7 +211,7 @@
     select.addEventListener('change', async () => {
       state.tenant = select.value;
       applyTenant();
-      await loadSavedViews();
+      void loadSavedViews();
       await loadTenant();
     });
     applyTenant();
@@ -277,7 +277,7 @@
       state.session = session;
       state.stores = Array.isArray(stores) ? stores : [];
       hydrateStoreFilter();
-      await loadSavedViews();
+      void loadSavedViews();
       await loadTenant();
     } catch (error) {
       setFreshness('error', 'Connexion indisponible');
@@ -1165,11 +1165,14 @@
     };
   }
 
+  let savedViewsGeneration=0;
   async function loadSavedViews() {
     const select = $('#savedViewsSelect');
     if (!select) return;
+    const generation=++savedViewsGeneration,tenant=state.tenant;
     try {
-      const data = await api(`/api/analytics/views?tenant=${encodeURIComponent(state.tenant)}`);
+      const data = await api(`/api/analytics/views?tenant=${encodeURIComponent(tenant)}`);
+      if(generation!==savedViewsGeneration||tenant!==state.tenant)return;
       state.savedViews = Array.isArray(data?.items) ? data.items : [];
       renderSavedViews();
       const status = $('#savedViewsStatus');
@@ -1177,6 +1180,7 @@
         ? `${state.savedViews.length} vue(s) enregistrée(s) pour ${TENANTS[state.tenant]?.label || state.tenant}.`
         : 'Aucune vue enregistrée pour cette enseigne.';
     } catch (error) {
+      if(generation!==savedViewsGeneration||tenant!==state.tenant)return;
       state.savedViews = [];
       renderSavedViews();
       const status = $('#savedViewsStatus');

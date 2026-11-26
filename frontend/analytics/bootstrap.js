@@ -1,6 +1,7 @@
 import { app } from '/js/state.js';
 import { api, health } from '/js/api.js';
 import { ensureAccessToken, ensureLocalSession } from '/js/auth.js';
+import {preloadAnalyticsModules} from './startup-preload.js';
 
 function showBootFailure(message){
   const root=document.querySelector('#analyticsContent')||document.querySelector('main');
@@ -30,6 +31,15 @@ async function start(){
 
     window.RETAIL_INTELLIGENCE_API=api;
     window.RETAIL_INTELLIGENCE_HEALTH=h;
+
+    // Fetch independent files in parallel without changing their initialization order.
+    preloadAnalyticsModules(document,[
+      'tenants','analytics','monthly-sales-export','categories','inventory','loyalty',
+      'promotions','decision','supplier-purchases','sales-proof','workspace-bi',
+      'article-reference','decision-studio','customer-research','companion-dictionary',
+      'basket-direction','loss-inventory','detention-views','detention-sales',
+      'replenishment','experience-navigation','table-column-tools'
+    ].map(name=>analyticsAsset('/analytics/'+name+'.js')));
 
     await import(analyticsAsset('/analytics/tenants.js'));
     await import(analyticsAsset('/analytics/analytics.js'));
