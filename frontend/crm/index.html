@@ -497,7 +497,7 @@ function renderValueProfile(c){
  activeValueCustomer=c;const e=demoEvidence(c),controls=['valueMonths','valueRetention','valueMargin','valueCost','valueDiscount'];
  const nums=controls.map(id=>$(id).valueAsNumber??Number($(id).value));
  // select has no valueAsNumber; input fields must not be empty.
- if(controls.some(id=>$(id).value===''||!$(id).checkValidity())||nums.some(n=>!Number.isFinite(n))){$('valueStatus').textContent='Vérifiez les hypothèses.';$('valueContribution').textContent='—';$('valueMetrics').replaceChildren();return}
+ if(controls.some(id=>$(id).value===''||!$(id).checkValidity())||nums.some(n=>!Number.isFinite(n))){$('valueStatus').textContent='Vérifiez les hypothèses.';$('valueContribution').textContent='—';$('valueHorizonNote').textContent='';$('valueMetrics').replaceChildren();$('valueAction').textContent='Recommandation indisponible tant que les hypothèses sont invalides.';return}
  const [horizonMonths,monthlyRetentionPct,marginPct,cost,annualDiscountPct]=nums;
  try{
  const v=valueAPI.customerValueScenario({profile:e.profile,windowDays:90,horizonMonths,monthlyRetentionPct,marginPct,monthlyContactCostMinor:Math.round(cost*100),annualDiscountPct});
@@ -507,7 +507,7 @@ function renderValueProfile(c){
  const ledgerComplete=$('consentLedger').value==='complete',eligibleChannels=['email','whatsapp','sms'].filter(channel=>demoConsent([c],channel,ledgerComplete).decisions[0].eligible);
  const a=valueAPI.nextBestAction({profile:e.profile,rfm:e.rfm,promotion:e.promotion,preferredCategories:e.segmentAttributes.preferredCategories,eligibleChannels,ledgerComplete,identityStatus:Number(c.id.split('-').pop())%19===0?'quarantined':'active'});
  const title=document.createElement('strong'),reason=document.createElement('p'),channel=document.createElement('p');title.textContent=actionLabels[a.action];reason.textContent=a.reason;channel.textContent=a.channels.length?'Canaux fictifs éligibles : '+a.channels.join(', '):'Aucun canal éligible';$('valueAction').replaceChildren(title,reason,channel);
- }catch{$('valueContribution').textContent='—';$('valueMetrics').replaceChildren();$('valueStatus').textContent='Hypothèses invalides.'}
+ }catch{$('valueContribution').textContent='—';$('valueMetrics').replaceChildren();$('valueStatus').textContent='Hypothèses invalides.';$('valueHorizonNote').textContent='';$('valueAction').textContent='Recommandation indisponible.'}
 }
 for(const id of ['valueMonths','valueRetention','valueMargin','valueCost','valueDiscount'])$(id).addEventListener('input',()=>{if(activeValueCustomer)renderValueProfile(activeValueCustomer)});
 </script></body></html>
