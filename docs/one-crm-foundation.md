@@ -121,3 +121,6 @@ Reuse documented monetary reward definitions and signed Earn deduplication for a
 
 ## R0.49 — directory name enrichment
 A separate authorized request reloads the same paginated source scope and enriches up to 50 account IDs via CustomersV3 in groups of 10, with three concurrent reads at most. Match exact account + company + Retail group; reject duplicate or mismatched source rows. The directory remains visible if identity data fails, names are not inferred from account references, and contact details remain individual-only. Names in the list and profile header are rendered as text, never HTML. Standard fields documented by Microsoft; actual tenant support and latency remain to be confirmed. No name search or extra address/demographic field claims.
+
+## R0.50 — global identity search
+Separate read-only authenticated POST endpoint for name and stored-format phone search in CustomersV3, with legal-entity/group filters and 50-row pagination; exact account membership is rechecked when opening a profile. Search inputs in request body rather than URL; results show account/name/type only. Does not replace the working account directory; no name or phone normalisation across alternate formats. No marketing activation. Actual tenant entity and contains support remain to be verified.
