@@ -19,7 +19,7 @@ export function normalizeCustomerMaster(rows,{company,checkedAt}){
  return {source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',checkedAt,rows:[...seen.values()].sort((a,b)=>a.accountRef<b.accountRef?-1:a.accountRef>b.accountRef?1:0)};
 }
 export function projectCustomerMaster(master,page,search=''){
- if(typeof search!=='string'||(summary!==null&&(summary!=='1'||keys.length!==1||typeof readCount!=='function'))||search.length>160||/[\x00-\x1f]/.test(search))return unavailable('INVALID_SEARCH');
+ if(typeof search!=='string'||search.length>160||/[\x00-\x1f]/.test(search))return unavailable('INVALID_SEARCH');
  if(master?.source!==SOURCE||master.scope!=='LEGAL_ENTITY_RETAIL'||!Array.isArray(master.rows)||!Number.isSafeInteger(page)||page<1)return unavailable('DIRECTORY_PAGE_UNAVAILABLE');
  const filtered=search?master.rows.filter(r=>r.accountRef.toLowerCase().includes(search.toLowerCase())):master.rows;
  if(page>Math.max(1,Math.ceil(filtered.length/SIZE)))return unavailable('DIRECTORY_PAGE_UNAVAILABLE');
@@ -33,7 +33,7 @@ export function makeCustomerDirectoryGateway({listStores,canAccessStore,readMast
   if(method!=='GET')return {status:405,data:{error:'Lecture uniquement.'}};
   if(dynamicsMode!=='live')return {status:503,data:unavailable('LIVE_SOURCE_REQUIRED')};
   const keys=[...query.keys()],p=query.get('page')||'1',search=query.get('q')||'',accountRef=query.get('accountRef'),summary=query.get('summary');
-  if(new Set(keys).size!==keys.length||keys.some(k=>!['page','q','accountRef','summary'].includes(k))||search.length>160||/[\x00-\x1f]/.test(search)||!/^\d{1,5}$/.test(p)||Number(p)<1||(accountRef!==null&&(keys.length!==1||!id(accountRef)||typeof readProfile!=='function')))return {status:400,data:unavailable('INVALID_SELECTION')};
+  if(new Set(keys).size!==keys.length||keys.some(k=>!['page','q','accountRef','summary'].includes(k))||(summary!==null&&(summary!=='1'||keys.length!==1||typeof readCount!=='function'))||search.length>160||/[\x00-\x1f]/.test(search)||!/^\d{1,5}$/.test(p)||Number(p)<1||(accountRef!==null&&(keys.length!==1||!id(accountRef)||typeof readProfile!=='function')))return {status:400,data:unavailable('INVALID_SELECTION')};
   // Unattributed accounts cannot be safely released to a store-restricted principal.
   // Require authorization for the entire active StoreOps network. The pilot store list
   // is a transaction scope, not the complete network or the legal-entity customer master.
