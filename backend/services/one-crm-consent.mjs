@@ -2,7 +2,12 @@
 // A proof reference alone is insufficient: upstream must verify the proof.
 const channels=new Set(['email','whatsapp','sms','push']);
 const validId=v=>typeof v==='string'&&v.length>0&&v.length<=200&&v===v.trim();
-const timestamp=v=>typeof v==='string'&&/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(v)&&Number.isFinite(Date.parse(v))?Date.parse(v):NaN;
+const timestamp=v=>{
+ if(typeof v!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,3})?Z$/.test(v))return NaN;
+ const n=Date.parse(v);if(!Number.isFinite(n))return NaN;
+ const canonical=v.includes('.')?v.replace(/\.(\d{1,3})Z$/,(_,ms)=>'.'+ms.padEnd(3,'0')+'Z'):v.replace(/Z$/,'.000Z');
+ return new Date(n).toISOString()===canonical?n:NaN;
+};
 export function consentPreflight({tenantId,channel,asOf,profiles,events,suppressions,ledgerComplete}){
  if(!validId(tenantId)||!channels.has(channel)||!Number.isFinite(timestamp(asOf))||!Array.isArray(profiles)||!Array.isArray(events)||!Array.isArray(suppressions)||profiles.length>100000||events.length>1000000||suppressions.length>1000000)throw Error('Invalid preflight input');
  const cutoff=timestamp(asOf),ids=new Set(),latest=new Map(),blocked=new Set(),invalid=new Set(),seen=new Map();
