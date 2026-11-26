@@ -36,3 +36,7 @@ export function projectRfmPopulation({accounts,stores,ranges,asOf,page=1}){
  if(page>Math.max(1,Math.ceil(totalAccounts/50)))throw Error('Page out of range');
  return {status:complete?'READY':'PARTIAL',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate:start,storeIds:stores,coverage:{expectedStoreDays:expected,coveredStoreDays:covered.size,rejectedRanges,unmatchedPurchaseAccounts:unmatched.size},totalAccounts,counts,page,pageSize:50,rows:rows.slice((page-1)*50,page*50),activationEnabled:false};
 }
+
+export function isPreparedRfmRange(r,id,start,end){
+ return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
+}
