@@ -371,6 +371,6 @@ export async function readCustomerTicketBurn(storeId,{company,tickets}){
   if([...byKey.values()].some(x=>!x.length))return base;
   const walletRows=rows.filter(row=>isWalletValue(row[f.tender],tenderTypes.map,resolvedWalletIds));
   const profile=signProfile(walletRows,f.amount),derived=derivedBurn(profile);
-  return {...base,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount,signMode:derived.signMode,walletTransactions:walletRows.length,receiptCount:tickets.length};
+  return {...base,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount,signMode:derived.signMode,walletTransactions:walletRows.length,receiptCount:tickets.length,receipts:tickets.map(t=>{const profile=signProfile(byKey.get(ticketKey(t.terminal,t.transactionRef,t.date)).filter(row=>isWalletValue(row[f.tender],tenderTypes.map,resolvedWalletIds)),f.amount),derived=derivedBurn(profile);return {terminal:t.terminal,transactionRef:t.transactionRef,date:t.date,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount}})};
  }catch{return base}
 }
