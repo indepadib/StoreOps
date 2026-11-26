@@ -20,6 +20,7 @@ function verify(){
  assert(!marketingEligibility({...opt,suppressed:true}),'suppression');
  assert(!marketingEligibility({...opt,consents:[c,{...c,status:'revoked'}]}),'revoke at same timestamp');
  assert(!marketingEligibility({...opt,consents:[]}),'default deny');
+ for(const consents of [[c,{...c,proofId:''}],[{...c,proofId:''},c]])assert(!marketingEligibility({...opt,consents}),'same-time grant conflict must fail closed');
 }
 verify();
 console.log('ONE CRM foundation assertions passed');
