@@ -6,9 +6,10 @@ const l=(system,accountToken,customerToken)=>({...r(system,accountToken),custome
 const records=[r('pos','p1'),r('loyalty','l1'),r('pos','p2'),r('loyalty','l2')];
 const links=[l('pos','p1','c1'),l('loyalty','l1','c1'),l('pos','p2','c2')];
 const run=(x={})=>resolveIdentityLinks({tenantId,records,links,allowedSystems,...x});
-const ok=run();assert.equal(ok.summary.resolved,3);assert.equal(ok.summary.canonicalCustomers,2);assert.equal(ok.summary.unresolved,1);assert.equal(identityLookup(ok,'pos','p1'),'c1');assert.equal(identityLookup(ok,'loyalty','l1'),'c1');assert.equal(identityLookup(ok,'loyalty','l2'),null);assert.equal(ok.summary.activationEnabled,false);assert.ok(!JSON.stringify(ok.summary).includes('"c1"'));
-const conflict=run({links:[...links,l('pos','p1','c2')]});assert.equal(conflict.summary.quarantined,3);assert.equal(conflict.summary.resolved,0);assert.equal(identityLookup(conflict,'loyalty','l1'),null);
+const ok=run();assert.equal(ok.summary.resolved,3);assert.equal(ok.summary.canonicalCustomers,2);assert.equal(ok.summary.unresolved,1);assert.equal(identityLookup(ok,tenantId,'pos','p1'),'c1');assert.equal(identityLookup(ok,tenantId,'loyalty','l1'),'c1');assert.equal(identityLookup(ok,tenantId,'loyalty','l2'),null);assert.equal(ok.summary.activationEnabled,false);assert.ok(!JSON.stringify(ok.summary).includes('"c1"'));
+const conflict=run({links:[...links,l('pos','p1','c2')]});assert.equal(conflict.summary.quarantined,3);assert.equal(conflict.summary.resolved,0);assert.equal(identityLookup(conflict,tenantId,'loyalty','l1'),null);
 const unverified=run({links:[{...links[0],proofId:''}]});assert.equal(unverified.summary.resolved,0);assert.equal(unverified.summary.issueCounts.LINK_UNVERIFIED,1);
 assert.throws(()=>run({records:[{...records[0],tenantId:'other'}]}));assert.throws(()=>run({links:[l('pos','unknown','c1')]}));assert.throws(()=>run({links:[l('other','p1','c1')]}));
 assert.equal(run({records:[...records,records[0]]}).summary.records,4);
+assert.throws(()=>identityLookup(ok,'other','pos','p1'),/tenant mismatch/);assert.equal(ok.tenantId,tenantId);
 console.log('CRM identity: OK');
