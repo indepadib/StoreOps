@@ -46,6 +46,8 @@ jobs:
         run: |
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/001-foundation.draft.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-foundation.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/002-ticket-items.draft.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-ticket-items.sql
   browser-contract:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
