@@ -99,6 +99,7 @@ async function api(req,res,url){
       listStores:()=>db.prepare('SELECT id,name FROM stores WHERE active=1 ORDER BY name').all(),
       canAccessStore,sourceReady:id=>{const c=salesIntegrationConfig(id);return c.ready&&c.entity==='RetailTransactionSalesTransBIEntities'},
       readDay:(id,date)=>readStoreBasketEvidence(id,{startDate:date,endDate:date}),
+      pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||'',
       today:()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())
     });
     const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
