@@ -4,7 +4,8 @@ const quote=v=>"'"+String(v).replaceAll("'","''")+"'";
 const fail=code=>Object.assign(new Error(code),{code});
 const check=(company)=>{if(!clean(company))throw fail('CRM_COMPANY_NOT_CONFIGURED')};
 export const isLoyaltyCustomerAccount=v=>typeof v==='string'&&/^CLT/i.test(v.trim());
-export const loyaltyCustomerFilter=field=>"startswith("+field+",'CLT')";
+// F&O OData implements prefix matching using an equality wildcard, not startswith().
+export const loyaltyCustomerFilter=field=>field+" eq 'CLT*'";
 const baseFilter=company=>"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum');
 // Select only fields already exercised by the existing Analytics account reader.
 const select='AccountNum,SysCreatedDateTime,SysDataAreaId';
@@ -16,7 +17,8 @@ function row(r,company){
 const common=()=>({status:'READY',source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',checkedAt:new Date().toISOString(),identityBasis:'D365_LEGAL_ENTITY_ACCOUNT',historyStatus:'NOT_CONNECTED',activationEnabled:false});
 export async function readDirectorySourcePage({company,page,search='',read}){
  check(company);
- const filter=baseFilter(company)+(search?" and contains(AccountNum,"+quote(search)+")":'');
+ if(/[\*?]/.test(search))throw fail('CRM_CUSTOMER_SEARCH_MISMATCH');
+ const filter=baseFilter(company)+(search?" and AccountNum eq "+quote("*"+search+"*"):'');
  const extra='cross-company=true&$orderby=AccountNum%20asc&$skip='+((page-1)*SIZE);
  // Read at most 51 records; the lookahead makes count independent of page rendering.
  const raw=await read(ENTITY,{filter,select,top:SIZE+1,extra});
@@ -31,13 +33,13 @@ export async function readDirectorySourceCount({company,read}){
  check(company);
  const raw=await read(ENTITY,{filter:baseFilter(company),select:'AccountNum',top:1,extra:'cross-company=true&$count=true'});
  const n=raw?.['@odata.count'];
- if(!Array.isArray(raw?.value)||raw.value.length>1||!(typeof n==='number'||typeof n==='string'&&/^\d+$/.test(n))||!Number.isSafeInteger(Number(n))||Number(n)<raw.value.length||(Number(n)>0&&!raw.value.length))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');
+ if(!Array.isArray(raw?.value)||raw.value.length>1||!(typeof n==='number'||typeof n==='string'&&/^\d+$/.test(n))||!Number.isSafeInteger(Number(n))||Number(n)<raw.value.length||(Number(n)>0&&!raw.value.length)||raw.value.some(r=>!isLoyaltyCustomerAccount(clean(r.AccountNum))))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');
  return {...common(),totalAccounts:Number(n)};
 }
 export async function findDirectorySourceAccount({company,accountRef,read}){
  check(company);
  if(!isLoyaltyCustomerAccount(accountRef))return null;
- const raw=await read(ENTITY,{filter:baseFilter(company)+" and AccountNum eq "+quote(accountRef),select,top:2,extra:'cross-company=true'});
+ const raw=await read(ENTITY,{filter:"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail' and AccountNum eq "+quote(accountRef),select,top:2,extra:'cross-company=true'});
  if(!Array.isArray(raw?.value)||raw.value.length>1||raw['@odata.nextLink'])throw fail('CRM_CUSTOMER_LOOKUP_AMBIGUOUS');
  if(!raw.value.length)return null;
  const r=row(raw.value[0],company);if(r.accountRef!==accountRef)throw fail('CRM_CUSTOMER_PARTITION_INVALID');return r;
