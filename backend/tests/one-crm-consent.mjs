@@ -19,4 +19,7 @@ assert.throws(()=>run({events:[{...events[0],tenantId:'other'}]}));
 assert.throws(()=>run({profiles:[...profiles,profiles[0]]}));
 assert.throws(()=>run({suppressions:[{...suppressions[0],tenantId:'other'}]}));
 assert.ok(!JSON.stringify(r.summary).includes('demo-proof'));
+assert.equal(run({events:[...events,e('a','granted','8',{at:'2026-11-31T12:00:00Z'})]}).summary.reasons.invalid,1);
+assert.equal(run({events:[...events,e('a','granted','8',{at:'2026-11-20T12:00:00.1Z'})]}).summary.eligible,1);
+assert.throws(()=>run({asOf:'2026-02-30T12:00:00Z'}));
 console.log('CRM consent preflight passed');
