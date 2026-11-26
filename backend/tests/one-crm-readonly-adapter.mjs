@@ -23,4 +23,9 @@ const verifiedReader=makeVerifiedDayReader({
 });
 const through=await readCrmAudience({...itemInput,readVerifiedDay:verifiedReader});
 assert.equal(through.audienceCount,1);assert.equal(through.audienceNetMinor,20000);assert.equal(through.uniqueTickets,2);assert.ok(!JSON.stringify(through).includes('synthetic-id'));
+let reads=0;
+for(const rules of [null,[],{expression:null},{expression:categoryRule,minNetMinor:100},{unknown:1},{minPurchaseTickets:4,maxPurchaseTickets:2}]){
+ await assert.rejects(()=>readCrmAudience({...input,rules,readVerifiedDay:async q=>{reads++;return readVerifiedDay(q)}}));
+}
+assert.equal(reads,0);
 console.log('CRM read-only source boundary passed');
