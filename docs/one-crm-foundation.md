@@ -18,3 +18,23 @@ Separate CRM service and database with tenant-scoped foreign keys, row policies,
 `node backend/tests/one-crm-foundation.mjs`
 
 The current code is pure functions only: RFM-style metrics, segment preview and explicit-consent eligibility. No source adapter, data migrations, frontend or provider integration is enabled by this change. The eligibility check is a restrictive product gate, not a complete compliance or sending decision.
+
+## P3.1 — hardening checkpoint R0.28
+- Strict consent calendar timestamps; simultaneous legacy grants fail closed. Legacy eligibility is not a send authorization. Use complete proof-verified consent preflight.
+- Identity lookup now requires explicit matching tenant; callers must migrate to the new signature.
+- Audience requests reject unknown, mixed and null rules before source reads.
+- Demo invalidates consent-dependent reports and draft decisions when the ledger changes. No real dispatch.
+
+### Remaining release blockers (not certified)
+| Gate | Status |
+| --- | --- |
+| Private repository/service and approved data handling | Open; keep actual data and credentials outside this repository |
+| Independent source reconciliation incl. returns, tax basis, register IDs and store/day closure | Open |
+| Production authorization, identity proof, role grants, suppression persistence and auditing | Open |
+| CRM read-only API with verified store scope and small-audience disclosure controls | Open |
+| Real loyalty ledger, marketing outcomes and contact history | Open |
+| Model calibration, censoring-aware validation and reconciliation of churn/purchase probability | Open |
+| Generative copilot tool allowlist and server-side authorization | Open |
+| Provider sandbox, outbox, atomic budget/frequency reservations, webhooks, kill switch | Open |
+
+All P1/P2 V1 modules are synthetic decision support; no real customer integration or activation approval is implied. Next milestone: a private read-only source reconciliation pilot, then authenticated scoped API.
