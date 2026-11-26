@@ -3,12 +3,14 @@ const clean=v=>String(v??'').trim();
 const quote=v=>"'"+String(v).replaceAll("'","''")+"'";
 const fail=code=>Object.assign(new Error(code),{code});
 const check=(company)=>{if(!clean(company))throw fail('CRM_COMPANY_NOT_CONFIGURED')};
-const baseFilter=company=>"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail'";
+export const isLoyaltyCustomerAccount=v=>typeof v==='string'&&/^CLT/i.test(v.trim());
+export const loyaltyCustomerFilter=field=>"startswith("+field+",'CLT')";
+const baseFilter=company=>"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum');
 // Select only fields already exercised by the existing Analytics account reader.
 const select='AccountNum,SysCreatedDateTime,SysDataAreaId';
 function row(r,company){
  const accountRef=clean(r?.AccountNum),area=clean(r?.SysDataAreaId??r?.dataAreaId),date=clean(r?.SysCreatedDateTime);
- if(!accountRef||accountRef.length>160||/[\x00-\x1f]/.test(accountRef)||area!==company)throw fail('CRM_CUSTOMER_PARTITION_INVALID');
+ if(!isLoyaltyCustomerAccount(accountRef)||accountRef.length>160||/[\x00-\x1f]/.test(accountRef)||area!==company)throw fail('CRM_CUSTOMER_PARTITION_INVALID');
  return {accountRef,createdAt:Number.isFinite(Date.parse(date))?new Date(date).toISOString():null};
 }
 const common=()=>({status:'READY',source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',checkedAt:new Date().toISOString(),identityBasis:'D365_LEGAL_ENTITY_ACCOUNT',historyStatus:'NOT_CONNECTED',activationEnabled:false});
@@ -34,6 +36,7 @@ export async function readDirectorySourceCount({company,read}){
 }
 export async function findDirectorySourceAccount({company,accountRef,read}){
  check(company);
+ if(!isLoyaltyCustomerAccount(accountRef))return null;
  const raw=await read(ENTITY,{filter:baseFilter(company)+" and AccountNum eq "+quote(accountRef),select,top:2,extra:'cross-company=true'});
  if(!Array.isArray(raw?.value)||raw.value.length>1||raw['@odata.nextLink'])throw fail('CRM_CUSTOMER_LOOKUP_AMBIGUOUS');
  if(!raw.value.length)return null;
