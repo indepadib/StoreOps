@@ -11,6 +11,8 @@ let calls=0;
 const paged=dependencies(async(entity,q)=>{calls++;if(entity==='TO')return{value:[]};if(!q.continuation)return{value:[{sku:'A',received:1}],'@odata.nextLink':'https://example.test/data/PO?$skiptoken=opaque'};assert.match(q.filter,/warehouse eq 'MAG'/);return{value:[{sku:'B',received:1}]}});
 const ready=await finish(paged.deps);assert.equal(ready.complete,true);assert.equal(calls,3);assert.equal(ready.paginationVersion,2);
 assert.deepEqual([...paged.cache.values()].find(v=>v.status==='READY').products.map(p=>p.productNumber),['A','B'],'short first page with continuation must not end the history');
+assert.equal((await prepareReceiptHistory('test',{},paged.deps)).cached,true);const beforeForce=calls;
+assert.equal((await prepareReceiptHistory('test',{force:true},paged.deps)).status,'PREPARING');assert.equal(calls,beforeForce+1,'explicit refresh rereads even a complete cached history');
 const invalid=dependencies(async()=>({}));assert.equal((await finish(invalid.deps)).complete,false,'invalid collection is not an empty complete history');
 const repeated=dependencies(async entity=>entity==='TO'?{value:[]}:{value:[{sku:'A',received:1}],'@odata.nextLink':'https://example.test/data/PO?repeat'});assert.equal((await finish(repeated.deps)).complete,false,'repeated continuation blocks absence claims');
 let headerCalls=0,documents;
