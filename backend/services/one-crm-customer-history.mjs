@@ -1,3 +1,4 @@
+import {summarizeCustomerBehavior} from './one-crm-customer-behavior.mjs';
 import {attachParentSalesEligibility,parentSaleEligible} from './sales-parent-transactions.mjs';
 const SOURCE='D365/RetailTransactionSalesTransBIEntities';
 const clean=v=>String(v??'').trim();
@@ -56,6 +57,8 @@ export async function readCustomerPositiveHistory({accountRef,company,stores,pag
   tickets.sort((a,b)=>b.date.localeCompare(a.date)||a.storeId.localeCompare(b.storeId)||a.transactionRef.localeCompare(b.transactionRef)||a.terminal.localeCompare(b.terminal));
   const totalTickets=tickets.length,positiveTtc=money(tickets.reduce((n,t)=>n+t.positiveTtc,0));
   if(!Number.isSafeInteger(Math.round(positiveTtc*100))||page>Math.max(1,Math.ceil(totalTickets/20)))return unavailable('HISTORY_PAGE_UNAVAILABLE');
-  return {status:'READY',accountRef,source:SOURCE,scope:'APPROVED_PILOT_STORES',storeIds:mappings.map(m=>m.storeId),basis:'POSITIVE_ACCOUNT_LINES_EXCLUDES_RETURNS',currency:'MAD',checkedAt:now(),financialReconciliation:'NOT_VERIFIED',totalTickets,positiveTtc,firstPurchase:totalTickets?tickets.at(-1).date:null,lastPurchase:totalTickets?tickets[0].date:null,page,pageSize:20,rows:tickets.slice((page-1)*20,page*20).map(({terminal,...r})=>r),activationEnabled:false};
+  const checkedAt=now();
+  const behavior=summarizeCustomerBehavior(tickets,checkedAt);
+  return {status:'READY',accountRef,source:SOURCE,scope:'APPROVED_PILOT_STORES',storeIds:mappings.map(m=>m.storeId),basis:'POSITIVE_ACCOUNT_LINES_EXCLUDES_RETURNS',currency:'MAD',checkedAt,behavior,financialReconciliation:'NOT_VERIFIED',totalTickets,positiveTtc,firstPurchase:totalTickets?tickets.at(-1).date:null,lastPurchase:totalTickets?tickets[0].date:null,page,pageSize:20,rows:tickets.slice((page-1)*20,page*20).map(({terminal,...r})=>r),activationEnabled:false};
  }catch{return unavailable('HISTORY_SOURCE_UNAVAILABLE')}
 }
