@@ -17,7 +17,7 @@ export async function readCustomerIdentity({accountRef,company,read}){
  const base={accountRef,source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false,consentStatus:'NOT_VERIFIED'};
  const fail=reason=>({...base,status:'UNAVAILABLE',reason,...empty});
  if(!safe(accountRef)||!isLoyaltyCustomerAccount(accountRef)||!safe(company))return fail('IDENTITY_SCOPE_INVALID');
- const filter='dataAreaId eq '+quote(company)+' and CustomerAccount eq '+quote(accountRef)+" and CustomerGroupId eq 'Retail' and "+loyaltyCustomerFilter('CustomerAccount');
+ const filter='dataAreaId eq '+quote(company)+' and CustomerAccount eq '+quote(accountRef)+" and CustomerGroupId eq 'Retail'";
  let result,contacts=true,address=true,phoneOnly=false;
  try{
   try{result=await read('CustomersV3',{filter,select:fields+',PrimaryContactEmail,PrimaryContactPhone,'+addressFields.join(','),top:2,extra:'cross-company=true'})}
@@ -40,7 +40,7 @@ export async function readCustomerNames({accounts,company,read}){
  const results=new Map(),groups=[];
  for(let i=0;i<accounts.length;i+=10)groups.push(accounts.slice(i,i+10));
  async function batch(ids){
-  const filter='dataAreaId eq '+quote(company)+" and CustomerGroupId eq 'Retail' and "+loyaltyCustomerFilter('CustomerAccount')+" and ("+ids.map(a=>'CustomerAccount eq '+quote(a)).join(' or ')+')';
+  const filter='dataAreaId eq '+quote(company)+" and CustomerGroupId eq 'Retail' and ("+ids.map(a=>'CustomerAccount eq '+quote(a)).join(' or ')+')';
   try{
    let p,phoneAvailable=true;try{p=await read('CustomersV3',{filter,select:fields+',PrimaryContactPhone',top:ids.length+1,extra:'cross-company=true'})}catch(e){if(Number(e?.details?.httpStatus)!==400)throw e;phoneAvailable=false;p=await read('CustomersV3',{filter,select:fields,top:ids.length+1,extra:'cross-company=true'})}
    if(!Array.isArray(p?.value)||p.value.length>ids.length||p['@odata.nextLink'])throw Error('Incomplete identity page');
@@ -66,10 +66,10 @@ export async function searchCustomerIdentity({company,query,by,page=1,read}){
  const base={source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false,by,page,pageSize:50};
  const fail=reason=>({...base,status:'UNAVAILABLE',reason,rows:[],hasMore:false});
  if(!safe(company)||!safe(query,100)||!['name','phone'].includes(by)||!Number.isSafeInteger(page)||page<1||page>1000)return fail('IDENTITY_SEARCH_INVALID');
- const q=query.trim(),tokens=q.split(/\s+/);
+ const q=query.trim(),tokens=q.split(/\s+/);if(/[\*?]/.test(q))return fail('IDENTITY_SEARCH_INVALID');
  if(by==='name'&&(q.length<3||tokens.length>5)||by==='phone'&&(!/^[+0-9 ()-]+$/.test(q)||q.replace(/\D/g,'').length<5))return fail('IDENTITY_SEARCH_INVALID');
  const keys=by==='name'?['PersonFirstName','PersonLastName','OrganizationName']:['PrimaryContactPhone'];
- const contains=(key,t)=>'contains('+key+','+quote(t)+')';
+ const contains=(key,t)=>key+' eq '+quote('*'+t+'*');
  // Use separate words for multi-part names; phone lookup uses the stored formatting.
  const terms=by==='name'?tokens:[q];
  const filter='dataAreaId eq '+quote(company)+" and CustomerGroupId eq 'Retail' and "+loyaltyCustomerFilter('CustomerAccount')+" and "+terms.map(t=>'('+keys.map(k=>contains(k,t)).join(' or ')+')').join(' and ');
