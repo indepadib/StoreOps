@@ -33,6 +33,7 @@ jobs:
       - run: node backend/tests/one-crm-loyalty-intelligence.mjs
       - run: node backend/tests/one-crm-basket-analysis.mjs
       - run: node backend/tests/one-crm-experimentation.mjs
+      - run: node backend/tests/one-crm-journey-graph.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
