@@ -63,10 +63,10 @@ export async function readCrmCustomerIdentity(row){
  return readCustomerIdentity({...sourceDeps(),accountRef:row.accountRef});
 }
 
-export async function readCrmCustomerWallet(row,stores){
+export async function readCrmCustomerWallet(row,stores,page=1){
  const {readCustomerWallet}=await import('./one-crm-customer-wallet.mjs');
  const {storeOperationalSettings}=await import('./store-settings.mjs');
- return readCustomerWallet({accountRef:row.accountRef,company:sourceDeps().company,stores,settings:storeOperationalSettings,readCollection:readCompleteCollection});
+ return readCustomerWallet({accountRef:row.accountRef,company:sourceDeps().company,stores,settings:storeOperationalSettings,readCollection:readCompleteCollection,page});
 }
 
 export async function readCrmCustomerNames(accounts){
