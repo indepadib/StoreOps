@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readCrmAudience} from '../services/one-crm-readonly-adapter.mjs';
+import {makeVerifiedDayReader} from '../services/one-crm-reconciliation.mjs';
 const tenantId='synthetic',storeIds=['demo-a'],allowedStoreIds=['demo-a'],windowStart='2026-11-01',asOf='2026-11-02';
 const readVerifiedDay=async ({tenantId,storeId,date})=>({tenantId,storeId,date,currency:'MAD',netAmountBasis:'verified-net-signed',coverageComplete:true,rejectedIdentity:0,tickets:[{tenantId,storeId,date,ticketId:date,customerToken:'synthetic-id',netMinor:10000}]});
 const input={tenantId,storeIds,allowedStoreIds,windowStart,asOf,readVerifiedDay,rules:{minPurchaseTickets:2}};
@@ -16,4 +17,10 @@ await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay}),/item e
 await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay:async q=>({...await itemReader(q),itemEvidenceComplete:false})}),/item evidence/);
 await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay:async q=>{const d=await itemReader(q);d.tickets[0].items[0].netMinor=1;return d}}),/reconcile/);
 const zero=await readCrmAudience({...itemInput,rules:{expression:{...categoryRule,value:'Other'}}});assert.equal(zero.audienceCount,0);
+const verifiedReader=makeVerifiedDayReader({
+ loadSignedBatch:async q=>({...q,source:'synthetic-source',currency:'MAD',closed:true,coverageComplete:true,basis:'signed-retail-net',rejectedIdentity:0,itemEvidenceComplete:true,tickets:[{...q,ticketId:'1',customerToken:'synthetic-id',netMinor:10000,items:[{lineId:'1',productId:'P1',category:'A',netMinor:10000}]}]}),
+ loadIndependentControl:async q=>({...q,source:'synthetic-control',currency:'MAD',closed:true,basis:'signed-retail-net',tickets:1,positiveMinor:10000,refundMinor:0,netMinor:10000})
+});
+const through=await readCrmAudience({...itemInput,readVerifiedDay:verifiedReader});
+assert.equal(through.audienceCount,1);assert.equal(through.audienceNetMinor,20000);assert.equal(through.uniqueTickets,2);assert.ok(!JSON.stringify(through).includes('synthetic-id'));
 console.log('CRM read-only source boundary passed');
