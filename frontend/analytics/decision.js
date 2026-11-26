@@ -311,8 +311,8 @@ import {salesComparatives} from './sales-comparatives.js';
     state.catalogKey=key;state.catalogLoading=false;if(sectionState()?.tenant===s.tenant){document.dispatchEvent(new CustomEvent('retail-intelligence:catalog',{detail:{tenant:state.catalogTenant,items:[...state.catalog.values()]}}));safeRenderPart('catalog-visible-enrichment',render)}const current=sectionState(),currentKey=current?queryKey(current)+'|'+(current.section||'overview'):key;if(currentKey!==key&&sectionNeedsCatalog(current))setTimeout(()=>loadCatalog(false).catch(()=>{}),0)
   }
 
-  function sectionNeedsDecision(s=sectionState()){return ['overview','sales','network','categories','suppliers','crm','loyalty','cashiers','promotions'].includes(s?.section)}
-  function sectionNeedsCatalog(s=sectionState()){return ['sales','categories','suppliers','crm'].includes(s?.section)}
+  function sectionNeedsDecision(s=sectionState()){return (s?.section!=='suppliers'||$('#supplierAttributionView')?.value!=='purchases')&&['overview','sales','network','categories','suppliers','crm','loyalty','cashiers','promotions'].includes(s?.section)}
+  function sectionNeedsCatalog(s=sectionState()){return (s?.section!=='suppliers'||$('#supplierAttributionView')?.value!=='purchases')&&['sales','categories','suppliers','crm'].includes(s?.section)}
   function warmCatalogSoon(){
     const s=sectionState();if(!s||!['sales','categories','suppliers','crm'].includes(s.section))return;
     const run=()=>{if(state.data&&!state.catalogLoading)loadCatalog(false).catch(()=>{})};
@@ -903,7 +903,7 @@ import {salesComparatives} from './sales-comparatives.js';
     return rows.length?rows.map(([u,v])=>api.number(v,u==='PC'?0:2)+' '+u).join(' · '):'—'
   }
   async function loadSupplierOps(force=false){
-    const api=core(),s=sectionState();if(!api||!s||s.section!=='suppliers'||state.supplierOpsLoading)return;
+    const api=core(),s=sectionState();if(!api||!s||s.section!=='suppliers'||$('#supplierAttributionView')?.value==='purchases'||state.supplierOpsLoading)return;
     const ids=selectedStoreIds(s),key=[...ids].sort().join(',')+'|'+s.periodEnd;
     if(!force&&state.supplierOpsKey===key&&state.supplierOps){renderSupplier();return}
     state.supplierOpsLoading=true;renderSupplier();
@@ -917,7 +917,7 @@ import {salesComparatives} from './sales-comparatives.js';
     const api=core(),body=$('#supplierBody'),kpis=$('#supplierKpis');if(!api||!body||!kpis)return;
     const rows=supplierRows(),totalSales=rows.reduce((s,x)=>s+Number(x.sales||0),0),direct=rows.filter(x=>x.supplyMode==='DIRECT_SUPPLIER'),directSales=direct.reduce((s,x)=>s+Number(x.sales||0),0),mapped=rows.filter(x=>x.vendorAccount!=='NON_RATTACHE'),serviceRows=rows.filter(x=>x.serviceRate90d!=null);
     const cards=[
-      ['Fournisseurs vendus',api.number(mapped.length),'ayant du CA sur la période'],
+      ['Fournisseurs principaux de fiche',api.number(mapped.length),'rattachement catalogue des articles vendus'],
       ['Poids Direct',totalSales?api.percent(directSales/totalSales*100):'N/A','CA articles Direct fournisseur'],
       ['Fournisseurs Direct',api.number(direct.length),'à piloter en priorité'],
       ['Service mesuré',api.number(serviceRows.length),serviceRows.length?api.percent(serviceRows.reduce((s,x)=>s+Number(x.serviceRate90d||0),0)/serviceRows.length)+' moy.':'couverture réception insuffisante'],
@@ -933,7 +933,7 @@ import {salesComparatives} from './sales-comparatives.js';
       if(directNoService)alerts.push({tone:'warning',title:'Direct sans mesure service · '+directNoService.vendorName,text:'Couverture réception contrôlée insuffisante : fiabiliser les réceptions pour mesurer le service.'});
       const backlog=rows.filter(x=>x.openPoCount>0).sort((a,b)=>Number(b.openPoCount)-Number(a.openPoCount))[0];
       if(backlog)alerts.push({tone:'info',title:'PO ouverts · '+backlog.vendorName,text:api.number(backlog.openPoCount)+' PO ouvert(s) · reste '+qtyObjectLabel(backlog.remainingByUnit,api)+'.'});
-      const concentration=rows[0];if(concentration&&concentration.sharePct>25)alerts.push({tone:'warning',title:'Dépendance fournisseur',text:concentration.vendorName+' pèse '+api.percent(concentration.sharePct)+' du CA fournisseur analysé.'});
+      const concentration=rows[0];if(concentration&&concentration.sharePct>25)alerts.push({tone:'info',title:'Concentration du rattachement catalogue',text:concentration.vendorName+' regroupe '+api.percent(concentration.sharePct)+' du CA par fournisseur principal de fiche. Ce n’est pas la part de ses achats réels.'});
       actions.innerHTML=alerts.slice(0,4).map(x=>'<div class="decision-action '+x.tone+'"><strong>'+api.escapeHtml(x.title)+'</strong><span>'+api.escapeHtml(x.text)+'</span></div>').join('')||'<div class="table-loading">Aucune alerte fournisseur significative.</div>'
     }
     const def=$('#supplierServiceDefinition');if(def)def.textContent=state.supplierOpsLoading?'Chargement des PO et réceptions fournisseur en arrière-plan…':(state.supplierOps?.serviceDefinition||'Taux service N/A sans réceptions contrôlées suffisantes.');

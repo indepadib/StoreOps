@@ -75,6 +75,7 @@ jobs:
         run: |
           node backend/tests/analytics-performance-contract.mjs
           node backend/tests/analytics-period-performance.mjs
+          node backend/tests/analytics-multi-supplier-filters.mjs
       - name: Analytics complete monthly N/N-1 export contract
         run: |
           node backend/tests/analytics-monthly-export-contract.mjs

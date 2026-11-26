@@ -2,7 +2,7 @@ import {handleDecisionToolsApi} from './analytics-decision-tools-api.mjs';
 import {handleReplenishmentApi} from './analytics-replenishment-api.mjs';
 import { db, uid } from '../db.mjs';
 import {handleCustomerBiApi} from './analytics-customer-bi-api.mjs';
-import { canAccessStore } from './permissions.mjs';
+import { canAccessStore,isPlatformAdmin } from './permissions.mjs';
 import { productDataMany } from './product-data.mjs';
 import { getStoreStockByProductNumber, getSupplyStockByProductNumber } from './dynamics-stock.mjs';
 import { readWalletBurn, readWalletBurnRange } from './dynamics-tender.mjs';
@@ -15,6 +15,7 @@ import { readLoyaltyRange } from './analytics-loyalty-range.mjs';
 import { readMonthlySalesExport } from './analytics-monthly-export.mjs';
 import { handleAnalyticsExportJobApi } from './analytics-export-jobs.mjs';
 import { semanticPublicModel } from './analytics-semantic-model.mjs';
+import {readSupplierInvoicePage} from './analytics-supplier-purchases.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -51,6 +52,10 @@ function safeError(error){
 }
 
 export async function handleAnalyticsApi({ req, url, user }){
+  if(req.method==='GET'&&url.pathname==='/api/analytics/supplier-purchases'){
+    if(!user||!(user.role==='ops_director'||isPlatformAdmin(user)))return{status:403,data:{error:'Les achats société sont réservés à la Direction. Le périmètre magasin ne donne pas accès aux factures de toute la société.'}};
+    try{return{status:200,data:await readSupplierInvoicePage({userId:user.id,start:clean(url.searchParams.get('start')),end:clean(url.searchParams.get('end')),cursor:url.searchParams.get('cursor')||null})}}catch(error){return{status:error.status||502,data:{error:error.message,code:error.code||'SUPPLIER_PURCHASE_READ_FAILED'}}}
+  }
   const replenishment=await handleReplenishmentApi({req,url,user});if(replenishment)return replenishment;
   if(req.method==='GET'&&url.pathname==='/api/analytics/semantic-model')return{status:200,data:semanticPublicModel()};
   const exportJob=await handleAnalyticsExportJobApi({req,url,user});if(exportJob)return exportJob;
