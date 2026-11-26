@@ -94,8 +94,8 @@ async function api(req,res,url){
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/crm/customer-directory'){
     const {makeCustomerDirectoryGateway}=await import('./services/one-crm-customer-directory.mjs');
-    const {readCustomerMaster}=await import('./services/dynamics-crm-customer-master.mjs');
-    const gateway=makeCustomerDirectoryGateway({listStores:()=>db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all(),canAccessStore,readMaster:readCustomerMaster,pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||''});
+    const {readCustomerMaster,readCustomerProfile}=await import('./services/dynamics-crm-customer-master.mjs');
+    const gateway=makeCustomerDirectoryGateway({listStores:()=>db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all(),canAccessStore,readMaster:readCustomerMaster,readProfile:readCustomerProfile,pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||''});
     const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     return json(req,res,result.status,result.data);
