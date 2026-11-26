@@ -38,6 +38,12 @@ const controller=new AbortController();
 const cancelled=createPeriodLoader();let published=0;
 await assert.rejects(cancelled({...one,signal:controller.signal,fetchSlice:async()=>{controller.abort();return ready},onProgress:()=>published++}),{name:'AbortError'});
 assert.equal(published,0);
+const stopOnFailure=createPeriodLoader();let attempted=0,releaseRead,settled=false;
+const inFlight=new Promise(resolve=>releaseRead=resolve);
+const failed=stopOnFailure({...one,plan:plan.slice(0,5),fetchSlice:async()=>{attempted++;if(attempted===1)throw Error('source failed');await inFlight;return ready}}).catch(error=>{settled=true;assert.match(error.message,/source failed/)});
+await new Promise(resolve=>setTimeout(resolve,1));
+assert.equal(attempted,2);assert.equal(settled,false,'failed load drains the other in-flight read before permitting retry');
+releaseRead();await failed;assert.equal(attempted,2,'remaining period slices are not read after a failure');
 
 const pool=createReadPool();let shared=0;
 await Promise.all(Array.from({length:8},()=>pool('same',async()=>{shared++;await new Promise(r=>setTimeout(r,1));return 7})));
