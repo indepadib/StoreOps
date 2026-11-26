@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {validateJourneyGraph,simulateJourney} from '../services/one-crm-journey-graph.mjs';
+const graph={entry:'start',nodes:[{id:'start',type:'trigger',label:'Entrée',event:'segment_entry',next:'branch'},{id:'branch',type:'condition',label:'Inactif',field:'recencyDays',op:'gte',value:60,yes:'wait',no:'exit'},{id:'wait',type:'delay',label:'Délai',hours:24,next:'msg'},{id:'msg',type:'action',label:'Email',channel:'email',next:'exit'},{id:'exit',type:'end',label:'Fin'}]};
+const run=patch=>simulateJourney({graph,profile:{recencyDays:70},event:'segment_entry',authorize:()=>({eligible:true,verified:true}),...patch});
+assert.equal(validateJourneyGraph(graph).valid,true);
+const x=run();assert.equal(x.status,'COMPLETED');assert.equal(x.elapsedHours,24);assert.equal(x.proposedActions,1);assert.equal(x.activationEnabled,false);assert.equal(x.trace[1].result,'YES');
+assert.equal(run({profile:{recencyDays:30}}).proposedActions,0);assert.equal(run({profile:{recencyDays:30}}).trace[1].result,'NO');
+assert.equal(run({profile:{}}).status,'BLOCKED');assert.equal(run({event:'purchase'}).status,'NOT_TRIGGERED');assert.equal(run({authorize:()=>({eligible:true})}).status,'BLOCKED');assert.equal(run({authorize:()=>({eligible:false,verified:true})}).proposedActions,0);
+let check;run({authorize:q=>{check=q;return {eligible:true,verified:true}}});assert.deepEqual(check,{channel:'email',nodeId:'msg',elapsedHours:24});
+const patch=(key,changes)=>({...graph,nodes:graph.nodes.map(n=>n.id===key?{...n,...changes}:n)});
+assert.throws(()=>validateJourneyGraph(patch('msg',{next:'branch'})));assert.throws(()=>validateJourneyGraph(patch('msg',{next:'missing'})));assert.throws(()=>validateJourneyGraph(patch('branch',{no:'wait'})));assert.throws(()=>validateJourneyGraph(patch('wait',{hours:0})));assert.throws(()=>validateJourneyGraph(patch('msg',{channel:'fax'})));assert.throws(()=>validateJourneyGraph({...graph,nodes:[...graph.nodes,{id:'extra',type:'end',label:'Extra'}]}));assert.throws(()=>validateJourneyGraph(patch('branch',{field:'unknown'})));assert.throws(()=>validateJourneyGraph({...graph,nodes:[...graph.nodes,graph.nodes[0]]}));
+console.log('CRM journey graph passed');
