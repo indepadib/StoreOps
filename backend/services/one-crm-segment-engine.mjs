@@ -29,7 +29,7 @@ export function compileSegment(expression){
   }
   if(spec.kind==='list'){
    if(operator!=='contains'||typeof value!=='string'||!value.trim()||value.length>80)throw Error('Invalid list rule');
-   return p=>Array.isArray(p.stores)&&p.stores.includes(value);
+   return p=>Array.isArray(p[field])&&p[field].includes(value);
   }
   if(!ops.has(operator)||!Number.isSafeInteger(value)||value<spec.min||value>spec.max)throw Error('Invalid numeric rule');
   return p=>{const x=p[field];if(!Number.isSafeInteger(x))return false;switch(operator){case 'eq':return x===value;case 'gte':return x>=value;case 'lte':return x<=value;case 'gt':return x>value;case 'lt':return x<value;default:return false}};
