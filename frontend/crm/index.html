@@ -386,7 +386,9 @@ function buildCustomerEvidence({tenantId,customerToken,windowStart,asOf,tickets,
  }
  const ranked=map=>[...map.values()].sort((a,b)=>b.netMinor-a.netMinor||a.key.localeCompare(b.key));
  const profile={recencyDays:lastPurchase?Math.round((Date.parse(asOf)-Date.parse(lastPurchase))/86400000):null,purchaseTickets,netMinor};
- return {profile,rfm:scoreRfm(profile),categories:ranked(categories),products:ranked(products),timeline:timeline.sort((a,b)=>b.date.localeCompare(a.date)),method:'verified-observed-evidence',activationEnabled:false};
+ const categoryRanking=ranked(categories),productRanking=ranked(products);
+ const topThree=rows=>rows.filter(x=>x.netMinor>0).slice(0,3).map(x=>x.key);
+ return {profile,rfm:scoreRfm(profile),categories:categoryRanking,products:productRanking,segmentAttributes:{preferredCategories:topThree(categoryRanking),preferredProducts:topThree(productRanking)},timeline:timeline.sort((a,b)=>b.date.localeCompare(a.date)),method:'verified-observed-evidence',activationEnabled:false};
 }
 ;return {scoreRfm,buildCustomerEvidence}})();
 const demoCatalog=[['Fruits & légumes','Pommes'],['Épicerie','Pâtes'],['Produits laitiers','Yaourt'],['Boissons','Eau minérale'],['Hygiène','Savon'],['Boulangerie','Pain']];
@@ -401,7 +403,7 @@ function demoEvidence(c){
 const segmentEvidenceCache=new Map();
 function demoSegmentProfile(c){
  if(segmentEvidenceCache.has(c.id))return segmentEvidenceCache.get(c.id);
- const e=demoEvidence(c),p={...e.profile,tenantId:'demo',customerToken:c.id,averageNetMinor:Math.round(e.profile.netMinor/e.profile.purchaseTickets),stores:[c.store],rfmTotal:e.rfm.total,risk:e.rfm.risk,preferredCategories:e.categories.filter(x=>x.netMinor>0).slice(0,3).map(x=>x.key),preferredProducts:e.products.filter(x=>x.netMinor>0).slice(0,3).map(x=>x.key)};
+ const e=demoEvidence(c),p={...e.profile,tenantId:'demo',customerToken:c.id,averageNetMinor:Math.round(e.profile.netMinor/e.profile.purchaseTickets),stores:[c.store],rfmTotal:e.rfm.total,risk:e.rfm.risk,...e.segmentAttributes};
  segmentEvidenceCache.set(c.id,p);return p
 }
 function renderCustomerIntelligence(c){
