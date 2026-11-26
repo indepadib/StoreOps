@@ -250,7 +250,7 @@ async function readIdentity(){
   if(x.status==='UNAVAILABLE'){status.textContent='Identité indisponible · '+(/^IDENTITY_[A-Z_]+$/.test(x.reason||'')?x.reason:'ERREUR_SOURCE');return}
   const missing='Non renseigné';
   if(x.partyType==='ORGANIZATION'){metric(out,'Raison sociale',x.organizationName||missing)}else{metric(out,'Prénom',x.firstName||missing);metric(out,'Nom',x.lastName||missing)}
-  metric(out,'Téléphone',x.phone||(x.status==='PARTIAL'?'Non disponible':missing));metric(out,'Email',x.email||(x.status==='PARTIAL'?'Non disponible':missing));status.textContent=x.status==='PARTIAL'?'Identité lue · champs de contact non disponibles.':'D365 · compte et entité juridique vérifiés. Consentement marketing non vérifié.';
+  metric(out,'Téléphone',x.phone||(x.status==='PARTIAL'?'Non disponible':missing));metric(out,'Email',x.email||(x.status==='PARTIAL'?'Non disponible':missing));if(x.addressStatus==='READY'&&[x.street,x.city,x.postalCode,x.countryRegion].every(optional)){for(const [label,value] of [['Adresse',x.street],['Ville',x.city],['Code postal',x.postalCode],['Pays / région',x.countryRegion]])metric(out,label,value||missing)}else if(x.addressStatus==='UNAVAILABLE'){metric(out,'Adresse principale','Non disponible dans la source')}status.textContent=x.status==='PARTIAL'?'Identité lue · champs de contact non disponibles.':'D365 · compte et entité juridique vérifiés. Consentement marketing non vérifié.';
  }catch{if(active())status.textContent='Lecture de l’identité indisponible. Réessayez.'}finally{if(active())btn.disabled=false}
 }
 
