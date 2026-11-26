@@ -24,20 +24,20 @@ export function projectCustomerMaster(master,page,search=''){
  if(page>Math.max(1,Math.ceil(filtered.length/SIZE)))return unavailable('DIRECTORY_PAGE_UNAVAILABLE');
  return {status:'READY',source:SOURCE,scope:master.scope,checkedAt:master.checkedAt,totalAccounts:master.rows.length,matchedAccounts:filtered.length,search,page,pageSize:SIZE,rows:filtered.slice((page-1)*SIZE,page*SIZE),identityBasis:'D365_LEGAL_ENTITY_ACCOUNT',historyStatus:'NOT_CONNECTED',activationEnabled:false};
 }
-export function makeCustomerDirectoryGateway({listStores,canAccessStore,readMaster,readProfile=null,pilotStores=''}){
+export function makeCustomerDirectoryGateway({listStores,canAccessStore,readMaster,readProfile=null,readHistory=null,pilotStores=''}){
  if([listStores,canAccessStore,readMaster].some(f=>typeof f!=='function'))throw Error('Missing dependencies');
  return async({session,dynamicsMode,method,query})=>{
   const u=session?.user;
   if(!['entra','local'].includes(session?.mode)||!u||!(u.role==='ops_director'||u.permissions_profile==='platform_admin'))return {status:403,data:{error:'Accès professionnel requis.'}};
   if(method!=='GET')return {status:405,data:{error:'Lecture uniquement.'}};
   if(dynamicsMode!=='live')return {status:503,data:unavailable('LIVE_SOURCE_REQUIRED')};
-  const keys=[...query.keys()],p=query.get('page')||'1',search=query.get('q')||'',accountRef=query.get('accountRef');
-  if(new Set(keys).size!==keys.length||keys.some(k=>!['page','q','accountRef'].includes(k))||search.length>160||/[\x00-\x1f]/.test(search)||!/^\d{1,5}$/.test(p)||Number(p)<1||(accountRef!==null&&(keys.length!==1||!id(accountRef)||typeof readProfile!=='function')))return {status:400,data:unavailable('INVALID_SELECTION')};
+  const keys=[...query.keys()],p=query.get('page')||'1',search=query.get('q')||'',accountRef=query.get('accountRef'),history=query.get('history');
+  if(new Set(keys).size!==keys.length||keys.some(k=>!['page','q','accountRef','history'].includes(k))||search.length>160||/[\x00-\x1f]/.test(search)||!/^\d{1,5}$/.test(p)||Number(p)<1||(history!==null&&(history!=='1'||!id(accountRef)||query.has('q')||typeof readHistory!=='function'))||(history===null&&accountRef!==null&&(keys.length!==1||!id(accountRef)||typeof readProfile!=='function')))return {status:400,data:unavailable('INVALID_SELECTION')};
   // Unattributed accounts cannot be safely released to a store-restricted principal.
   // Require authorization for the entire active StoreOps network. The pilot store list
   // is a transaction scope, not the complete network or the legal-entity customer master.
   const scope=parseObservedPilotStores(pilotStores),stores=await listStores();
   if(!scope.size||!Array.isArray(stores)||!stores.length||new Set(stores.map(s=>s.id)).size!==stores.length||[...scope].some(id=>!stores.some(s=>s.id===id))||stores.some(s=>!canAccessStore(u,s.id)))return {status:403,data:{code:'CRM_NETWORK_ACCESS_REQUIRED',error:'Accès réseau complet requis pour le référentiel.'}};
-  try{const master=await readMaster();if(accountRef!==null){const row=master.rows.find(r=>r.accountRef===accountRef);if(!row)return {status:404,data:unavailable('ACCOUNT_NOT_FOUND')};return {status:200,data:await readProfile(row)}}return {status:200,data:projectCustomerMaster(master,Number(p),search)}}catch{return {status:503,data:{...unavailable('CUSTOMER_MASTER_READ_FAILED'),code:'CUSTOMER_MASTER_READ_FAILED'}}}
+  try{const master=await readMaster();if(accountRef!==null){const row=master.rows.find(r=>r.accountRef===accountRef);if(!row)return {status:404,data:unavailable('ACCOUNT_NOT_FOUND')};return {status:200,data:history==='1'?await readHistory(row,stores.filter(s=>scope.has(s.id)),Number(p)):await readProfile(row)}}return {status:200,data:projectCustomerMaster(master,Number(p),search)}}catch{return {status:503,data:{...unavailable('CUSTOMER_MASTER_READ_FAILED'),code:'CUSTOMER_MASTER_READ_FAILED'}}}
  };
 }
