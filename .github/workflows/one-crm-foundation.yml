@@ -40,6 +40,7 @@ jobs:
       - run: node backend/tests/one-crm-offers.mjs
       - run: node backend/tests/one-crm-send-time.mjs
       - run: node backend/tests/one-crm-copilot.mjs
+      - run: node backend/tests/one-crm-agent.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
