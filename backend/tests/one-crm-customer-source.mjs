@@ -17,3 +17,15 @@ await assert.rejects(()=>readDirectorySourcePage({company,page:1,read:async()=>(
 
 await readDirectorySourcePage({company,page:1,search:'CLT-01',read:async(_,o)=>{assert.ok(o.filter.includes("AccountNum eq '*CLT-01*'"));assert.ok(!o.filter.includes('startswith('));return {value:[rows[0]]}}});
 await assert.rejects(()=>readDirectorySourceCount({company,read:async()=>({value:[{AccountNum:'CAC0001'}],'@odata.count':1})}),/COUNT_UNAVAILABLE/);
+
+const mixed=[...Array.from({length:520},(_,i)=>({...rows[0],AccountNum:'CAC'+String(i).padStart(4,'0')})),...rows];
+const fallbackRead=async(_,opts)=>{
+ if(opts.filter.includes("AccountNum eq 'CLT*'"))throw Object.assign(Error('Unsupported filter'),{details:{httpStatus:400}});
+ assert.ok(!opts.filter.includes("AccountNum"));
+ const skip=Number(new URLSearchParams(opts.extra).get('$skip')||0);return {value:mixed.slice(skip,skip+opts.top)};
+};
+const fallbackPage=await readDirectorySourcePage({company,page:1,read:fallbackRead});assert.equal(fallbackPage.rows.length,50);assert.equal(fallbackPage.hasMore,true);assert.ok(fallbackPage.rows.every(r=>r.accountRef.startsWith('CLT')));
+const fallbackSecond=await readDirectorySourcePage({company,page:2,read:fallbackRead});assert.equal(fallbackSecond.rows.length,3);assert.equal(fallbackSecond.hasMore,false);
+assert.equal((await readDirectorySourceCount({company,read:fallbackRead})).totalAccounts,53);
+assert.equal((await readDirectorySourcePage({company,page:1,search:'CLT-01',read:fallbackRead})).rows.length,1);
+await assert.rejects(()=>readDirectorySourcePage({company,page:1,read:async()=>{throw Object.assign(Error('Forbidden'),{details:{httpStatus:403}})}}),/Forbidden/);

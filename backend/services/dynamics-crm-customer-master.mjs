@@ -1,4 +1,4 @@
-import {isLoyaltyCustomerAccount,loyaltyCustomerFilter} from './one-crm-customer-source.mjs';
+import {isLoyaltyCustomerAccount,loyaltyCustomerFilter,isCltFilterRejected,scanCltAccounts} from './one-crm-customer-source.mjs';
 import {config} from '../config.mjs';
 import {odataGet} from './dynamics.mjs';
 import {readCompleteCollection} from './dynamics-account-creations.mjs';
@@ -11,7 +11,10 @@ export async function readCustomerMaster(){
  if(cache?.key===key&&cache.expires>Date.now())return cache.value;
  if(inflight?.key===key)return inflight.promise;
  const promise=(async()=>{
-  const rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum'),select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet);
+  let rows;
+  try{rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum'),select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet)}
+  catch(e){if(!isCltFilterRejected(e))throw e;const result=await scanCltAccounts({company,read:odataGet});if(!result.complete)throw Error('Incomplete CLT master');rows=result.rows.map(r=>({AccountNum:r.accountRef,SysCreatedDateTime:r.createdAt,SysDataAreaId:company,CustGroup:'Retail'}))}
+
   const value=normalizeCustomerMaster(rows,{company,checkedAt:new Date().toISOString()});
   cache={key,value,expires:Date.now()+300000};return value;
  })();
