@@ -17,17 +17,17 @@ export async function readCustomerWallet({accountRef,company,stores,settings,rea
   const filter='LoyaltyTransactionCompany eq '+quote(company)+' and CustomerAccount eq '+quote(accountRef)+' and ('+units.map(u=>'OperatingUnitNumber eq '+quote(u)).join(' or ')+')';
   const rows=await readCollection('RetailLoyaltyCardRewardPointTransactionV2',{filter,select:'LoyaltyTransactionCompany,OperatingUnitNumber,storeId,Terminal,TransactionNumber,LoyaltyTransactionLineNumber,EntryDate,EntryType,RewardPointId,RewardPointAmountQty,CardNumber,CustomerAccount',extra:'cross-company=true'});
   if(!Array.isArray(rows)||rows.length>10000)return unavailable('WALLET_SOURCE_LIMIT');
-  let credits=0,reversals=0;const seen=new Map(),otherTypes=new Set();
+  let credits=0,reversals=0,redeemPositive=0,redeemNegative=0,redeemCount=0,earnCount=0;const seen=new Map();
   for(const r of rows){
    if(clean(r.LoyaltyTransactionCompany)!==company||clean(r.CustomerAccount)!==accountRef||!units.includes(clean(r.OperatingUnitNumber))||!Number.isFinite(Date.parse(r.EntryDate)))throw Error('Source scope');
-   if(kind(r.EntryType)!=='EARN'){otherTypes.add(kind(r.EntryType));continue}
+   const type=kind(r.EntryType);if(!['EARN','REDEEM'].includes(type))continue;
    const id=clean(r.RewardPointId);if(!rewards.has(id))throw Error('Unknown reward');if(!rewards.get(id))continue;
    if(r.RewardPointAmountQty==null||clean(r.RewardPointAmountQty)===''||!Number.isFinite(Number(r.RewardPointAmountQty))||!clean(r.TransactionNumber)||!clean(r.LoyaltyTransactionLineNumber))throw Error('Entry identity');
    const key=JSON.stringify([company,r.OperatingUnitNumber,r.storeId,r.Terminal,r.TransactionNumber,r.LoyaltyTransactionLineNumber,r.EntryDate,r.EntryType,id,r.CardNumber,accountRef]),amount=Number(r.RewardPointAmountQty);
    if(seen.has(key)){if(seen.get(key)!==amount)throw Error('Entry conflict');continue}
-   seen.set(key,amount);if(amount>=0)credits+=amount;else reversals+=amount;
+   seen.set(key,amount);if(type==='REDEEM'){redeemCount++;if(amount>=0)redeemPositive+=amount;else redeemNegative+=amount}else{earnCount++;if(amount>=0)credits+=amount;else reversals+=amount}
   }
-  if(![credits,reversals,credits+reversals].every(n=>Number.isSafeInteger(Math.round(n*100))))throw Error('Amount overflow');
-  return {...base,status:'READY',reason:null,earn:money(credits+reversals),credits:money(credits),reversals:money(reversals),entryCount:seen.size,storeIds:stores.map(s=>s.id),checkedAt:new Date().toISOString(),basis:'ACCOUNT_ATTRIBUTED_MONETARY_EARN_NET',coverage:'ACCOUNT_FIELD_ONLY'};
+  if(![credits,reversals,credits+reversals,redeemPositive,redeemNegative,redeemPositive+redeemNegative].every(n=>Number.isSafeInteger(Math.round(n*100))))throw Error('Amount overflow');
+  return {...base,status:'READY',reason:null,earn:money(credits+reversals),credits:money(credits),reversals:money(reversals),entryCount:earnCount,observedRedemption:{basis:'ACCOUNT_ATTRIBUTED_MAD_REDEEM_SIGNED_UNRECONCILED',entryCount:redeemCount,positive:money(redeemPositive),negative:money(redeemNegative),netSigned:money(redeemPositive+redeemNegative)},storeIds:stores.map(s=>s.id),checkedAt:new Date().toISOString(),basis:'ACCOUNT_ATTRIBUTED_MONETARY_EARN_NET',coverage:'ACCOUNT_FIELD_ONLY'};
  }catch(e){return unavailable(e?.code==='D365_REQUEST_TIMEOUT'?'WALLET_SOURCE_TIMEOUT':'WALLET_SOURCE_UNAVAILABLE')}
 }
