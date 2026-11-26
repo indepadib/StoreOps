@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {projectObservedCustomers,projectObservedAssociations} from '../services/one-crm-observed-insights.mjs';
+import {makeObservedTicketsGateway} from '../services/one-crm-observed-tickets.mjs';
+const storeId='val-fleuri',date='2026-11-25',scope={storeId,date,page:1};
+const baskets=Array.from({length:25},(_,i)=>({key:'private-ticket-'+String(i).padStart(2,'0'),storeId,date,customerToken:'private-client-'+i,items:[{productNumber:'SKU-A',sales:5},{productNumber:'SKU-B',sales:3},...(i<9?[{productNumber:'SKU-C',sales:2}]:[])]}));
+baskets.push({...baskets[0],key:'private-ticket-repeat'});
+const e={source:'D365/RetailTransactionSalesTransBIEntities',storeId,startDate:date,endDate:date,checkedAt:'2026-11-26T10:00:00Z',rejectedIdentity:0,baskets};
+const c=projectObservedCustomers(e,scope);assert.equal(c.totalCustomers,25);assert.equal(c.rows.length,20);assert.equal(c.rows[0].tickets,2);assert.equal(c.rows[0].positiveTtc,20);assert.equal(c.rows[0].distinctProducts,3);assert.equal(projectObservedCustomers(e,{...scope,page:2}).rows.length,5);
+const a=projectObservedAssociations(e,scope);assert.equal(a.rows.length,1);assert.equal(a.rows[0].together,26);assert.equal(a.rows[0].productA,'SKU-A');assert.equal(a.rows[0].lift,1);
+assert.ok(!JSON.stringify([a,c]).includes('private-'));
+assert.equal(projectObservedCustomers({...e,baskets:baskets.slice(0,9)},scope).status,'SUPPRESSED');assert.equal(projectObservedAssociations({...e,rejectedIdentity:1},scope).status,'UNAVAILABLE');
+const gate=makeObservedTicketsGateway({listStores:()=>[{id:storeId}],canAccessStore:()=>true,sourceReady:()=>true,readDay:async()=>e,today:()=> '2026-11-26',pilotStores:storeId,project:projectObservedCustomers});
+const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({storeId,date,page:'1'})};assert.equal((await gate(req)).data.totalCustomers,25);assert.equal((await gate({...req,session:{mode:'demo',user:{role:'ops_director'}}})).status,403);
+console.log('CRM observed customers and product associations passed');

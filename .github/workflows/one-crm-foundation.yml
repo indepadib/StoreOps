@@ -56,6 +56,7 @@ jobs:
       - run: node backend/tests/one-crm-observed-sales.mjs
       - run: node backend/tests/one-crm-observed-loyalty.mjs
       - run: node backend/tests/one-crm-observed-tickets.mjs
+      - run: node backend/tests/one-crm-observed-insights.mjs
       - run: node --check backend/server.mjs
   postgres-contract:
     runs-on: ubuntu-latest
