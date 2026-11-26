@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {projectTicketPage,makeObservedTicketsGateway} from '../services/one-crm-observed-tickets.mjs';
+const date='2026-11-25',storeId='val-fleuri';
+const baskets=Array.from({length:25},(_,i)=>({key:'private-receipt-'+String(i).padStart(2,'0'),storeId,date,customerToken:'private-client-'+i,items:[{productNumber:'SKU-1',productName:'Produit test',unit:'KG',units:0.5,sales:10.25,discountAmount:1.5,offerIds:['private-offer']},{productNumber:'SKU-2',sales:5,units:1}]}));
+const evidence={source:'D365/RetailTransactionSalesTransBIEntities',storeId,startDate:date,endDate:date,checkedAt:'2026-11-26T10:00:00Z',rejectedIdentity:0,baskets};
+const a=projectTicketPage(evidence,{storeId,date,page:1}),b=projectTicketPage(evidence,{storeId,date,page:2});
+assert.equal(a.rows.length,20);assert.equal(b.rows.length,5);assert.equal(b.rows[0].ordinal,21);assert.equal(a.rows[0].positiveTtc,15.25);assert.equal(a.rows[0].items[0].quantity,.5);assert.equal(a.rows[0].items[0].observedDiscount,1.5);assert.equal(a.rows[0].items[1].productName,null);assert.ok(!JSON.stringify(a).includes('private-'));
+assert.equal(projectTicketPage(evidence,{storeId,date,page:3}).status,'UNAVAILABLE');
+assert.equal(projectTicketPage({...evidence,baskets:baskets.slice(0,9)},{storeId,date,page:1}).status,'SUPPRESSED');
+assert.equal(projectTicketPage({...evidence,rejectedIdentity:1},{storeId,date,page:1}).status,'UNAVAILABLE');
+let reads=0;const gate=makeObservedTicketsGateway({listStores:()=>[{id:storeId},{id:'trefle'}],canAccessStore:()=>true,sourceReady:()=>true,readDay:async()=>{reads++;return evidence},today:()=> '2026-11-26',pilotStores:storeId});
+const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({storeId,date,page:'1'})};
+assert.equal((await gate(req)).data.status,'READY');
+for(const patch of [{session:{mode:'demo',user:{role:'ops_director'}}},{session:{mode:'entra',user:{role:'employee'}}},{dynamicsMode:'simulated'},{method:'POST'},{query:new URLSearchParams({storeId:'trefle',date,page:'1'})},{query:new URLSearchParams({storeId,date,page:'0'})},{query:new URLSearchParams({storeId,date,page:'1',force:'true'})}])assert.notEqual((await gate({...req,...patch})).data.status,'READY');
+assert.equal(reads,1);
+console.log('CRM observed ticket contents passed');

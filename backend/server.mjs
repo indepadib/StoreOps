@@ -92,6 +92,22 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
+  if(path==='/api/crm/observed-loyalty'){
+    const {makeObservedLoyaltyGateway}=await import('./services/one-crm-observed-loyalty.mjs');
+    const {readLoyaltyRange}=await import('./services/analytics-loyalty-range.mjs');
+    const gateway=makeObservedLoyaltyGateway({listStores:()=>db.prepare('SELECT id,name,code FROM stores WHERE active=1 ORDER BY name').all(),canAccessStore,readRange:readLoyaltyRange,pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||'',today:()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())});
+    const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    return json(req,res,result.status,result.data);
+  }
+  if(path==='/api/crm/observed-tickets'){
+    const {makeObservedTicketsGateway}=await import('./services/one-crm-observed-tickets.mjs');
+    const {readStoreBasketEvidence,salesIntegrationConfig}=await import('./services/dynamics-sales.mjs');
+    const gateway=makeObservedTicketsGateway({listStores:()=>db.prepare('SELECT id,name FROM stores WHERE active=1 ORDER BY name').all(),canAccessStore,sourceReady:id=>{const c=salesIntegrationConfig(id);return c.ready&&c.entity==='RetailTransactionSalesTransBIEntities'},readDay:(id,date)=>readStoreBasketEvidence(id,{startDate:date,endDate:date}),pilotStores:process.env.ONE_CRM_PILOT_STORE_IDS||'',today:()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())});
+    const result=await gateway({session,dynamicsMode:config.dynamics.mode,method:req.method,query:url.searchParams});
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    return json(req,res,result.status,result.data);
+  }
   if(path==='/api/crm/observed-sales'){
     const {makeObservedSalesGateway}=await import('./services/one-crm-observed-sales.mjs');
     const {readStoreBasketEvidence,salesIntegrationConfig}=await import('./services/dynamics-sales.mjs');

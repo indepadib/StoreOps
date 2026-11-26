@@ -35,36 +35,83 @@ export async function openCrmPilot(){
  return true;
 }
 
-const liveStatus=()=>document.getElementById('crmLiveStatus');
-let generation=0;
-function clearLiveObservation(){generation++;const results=document.getElementById('crmLiveMetrics');if(results)results.replaceChildren();const store=document.getElementById('crmLiveStore'),run=document.getElementById('crmLiveRead');if(store)store.replaceChildren();if(run)run.disabled=true;if(liveStatus())liveStatus().textContent='Session à vérifier. Aucun résultat affiché.'}
+const el=id=>document.getElementById(id);
+const liveStatus=()=>el('crmLiveStatus');
+const money=n=>new Intl.NumberFormat('fr-MA',{style:'currency',currency:'MAD',maximumFractionDigits:2}).format(n);
+const fmt=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:3}).format(n);
+let generation=0,ticketGeneration=0,loyaltyGeneration=0,summary=null,currentPage=1;
+function metric(container,label,value){const d=document.createElement('div'),b=document.createElement('strong');d.append(document.createTextNode(label));b.textContent=String(value);d.append(b);container.append(d)}
+function clearDetails(){
+ ticketGeneration++;loyaltyGeneration++;summary=null;currentPage=1;
+ el('crmTicketRows')?.replaceChildren();el('crmLoyaltyMetrics')?.replaceChildren();
+ if(el('crmTicketPager'))el('crmTicketPager').hidden=true;
+ if(el('crmTicketStatus'))el('crmTicketStatus').textContent='Aucun ticket affiché. Chargez une journée.';
+ if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
+ if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
+}
+function clearLiveObservation(){generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
+ if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
+ const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
+ const str=v=>typeof v==='string'&&v.trim().length>0&&v.length<=160;
+ return x.rows.every((r,i)=>r.ordinal===(page-1)*20+i+1&&numeric(r.positiveTtc)&&Array.isArray(r.items)&&r.items.length>0&&r.items.length<=500&&r.items.every(z=>str(z.productNumber)&&(z.productName===null||str(z.productName))&&(z.unit===null||str(z.unit))&&(z.quantity===null||numeric(z.quantity)&&z.quantity>0)&&numeric(z.positiveTtc)&&(z.observedDiscount===null||numeric(z.observedDiscount)))&&Math.abs(r.items.reduce((n,z)=>n+z.positiveTtc,0)-r.positiveTtc)<=0.006*r.items.length+0.011);
+}
+function renderTickets(rows){
+ const out=el('crmTicketRows');out.replaceChildren();
+ for(const r of rows){const d=document.createElement('details'),s=document.createElement('summary'),l=document.createElement('span'),v=document.createElement('span');l.textContent='Panier '+r.ordinal+' · '+r.items.length+' référence(s)/unité(s)';v.textContent=money(r.positiveTtc);s.append(l,v);d.append(s);
+  const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),hr=document.createElement('tr'),body=document.createElement('tbody');wrap.className='ticket-items';for(const label of ['Article','Quantité','TTC positif','Remise observée']){const th=document.createElement('th');th.textContent=label;hr.append(th)}head.append(hr);table.append(head,body);
+  for(const x of r.items){const tr=document.createElement('tr'),product=document.createElement('td');product.textContent=x.productName||x.productNumber;if(x.productName){const code=document.createElement('small');code.textContent=x.productNumber;product.append(code)}tr.append(product);for(const val of [x.quantity===null?'Non disponible':fmt(x.quantity)+(x.unit?' '+x.unit:''),money(x.positiveTtc),x.observedDiscount===null?'Non disponible':money(x.observedDiscount)]){const td=document.createElement('td');td.textContent=val;tr.append(td)}body.append(tr)}wrap.append(table);d.append(wrap);out.append(d)
+ }
+}
 function setupLiveObservation(){
- const store=document.getElementById('crmLiveStore'),date=document.getElementById('crmLiveDate'),run=document.getElementById('crmLiveRead'),load=document.getElementById('crmLiveLoad'),metrics=document.getElementById('crmLiveMetrics');
- if(!store||!date||!run||!load||!metrics)return;
+ const store=el('crmLiveStore'),date=el('crmLiveDate'),run=el('crmLiveRead'),load=el('crmLiveLoad'),metrics=el('crmLiveMetrics'),loyalty=el('crmLoyaltyRead');
+ if(!store||!date||!run||!load||!metrics||!loyalty)return;
  const now=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),offset=d=>new Date(Date.parse(now)-d*86400000).toISOString().slice(0,10);
  date.max=offset(1);date.min=offset(31);date.value=date.max;
- const valid=()=>document.documentElement.classList.contains('crm-pilot-open'),clear=()=>{generation++;metrics.replaceChildren();liveStatus().textContent='Sélection modifiée. Relancez la lecture.';run.disabled=!store.value||!date.value||!date.checkValidity()};
+ const valid=()=>document.documentElement.classList.contains('crm-pilot-open'),selection=()=>valid()&&!!store.value&&!!date.value&&date.checkValidity();
+ const clear=()=>{generation++;metrics.replaceChildren();clearDetails();liveStatus().textContent='Sélection modifiée. Chargez la journée.';run.disabled=!selection();loyalty.disabled=!selection()};
  store.onchange=clear;date.onchange=clear;
+ const readTickets=async(page)=>{
+  if(!selection()||!summary)return;const g=generation,tg=++ticketGeneration,id=store.value,day=date.value,expected=summary;
+  el('crmTicketRows').replaceChildren();el('crmTicketPager').hidden=true;el('crmTicketStatus').textContent='Lecture du contenu des paniers…';
+  try{const x=await api('/api/crm/observed-tickets?'+new URLSearchParams({storeId:id,date:day,page:String(page)}),{noRetry:true,cache:'no-store'});if(g!==generation||tg!==ticketGeneration||!valid())return;
+   if(!validateTicketPage(x,{storeId:id,date:day,page,checkedAt:expected.checkedAt,tickets:expected.tickets}))throw Error('Ticket evidence mismatch');
+   renderTickets(x.rows);currentPage=page;const total=Math.ceil(x.totalTickets/20);el('crmTicketStatus').textContent='D365 · '+day+' · '+fmt(x.totalTickets)+' paniers observés. Retours exclus.';el('crmTicketPage').textContent='Page '+page+' / '+total;el('crmTicketPrev').disabled=page===1;el('crmTicketNext').disabled=page===total;el('crmTicketPager').hidden=false;
+  }catch{if(g===generation&&tg===ticketGeneration&&valid()){el('crmTicketRows').replaceChildren();el('crmTicketStatus').textContent='Contenu indisponible ou extraction différente. Rechargez la journée.'}}
+ };
+ el('crmTicketPrev').onclick=()=>readTickets(currentPage-1);el('crmTicketNext').onclick=()=>readTickets(currentPage+1);
  load.onclick=async()=>{
-  const g=++generation;metrics.replaceChildren();store.replaceChildren();run.disabled=true;load.disabled=true;liveStatus().textContent='Vérification des sources configurées…';
+  const g=++generation;metrics.replaceChildren();clearDetails();store.replaceChildren();run.disabled=true;load.disabled=true;liveStatus().textContent='Vérification des sources configurées…';
   try{
    const data=await api('/api/crm/observed-sales',{noRetry:true,cache:'no-store'});if(g!==generation||!valid())return;
    if(data?.status!=='READY'||!Array.isArray(data.stores))throw Error('Sources indisponibles');
-   for(const s of data.stores){if(typeof s.id!=='string'||typeof s.name!=='string')throw Error('Source invalide');const o=document.createElement('option');o.value=s.id;o.textContent=s.name;store.append(o)}
-   liveStatus().textContent=store.options.length?'Sources configurées. Choisissez une journée et lancez la lecture.':'Aucun magasin connecté et autorisé.';run.disabled=!store.value;
-  }catch(e){if(g===generation&&valid())liveStatus().textContent='Sources indisponibles. Vérifiez le déploiement et la connexion Dynamics.'}finally{load.disabled=false}
+   const options=[];for(const s of data.stores){if(typeof s.id!=='string'||typeof s.name!=='string')throw Error('Source invalide');const o=document.createElement('option');o.value=s.id;o.textContent=s.name;options.push(o)}store.replaceChildren(...options);
+   liveStatus().textContent=store.options.length?'Sources configurées. Choisissez une journée et lancez la lecture.':'Aucun magasin connecté et autorisé.';run.disabled=!selection();loyalty.disabled=!selection();
+  }catch{if(g===generation&&valid())liveStatus().textContent='Sources indisponibles. Vérifiez le déploiement et la connexion Dynamics.'}finally{load.disabled=false}
  };
  run.onclick=async()=>{
-  if(!valid()||!store.value||!date.value||!date.checkValidity())return;
-  const g=++generation,id=store.value,day=date.value;metrics.replaceChildren();run.disabled=true;liveStatus().textContent='Lecture des tickets observés…';
+  if(!selection())return;
+  const g=++generation,id=store.value,day=date.value;metrics.replaceChildren();clearDetails();run.disabled=true;loyalty.disabled=true;liveStatus().textContent='Lecture des tickets observés…';
   try{
    const x=await api('/api/crm/observed-sales?'+new URLSearchParams({storeId:id,date:day}),{noRetry:true,cache:'no-store'});
    if(g!==generation||!valid())return;
    if(x?.status==='SUPPRESSED'){liveStatus().textContent='Résultat masqué : cohorte trop petite.';return}
    if(!validateObservationResponse(x,{storeId:id,date:day}))throw Error('Evidence unavailable');
-   const money=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:2}).format(n)+' DH';
-   for(const [label,v] of [['Clients identifiés observés',x.identifiedCustomers],['Tickets observés',x.tickets],['Tickets identifiés',x.identifiedTickets],['Ventes TTC positives',money(x.positiveSales)],['Ventes positives identifiées',money(x.identifiedPositiveSales)],['Panier positif moyen',money(x.averagePositiveBasket)]]){const d=document.createElement('div'),b=document.createElement('strong');d.append(document.createTextNode(label));b.textContent=String(v);d.append(b);metrics.append(d)}
+   summary=x;
+   for(const [label,v] of [['Clients identifiés observés',fmt(x.identifiedCustomers)],['Tickets observés',fmt(x.tickets)],['Tickets identifiés',fmt(x.identifiedTickets)],['Ventes TTC positives',money(x.positiveSales)],['Ventes positives identifiées',money(x.identifiedPositiveSales)],['Panier positif moyen',money(x.averagePositiveBasket)]])metric(metrics,label,v);
    liveStatus().textContent='D365 · '+day+' · extraction '+x.checkedAt+' · rapprochement financier non vérifié. Retours exclus.';
-  }catch(e){if(g===generation&&valid()){metrics.replaceChildren();liveStatus().textContent='Données indisponibles ou insuffisantes. Aucun montant fictif substitué.'}}finally{if(g===generation&&valid())run.disabled=false}
+   await readTickets(1);
+  }catch{if(g===generation&&valid()){metrics.replaceChildren();clearDetails();liveStatus().textContent='Données indisponibles ou insuffisantes. Aucun montant fictif substitué.'}}finally{if(g===generation&&valid()){run.disabled=!selection();loyalty.disabled=!selection()}}
  };
+ loyalty.onclick=async()=>{
+  if(!selection())return;const g=generation,lg=++loyaltyGeneration,id=store.value,day=date.value,out=el('crmLoyaltyMetrics'),status=el('crmLoyaltyStatus');out.replaceChildren();loyalty.disabled=true;status.textContent='Lecture fidélité Dynamics…';
+  try{const x=await api('/api/crm/observed-loyalty?'+new URLSearchParams({storeId:id,date:day}),{noRetry:true,cache:'no-store'});if(g!==generation||lg!==loyaltyGeneration||!valid())return;
+   const count=v=>v===null||Number.isSafeInteger(v)&&(v===0||v>=10);
+   if(!['READY','UNAVAILABLE'].includes(x?.status)||x.storeId!==id||x.date!==day||!Number.isFinite(Date.parse(x.checkedAt))||x.currency!=='MAD'||x.attribution!=='EARLIEST_LOYALTY_CARD_OPERATING_UNIT'||x.activationEnabled!==false||!count(x.accountCreations)||!count(x.cardEnrollments)||x.walletEarn!==null||!['READY','PARTIAL','SUPPRESSED','UNAVAILABLE'].includes(x.accountStatus)||!['READY','SUPPRESSED','UNAVAILABLE'].includes(x.cardStatus))throw Error('Loyalty evidence unavailable');
+   const display=(value,state)=>value!==null?fmt(value):state==='SUPPRESSED'?'Masqué':'Non disponible';
+   metric(out,'Comptes créés attribués',display(x.accountCreations,x.accountStatus));metric(out,'Cartes inscrites',display(x.cardEnrollments,x.cardStatus));metric(out,'Wallet Earn','Non disponible');
+   status.textContent='D365 · '+day+' · attribution '+(x.accountStatus==='PARTIAL'?'partielle':'selon première carte')+' · extraction '+x.checkedAt;
+  }catch{if(g===generation&&lg===loyaltyGeneration&&valid()){out.replaceChildren();status.textContent='Données fidélité indisponibles.'}}finally{if(g===generation&&lg===loyaltyGeneration&&valid())loyalty.disabled=!selection()}
+ };
+ load.click();
 }
