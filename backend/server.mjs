@@ -92,6 +92,16 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   const session=await sessionFromRequest(req),user=session.user;
+  if(path==='/api/crm/wallet-balance-sources'){
+    if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
+    const stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all();
+    if(!stores.length||stores.some(s=>!canAccessStore(user,s.id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    const {discoverWalletBalanceSources}=await import('./services/one-crm-wallet-balance-source.mjs');
+    const result=await discoverWalletBalanceSources({mode:config.dynamics.mode,listEntities:listDataEntities});
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    return json(req,res,200,result);
+  }
   if(path==='/api/crm/customer-directory'||path==='/api/crm/customer-identity-search'){
     const identitySearchRoute=path==='/api/crm/customer-identity-search';
     if(identitySearchRoute?req.method!=='POST':req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});

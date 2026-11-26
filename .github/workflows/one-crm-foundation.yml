@@ -62,6 +62,7 @@ jobs:
       - run: node backend/tests/one-crm-customer-history.mjs
       - run: node backend/tests/one-crm-customer-identity-source.mjs
       - run: node backend/tests/one-crm-customer-wallet.mjs
+      - run: node backend/tests/one-crm-wallet-balance-source.mjs
       - run: node --check backend/server.mjs
   postgres-contract:
     runs-on: ubuntu-latest
