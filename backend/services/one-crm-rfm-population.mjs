@@ -32,7 +32,25 @@ export function projectRfmPopulation({accounts,stores,ranges,asOf,page=1}){
   const recencyDays=(stamp(asOf)-stamp(a.lastDate))/dayMs,positiveTtc90=round(a.positiveTtc90);
   return {accountRef:a.accountRef,status:'OBSERVED_90_DAY_RFM',lastPurchase:a.lastDate,rfm:scoreObservedRfm({recencyDays,tickets90:a.tickets90,positiveTtc90})};
  });
+ // Score relative to active purchasers only; equal observations share a score.
+ const active=rows.filter(r=>r.status==='OBSERVED_90_DAY_RFM');
+ const scoreMap=(values,reverse=false)=>{
+  const sorted=values.slice().sort((a,b)=>a-b),out=new Map();
+  for(let i=0;i<sorted.length;){let j=i+1;while(j<sorted.length&&sorted[j]===sorted[i])j++;
+   const p=(i+j)/(2*sorted.length),s=Math.min(5,Math.max(1,Math.ceil(p*5)));
+   out.set(sorted[i],reverse?6-s:s);i=j;
+  }return out;
+ };
+ const reference=complete&&active.length>=20?{policy:'PILOT_ACTIVE_CUSTOMER_MIDRANK_V1',population:active.length,windowDays:90,method:'TIE_PRESERVING_EMPIRICAL_QUINTILES',activationEnabled:false}:null;
+ if(reference){
+  const rs=scoreMap(active.map(x=>x.rfm.recencyDays),true),fs=scoreMap(active.map(x=>x.rfm.tickets90)),ms=scoreMap(active.map(x=>x.rfm.positiveTtc90));
+  for(const row of active){const q=row.rfm;row.referenceScores={r:rs.get(q.recencyDays),f:fs.get(q.tickets90),m:ms.get(q.positiveTtc90)}}
+ }
  const totalAccounts=rows.length,counts=rows.reduce((m,r)=>(m[r.status]=(m[r.status]||0)+1,m),{});
  if(page>Math.max(1,Math.ceil(totalAccounts/50)))throw Error('Page out of range');
- return {status:complete?'READY':'PARTIAL',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate:start,storeIds:stores,coverage:{expectedStoreDays:expected,coveredStoreDays:covered.size,rejectedRanges,unmatchedPurchaseAccounts:unmatched.size},totalAccounts,counts,page,pageSize:50,rows:rows.slice((page-1)*50,page*50),activationEnabled:false};
+ return {status:complete?'READY':'PARTIAL',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate:start,storeIds:stores,coverage:{expectedStoreDays:expected,coveredStoreDays:covered.size,rejectedRanges,unmatchedPurchaseAccounts:unmatched.size},totalAccounts,counts,reference,referenceStatus:reference?'READY':complete?'INSUFFICIENT_ACTIVE_POPULATION':'HISTORY_INCOMPLETE',page,pageSize:50,rows:rows.slice((page-1)*50,page*50),activationEnabled:false};
+}
+
+export function isPreparedRfmRange(r,id,start,end){
+ return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
 }
