@@ -1,6 +1,7 @@
 import {mergeDailyEvidence} from '../../frontend/analytics/sales-proof-model.js';
 import {filterAndSortRows} from '../../frontend/analytics/table-analysis.js';
 import {marginEvidence} from '../../frontend/analytics/performance-evidence.js';
+import {createPeriodLoader,periodPlan} from '../../frontend/analytics/period-loader.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
@@ -8,7 +9,7 @@ const source=readFileSync(new URL('../../frontend/analytics/decision.js',import.
 const nodes=new Map(['#executiveSalesValue','#executiveComparisonValue'].map(k=>[k,{textContent:'',innerHTML:''}]));
 const listeners=new Map(),requests=[],published=[],saved=[];
 const scope={tenant:'franprix',stores:[{id:'val-fleuri'},{id:'trefle'}],selectedStoreIds:['val-fleuri','trefle'],section:'overview',periodStart:'2026-10-21',periodEnd:'2026-10-22',compareStart:'2026-10-19',compareEnd:'2026-10-20'};
-const context={mergeDailyEvidence,filterAndSortRows,marginEvidence,console,AbortController,URLSearchParams,Map,Set,Date,Intl,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail}},setTimeout:()=>0,clearTimeout(){},localStorage:{getItem:()=>null,setItem:(key,value)=>saved.push({key,value})},document:{readyState:'complete',querySelector:key=>nodes.get(key)||null,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners.set(key,fn),dispatchEvent:event=>published.push(event)},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,money:String,number:String,percent:String,api:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))}}};
+const context={createPeriodLoader,periodPlan,mergeDailyEvidence,filterAndSortRows,marginEvidence,console,AbortController,URLSearchParams,Map,Set,Date,Intl,CustomEvent:class{constructor(type,init){this.type=type;this.detail=init.detail}},setTimeout:()=>0,clearTimeout(){},localStorage:{getItem:()=>null,setItem:(key,value)=>saved.push({key,value})},document:{readyState:'complete',querySelector:key=>nodes.get(key)||null,querySelectorAll:()=>[],addEventListener:(key,fn)=>listeners.set(key,fn),dispatchEvent:event=>published.push(event)},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,money:String,number:String,percent:String,api:(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}))}}};
 vm.runInNewContext(source,context);
 assert.equal(requests.length,1);
 scope.periodEnd='2026-10-21';scope.compareStart=scope.compareEnd='2026-10-20';
@@ -45,7 +46,7 @@ console.log('PASS changed-period cancellation, late response rejection, latest r
 
 const executiveScope={...scope,periodStart:'2026-08-01',periodEnd:'2026-10-29',compareStart:'2026-05-03',compareEnd:'2026-07-31'};
 const executiveData={status:'READY',period:{startDate:executiveScope.periodStart,endDate:executiveScope.periodEnd},comparison:{startDate:executiveScope.compareStart,endDate:executiveScope.compareEnd},coverage:{storesRequested:2,currentStoresReady:2,comparisonStoresReady:2},quality:{status:'OK'},stores:[{storeId:'val-fleuri'},{storeId:'trefle'}],summary:{current:{sales:150000},previous:{sales:100000}}};
-const exactKey='retail-intelligence:decision:v36:franprix|trefle,val-fleuri|2026-08-01|2026-10-29|2026-05-03|2026-07-31';
+const exactKey='retail-intelligence:decision:v37:franprix|trefle,val-fleuri|2026-08-01|2026-10-29|2026-05-03|2026-07-31';
 function openOverview(sample,age=0){
  const calls=[],events=[];
  const copies={...context,localStorage:{getItem:key=>key===exactKey?JSON.stringify({data:sample,at:Date.now()-age}):null},document:{...context.document,addEventListener(){},dispatchEvent:event=>events.push(event)},window:{RETAIL_INTELLIGENCE:{...context.window.RETAIL_INTELLIGENCE,getState:()=>executiveScope,api:(...args)=>{calls.push(args);return new Promise(()=>{})}}}};
@@ -55,8 +56,8 @@ function openOverview(sample,age=0){
 const warm=openOverview(executiveData);
 assert.equal(warm.calls.length,0,'a complete fresh executive result should avoid 45 identical reads');
 assert.equal(warm.events.find(event=>event.detail?.cached)?.detail.data.summary.current.sales,150000);
-assert.equal(openOverview({...executiveData,coverage:{...executiveData.coverage,comparisonStoresReady:1}}).calls.length,1,'incomplete comparison must be read again');
-assert.equal(openOverview({...executiveData,comparison:{...executiveData.comparison,startDate:'2026-05-04'}}).calls.length,1,'comparison dates must match exactly');
-assert.equal(openOverview({...executiveData,stores:[{storeId:'val-fleuri'},{storeId:'other'}]}).calls.length,1,'store identity must match, not just store count');
-assert.equal(openOverview(executiveData,16*60*1000).calls.length,1,'an expired result must be read again');
+assert.equal(openOverview({...executiveData,coverage:{...executiveData.coverage,comparisonStoresReady:1}}).calls.length,2,'incomplete comparison must be read again');
+assert.equal(openOverview({...executiveData,comparison:{...executiveData.comparison,startDate:'2026-05-04'}}).calls.length,2,'comparison dates must match exactly');
+assert.equal(openOverview({...executiveData,stores:[{storeId:'val-fleuri'},{storeId:'other'}]}).calls.length,2,'store identity must match, not just store count');
+assert.equal(openOverview(executiveData,16*60*1000).calls.length,2,'an expired result must be read again');
 console.log('PASS fresh complete 90-day executive cache and coverage/date/expiry safeguards');

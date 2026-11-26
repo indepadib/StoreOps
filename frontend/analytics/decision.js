@@ -2,6 +2,8 @@ import {mergeDailyEvidence} from './sales-proof-model.js';
 import {filterAndSortRows} from './table-analysis.js';
 import {marginEvidence,performanceCard} from './performance-evidence.js';
 import {contributions,summarizeCategories} from './category-analysis.js';
+import {createPeriodLoader,periodPlan} from './period-loader.js';
+import {salesComparatives} from './sales-comparatives.js';
 (() => {
   const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const core=()=>window.RETAIL_INTELLIGENCE||window.ONE_RETAIL_ANALYTICS;
@@ -19,7 +21,8 @@ import {contributions,summarizeCategories} from './category-analysis.js';
 
   function storeScopeKey(s){return selectedStoreIds(s).sort().join(',')}
   function queryKey(s){return [s.tenant,storeScopeKey(s),s.periodStart,s.periodEnd,s.compareStart,s.compareEnd].join('|')}
-  const decisionCachePrefix='retail-intelligence:decision:v36:';
+  const decisionCachePrefix='retail-intelligence:decision:v37:';
+  const readPeriod=createPeriodLoader();
   const catalogCachePrefix='retail-intelligence:catalog:v11:';
   function readJsonStorage(key){try{return JSON.parse(localStorage.getItem(key)||'null')}catch{return null}}
   function writeJsonStorage(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{}}
@@ -36,7 +39,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       &&data.comparison?.startDate===scope.compareStart&&data.comparison?.endDate===scope.compareEnd;
   }
   function canReuseExecutiveCache(data,scope){
-    if(scope.section!=='overview'||data?.status!=='READY'||!['OK','WARN'].includes(data.quality?.status))return false;
+    if(data?.status!=='READY'||!['OK','WARN'].includes(data.quality?.status))return false;
     const storeCount=selectedStoreIds(scope).length;
     return data.coverage?.storesRequested===storeCount&&data.coverage.currentStoresReady===storeCount
       &&data.coverage.comparisonStoresReady===storeCount;
@@ -238,27 +241,16 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   }
   async function loadDecisionChunked(api,s,force=false,signal=null){
     const cur={start:s.periodStart,end:s.periodEnd},cmp={start:s.compareStart,end:s.compareEnd},curDays=rangeDays(cur.start,cur.end),cmpDays=rangeDays(cmp.start,cmp.end),maxDays=Math.max(curDays,cmpDays);
-    const selectedCount=selectedStoreIds(s).length||1;
     // Cold D365 reads must never spend the full ~30 s gateway budget before splitting.
     // Both scopes use 2-day slices to keep cold requests below the gateway budget.
     // Exact slices are persisted server-side, so subsequent periods re-use them.
-    const sliceDays=selectedCount>1?2:2;
-    const blocks=Math.max(1,Math.ceil(maxDays/sliceDays));
-    const currentParts=splitRange(cur.start,cur.end,blocks),compareParts=splitRange(cmp.start,cmp.end,blocks),results=new Array(blocks);
-    let next=0,done=0;
+    const plan=periodPlan(cur,cmp,2),blocks=plan.length;
     setProgress(0,blocks,queryKey(s));
-    const worker=async()=>{while(true){
-      const i=next++;if(i>=blocks)return;
-      signal?.throwIfAborted();
-      results[i]=await fetchDecisionSlice(api,s,currentParts[i],compareParts[i],force,signal);
-      signal?.throwIfAborted();
-      done++;setProgress(done,blocks,queryKey(s))
-    }};
-    // One analytical block at a time for multi-store: each block already reads selected
-    // stores concurrently. Single-store can safely process two short blocks at once.
-    const workers=selectedCount>1?1:Math.min(2,blocks);
-    await Promise.all(Array.from({length:workers},worker));
-    return blocks===1?results[0]:mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays})
+    const {results,diagnostics}=await readPeriod({plan,scope:[s.tenant,selectedStoreIds(s).sort()],force,signal,
+      fetchSlice:(part,abort)=>fetchDecisionSlice(api,s,part.current,part.previous,force,abort),
+      onProgress:({done,total})=>setProgress(done,total,queryKey(s)),concurrency:2});
+    const result=blocks===1?results[0]:mergeDecisionParts(results,{startDate:cur.start,endDate:cur.end,days:curDays},{startDate:cmp.start,endDate:cmp.end,days:cmpDays});
+    return{...result,loadingDiagnostics:diagnostics}
   }
   function catalogItem(sku){return state.catalogTenant===sectionState()?.tenant?state.catalog.get(String(sku||''))||null:null}
   function productLabel(sku,fallback=''){
@@ -346,6 +338,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   async function load(force=false,{reuseExecutive=true}={}){
     const api=core(),liveScope=sectionState(); if(!api||!liveScope||!liveScope.stores?.length||!sectionNeedsDecision(liveScope))return;
     const s={...liveScope,stores:[...liveScope.stores],selectedStoreIds:[...(liveScope.selectedStoreIds||[])]},key=queryKey(s);
+    if(force){state.freshKey=null;try{localStorage.removeItem?.(decisionCachePrefix+key)}catch{}}
     if(state.loading){
       if(key!==state.loadingKey||force){state.reloadPending=true;state.pendingForce=state.pendingForce||force;state.controller?.abort();setLoading();setProgress(0,1)}
       return;
@@ -359,6 +352,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       window.RETAIL_DECISION_INTELLIGENCE={getData:()=>state.data,reload:()=>load(true)};
       render();
       document.dispatchEvent(new CustomEvent('retail-intelligence:decision',{detail:{data:state.data,cached:true}}));
+      if(s.section!=='overview'){maybeLoadCatalog(false);warmCatalogSoon()}
       return;
     }
     if(cached&&state.key!==key){
@@ -395,7 +389,7 @@ import {contributions,summarizeCategories} from './category-analysis.js';
   function resetSalesPanels(message){
     if(sectionState()?.section!=='sales')return;
     redrawSalesChart=null;
-    for(const id of ['salesDriversWaterfall','decisionCoverage','marginStatusBadge','coveredMarginEvidence','hourlyKpis','hourlySalesBars','hourlyTopBody','decisionDailyChart']){
+    for(const id of ['salesDriversWaterfall','salesAdditionalComparisons','decisionCoverage','marginStatusBadge','coveredMarginEvidence','hourlyKpis','hourlySalesBars','hourlyTopBody','decisionDailyChart']){
       const node=$('#'+id);
       if(node)node.textContent='';
     }
@@ -549,6 +543,9 @@ import {contributions,summarizeCategories} from './category-analysis.js';
       {label:'Panier moyen',value:currentReady?cur.averageBasket:null,previous:comparable?prev.averageBasket:null,unit:'money',positiveGood:true},
       {label:rateLabel,value:currentReady?displayRate:null,previous:comparable&&!margin.partial&&!estimated&&basis.kind==='FULL'&&!basis.estimated?basis.rate:null,unit:'percent',estimated,changeMode:margin.partial?'none':'points',note:currentReady&&displayMargin!=null?'Montant HT '+api.money(displayMargin):''}
     ].map(metric=>performanceCard({...metric,scope:scopeForCard})).join('');
+    let comparisons=$('#salesAdditionalComparisons');
+    if(!comparisons){comparisons=document.createElement('details');comparisons.id='salesAdditionalComparisons';comparisons.className='sales-additional-comparisons';$('#decisionSalesKpis').after(comparisons)}
+    comparisons.innerHTML='<summary>Approfondir · identification, paniers et promotions</summary><div class="decision-kpis">'+salesComparatives(d,selected,{currentReady,comparisonReady:comparable}).map(metric=>performanceCard({...metric,scope:scopeForCard})).join('')+'</div>';
     renderWaterfall(comparable,currentReady&&comparisonReady?'L’écart exige deux périodes terminées de même durée.':'L’écart sera disponible quand les deux périodes seront complètes.');
     redrawSalesChart=()=>renderDailyChart(currentReady,comparable,selected);
     redrawSalesChart();
