@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {loyaltyIntelligence} from '../services/one-crm-loyalty-intelligence.mjs';
+const scope={tenantId:'demo',customerToken:'opaque',programId:'demo-program'},e=(eventId,type,units,at='2026-11-20T12:00:00Z')=>({...scope,eventId,type,units,at,source:'ledger'});
+const events=[e('1','earn',100),e('2','burn',-30,'2026-11-21T12:00:00Z'),e('3','expire',-10,'2026-11-22T12:00:00Z')];
+const run=(patch={})=>loyaltyIntelligence({...scope,windowStart:'2026-11-01',asOf:'2026-11-26',openingUnits:20,closingUnits:80,events,ledgerComplete:true,netSalesMinor:20000,minorPerUnit:5,...patch});
+const x=run();assert.equal(x.status,'RECONCILED');assert.equal(x.closingUnits,80);assert.equal(x.earnedUnits,100);assert.equal(x.burnedUnits,30);assert.equal(x.expiredUnits,10);assert.equal(x.redemptionRateBps,2500);assert.equal(x.issuedValueMinor,500);assert.equal(x.redeemedValueMinor,150);assert.equal(x.walletFaceValueMinor,400);assert.equal(x.issuedValueToSalesBps,250);assert.equal(x.activationEnabled,false);
+assert.equal(run({closingUnits:81}).status,'BLOCKED');assert.equal(run({ledgerComplete:false}).status,'UNAVAILABLE');assert.equal(run({openingUnits:0,closingUnits:60,events:[e('0','burn',-1,'2026-11-01T00:00:00Z'),...events]}).status,'BLOCKED');
+assert.equal(run({events:[...events,events[0]]}).status,'RECONCILED');assert.throws(()=>run({events:[...events,{...events[0],units:101}]}));assert.throws(()=>run({events:[{...events[0],tenantId:'other'}]}));assert.throws(()=>run({events:[e('1','earn',-1)]}));assert.throws(()=>run({events:[e('1','burn',1)]}));assert.throws(()=>run({events:[{...events[0],programId:'other'}]}));assert.equal(run({netSalesMinor:0}).issuedValueToSalesBps,null);
+assert.equal(run({events:[...events,e('4','adjustment',-5,'2026-11-23T12:00:00Z')],closingUnits:75}).adjustmentUnits,-5);
+console.log('CRM loyalty ledger passed');
