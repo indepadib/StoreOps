@@ -8,6 +8,7 @@ const validDate=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'')&&Number.isFinite(Date.parse
 const pick=(row,names)=>names.map(n=>Object.keys(row||{}).find(k=>k.toLowerCase()===n.toLowerCase())).find(Boolean);
 const cacheKey=id=>analyticsCacheKey('supplier-invoices-page-v1',[id]);
 const fail=message=>Object.assign(new Error(message),{status:422,code:'SUPPLIER_PURCHASE_SOURCE_UNAVAILABLE'});
+const sourceNumber=value=>(typeof value==='number'||typeof value==='string'&&value.trim()!=='')&&Number.isFinite(Number(value))?Number(value):null;
 function fields(row){return{
  company:pick(row,[config.dynamics.dataAreaField,'dataAreaId','SysDataAreaId']),
  id:pick(row,['SourceKey','RecId']),product:pick(row,['ItemId','ItemNumber']),
@@ -20,12 +21,13 @@ export function normalizeSupplierInvoices(rows,m,{company,start,end,headers=[]}=
  for(const h of headers){const key=JSON.stringify([h.invoice,h.date]);if(!headerIndex.has(key))headerIndex.set(key,new Set());headerIndex.get(key).add(h.vendor)}
  return rows.map(r=>{
   const date=clean(r[m.date]).slice(0,10),id=clean(r[m.id]),productNumber=clean(r[m.product]),invoice=clean(r[m.invoice]),raw=r[m.amount],currency=clean(r[m.currency]);
-  if(clean(r[m.company]).toUpperCase()!==company.toUpperCase()||!validDate(date)||date<start||date>end||!id||!invoice||!productNumber||raw==null||raw===''||!Number.isFinite(Number(raw))||!currency)throw fail('Identité, société, date ou montant de facture incomplet.');
+  if(clean(r[m.company]).toUpperCase()!==company.toUpperCase()||!validDate(date)||date<start||date>end||!id||!invoice||!productNumber||sourceNumber(raw)==null||!/^[A-Z]{3}$/.test(currency))throw fail('Identité, société, date, montant ou devise de facture incomplet.');
   const candidates=headerIndex.get(JSON.stringify([invoice,date]));
-  const vendorAccount=m.vendor?clean(r[m.vendor]):candidates?.size===1?[...candidates][0]:null;
+  const lineVendor=m.vendor?clean(r[m.vendor]):null;
+  const vendorAccount=lineVendor||(candidates?.size===1?[...candidates][0]:null);
   return{id,productNumber,invoice,date,vendorAccount:vendorAccount||null,amountHT:Number(raw),currency,
-   quantity:m.quantity&&r[m.quantity]!=null&&Number.isFinite(Number(r[m.quantity]))?Number(r[m.quantity]):null,
-   unit:m.unit?clean(r[m.unit])||null:null,vendorBasis:m.vendor?'INVOICE_LINE_'+m.vendor:'UNIQUE_INVOICE_HEADER',vendorStatus:vendorAccount?'RESOLVED':candidates?.size>1?'AMBIGUOUS':'MISSING'};
+   quantity:m.quantity?sourceNumber(r[m.quantity]):null,
+   unit:m.unit?clean(r[m.unit])||null:null,vendorBasis:lineVendor?'INVOICE_LINE_'+m.vendor:vendorAccount?'UNIQUE_INVOICE_HEADER':null,vendorStatus:vendorAccount?'RESOLVED':candidates?.size>1?'AMBIGUOUS':'MISSING'};
  });
 }
 // Company-wide purchase evidence must be authorized separately from store sales.
@@ -46,19 +48,20 @@ export async function readSupplierInvoicePage({userId,start,end,cursor=null},{mo
   state={userId,start,end,company,entity,m,continuation:null,visited:[],scanned:0};
  }
  const {m}=state;
- const filter=`${m.company} eq '${esc(company)}' and ${m.date} ge ${start}T00:00:00Z and ${m.date} le ${end}T23:59:59Z`;
+ const until=new Date(Date.parse(end+'T00:00:00Z')+86400000).toISOString().slice(0,10);
+ const filter=`${m.company} eq '${esc(company)}' and ${m.date} ge ${start}T00:00:00Z and ${m.date} lt ${until}T00:00:00Z`;
  const page=await get(state.entity,{filter,select:[...new Set(Object.values(m).filter(Boolean))].join(','),top:null,extra:'cross-company=true',continuation:state.continuation});
  if(!Array.isArray(page?.value))throw fail('Collection de factures invalide.');
  const next=page['@odata.nextLink'];
  if(next&&(typeof next!=='string'||state.visited.includes(next)))throw fail('Pagination de factures incohérente.');
  if(state.scanned+page.value.length>100000)throw fail('Périmètre trop volumineux. Réduire la période.');
  let headers=[];
- if(!m.vendor&&page.value.length){
+ if(page.value.some(row=>!m.vendor||!clean(row[m.vendor]))){
   const entity='VendInvoiceJourBiEntities',sample=(await probe(entity,{top:1,filter:`${config.dynamics.dataAreaField} eq '${esc(company)}'`,extra:'cross-company=true'})).rows?.[0],h=fields(sample);
   if(!h.company||!h.invoice||!h.date||!h.vendor)throw fail('Le fournisseur facturant n’est pas exposé sur les lignes ou en-têtes. Aucun fournisseur principal de substitution.');
   const ids=[...new Set(page.value.map(r=>clean(r[m.invoice])))];
   for(let i=0;i<ids.length;i+=30){
-   const result=await getAll(entity,{filter:`${h.company} eq '${esc(company)}' and ${h.date} ge ${start}T00:00:00Z and ${h.date} le ${end}T23:59:59Z and (${ids.slice(i,i+30).map(id=>`${h.invoice} eq '${esc(id)}'`).join(' or ')})`,select:[h.company,h.invoice,h.date,h.vendor].join(','),extra:'cross-company=true',pageSize:1000,maxRows:10000,strict:true});
+   const result=await getAll(entity,{filter:`${h.company} eq '${esc(company)}' and ${h.date} ge ${start}T00:00:00Z and ${h.date} lt ${until}T00:00:00Z and (${ids.slice(i,i+30).map(id=>`${h.invoice} eq '${esc(id)}'`).join(' or ')})`,select:[h.company,h.invoice,h.date,h.vendor].join(','),extra:'cross-company=true',pageSize:1000,maxRows:10000,strict:true});
    if(result.truncated)throw fail('En-têtes de factures incomplets.');
    for(const r of result.value||[]){if(clean(r[h.company]).toUpperCase()!==company.toUpperCase())throw fail('Société de facture incohérente.');headers.push({invoice:clean(r[h.invoice]),date:clean(r[h.date]).slice(0,10),vendor:clean(r[h.vendor])})}
   }

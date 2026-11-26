@@ -4,6 +4,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {supplierPurchaseSummary} from '../../frontend/analytics/supplier-purchases.js';
 import {filterTableRecords,cellNumber} from '../../frontend/analytics/table-column-tools.js';
+import {filterSupplierPurchases,supplierEvidenceCsv,purchaseEvidencePage} from '../../frontend/analytics/supplier-purchase-analysis.js';
 process.env.STOREOPS_DB=join(mkdtempSync(join(tmpdir(),'multi-supplier-')),'test.db');
 const {normalizeSupplierInvoices,readSupplierInvoicePage}=await import('../services/analytics-supplier-purchases.mjs');
 const m={company:'dataAreaId',id:'SourceKey',product:'ItemId',date:'InvoiceDate',invoice:'InvoiceId',vendor:'VendAccount',amount:'LineAmount',currency:'CurrencyCode',quantity:'Qty',unit:'PurchUnit'};
@@ -16,10 +17,27 @@ const mixed=supplierPurchaseSummary([...rows,{...rows[0],id:'4',currency:'EUR'}]
 assert.throws(()=>supplierPurchaseSummary([rows[0],{...rows[0],amountHT:99}]),/changé/);
 assert.throws(()=>normalizeSupplierInvoices([raw('1','A')],m,{...scope,company:'OTHER'}));
 assert.throws(()=>normalizeSupplierInvoices([{...raw('1','A'),LineAmount:null}],m,scope));
+for(const amount of [' ',true,false,{}])assert.throws(()=>normalizeSupplierInvoices([{...raw('1','A'),LineAmount:amount}],m,scope),'missing or non-numeric amounts never become zero');
+assert.throws(()=>normalizeSupplierInvoices([{...raw('1','A'),CurrencyCode:'MAD/EUR'}],m,scope));
+assert.equal(normalizeSupplierInvoices([{...raw('1','A'),Qty:' '}],m,scope)[0].quantity,null);
+assert.equal(supplierPurchaseSummary([{...rows[0],id:'missing',vendorAccount:null},{...rows[0],id:'real',vendorAccount:'NON_RESOLU'}]).items.length,2,'unresolved bucket must not collide with a real vendor account');
+assert.equal(filterSupplierPurchases(rows,{vendor:'A'}).reduce((sum,r)=>sum+r.amountHT,0),80,'filters retain signed credit notes');
+assert.equal(filterSupplierPurchases([{...rows[0],productNumber:'Épicerie-01'}],{article:'epicerie'}).length,1);
+assert.equal(filterSupplierPurchases([{...rows[0],vendorAccount:null},rows[1]],{unresolvedOnly:true}).length,1);
+assert.equal(filterSupplierPurchases([{...rows[0],vendorAccount:'unresolved'}],{vendor:'unresolved'}).length,1,'real vendor codes are not UI sentinels');
+const many=Array.from({length:205},(_,i)=>({...rows[0],id:String(i),invoice:'INV'+i}));
+assert.equal(purchaseEvidencePage(many,2).items.length,5);assert.equal(purchaseEvidencePage(many,99).index,2);assert.equal(purchaseEvidencePage([],99).index,0);
+assert.equal(supplierEvidenceCsv(many).split('\r\n').length,206,'export contains every filtered row, not just current UI page');
+const csv=supplierEvidenceCsv([{...rows[2],invoice:'=CMD()',vendorName:'A;"B"'}]);
+assert.ok(csv.includes('"\'=CMD()"'));assert.ok(csv.includes('"-20"'),'signed numeric credits remain numeric in export');assert.ok(csv.includes('"A;""B"""'));
 const noVendor={...m,vendor:null};
 assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,{...scope,headers:[{invoice:'INV1',date:'2026-11-02',vendor:'A'},{invoice:'INV1',date:'2026-11-02',vendor:'B'}]})[0].vendorStatus,'AMBIGUOUS');
 assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,{...scope,headers:[{invoice:'INV1',date:'2026-11-02',vendor:'A'}]})[0].vendorAccount,'A');
 assert.equal(normalizeSupplierInvoices([raw('1','')],noVendor,scope)[0].vendorAccount,null,'no primary-vendor fallback');
+const headerMatch=[{invoice:'INV1',date:'2026-11-02',vendor:'B'}];
+const recovered=normalizeSupplierInvoices([raw('1','')],m,{...scope,headers:headerMatch})[0];
+assert.equal(recovered.vendorAccount,'B');assert.equal(recovered.vendorBasis,'UNIQUE_INVOICE_HEADER','blank invoice-line vendor uses unique invoice header');
+assert.equal(normalizeSupplierInvoices([raw('1','A')],m,{...scope,headers:headerMatch})[0].vendorAccount,'A','explicit line vendor stays authoritative');
 
 const cache=new Map();let gets=0;
 const deps={mode:'live',company:'5001',probe:async()=>({rows:[raw('0','A')]}),names:async()=>new Map(),write:async(k,g,p)=>{cache.set(k,p);return true},read:async k=>cache.get(k),get:async(e,q)=>{gets++;assert.equal(q.top,null,'do not cap the OData collection with a finite top');return q.continuation?{value:[raw('2','B')]}:{value:[raw('1','A')],'@odata.nextLink':'https://d365.invalid/next'}}};
@@ -30,6 +48,9 @@ await readSupplierInvoicePage({userId:'U',...scope,cursor:page1.nextCursor},deps
 await assert.rejects(readSupplierInvoicePage({userId:'OTHER',...scope,cursor:page1.nextCursor},deps),{status:409});
 await assert.rejects(readSupplierInvoicePage({userId:'U',...scope,start:'2026-10-01',cursor:page1.nextCursor},deps),{status:409});
 await assert.rejects(readSupplierInvoicePage({userId:'U',start:'2026-02-30',end:scope.end},deps),{status:400});
+let headerReads=0;
+const recoveredPage=await readSupplierInvoicePage({userId:'U',...scope},{...deps,probe:async entity=>({rows:entity==='VendInvoiceTransBiEntities'?[raw('0','A')]:[{dataAreaId:'5001',InvoiceId:'INV1',InvoiceDate:'2026-11-02',VendAccount:'B'}]}),get:async(entity,q)=>{assert.match(q.filter,/lt 2026-12-01T00:00:00Z/,'include fractional timestamps at end of last day');return{value:[raw('1','')]}},getAll:async(entity,q)=>{headerReads++;assert.match(q.filter,/lt 2026-12-01T00:00:00Z/);return{value:[{dataAreaId:'5001',InvoiceId:'INV1',InvoiceDate:'2026-11-02',VendAccount:'B'}]}}});
+assert.equal(headerReads,1);assert.equal(recoveredPage.items[0].vendorAccount,'B');
 
 assert.equal(cellNumber('1\u202f234,50 DH'),1234.5);assert.equal(cellNumber('−12,5 %'),-12.5);assert.equal(cellNumber('2026-11-02'),null);assert.equal(cellNumber('N/D'),null);
 assert.equal(cellNumber('2,5 KMAD'),2500);assert.equal(cellNumber('1,5 MDH'),1500000);assert.equal(cellNumber('12,50 EUR'),12.5);assert.equal(cellNumber('12,50 €'),12.5);

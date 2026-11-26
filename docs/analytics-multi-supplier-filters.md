@@ -29,6 +29,24 @@ global KPIs or totals. Dynamic renderings retain filters; source/date changes
 clear the invoice results. CSV values are escaped against formula execution.
 Only visible tables are enhanced and non-table page mutations are ignored.
 
+The invoice view also has full-loaded-dataset vendor and article filters. These
+recalculate its supplier summaries. Multi-source context deliberately preserves
+the other vendors for an article when one vendor is selected, with an explicit
+explanation. Missing suppliers can be inspected separately, without colliding
+with an actual vendor account named NON_RESOLU or unresolved.
+Invoice evidence is shown in bounded pages of 100 rows. Its dedicated export
+contains all matching invoice lines, including signed amounts, quantity/unit,
+currency, source IDs and vendor attribution basis; it is not limited to the
+displayed page. Source numeric credits retain their numeric CSV values while
+text fields are protected against formula execution. Loading can be cancelled,
+and incomplete reads never expose a partial summary as a complete total.
+
+Empty/boolean source amounts and invalid currency codes block the result.
+An empty line vendor can use a unique invoice-header vendor; an explicit line
+vendor remains authoritative. Date requests use an exclusive next-day boundary
+so the final day's fractional timestamps are included. Generic table filtering
+is debounced; reset restores the original row order as well as removing filters.
+
 Acceptance: an SKU purchased from A and B must appear under both suppliers with
 its actual invoice amounts, while its sales remain unallocated between them.
 Test signed credits, multiple currencies, missing vendor mappings, duplicate and

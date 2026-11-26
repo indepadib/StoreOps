@@ -33,21 +33,22 @@ export function mountTableColumnTools(){
   let model=models.get(table);
   const headers=[...first.cells].map(c=>c.textContent.trim()),signature=headers.join('|');
   if(!model||model.signature!==signature||!head.querySelector('[data-ri-filter-row]')){
+   clearTimeout(model?.timer);
    model?.toolbar.remove();head.querySelector('[data-ri-filter-row]')?.remove();
-   model={signature,filters:{},sort:{key:null,desc:false},headers,toolbar:document.createElement('div')};models.set(table,model);
+   model={signature,filters:{},sort:{key:null,desc:false},headers,order:new WeakMap(),ordinal:0,toolbar:document.createElement('div')};models.set(table,model);
    model.toolbar.className='ri-table-tools';
    const status=document.createElement('span'),reset=document.createElement('button'),exporter=document.createElement('button');
-   reset.type=exporter.type='button';reset.textContent='Effacer les filtres';exporter.textContent='Exporter les lignes filtrées chargées';model.status=status;
+   reset.type=exporter.type='button';reset.textContent='Effacer les filtres et le tri';exporter.textContent='Exporter les lignes filtrées chargées';model.status=status;model.exporter=exporter;
    model.toolbar.append(status,reset,exporter);table.before(model.toolbar);
    const filters=document.createElement('tr');filters.dataset.riFilterRow='true';
    headers.forEach((label,i)=>{
     const cell=document.createElement('th'),input=document.createElement('input');input.type='search';input.dataset.riColumnFilter=String(i);input.setAttribute('aria-label','Filtrer '+label);input.placeholder='Filtrer · ex. >10';
-    input.addEventListener('input',()=>{model.filters[String(i)]=input.value;refresh(table,model)});cell.append(input);filters.append(cell);
+    input.addEventListener('input',()=>{model.filters[String(i)]=input.value;clearTimeout(model.timer);exporter.disabled=true;model.timer=setTimeout(()=>refresh(table,model),150)});cell.append(input);filters.append(cell);
     const h=first.cells[i];h.tabIndex=0;h.title='Trier '+label;h.dataset.riSortColumn=String(i);
     const sort=()=>{const current=models.get(table);current.sort={key:String(i),desc:current.sort.key===String(i)?!current.sort.desc:false};refresh(table,current)};
     if(!h.dataset.riSortBound){h.dataset.riSortBound='true';h.addEventListener('click',sort);h.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();sort()}})}
    });head.append(filters);
-   reset.addEventListener('click',()=>{model.filters={};model.sort={key:null,desc:false};for(const input of filters.querySelectorAll('input'))input.value='';refresh(table,model)});
+   reset.addEventListener('click',()=>{clearTimeout(model.timer);model.filters={};model.sort={key:null,desc:false};model.restoreOrder=true;for(const input of filters.querySelectorAll('input'))input.value='';refresh(table,model)});
    exporter.addEventListener('click',()=>{
     const escape=value=>'"'+String(value??'').replace(/^[\s]*[=+@-]/,m=>"'"+m).replaceAll('"','""')+'"';
     const rows=[headers,...(model.matching||[]).map(r=>r.cells.map(c=>c.text))],url=URL.createObjectURL(new Blob(['\ufeff'+rows.map(r=>r.map(escape).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'}));
@@ -60,11 +61,13 @@ export function mountTableColumnTools(){
   observer.disconnect();
   try{
    const body=table.tBodies[0],records=[...body.rows].filter(row=>row.cells.length===model.headers.length&&[...row.cells].every(c=>c.colSpan===1)).map(row=>({row,cells:[...row.cells].map(c=>({text:c.innerText||c.textContent||''}))}));
+   for(const record of records)if(!model.order.has(record.row))model.order.set(record.row,model.ordinal++);
+   if(model.restoreOrder){records.sort((a,b)=>model.order.get(a.row)-model.order.get(b.row));for(const record of records)body.append(record.row);model.restoreOrder=false}
    const matching=filterTableRecords(records,model.headers,model.filters,model.sort),selected=new Set(matching.map(x=>x.row));
    for(const record of records)record.row.hidden=!selected.has(record.row);
    if(model.sort.key!=null)for(const r of matching)body.append(r.row);
    for(const [i,h] of [...table.tHead.rows[0].cells].entries())h.setAttribute('aria-sort',model.sort.key===String(i)?model.sort.desc?'descending':'ascending':'none');
-   model.matching=matching;model.status.textContent=matching.length+' / '+records.length+' lignes chargées · filtre du tableau uniquement, KPI et totaux de la page inchangés';
+   model.matching=matching;model.exporter.disabled=!matching.length;model.status.textContent=matching.length+' / '+records.length+' lignes chargées · filtre du tableau uniquement, KPI et totaux de la page inchangés';
   }finally{observe()}
  }
  for(const event of ['retail-intelligence:section','retail-intelligence:period','retail-intelligence:decision'])document.addEventListener(event,schedule);
