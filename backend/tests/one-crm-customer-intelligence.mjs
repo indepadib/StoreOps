@@ -14,4 +14,7 @@ assert.throws(()=>run({tickets:[{...tickets[0],tenantId:'other'}]}));
 assert.throws(()=>run({coverageComplete:false}));
 assert.throws(()=>run({events:[...events,{...events[0],type:'points_earned'}]}));
 assert.equal(run({tickets:[],events:[]}).rfm.status,'INSUFFICIENT_HISTORY');
+assert.deepEqual(x.segmentAttributes.preferredCategories,['A','B']);
+assert.deepEqual(x.segmentAttributes.preferredProducts,['P1','P2']);
+assert.deepEqual(run({tickets:[t('r',-100,'A','P1')],events:[]}).segmentAttributes.preferredProducts,[]);
 console.log('CRM customer intelligence passed');
