@@ -52,3 +52,8 @@ export async function readCustomerCount(){
  const value=await readDirectorySourceCount(deps);countCache={key,value,expires:Date.now()+300000};return value;
 }
 export const findCustomerAccount=accountRef=>findDirectorySourceAccount({...sourceDeps(),accountRef});
+
+export async function readCrmCustomerIdentity(row){
+ const {readCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
+ return readCustomerIdentity({...sourceDeps(),accountRef:row.accountRef});
+}
