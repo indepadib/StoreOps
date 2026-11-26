@@ -21,3 +21,4 @@ jobs:
       - run: node --check backend/services/one-crm-readonly-adapter.mjs
       - run: node backend/tests/one-crm-campaign-planner.mjs
       - run: node backend/tests/one-crm-segment-engine.mjs
+      - run: node backend/tests/one-crm-reconciliation.mjs
