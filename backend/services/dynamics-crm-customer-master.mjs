@@ -92,5 +92,10 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
    if(range?.storeId===id&&range.startDate===start&&range.endDate===end)ranges.push(range);
   }
  }
- return projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page});
+ const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page});
+ try{
+  const names=await readCrmCustomerNames(population.rows.map(r=>r.accountRef)),byAccount=new Map((names.rows||[]).map(r=>[r.accountRef,r]));
+  return {...population,rows:population.rows.map(r=>({...r,displayName:byAccount.get(r.accountRef)?.displayName||null,nameStatus:byAccount.get(r.accountRef)?.status||'UNAVAILABLE'}))};
+ }catch{return population}
+
 }
