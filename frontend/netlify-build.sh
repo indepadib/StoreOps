@@ -49,3 +49,6 @@ const allowed=new Set(['/js/tenant-branding.js','/js/boot-rescue.js','/js/auth-e
 html=html.replace(/<script type="module" src="(\/js\/[^"?]+\.js)(?:\?v=[^"]+)?"><\/script>/g,(tag,src)=>allowed.has(src)?`<script type="module" src="${src}?v=${build}"></script>`:'');
 fs.writeFileSync(file,html);
 NODE
+
+# Wrap the synthetic CRM shell only for StoreOps hosting; standalone sandbox remains offline.
+if [ -f crm/build-storeops.mjs ]; then node crm/build-storeops.mjs; fi
