@@ -8,6 +8,8 @@ import { effectiveD365SalesMapping,salesStoreIdentifiers } from './d365-sales-ma
 import { analyticsCacheKey, readAnalyticsCache, writeAnalyticsCache } from './analytics-persistent-cache.mjs';
 import { releasedProductSourcingMany } from './released-product-sourcing.mjs';
 import { inferTransactionCostKind, evaluateTransactionMarginRows, selectTransactionCostSemantics } from './sales-margin-engine.mjs';
+import {createReadPool,boundedMap} from './analytics-read-pool.mjs';
+const rangeReads=createReadPool();
 
 const clean=v=>String(v??'').trim();
 const num=v=>{const x=Number(v);return Number.isFinite(x)?x:0};
@@ -453,6 +455,10 @@ function finishMetricRows(map,margin){
  }).sort((a,b)=>b.sales-a.sales||a.key.localeCompare(b.key,'fr'))
 }
 export async function readStoreSalesRange(storeId,{startDate,endDate,force=false,exportLean=false}={}){
+ const identity=JSON.stringify([config.dynamics.baseUrl,config.dynamics.dataAreaId,salesIntegrationConfig(storeId),startDate,endDate,exportLean]);
+ return rangeReads(identity,()=>computeStoreSalesRange(storeId,{startDate,endDate,force,exportLean}),{force});
+}
+async function computeStoreSalesRange(storeId,{startDate,endDate,force=false,exportLean=false}={}){
  let c=salesIntegrationConfig(storeId);const end=dateOnly(endDate)||new Date().toISOString().slice(0,10),start=dateOnly(startDate)||end,days=daySpan(start,end);
  if(!days||days<1||days>366)return{status:'INVALID_RANGE',storeId,startDate:start,endDate:end,days:null,error:{code:'INVALID_RANGE',message:'La période doit contenir entre 1 et 366 jours.'}};
  if(!c.ready)return{status:'UNAVAILABLE',source:'D365',storeId,startDate:start,endDate:end,days,config:{mode:c.mode,entity:c.entity,missing:c.missing},summary:null};
@@ -765,7 +771,7 @@ export async function readStoreSalesRange(storeId,{startDate,endDate,force=false
  };
  if(c.entity==='RetailTransactionSalesTransBIEntities'&&!selected.truncated){
   const fields={...c.fields,salesUnit:c.fields.salesUnit||'unit',discount:'discAmount',periodicDiscount:'periodicDiscAmount',offer:'discOfferId'},byDay=new Map();for(const row of includedRows){const date=dateOnly(row[c.fields.date]);if(!byDay.has(date))byDay.set(date,[]);byDay.get(date).push(row)}
-  const now=new Date().toISOString();for(let i=0;i<days;i++){const date=nextDate(start,i),evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,basketEvidenceTtl(date,now.slice(0,10)))}
+  const now=new Date().toISOString();await boundedMap(Array.from({length:days},(_,i)=>nextDate(start,i)),6,async date=>{const evidence=basketEvidence(byDay.get(date)||[],fields,{storeId,amount:r=>retailDisplaySalesAmount(r,c)});Object.assign(evidence,{checkedAt:now,startDate:date,endDate:date,source:`D365/${c.entity}`});await writeAnalyticsCache(analyticsCacheKey('basket-evidence-v3',[storeId,date,date]),'basket-evidence-v3',evidence,basketEvidenceTtl(date,now.slice(0,10)))})
  }
  salesRangeCache.set(cacheKey,{value,expiresAt:Date.now()+cacheSeconds*1000});
  const today=new Date().toISOString().slice(0,10),persistentTtl=end>=today?900:24*3600;

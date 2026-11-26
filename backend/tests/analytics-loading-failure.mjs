@@ -1,6 +1,7 @@
 import {mergeDailyEvidence} from '../../frontend/analytics/sales-proof-model.js';
 import {filterAndSortRows} from '../../frontend/analytics/table-analysis.js';
 import {marginEvidence} from '../../frontend/analytics/performance-evidence.js';
+import {createPeriodLoader,periodPlan} from '../../frontend/analytics/period-loader.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
@@ -8,7 +9,7 @@ const nodes=new Map();
 const get=selector=>{if(!nodes.has(selector))nodes.set(selector,{textContent:'',innerHTML:'',addEventListener(){}});return nodes.get(selector)};
 const scope={stores:[{id:'val-fleuri'}],selectedStoreIds:['val-fleuri'],section:'overview',periodStart:'2026-10-15',periodEnd:'2026-10-18',compareStart:'2026-10-08',compareEnd:'2026-10-11'};
 let calls=0;
-const context={mergeDailyEvidence,filterAndSortRows,marginEvidence,AbortController,console,URLSearchParams,Map,Set,Date,Intl,setTimeout,clearTimeout,localStorage:{getItem:()=>null},document:{readyState:'complete',querySelector:get,querySelectorAll:()=>[],addEventListener(){}},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,api:async()=>{calls++;throw Object.assign(new Error('Ticket parent indisponible'),{status:500})}}}};
+const context={createPeriodLoader,periodPlan,mergeDailyEvidence,filterAndSortRows,marginEvidence,AbortController,console,URLSearchParams,Map,Set,Date,Intl,setTimeout,clearTimeout,localStorage:{getItem:()=>null},document:{readyState:'complete',querySelector:get,querySelectorAll:()=>[],addEventListener(){}},window:{RETAIL_INTELLIGENCE:{getState:()=>scope,escapeHtml:s=>s,api:async()=>{calls++;throw Object.assign(new Error('Ticket parent indisponible'),{status:500})}}}};
 vm.runInNewContext(readFileSync(new URL('../../frontend/analytics/decision.js',import.meta.url),'utf8').replace(/^(?:import[^;]+;\s*)+/,''),context);
 await new Promise(resolve=>setTimeout(resolve,20));
 assert.equal(calls,2,'two short concurrent slices must fail without endless retries');
