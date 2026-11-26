@@ -218,7 +218,8 @@ function simulateCampaign(){
  if(!form.checkValidity()){studioReport=null;$('campaignResult').replaceChildren();if(studioReady)renderCampaignReview();return false}
  const n=id=>Number($(id).value),channel=$('campaignChannel').value,mode=$('eligibilityMode').value;
  const eligible=eligibleCount??Math.round(segmentAudience.length*n('eligiblePct')/100);
- const audience=segmentAudience.map((p,i)=>({id:p.id,eligible:mode==='manual'?i<eligible:demoConsent([p],channel,$('consentLedger').value==='complete').decisions[0].eligible}));
+ const decisions=mode==='ledger'?new Map(demoConsent(segmentAudience,channel,$('consentLedger').value==='complete').decisions.map(d=>[d.id,d.eligible])):null;
+ const audience=segmentAudience.map((p,i)=>({id:p.id,eligible:mode==='manual'?i<eligible:decisions.get(p.id)===true}));
  const assumptions={holdoutPct:n('holdoutPct'),costMinor:Math.round(n('contactCost')*100),offerMinor:Math.round(n('offerCost')*100),conversionPct:n('convPct'),controlPct:n('controlPct'),basketMinor:Math.round(n('campaignBasket')*100),marginPct:n('marginPct')};
  try{const x=studioPlanCampaign({audience,channel,...assumptions});studioReport={...x,assumptions,eligibilityMode:mode};$('campaignResult').replaceChildren();for(const [k,v] of [['Segment actuel',x.audience],['Éligibles simulés',x.eligible],['Groupe témoin',x.holdout],['Ciblés',x.targeted],['CA incrémental estimé',money(x.incrementalRevenueMinor/100)],['Coût estimé',money(x.costMinor/100)],['Marge nette estimée',money(x.incrementalMarginMinor/100)],['ROI estimé',x.roiPct===null?'N/A':x.roiPct.toFixed(1)+' %']]){const d=document.createElement('div'),s=document.createElement('strong');d.append(document.createTextNode(k));s.textContent=v;d.append(s);$('campaignResult').append(d)}if(studioReady)renderCampaignReview();return true}catch{studioReport=null;$('campaignResult').replaceChildren();if(studioReady)renderCampaignReview();return false}
 }
