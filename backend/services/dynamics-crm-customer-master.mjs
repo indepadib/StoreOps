@@ -1,3 +1,4 @@
+import {isLoyaltyCustomerAccount,loyaltyCustomerFilter} from './one-crm-customer-source.mjs';
 import {config} from '../config.mjs';
 import {odataGet} from './dynamics.mjs';
 import {readCompleteCollection} from './dynamics-account-creations.mjs';
@@ -10,7 +11,7 @@ export async function readCustomerMaster(){
  if(cache?.key===key&&cache.expires>Date.now())return cache.value;
  if(inflight?.key===key)return inflight.promise;
  const promise=(async()=>{
-  const rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail'",select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet);
+  const rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum'),select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet);
   const value=normalizeCustomerMaster(rows,{company,checkedAt:new Date().toISOString()});
   cache={key,value,expires:Date.now()+300000};return value;
  })();
@@ -21,10 +22,10 @@ export async function readCustomerProfile(row){
  const company=String(config.dynamics.dataAreaId||'').trim(),accountRef=row.accountRef;
  const base={status:'READY',accountRef,createdAt:row.createdAt,source:'D365/CustTableCDREntities',scope:'LEGAL_ENTITY_RETAIL',historyStatus:'NOT_CONNECTED',activationEnabled:false};
  const unavailable={status:'UNAVAILABLE',cardCount:null,firstEnrollmentAt:null};
- if(config.dynamics.mode!=='live'||!company)return {...base,loyalty:unavailable};
+ if(config.dynamics.mode!=='live'||!company||!isLoyaltyCustomerAccount(accountRef))return {...base,loyalty:unavailable};
  try{
   const esc=v=>String(v).replaceAll("'","''");
-  const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId',extra:'cross-company=true'},odataGet);
+  const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum')+" and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId',extra:'cross-company=true'},odataGet);
   if(accounts.length!==1||String(accounts[0].AccountNum).trim()!==accountRef||String(accounts[0].SysDataAreaId).trim()!==company||(row.createdAt!==null&&new Date(accounts[0].SysCreatedDateTime).toISOString()!==row.createdAt))return {...base,loyalty:unavailable};
   const partyKey=String(accounts[0].Party??'').trim();
   if(!partyKey)return {...base,loyalty:{status:'UNVERIFIED',cardCount:null,firstEnrollmentAt:null}};
