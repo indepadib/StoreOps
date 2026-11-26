@@ -17,6 +17,7 @@ try{
  await page.locator('[data-profile-tab="history"]').click();assert.ok(await page.locator('#profileTimeline .timelineitem').count()>0);
  await page.locator('[data-profile-tab="affinity"]').click();assert.ok(await page.locator('#profileCategories .affinity-row').count()>0);
  await page.locator('[data-profile-tab="promotion"]').click();assert.ok(await page.locator('#promoProfileMetrics').isVisible());assert.equal(await page.locator('#promoProfileMetrics > div').count(),4);assert.match(await page.locator('#promoProfileNote').textContent(),/Indicateur descriptif/);
+ await page.locator('[data-profile-tab="value"]').click();assert.ok(await page.locator('#valueContribution').isVisible());assert.notEqual(await page.locator('#valueContribution').textContent(),'—');assert.match(await page.locator('#valueStatus').textContent(),/Rétention supposée/);const prior=await page.locator('#valueContribution').textContent();await page.locator('#valueRetention').fill('100');assert.notEqual(await page.locator('#valueContribution').textContent(),prior);assert.ok((await page.locator('#valueAction').textContent()).length>0);
  await page.locator('[data-profile-tab="consent"]').click();assert.equal(await page.locator('#profileConsentRows .timelineitem').count(),3);
  await page.locator('#close').click();
  await page.locator('nav [data-view="segments"]').click();await page.locator('#advancedMode').click();await page.locator('#advancedReset').click();
