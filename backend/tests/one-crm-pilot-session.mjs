@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {validatePilotSession,checkPilotAccess} from '../../frontend/crm/pilot-session.mjs';
+import {validatePilotSession,checkPilotAccess,validateObservationResponse} from '../../frontend/crm/pilot-session.mjs';
 const session={authMode:'entra',user:{id:'synthetic-user',role:'ops_director'}};
 assert.equal(validatePilotSession(session,'entra').status,'AUTHORIZED');
 assert.equal(validatePilotSession({...session,user:{id:'synthetic-user',role:'employee',permissions_profile:'platform_admin'}},'entra').status,'AUTHORIZED');
@@ -17,3 +17,8 @@ assert.equal((await run({readSession:async()=>{throw Object.assign(Error(),{stat
 assert.equal((await run({readSession:async()=>{throw Object.assign(Error(),{status:401})}})).status,'LOGIN_REQUIRED');
 assert.equal((await run({health:async()=>{throw Error()}})).status,'UNAVAILABLE');
 console.log('CRM pilot session gate passed');
+
+const observation={status:'READY',storeId:'demo-a',date:'2026-11-25',source:'D365/RetailTransactionSalesTransBIEntities',basis:'POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS',financialReconciliation:'NOT_VERIFIED',currency:'MAD',activationEnabled:false,checkedAt:'2026-11-26T10:00:00Z',identifiedCustomers:15,tickets:25,identifiedTickets:20,positiveSales:1200,identifiedPositiveSales:950,averagePositiveBasket:48};
+const selection={storeId:'demo-a',date:'2026-11-25'};
+assert.equal(validateObservationResponse(observation,selection),true);
+for(const patch of [{storeId:'demo-b'},{date:'2026-11-24'},{source:'simulated'},{checkedAt:'invalid'},{activationEnabled:true},{financialReconciliation:'VERIFIED'},{identifiedCustomers:9},{identifiedCustomers:21},{identifiedTickets:26},{tickets:0},{positiveSales:'1200'},{identifiedPositiveSales:1201},{averagePositiveBasket:49},{positiveSales:Infinity},{averagePositiveBasket:NaN}])assert.equal(validateObservationResponse({...observation,...patch},selection),false,JSON.stringify(patch));

@@ -1,7 +1,7 @@
 import {app} from '/js/state.js';
 import {api,health,isShowcase} from '/js/api.js';
 import {ensureAccessToken,ensureLocalSession,logout} from '/js/auth.js';
-import {checkPilotAccess} from './pilot-session.mjs';
+import {checkPilotAccess,validateObservationResponse} from './pilot-session.mjs';
 const gate=document.getElementById('crmPilotGate'),title=document.getElementById('crmPilotTitle'),detail=document.getElementById('crmPilotDetail'),login=document.getElementById('crmPilotLogin');
 const states={SESSION_CHANGED:['Session modifiée','Votre compte professionnel a changé. Rechargez la page pour vérifier les droits du nouveau compte.'],LOGIN_REQUIRED:['Connectez-vous à StoreOps','Utilisez votre compte professionnel habituel pour accéder au pilote CRM.'],DENIED:['Accès réservé','Ce pilote est réservé aux profils de direction d’exploitation et administrateurs de plateforme explicitement habilités.'],UNAVAILABLE:['Session indisponible','Impossible de vérifier votre session professionnelle. Aucun accès automatique en mode démo.']};
 function setGate(status){
@@ -61,7 +61,7 @@ function setupLiveObservation(){
    const x=await api('/api/crm/observed-sales?'+new URLSearchParams({storeId:id,date:day}),{noRetry:true,cache:'no-store'});
    if(g!==generation||!valid())return;
    if(x?.status==='SUPPRESSED'){liveStatus().textContent='Résultat masqué : cohorte trop petite.';return}
-   if(x?.status!=='READY'||x.storeId!==id||x.date!==day||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.currency!=='MAD')throw Error('Evidence unavailable');
+   if(!validateObservationResponse(x,{storeId:id,date:day}))throw Error('Evidence unavailable');
    const money=n=>new Intl.NumberFormat('fr-MA',{maximumFractionDigits:2}).format(n)+' DH';
    for(const [label,v] of [['Clients identifiés observés',x.identifiedCustomers],['Tickets observés',x.tickets],['Tickets identifiés',x.identifiedTickets],['Ventes TTC positives',money(x.positiveSales)],['Ventes positives identifiées',money(x.identifiedPositiveSales)],['Panier positif moyen',money(x.averagePositiveBasket)]]){const d=document.createElement('div'),b=document.createElement('strong');d.append(document.createTextNode(label));b.textContent=String(v);d.append(b);metrics.append(d)}
    liveStatus().textContent='D365 · '+day+' · extraction '+x.checkedAt+' · rapprochement financier non vérifié. Retours exclus.';
