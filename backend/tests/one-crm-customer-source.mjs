@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount,customerSourceError} from '../services/one-crm-customer-source.mjs';
 import {makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
 const company='5001',rows=Array.from({length:53},(_,i)=>({AccountNum:'CLT-'+String(i+1).padStart(2,'0'),SysCreatedDateTime:i===1?null:'2025-01-01T00:00:00Z',SysDataAreaId:company}));
-const read=async(entity,opts)=>{assert.equal(entity,'CustTableCDREntities');assert.match(opts.filter,/CustGroup eq 'Retail'/);assert.ok(opts.filter.includes("startswith(AccountNum,'CLT')"));assert.ok(opts.top<=51);assert.ok(!opts.filter.includes('SysCreatedDateTime'));if(opts.extra.includes('$count=true'))return {value:[rows[0]],'@odata.count':53};const skip=Number(new URLSearchParams(opts.extra).get('$skip')||0);return {value:rows.slice(skip,skip+opts.top)}};
+const read=async(entity,opts)=>{assert.equal(entity,'CustTableCDREntities');assert.match(opts.filter,/CustGroup eq 'Retail'/);assert.ok(opts.filter.includes("AccountNum eq 'CLT*'"));assert.ok(opts.top<=51);assert.ok(!opts.filter.includes('SysCreatedDateTime'));if(opts.extra.includes('$count=true'))return {value:[rows[0]],'@odata.count':53};const skip=Number(new URLSearchParams(opts.extra).get('$skip')||0);return {value:rows.slice(skip,skip+opts.top)}};
 const a=await readDirectorySourcePage({company,page:1,read});assert.equal(a.rows.length,50);assert.equal(a.hasMore,true);assert.equal(a.totalAccounts,null);assert.equal(a.rows[1].createdAt,null);
 const b=await readDirectorySourcePage({company,page:2,read});assert.equal(b.rows.length,3);assert.equal(b.hasMore,false);assert.equal((await readDirectorySourceCount({company,read})).totalAccounts,53);
 assert.equal((await findDirectorySourceAccount({company,accountRef:'CLT-01',read:async()=>({value:[rows[0]]})})).accountRef,'CLT-01');
@@ -14,3 +14,6 @@ console.log('CRM bounded source page and independent count passed');
 
 assert.equal(await findDirectorySourceAccount({company,accountRef:'CAC0001',read:async()=>{throw Error('must not read')}}),null);
 await assert.rejects(()=>readDirectorySourcePage({company,page:1,read:async()=>({value:[{...rows[0],AccountNum:'CAC0001'}]})}),/PARTITION_INVALID/);
+
+await readDirectorySourcePage({company,page:1,search:'CLT-01',read:async(_,o)=>{assert.ok(o.filter.includes("AccountNum eq '*CLT-01*'"));assert.ok(!o.filter.includes('startswith('));return {value:[rows[0]]}}});
+await assert.rejects(()=>readDirectorySourceCount({company,read:async()=>({value:[{AccountNum:'CAC0001'}],'@odata.count':1})}),/COUNT_UNAVAILABLE/);
