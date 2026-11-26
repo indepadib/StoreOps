@@ -15,13 +15,46 @@ function row(r,company){
  return {accountRef,createdAt:Number.isFinite(Date.parse(date))?new Date(date).toISOString():null};
 }
 const common=()=>({status:'READY',source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',checkedAt:new Date().toISOString(),identityBasis:'D365_LEGAL_ENTITY_ACCOUNT',historyStatus:'NOT_CONNECTED',activationEnabled:false});
+// Compatibility fallback: only the previously working company/group query.
+// Scan bounded source pages until enough CLT accounts have been seen. Never
+// expose store accounts or treat an incomplete scan as a complete count.
+export function isCltFilterRejected(error){return Number(error?.details?.httpStatus)===400}
+export async function scanCltAccounts({company,read,search='',offset=0,limit=null}){
+ check(company);
+ const filter="SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail'";
+ const seen=new Set(),matched=[];let sourceOffset=0,matchedCount=0;
+ const batch=500;
+ for(let i=0;i<200;i++){
+  const raw=await read(ENTITY,{filter,select,top:batch,extra:'cross-company=true&$orderby=AccountNum%20asc&$skip='+sourceOffset});
+  if(!Array.isArray(raw?.value)||raw.value.length>batch)throw fail('CRM_CUSTOMER_RESPONSE_INVALID');
+  if(!raw.value.length&&raw['@odata.nextLink'])throw fail('CRM_CUSTOMER_PAGE_INCOMPLETE');
+  for(const r of raw.value){
+   const accountRef=clean(r?.AccountNum),area=clean(r?.SysDataAreaId??r?.dataAreaId);
+   if(!accountRef||accountRef.length>160||/[\x00-\x1f]/.test(accountRef)||area!==company)throw fail('CRM_CUSTOMER_PARTITION_INVALID');
+   if(seen.has(accountRef))throw fail('CRM_CUSTOMER_DUPLICATE_PAGE');seen.add(accountRef);
+   if(!isLoyaltyCustomerAccount(accountRef)||search&&!accountRef.toLowerCase().includes(search.toLowerCase()))continue;
+   if(matchedCount++>=offset)matched.push(row(r,company));
+   if(limit!==null&&matched.length>=limit)return {rows:matched,complete:false,total:null};
+  }
+  sourceOffset+=raw.value.length;
+  if(raw.value.length<batch&&!raw['@odata.nextLink'])return {rows:matched,complete:true,total:matchedCount};
+  if(sourceOffset>=100000)break;
+ }
+ throw fail('CRM_CUSTOMER_PAGE_INCOMPLETE');
+}
 export async function readDirectorySourcePage({company,page,search='',read}){
  check(company);
  if(/[\*?]/.test(search))throw fail('CRM_CUSTOMER_SEARCH_MISMATCH');
  const filter=baseFilter(company)+(search?" and AccountNum eq "+quote("*"+search+"*"):'');
  const extra='cross-company=true&$orderby=AccountNum%20asc&$skip='+((page-1)*SIZE);
  // Read at most 51 records; the lookahead makes count independent of page rendering.
- const raw=await read(ENTITY,{filter,select,top:SIZE+1,extra});
+ let raw;
+ try{raw=await read(ENTITY,{filter,select,top:SIZE+1,extra})}
+ catch(e){
+  if(!isCltFilterRejected(e))throw e;
+  const result=await scanCltAccounts({company,read,search,offset:(page-1)*SIZE,limit:SIZE+1});
+  return {...common(),page,pageSize:SIZE,search,totalAccounts:null,matchedAccounts:null,hasMore:result.rows.length>SIZE,rows:result.rows.slice(0,SIZE)};
+ }
  if(!Array.isArray(raw?.value)||raw.value.length>SIZE+1)throw fail('CRM_CUSTOMER_RESPONSE_INVALID');
  const rows=raw.value.map(r=>row(r,company));
  if(new Set(rows.map(r=>r.accountRef)).size!==rows.length)throw fail('CRM_CUSTOMER_DUPLICATE_PAGE');
@@ -31,7 +64,10 @@ export async function readDirectorySourcePage({company,page,search='',read}){
 }
 export async function readDirectorySourceCount({company,read}){
  check(company);
- const raw=await read(ENTITY,{filter:baseFilter(company),select:'AccountNum',top:1,extra:'cross-company=true&$count=true'});
+ let raw;try{raw=await read(ENTITY,{filter:baseFilter(company),select:'AccountNum',top:1,extra:'cross-company=true&$count=true'})}catch(e){
+  if(!isCltFilterRejected(e))throw e;
+  const result=await scanCltAccounts({company,read});return {...common(),totalAccounts:result.total};
+ }
  const n=raw?.['@odata.count'];
  if(!Array.isArray(raw?.value)||raw.value.length>1||!(typeof n==='number'||typeof n==='string'&&/^\d+$/.test(n))||!Number.isSafeInteger(Number(n))||Number(n)<raw.value.length||(Number(n)>0&&!raw.value.length)||raw.value.some(r=>!isLoyaltyCustomerAccount(clean(r.AccountNum))))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');
  return {...common(),totalAccounts:Number(n)};
