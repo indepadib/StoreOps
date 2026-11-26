@@ -24,7 +24,8 @@ export async function readCustomerPositiveHistory({accountRef,company,stores,pag
    const base="dataAreaId eq "+quote(company)+" and store eq "+quote(storeNumber);
    const select=[...new Set([...Object.values(identity),f.customer,f.date,f.product,f.net,f.quantity,f.salesUnit||'unit',f.name,f.taxAmount,f.status,f.returnNoSale,f.taxItemGroup,'discAmount'].filter(Boolean))].join(',');
    const rows=await readCollection('RetailTransactionSalesTransBIEntities',{filter:base+' and '+f.customer+' eq '+quote(accountRef),select,extra:'cross-company=true'});
-   if(!Array.isArray(rows)||rows.length>10000)throw Error('History bound');
+   if(!Array.isArray(rows))throw Error('Invalid history source');
+   if(rows.length>10000)return unavailable('HISTORY_LINE_LIMIT');
    const keys=new Map();
    for(const r of rows){
     const terminal=clean(r.terminalId),tx=clean(r.transactionId),date=clean(r[f.date]).slice(0,10);
@@ -33,13 +34,20 @@ export async function readCustomerPositiveHistory({accountRef,company,stores,pag
     if(keys.has(key)&&keys.get(key).date!==date)throw Error('Ambiguous parent identity across days');
     keys.set(key,{terminal,tx,date});
    }
-   if(keys.size>500)throw Error('History parent bound');
-   const headers=[],pairs=[...keys.values()];
-   for(let i=0;i<pairs.length;i+=20){
-    const disjunction=pairs.slice(i,i+20).map(k=>'(terminal eq '+quote(k.terminal)+' and transactionId eq '+quote(k.tx)+')').join(' or ');
+   // Keep a finite safety budget; never present a truncated history as complete.
+   if(keys.size>2000)return unavailable('HISTORY_PARENT_LIMIT');
+   const headers=[],pairs=[...keys.values()],batches=[];
+   for(let i=0;i<pairs.length;i+=20)batches.push(pairs.slice(i,i+20));
+   async function readParents(batch){
+    const expected=new Set(batch.map(k=>JSON.stringify([k.terminal,k.tx])));
+    const disjunction=batch.map(k=>'(terminal eq '+quote(k.terminal)+' and transactionId eq '+quote(k.tx)+')').join(' or ');
     const part=await readCollection('RetailTransactionTableBIEntities',{filter:base+' and ('+disjunction+')',select:'dataAreaId,store,terminal,transactionId,type,entryStatus',extra:'cross-company=true'});
-    if(!Array.isArray(part)||part.some(h=>clean(h.dataAreaId)!==company||clean(h.store)!==storeNumber||!keys.has(JSON.stringify([clean(h.terminal),clean(h.transactionId)]))))throw Error('Parent partition invalid');
-    headers.push(...part);
+    if(!Array.isArray(part)||part.length!==expected.size||part.some(h=>clean(h.dataAreaId)!==company||clean(h.store)!==storeNumber||!expected.delete(JSON.stringify([clean(h.terminal),clean(h.transactionId)])))||expected.size)throw Error('Parent partition invalid or incomplete');
+    return part;
+   }
+   for(let i=0;i<batches.length;i+=3){
+    const parts=await Promise.all(batches.slice(i,i+3).map(readParents));
+    for(const part of parts)headers.push(...part);
    }
    const groups=new Map();
    for(const r of attachParentSalesEligibility(rows,headers,identity)){
