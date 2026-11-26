@@ -32,6 +32,9 @@ try{
  await page.locator('nav [data-view="data"]').click();await page.locator('#consentLedger').selectOption('incomplete');await page.locator('nav [data-view="campaigns"]').click();assert.match(await page.locator('#eligibilityHint').textContent(),/^0 \/ /);
  await page.locator('nav [data-view="data"]').click();await page.locator('#qualityScenario').selectOption('refund');assert.match(await page.locator('#qualitySummary').textContent(),/bloquée/);
  await page.locator('#identityScenario').selectOption('conflict');assert.match(await page.locator('#identitySummary').textContent(),/quarantaine/);
+ await page.locator('nav [data-view="basket"]').click();assert.equal(await page.locator('#basketMetrics > div').count(),4);assert.ok(await page.locator('#basketRows tr').count()>0);
+ await page.locator('#basketProduct').selectOption('Pommes');assert.ok(await page.locator('#basketRows tr').count()>0);assert.match(await page.locator('#basketRows tr').first().textContent(),/^Pommes/);
+ await page.locator('#basketStore').selectOption('Val Fleuri');await page.locator('#basketSpotlight button').click();assert.ok(await page.locator('#advancedBuilder').isVisible());assert.equal(await page.locator('.rule-field').first().inputValue(),'preferredProducts');assert.equal(await page.locator('.rule-field').nth(1).inputValue(),'stores');assert.ok(Number(await page.locator('#matched').textContent())>0);
  await page.setViewportSize({width:390,height:844});await page.locator('nav [data-view="customers"]').click();await page.locator('#rows button').first().click();await page.locator('[data-profile-tab="affinity"]').click();assert.ok(await page.locator('#profileCategories').isVisible());
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
  console.log('CRM P0 browser smoke passed on desktop and mobile');
