@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {promotionIntelligence} from '../services/one-crm-promotion-intelligence.mjs';
+const scope={tenantId:'demo',customerToken:'opaque'},date='2026-11-20';
+const t=(ticketId,netMinor,promoted,discount=0)=>({...scope,date,storeId:'s',ticketId,netMinor,items:[{lineId:'1',productId:'P1',category:'A',netMinor,promoted,promoDiscountMinor:discount}]});
+const tickets=[t('a',6000,true,1000),t('b',2000,false),t('c',2000,false),t('d',-500,true)];
+const run=(patch={})=>promotionIntelligence({...scope,windowStart:'2026-11-01',asOf:'2026-11-26',promotionEvidenceComplete:true,tickets,...patch});
+const x=run();assert.equal(x.promotionShareBps,6000);assert.equal(x.promotionBand,'high');assert.equal(x.purchaseTickets,3);assert.equal(x.promotionTickets,1);assert.equal(x.positiveSalesMinor,10000);assert.equal(x.nonPromotedSalesMinor,4000);assert.equal(x.promoDiscountMinor,1000);assert.equal(x.topPromotionCategories[0].netMinor,6000);assert.equal(x.activationEnabled,false);
+assert.equal(run({tickets:[tickets[0]]}).promotionBand,'unknown');assert.equal(run({tickets:[]}).promotionShareBps,null);
+assert.equal(run({promotionEvidenceComplete:false}).status,'UNAVAILABLE');
+assert.equal(run({tickets:[...tickets,tickets[0]]}).promotionShareBps,6000);
+assert.throws(()=>run({tickets:[...tickets,t('a',6000,true,5)]}));
+assert.throws(()=>run({tickets:[t('a',6000,false,100)]}));
+assert.throws(()=>run({tickets:[{...tickets[0],tenantId:'other'}]}));
+assert.throws(()=>run({tickets:[{...tickets[0],netMinor:999}]}));
+assert.throws(()=>run({tickets:[{...tickets[0],items:[{...tickets[0].items[0],promoted:undefined}]}]}));
+assert.equal(run({tickets:[t('a',3000,true),t('b',4000,false),t('c',3000,false)]}).promotionBand,'medium');
+assert.equal(run({tickets:[t('a',2999,true),t('b',4001,false),t('c',3000,false)]}).promotionBand,'low');
+console.log('CRM promotion intelligence passed');
