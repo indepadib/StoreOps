@@ -5,6 +5,10 @@ on:
       - 'backend/services/one-crm-*.mjs'
       - 'backend/tests/one-crm-*.mjs'
       - 'frontend/crm/**'
+      - 'frontend/js/auth.js'
+      - 'frontend/netlify-build.sh'
+      - 'frontend/_redirects'
+      - 'netlify.toml'
       - 'backend/crm-schema/**'
       - '.github/workflows/one-crm-foundation.yml'
 permissions:
@@ -45,6 +49,7 @@ jobs:
       - run: node backend/tests/one-crm-access.mjs
       - run: node backend/tests/one-crm-generative.mjs
       - run: node backend/tests/one-crm-dispatch.mjs
+      - run: node backend/tests/one-crm-pilot-session.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
@@ -97,3 +102,8 @@ jobs:
         run: |
           cp backend/tests/one-crm-browser-smoke.mjs "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
           CRM_HTML="$GITHUB_WORKSPACE/frontend/crm/index.html" node "$RUNNER_TEMP/one-crm-browser/smoke.mjs"
+      - name: Build and test StoreOps authenticated pilot shell
+        run: |
+          (cd frontend && sh netlify-build.sh)
+          cp backend/tests/one-crm-pilot-browser.mjs "$RUNNER_TEMP/one-crm-browser/pilot.mjs"
+          CRM_FRONTEND="$GITHUB_WORKSPACE/frontend" node "$RUNNER_TEMP/one-crm-browser/pilot.mjs"
