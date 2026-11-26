@@ -25,8 +25,8 @@ export function createPeriodLoader({now=Date.now,ttl=15*60*1000,maxBytes=24*1024
  const remove=key=>{const hit=cache.get(key);if(hit){bytes-=hit.bytes;cache.delete(key)}};
  return async function load({plan,scope,fetchSlice,force=false,signal,onProgress=()=>{},concurrency=2}){
   if(force)for(const slice of plan)remove(JSON.stringify([scope,slice]));
-  const results=new Array(plan.length);let next=0,done=0,hits=0,requests=0;
-  const worker=async()=>{while(true){
+  const results=new Array(plan.length);let next=0,done=0,hits=0,requests=0,stopped=false,failure=null;
+  const worker=async()=>{while(!stopped){
    signal?.throwIfAborted();const i=next++;if(i>=plan.length)return;
    const slice=plan[i],key=JSON.stringify([scope,slice]),cached=cache.get(key);
    if(cached&&cached.expires<=now())remove(key);
@@ -47,7 +47,11 @@ export function createPeriodLoader({now=Date.now,ttl=15*60*1000,maxBytes=24*1024
   }};
   // At most two API requests, including on a large network scope. Each request
   // retains the backend's own bounded D365 pool and timeout subdivision.
-  await Promise.all(Array.from({length:Math.max(1,Math.min(2,concurrency,plan.length))},worker));
+  // A failed slice must stop scheduling the rest of a long period. Drain the
+  // already-running read before allowing a retry, avoiding overlapping pools.
+  const guardedWorker=async()=>{try{await worker()}catch(error){stopped=true;failure??=error}};
+  await Promise.all(Array.from({length:Math.max(1,Math.min(2,concurrency,plan.length))},guardedWorker));
+  if(failure)throw failure;
   signal?.throwIfAborted();return{results,diagnostics:{blocks:plan.length,hits,requests}};
  };
 }
