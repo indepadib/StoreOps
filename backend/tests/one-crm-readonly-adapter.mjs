@@ -8,4 +8,12 @@ assert.equal(output.audienceCount,1);assert.equal(output.audienceNetMinor,20000)
 await assert.rejects(()=>readCrmAudience({...input,allowedStoreIds:[]}),/Forbidden/);
 for(const patch of [{coverageComplete:false},{currency:'EUR'},{rejectedIdentity:1},{netAmountBasis:'unknown'},{date:'2026-11-03'}])await assert.rejects(()=>readCrmAudience({...input,readVerifiedDay:async q=>({...await readVerifiedDay(q),...patch})}),/unverified/);
 await assert.rejects(()=>readCrmAudience({...input,readVerifiedDay:async q=>({...await readVerifiedDay(q),tickets:[{tenantId:'other',storeId:q.storeId,date:q.date}]})}),/partition/);
+const categoryRule={kind:'rule',field:'preferredCategories',op:'contains',value:'A'};
+const itemReader=async q=>{const d=await readVerifiedDay(q);return {...d,itemEvidenceComplete:true,tickets:d.tickets.map(t=>({...t,ticketId:'repeat-register-id',items:[{lineId:'1',productId:'P1',category:'A',netMinor:t.netMinor}]}))}};
+const itemInput={...input,readVerifiedDay:itemReader,rules:{expression:categoryRule}};
+const itemOutput=await readCrmAudience(itemInput);assert.equal(itemOutput.audienceCount,1);assert.equal(itemOutput.uniqueTickets,2);assert.equal(itemOutput.audienceNetMinor,20000);assert.ok(!JSON.stringify(itemOutput).includes('synthetic-id'));
+await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay}),/item evidence/);
+await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay:async q=>({...await itemReader(q),itemEvidenceComplete:false})}),/item evidence/);
+await assert.rejects(()=>readCrmAudience({...itemInput,readVerifiedDay:async q=>{const d=await itemReader(q);d.tickets[0].items[0].netMinor=1;return d}}),/reconcile/);
+const zero=await readCrmAudience({...itemInput,rules:{expression:{...categoryRule,value:'Other'}}});assert.equal(zero.audienceCount,0);
 console.log('CRM read-only source boundary passed');
