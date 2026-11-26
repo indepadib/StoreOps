@@ -26,6 +26,7 @@ jobs:
       - run: node backend/tests/one-crm-identity.mjs
       - run: node backend/tests/one-crm-persistence.mjs
       - run: node backend/tests/one-crm-consent.mjs
+      - run: node backend/tests/one-crm-customer-intelligence.mjs
   postgres-contract:
     runs-on: ubuntu-latest
     services:
