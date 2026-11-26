@@ -1,4 +1,4 @@
-import {customerSourceError} from './one-crm-customer-source.mjs';
+import {customerSourceError,isLoyaltyCustomerAccount} from './one-crm-customer-source.mjs';
 import {parseObservedPilotStores} from './one-crm-observed-sales.mjs';
 const SOURCE='D365/CustTableCDREntities';
 const clean=v=>String(v??'').trim();
@@ -11,8 +11,9 @@ export function normalizeCustomerMaster(rows,{company,checkedAt}){
  const seen=new Map();
  for(const r of rows){
   const account=clean(r.AccountNum),area=clean(r.SysDataAreaId),created=clean(r.SysCreatedDateTime),group=clean(r.CustGroup);
-  if(!id(account)||area!==company||group!=='Retail'||!Number.isFinite(Date.parse(created)))throw Error('Invalid account partition');
-  const createdAt=new Date(created).toISOString(),old=seen.get(account);
+  if(!id(account)||area!==company||group!=='Retail')throw Error('Invalid account partition');
+  if(!isLoyaltyCustomerAccount(account))continue;
+  const createdAt=Number.isFinite(Date.parse(created))?new Date(created).toISOString():null,old=seen.get(account);
   if(old&&old.createdAt!==createdAt)throw Error('Conflicting account duplicate');
   seen.set(account,{accountRef:account,createdAt});
  }

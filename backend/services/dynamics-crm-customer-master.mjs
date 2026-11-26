@@ -1,3 +1,4 @@
+import {isLoyaltyCustomerAccount,loyaltyCustomerFilter,isCltFilterRejected,scanCltAccounts} from './one-crm-customer-source.mjs';
 import {config} from '../config.mjs';
 import {odataGet} from './dynamics.mjs';
 import {readCompleteCollection} from './dynamics-account-creations.mjs';
@@ -11,7 +12,10 @@ export async function readCustomerMaster(){
  if(cache?.key===key&&cache.expires>Date.now())return cache.value;
  if(inflight?.key===key)return inflight.promise;
  const promise=(async()=>{
-  const rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail'",select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet);
+  let rows;
+  try{rows=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+company.replaceAll("'","''")+"' and CustGroup eq 'Retail' and "+loyaltyCustomerFilter('AccountNum'),select:'AccountNum,SysCreatedDateTime,SysDataAreaId,CustGroup',extra:'cross-company=true'},odataGet)}
+  catch(e){if(!isCltFilterRejected(e))throw e;const result=await scanCltAccounts({company,read:odataGet});if(!result.complete)throw Error('Incomplete CLT master');rows=result.rows.map(r=>({AccountNum:r.accountRef,SysCreatedDateTime:r.createdAt,SysDataAreaId:company,CustGroup:'Retail'}))}
+
   const value=normalizeCustomerMaster(rows,{company,checkedAt:new Date().toISOString()});
   cache={key,value,expires:Date.now()+300000};return value;
  })();
@@ -22,7 +26,7 @@ export async function readCustomerProfile(row){
  const company=String(config.dynamics.dataAreaId||'').trim(),accountRef=row.accountRef;
  const base={status:'READY',accountRef,createdAt:row.createdAt,source:'D365/CustTableCDREntities',scope:'LEGAL_ENTITY_RETAIL',historyStatus:'NOT_CONNECTED',activationEnabled:false};
  const unavailable={status:'UNAVAILABLE',cardCount:null,firstEnrollmentAt:null};
- if(config.dynamics.mode!=='live'||!company)return {...base,loyalty:unavailable};
+ if(config.dynamics.mode!=='live'||!company||!isLoyaltyCustomerAccount(accountRef))return {...base,loyalty:unavailable};
  try{
   const esc=v=>String(v).replaceAll("'","''");
   const accounts=await readCompleteCollection('CustTableCDREntities',{filter:"SysDataAreaId eq '"+esc(company)+"' and CustGroup eq 'Retail' and AccountNum eq '"+esc(accountRef)+"'",select:'AccountNum,Party,SysCreatedDateTime,SysDataAreaId',extra:'cross-company=true'},odataGet);
@@ -115,9 +119,9 @@ export async function prepareCrmRfmDay(storeId,date){
  const asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<start||date>asOf||!Number.isFinite(Date.parse(date))||new Date(Date.parse(date)).toISOString().slice(0,10)!==date)return {status:'INVALID_DATE'};
  const {readStoreSalesRange}=await import('./dynamics-sales.mjs');
- const {analyticsCacheKey,readAnalyticsCache,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const {analyticsCacheKey,readAnalyticsCacheFresh,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
  const key=analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,storeId,date]);
- if(isPreparedRfmRange(await readAnalyticsCache(key),storeId,date,date))return {status:'READY',storeId,date,reused:true};
+ if(isPreparedRfmRange(await readAnalyticsCacheFresh(key,{strict:true}),storeId,date,date))return {status:'READY',storeId,date,reused:true};
  const r=await readStoreSalesRange(storeId,{startDate:date,endDate:date});
  if(!isPreparedRfmRange(r,storeId,date,date))return {status:'UNAVAILABLE',reason:'DAY_SOURCE_INCOMPLETE'};
  const {status,source,startDate,endDate,diagnostics}=r,customers=r.customers.map(({customerAccount,sales,tickets,lastDate})=>({customerAccount,sales,tickets,lastDate}));
