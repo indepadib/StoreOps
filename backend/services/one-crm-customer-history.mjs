@@ -10,7 +10,7 @@ const identity={company:'dataAreaId',store:'store',terminal:'terminalId',transac
 const day=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(Date.parse(v)).toISOString().slice(0,10)===v;
 const anonymous=new Set(['','0','ANONYMOUS','ANONYME','CASH','CASH CUSTOMER','WALK-IN','WALK IN']);
 const unavailable=reason=>({status:'UNAVAILABLE',reason,activationEnabled:false});
-export async function readCustomerPositiveHistory({accountRef,company,stores,page},{readCollection,salesConfig,settings,amount,eligible,now=()=>new Date().toISOString()}){
+export async function readCustomerPositiveHistory({accountRef,company,stores,page},{readCollection,salesConfig,settings,amount,eligible,readTicketBurn=null,now=()=>new Date().toISOString()}){
  if(!valid(accountRef)||anonymous.has(accountRef.toUpperCase())||!valid(company)||!Array.isArray(stores)||!stores.length||stores.length>2||!Number.isSafeInteger(page)||page<1)return unavailable('INVALID_HISTORY_SCOPE');
  try{
   const mappings=stores.map(s=>{
@@ -67,6 +67,24 @@ export async function readCustomerPositiveHistory({accountRef,company,stores,pag
   if(!Number.isSafeInteger(Math.round(positiveTtc*100))||page>Math.max(1,Math.ceil(totalTickets/20)))return unavailable('HISTORY_PAGE_UNAVAILABLE');
   const checkedAt=now();
   const behavior=summarizeCustomerBehavior(tickets,checkedAt);
-  return {status:'READY',accountRef,source:SOURCE,scope:'APPROVED_PILOT_STORES',storeIds:mappings.map(m=>m.storeId),basis:'POSITIVE_ACCOUNT_LINES_EXCLUDES_RETURNS',currency:'MAD',checkedAt,behavior,financialReconciliation:'NOT_VERIFIED',totalTickets,positiveTtc,firstPurchase:totalTickets?tickets.at(-1).date:null,lastPurchase:totalTickets?tickets[0].date:null,page,pageSize:20,rows:tickets.slice((page-1)*20,page*20).map(({terminal,...r})=>r),activationEnabled:false};
+  const pageTickets=tickets.slice((page-1)*20,page*20);
+  const burnByKey=new Map(),ticketKey=t=>JSON.stringify([t.storeId,t.terminal,t.transactionRef,t.date]);
+  if(typeof readTicketBurn==='function'){
+   await Promise.all(mappings.map(async ({storeId})=>{
+    const selected=pageTickets.filter(t=>t.storeId===storeId);if(!selected.length)return;
+    try{
+     const result=await readTicketBurn(storeId,{company,tickets:selected});
+     if(result?.basis!=='ANALYTICS_WALLET_TENDER_ON_OBSERVED_TICKETS'||result.currency!=='MAD'||!Array.isArray(result.receipts)||result.receipts.length!==selected.length)return;
+     const expected=new Set(selected.map(ticketKey)),matched=new Map();
+     for(const receipt of result.receipts){
+      const key=ticketKey({...receipt,storeId});
+      if(!expected.delete(key)||!['READY','SIGN_VALIDATION_REQUIRED'].includes(receipt.status)||!(receipt.status==='READY'?Number.isFinite(receipt.burn)&&receipt.burn>=0:receipt.burn===null))return;
+      matched.set(key,{status:receipt.status,amount:receipt.burn});
+     }
+     if(!expected.size)for(const [key,value] of matched)burnByKey.set(key,value);
+    }catch{}
+   }));
+  }
+  return {status:'READY',accountRef,source:SOURCE,scope:'APPROVED_PILOT_STORES',storeIds:mappings.map(m=>m.storeId),basis:'POSITIVE_ACCOUNT_LINES_EXCLUDES_RETURNS',currency:'MAD',checkedAt,behavior,financialReconciliation:'NOT_VERIFIED',totalTickets,positiveTtc,firstPurchase:totalTickets?tickets.at(-1).date:null,lastPurchase:totalTickets?tickets[0].date:null,page,pageSize:20,rows:pageTickets.map(t=>{const {terminal,...r}=t;return typeof readTicketBurn==='function'?{...r,walletBurn:burnByKey.get(ticketKey(t))||{status:'UNAVAILABLE',amount:null}}:r}),activationEnabled:false};
  }catch{return unavailable('HISTORY_SOURCE_UNAVAILABLE')}
 }
