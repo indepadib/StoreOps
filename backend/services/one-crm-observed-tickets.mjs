@@ -22,8 +22,8 @@ export function projectTicketPage(evidence,{storeId,date,page}){
  }
  return {status:'READY',storeId,date,source:summary.source,basis:summary.basis,financialReconciliation:'NOT_VERIFIED',checkedAt:summary.checkedAt,currency:'MAD',page,pageSize:PAGE_SIZE,totalTickets:summary.tickets,rows,activationEnabled:false};
 }
-export function makeObservedTicketsGateway({listStores,canAccessStore,sourceReady,readDay,today,pilotStores=''}){
- if([listStores,canAccessStore,sourceReady,readDay,today].some(f=>typeof f!=='function'))throw Error('Missing dependencies');
+export function makeObservedTicketsGateway({listStores,canAccessStore,sourceReady,readDay,today,pilotStores='',project=projectTicketPage}){
+ if([listStores,canAccessStore,sourceReady,readDay,today,project].some(f=>typeof f!=='function'))throw Error('Missing dependencies');
  return async({session,dynamicsMode,method,query})=>{
   const u=session?.user;
   if(!['entra','local'].includes(session?.mode)||!u||!(u.role==='ops_director'||u.permissions_profile==='platform_admin'))return {status:403,data:{error:'Accès professionnel requis.'}};
@@ -34,6 +34,6 @@ export function makeObservedTicketsGateway({listStores,canAccessStore,sourceRead
   const scope=parseObservedPilotStores(pilotStores);
   if(!scope.size)return {status:503,data:unavailable('PILOT_SCOPE_NOT_CONFIGURED')};
   if(!(await listStores()).some(s=>s.id===storeId&&scope.has(s.id)&&canAccessStore(u,s.id)&&sourceReady(s.id)))return {status:403,data:{error:'Magasin non autorisé ou non connecté.'}};
-  try{return {status:200,data:projectTicketPage(await readDay(storeId,date),{storeId,date,page:Number(p)})}}catch{return {status:503,data:unavailable('SOURCE_READ_FAILED')}}
+  try{return {status:200,data:project(await readDay(storeId,date),{storeId,date,page:Number(p)})}}catch{return {status:503,data:unavailable('SOURCE_READ_FAILED')}}
  };
 }
