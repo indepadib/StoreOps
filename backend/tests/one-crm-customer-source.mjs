@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount,customerSourceError} from '../services/one-crm-customer-source.mjs';
+import {makeCustomerDirectoryGateway} from '../services/one-crm-customer-directory.mjs';
+const company='5001',rows=Array.from({length:53},(_,i)=>({AccountNum:'ACC-'+String(i+1).padStart(2,'0'),SysCreatedDateTime:i===1?null:'2025-01-01T00:00:00Z',SysDataAreaId:company}));
+const read=async(entity,opts)=>{assert.equal(entity,'CustTableCDREntities');assert.match(opts.filter,/CustGroup eq 'Retail'/);assert.ok(opts.top<=51);assert.ok(!opts.filter.includes('SysCreatedDateTime'));if(opts.extra.includes('$count=true'))return {value:[rows[0]],'@odata.count':53};const skip=Number(new URLSearchParams(opts.extra).get('$skip')||0);return {value:rows.slice(skip,skip+opts.top)}};
+const a=await readDirectorySourcePage({company,page:1,read});assert.equal(a.rows.length,50);assert.equal(a.hasMore,true);assert.equal(a.totalAccounts,null);assert.equal(a.rows[1].createdAt,null);
+const b=await readDirectorySourcePage({company,page:2,read});assert.equal(b.rows.length,3);assert.equal(b.hasMore,false);assert.equal((await readDirectorySourceCount({company,read})).totalAccounts,53);
+assert.equal((await findDirectorySourceAccount({company,accountRef:'ACC-01',read:async()=>({value:[rows[0]]})})).accountRef,'ACC-01');
+await assert.rejects(()=>readDirectorySourcePage({company,page:1,read:async()=>({value:[{...rows[0],SysDataAreaId:'OTHER'}]})}),/PARTITION_INVALID/);
+assert.equal(customerSourceError({code:'D365_REQUEST_TIMEOUT'}),'D365_REQUEST_TIMEOUT');assert.equal(customerSourceError({code:'D365_REQUEST_FAILED',details:{httpStatus:400}}),'CRM_D365_HTTP_400');
+const gate=makeCustomerDirectoryGateway({listStores:()=>[{id:'a'}],canAccessStore:()=>true,pilotStores:'a',readPage:async()=>a,readCount:async()=>{throw Object.assign(Error('private raw message'),{code:'D365_REQUEST_TIMEOUT'})},findAccount:async()=>null,readProfile:async()=>null});
+const req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({page:'1'})};assert.equal((await gate(req)).data.rows.length,50);const count=await gate({...req,query:new URLSearchParams({summary:'1'})});assert.equal(count.status,503);assert.equal(count.data.code,'D365_REQUEST_TIMEOUT');assert.ok(!JSON.stringify(count).includes('private'));assert.equal((await gate({...req,query:new URLSearchParams({summary:'1',page:'1'})})).status,400);
+console.log('CRM bounded source page and independent count passed');

@@ -165,9 +165,9 @@ function setupNavigation(){
  go('overview');
 }
 
-let directoryGeneration=0,directoryPage=1,directoryLoaded=false,directoryBusy=false,directorySearch='',profileGeneration=0;
+let directoryGeneration=0,directoryPage=1,directoryLoaded=false,directoryBusy=false,directorySearch='',profileGeneration=0,directoryCount=null;
 function clearProfile(){profileGeneration++;el('crmProfileMetrics')?.replaceChildren();if(el('crmProfileTitle'))el('crmProfileTitle').textContent='Fiche client';if(el('crmProfileStatus'))el('crmProfileStatus').textContent='';if(el('crmCustomerProfile'))el('crmCustomerProfile').hidden=true}
-function clearDirectory(){clearProfile();directorySearch='';if(el('crmDirectoryQuery'))el('crmDirectoryQuery').value='';directoryGeneration++;directoryPage=1;directoryLoaded=false;directoryBusy=false;el('crmDirectoryRows')?.replaceChildren();for(const id of ['crmDirectoryTotal','crmMasterKpi'])if(el(id))el(id).textContent='—';if(el('crmDirectoryPager'))el('crmDirectoryPager').hidden=true;if(el('crmDirectoryStatus'))el('crmDirectoryStatus').textContent='Session à vérifier. Actualisez le référentiel.';if(el('crmDirectoryRead'))el('crmDirectoryRead').disabled=false}
+function clearDirectory(){directoryCount=null;clearProfile();directorySearch='';if(el('crmDirectoryQuery'))el('crmDirectoryQuery').value='';directoryGeneration++;directoryPage=1;directoryLoaded=false;directoryBusy=false;el('crmDirectoryRows')?.replaceChildren();for(const id of ['crmDirectoryTotal','crmMasterKpi'])if(el(id))el(id).textContent='—';if(el('crmDirectoryPager'))el('crmDirectoryPager').hidden=true;if(el('crmDirectoryStatus'))el('crmDirectoryStatus').textContent='Session à vérifier. Actualisez le référentiel.';if(el('crmDirectoryRead'))el('crmDirectoryRead').disabled=false}
 function loadDirectoryIfNeeded(){if(!directoryLoaded&&!directoryBusy)readDirectory(1)}
 async function readDirectory(page){
  if(!document.documentElement.classList.contains('crm-pilot-open')||directoryBusy)return;
@@ -175,11 +175,26 @@ async function readDirectory(page){
  directoryBusy=true;btn.disabled=true;rows.replaceChildren();el('crmDirectoryPager').hidden=true;status.textContent='Lecture du référentiel permanent Dynamics…';
  try{
   const x=await api('/api/crm/customer-directory?'+new URLSearchParams({page:String(page),...(search?{q:search}:{})}),{noRetry:true,cache:'no-store'});if(g!==directoryGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
-  if(x?.status!=='READY'||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.identityBasis!=='D365_LEGAL_ENTITY_ACCOUNT'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!Number.isFinite(Date.parse(x.checkedAt))||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0||!Number.isSafeInteger(x.matchedAccounts)||x.matchedAccounts<0||x.matchedAccounts>x.totalAccounts||x.search!==search||x.page!==page||x.pageSize!==50||!Array.isArray(x.rows)||x.rows.length!==Math.min(50,Math.max(0,x.matchedAccounts-(page-1)*50))||x.rows.some(r=>typeof r.accountRef!=='string'||!r.accountRef.trim()||r.accountRef.length>160||!Number.isFinite(Date.parse(r.createdAt))))throw Error('Invalid customer master');
-  for(const r of x.rows){const tr=document.createElement('tr'),cell=document.createElement('td'),button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=r.accountRef;button.onclick=()=>readProfile(r);cell.append(button);tr.append(cell);for(const v of [new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(r.createdAt)),'À raccorder']){const td=document.createElement('td');td.textContent=v;tr.append(td)}rows.append(tr)}
-  const total=Math.max(1,Math.ceil(x.matchedAccounts/50));directoryPage=page;directoryLoaded=true;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent=fmt(x.totalAccounts);
-  status.textContent='D365 · '+fmt(x.matchedAccounts)+' compte(s) sur '+fmt(x.totalAccounts)+' · extraction '+x.checkedAt;el('crmDirectoryPage').textContent='Page '+page+' / '+total;el('crmDirectoryPrev').disabled=page===1;el('crmDirectoryNext').disabled=page===total;el('crmDirectoryPager').hidden=false;
- }catch(e){if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent=e.status===403?'Accès réseau refusé (403). Vérifiez votre habilitation CRM.':e.status===503?'Source Dynamics indisponible (503). Le référentiel n’a pas pu être lu.':'Lecture du référentiel impossible. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
+  if(x?.status!=='READY'||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.identityBasis!=='D365_LEGAL_ENTITY_ACCOUNT'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!Number.isFinite(Date.parse(x.checkedAt))||x.totalAccounts!==null||x.matchedAccounts!==null||typeof x.hasMore!=='boolean'||x.search!==search||x.page!==page||x.pageSize!==50||!Array.isArray(x.rows)||x.rows.length>50||(x.hasMore&&x.rows.length!==50)||new Set(x.rows.map(r=>r.accountRef)).size!==x.rows.length||x.rows.some(r=>typeof r.accountRef!=='string'||!r.accountRef.trim()||r.accountRef.length>160||(r.createdAt!==null&&!Number.isFinite(Date.parse(r.createdAt)))))throw Error('Invalid customer master');
+  for(const r of x.rows){const tr=document.createElement('tr'),cell=document.createElement('td'),button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=r.accountRef;button.onclick=()=>readProfile(r);cell.append(button);tr.append(cell);for(const v of [r.createdAt?new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(r.createdAt)):'Non disponible','À raccorder']){const td=document.createElement('td');td.textContent=v;tr.append(td)}rows.append(tr)}
+  directoryPage=page;directoryLoaded=true;
+  const pageText='D365 · '+fmt(x.rows.length)+' compte(s) sur cette page · extraction '+x.checkedAt;
+  status.textContent=pageText;el('crmDirectoryPage').textContent='Page '+page;el('crmDirectoryPrev').disabled=page===1;el('crmDirectoryNext').disabled=!x.hasMore;el('crmDirectoryPager').hidden=false;
+  if(page===1||directoryCount===null){
+   // Count is optional and must never erase a successful page.
+   readDirectoryCount(g,pageText);
+  }
+ }catch(e){if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent=e.status===403?'Accès réseau refusé (403). Vérifiez votre habilitation CRM.':e.status===503?'Source Dynamics indisponible (503) · '+safeDirectoryCode(e.code):'Lecture du référentiel impossible. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
+}
+function safeDirectoryCode(code){return typeof code==='string'&&/^(CRM_[A-Z0-9_]+|D365_REQUEST_TIMEOUT|D365_CONTINUATION_INVALID|CUSTOMER_MASTER_READ_FAILED)$/.test(code)?code:'ERREUR_SOURCE'}
+async function readDirectoryCount(g,pageText){
+ try{
+  const x=await api('/api/crm/customer-directory?summary=1',{noRetry:true,cache:'no-store'});
+  if(g!==directoryGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
+  if(x?.status!=='READY'||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.activationEnabled!==false||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0)throw Error('Invalid count');
+  directoryCount=x.totalAccounts;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent=fmt(directoryCount);
+  el('crmDirectoryStatus').textContent=pageText+' · '+fmt(directoryCount)+' comptes au total.';
+ }catch(e){if(g===directoryGeneration&&document.documentElement.classList.contains('crm-pilot-open')){el('crmDirectoryStatus').textContent=pageText+' · Total global indisponible ('+safeDirectoryCode(e.code)+'). Les comptes affichés restent valides.'}}
 }
 async function readProfile(row){
  if(!document.documentElement.classList.contains('crm-pilot-open'))return;
@@ -187,7 +202,7 @@ async function readProfile(row){
  try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({accountRef:row.accountRef}),{noRetry:true,cache:'no-store'});if(g!==profileGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
   const l=x?.loyalty;
   if(x?.status!=='READY'||x.accountRef!==row.accountRef||x.createdAt!==row.createdAt||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!['READY','UNVERIFIED','UNAVAILABLE'].includes(l?.status)||!(l.status==='READY'?Number.isSafeInteger(l.cardCount)&&l.cardCount>=0&&(l.cardCount===0?l.firstEnrollmentAt===null:Number.isFinite(Date.parse(l.firstEnrollmentAt))):l.cardCount===null&&l.firstEnrollmentAt===null))throw Error('Invalid profile');
-  const date=v=>new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(v));
+  const date=v=>v?new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(v)):'Non disponible';
   metric(out,'Création du compte',date(x.createdAt));metric(out,'Cartes liées',l.cardCount===null?'Non vérifié':fmt(l.cardCount));metric(out,'Première inscription connue',l.firstEnrollmentAt?date(l.firstEnrollmentAt):'Non disponible');status.textContent=l.status==='READY'?'Lien compte → Party → cartes vérifié dans les sources.':'Lien fidélité indisponible ou non vérifié.';
  }catch{if(g===profileGeneration){out.replaceChildren();status.textContent='Lecture de la fiche indisponible. Réessayez.'}}
 }
