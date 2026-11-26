@@ -782,5 +782,6 @@ async function computeStoreSalesRange(storeId,{startDate,endDate,force=false,exp
 export async function readCrmCustomerHistory(row,stores,page){
  const {readCustomerPositiveHistory}=await import('./one-crm-customer-history.mjs');
  const {readCompleteCollection}=await import('./dynamics-account-creations.mjs');
- return readCustomerPositiveHistory({accountRef:row.accountRef,company:clean(config.dynamics.dataAreaId),stores,page},{readCollection:readCompleteCollection,salesConfig:salesIntegrationConfig,settings:storeOperationalSettings,amount:retailDisplaySalesAmount,eligible:includedRetailSaleRow});
+ const {readCustomerTicketBurn}=await import('./dynamics-tender.mjs');
+ return readCustomerPositiveHistory({accountRef:row.accountRef,company:clean(config.dynamics.dataAreaId),stores,page},{readCollection:readCompleteCollection,salesConfig:salesIntegrationConfig,settings:storeOperationalSettings,amount:retailDisplaySalesAmount,eligible:includedRetailSaleRow,readTicketBurn:readCustomerTicketBurn});
 }
