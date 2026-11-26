@@ -6,10 +6,12 @@ const result={startDate:date,endDate:date,generatedAt:'2026-11-26T10:00:00Z',acc
 let response=result;
 const deps={listStores:()=>[{id:storeId},{id:'trefle'}],canAccessStore:()=>true,readRange:async(stores,options)=>{reads++;assert.deepEqual(stores,[{id:storeId}]);assert.equal(options.networkScope,false);assert.equal(options.includeStaff,false);return response},today:()=> '2026-11-26',pilotStores:storeId};
 const gate=makeObservedLoyaltyGateway(deps),req={session:{mode:'entra',user:{role:'ops_director'}},dynamicsMode:'live',method:'GET',query:new URLSearchParams({storeId,date})};
-const x=await gate(req);assert.equal(x.data.accountCreations,14);assert.equal(x.data.cardEnrollments,17);assert.equal(x.data.accountStatus,'PARTIAL');assert.equal(x.data.walletEarn,null);assert.equal(x.data.walletEarnStatus,'COHORT_NOT_VERIFIED');assert.ok(!JSON.stringify(x).includes('private-staff'));
+const x=await gate(req);assert.equal(x.data.accountCreations,14);assert.equal(x.data.cardEnrollments,17);assert.equal(x.data.accountStatus,'PARTIAL');assert.equal(x.data.walletEarn,123.45);assert.equal(x.data.walletEarnStatus,'READY');assert.ok(!JSON.stringify(x).includes('private-staff'));
 for(const patch of [{session:{mode:'demo',user:{role:'ops_director'}}},{session:{mode:'entra',user:{role:'employee'}}},{method:'POST'},{dynamicsMode:'simulated'},{query:new URLSearchParams({storeId:'trefle',date})},{query:new URLSearchParams({storeId,date:'2026-11-26'})},{query:new URLSearchParams({storeId,date,force:'true'})}])assert.notEqual((await gate({...req,...patch})).data.status,'READY');
 assert.equal(reads,1);
-response={...result,stores:[{...result.stores[0],accountCreations:3,enrollments:9}]};const small=await gate(req);assert.equal(small.data.accountCreations,null);assert.equal(small.data.cardEnrollments,null);assert.equal(small.data.accountStatus,'SUPPRESSED');
+response={...result,stores:[{...result.stores[0],accountCreations:3,enrollments:9}]};const small=await gate(req);assert.equal(small.data.accountCreations,3);assert.equal(small.data.cardEnrollments,9);assert.equal(small.data.accountStatus,'PARTIAL');
 response={...result,accountCreationEvidence:{...result.accountCreationEvidence,scope:'NETWORK'}};assert.equal((await gate(req)).status,503);
 response={...result,stores:[{...result.stores[0],source:'simulated',accountCreations:0}]};const partial=await gate(req);assert.equal(partial.data.accountCreations,0);assert.equal(partial.data.cardEnrollments,null);
+response={...result,stores:[{...result.stores[0],earnSource:'simulated'}]};assert.equal((await gate(req)).data.walletEarn,null);
+response={...result,stores:[{...result.stores[0],earn:-4.25,accountCreations:0,enrollments:0}]};const reversal=await gate(req);assert.equal(reversal.data.walletEarn,-4.25);assert.equal(reversal.data.accountCreations,0);assert.equal(reversal.data.cardEnrollments,0);
 console.log('CRM observed loyalty gateway passed');

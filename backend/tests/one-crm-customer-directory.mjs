@@ -10,5 +10,8 @@ const gate=makeCustomerDirectoryGateway(deps),req={session:{mode:'entra',user:{r
 assert.equal((await gate(req)).data.totalAccounts,53);
 for(const patch of [{session:{mode:'demo',user:{role:'ops_director'}}},{session:{mode:'entra',user:{role:'employee'}}},{dynamicsMode:'simulated'},{method:'POST'},{query:new URLSearchParams({date:'2026-11-25'})},{query:new URLSearchParams({storeId:'val-fleuri'})}])assert.notEqual((await gate({...req,...patch})).data.status,'READY');
 assert.equal((await makeCustomerDirectoryGateway({...deps,canAccessStore:(_,id)=>id==='val-fleuri'})(req)).status,403);
-assert.equal((await makeCustomerDirectoryGateway({...deps,listStores:()=>[{id:'val-fleuri'},{id:'trefle'},{id:'other'}]})(req)).status,403);
-assert.equal(reads,1);console.log('CRM all-time company retail master contract passed');
+const fullNetwork=[{id:'val-fleuri'},{id:'trefle'},{id:'zeraoui'},{id:'sindibad'},{id:'carita'}];
+assert.equal((await makeCustomerDirectoryGateway({...deps,listStores:()=>fullNetwork})(req)).data.totalAccounts,53);
+assert.equal((await makeCustomerDirectoryGateway({...deps,listStores:()=>fullNetwork,canAccessStore:(_,id)=>id!=='carita'})(req)).status,403);
+assert.equal((await makeCustomerDirectoryGateway({...deps,listStores:()=>[{id:'val-fleuri'}]})(req)).status,403);
+assert.equal(reads,2);console.log('CRM all-time company retail master contract passed');

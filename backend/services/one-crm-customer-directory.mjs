@@ -31,9 +31,10 @@ export function makeCustomerDirectoryGateway({listStores,canAccessStore,readMast
   const keys=[...query.keys()],p=query.get('page')||'1';
   if(keys.length>1||keys.some(k=>k!=='page')||!/^\d{1,5}$/.test(p)||Number(p)<1)return {status:400,data:unavailable('INVALID_SELECTION')};
   // Unattributed accounts cannot be safely released to a store-restricted principal.
-  // Require the entire active StoreOps network, not just one selected store.
+  // Require authorization for the entire active StoreOps network. The pilot store list
+  // is a transaction scope, not the complete network or the legal-entity customer master.
   const scope=parseObservedPilotStores(pilotStores),stores=await listStores();
-  if(!scope.size||!Array.isArray(stores)||stores.length!==scope.size||new Set(stores.map(s=>s.id)).size!==stores.length||stores.some(s=>!scope.has(s.id)||!canAccessStore(u,s.id)))return {status:403,data:{error:'Accès réseau complet requis pour le référentiel.'}};
-  try{return {status:200,data:projectCustomerMaster(await readMaster(),Number(p))}}catch{return {status:503,data:unavailable('CUSTOMER_MASTER_READ_FAILED')}}
+  if(!scope.size||!Array.isArray(stores)||!stores.length||new Set(stores.map(s=>s.id)).size!==stores.length||[...scope].some(id=>!stores.some(s=>s.id===id))||stores.some(s=>!canAccessStore(u,s.id)))return {status:403,data:{code:'CRM_NETWORK_ACCESS_REQUIRED',error:'Accès réseau complet requis pour le référentiel.'}};
+  try{return {status:200,data:projectCustomerMaster(await readMaster(),Number(p))}}catch{return {status:503,data:{...unavailable('CUSTOMER_MASTER_READ_FAILED'),code:'CUSTOMER_MASTER_READ_FAILED'}}}
  };
 }
