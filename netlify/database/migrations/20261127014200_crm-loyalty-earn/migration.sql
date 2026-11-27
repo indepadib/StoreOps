@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS crm_loyalty_earn_day (company TEXT NOT NULL,store_id TEXT NOT NULL,business_day DATE NOT NULL,accounts JSONB NOT NULL CHECK(jsonb_typeof(accounts)='array'),source_entries INTEGER NOT NULL CHECK(source_entries>=0),captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),PRIMARY KEY(company,store_id,business_day));

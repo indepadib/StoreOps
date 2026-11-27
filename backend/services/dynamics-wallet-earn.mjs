@@ -44,6 +44,7 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
  settings=storeOperationalSettings,
  mode=config.dynamics.mode,
  maxRows=100000,
+ includeAccounts=false,
 }={}){
  const base={storeId,startDate,endDate,currency:'MAD',total:null,earn:null,credits:null,reversals:null,complete:false,
   source:'D365/'+transactionEntity,
@@ -76,7 +77,7 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
    extra:'cross-company=true',
   },get,maxRows);
   let credits=0,reversals=0,entryCount=0,ignoredNonMonetary=0,ignoredOtherTypes=0,duplicates=0;
-  const seen=new Map();
+  const seen=new Map(),accounts=new Map();
   for(const row of transactions.rows){
    const entryDay=clean(row.EntryDate).slice(0,10);
    if(clean(row.LoyaltyTransactionCompany)!==company||clean(row.OperatingUnitNumber)!==unit||!validDay(entryDay)||entryDay<startDate||entryDay>endDate)throw failure('WALLET_EARN_SCOPE_MISMATCH');
@@ -93,6 +94,7 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
     duplicates++;continue;
    }
    seen.set(identity,amount);entryCount++;
+   if(includeAccounts){const account=clean(row.CustomerAccount);if(/^CLT/i.test(account)&&account.length<=160&&!/[\x00-\x1f]/.test(account)){const a=accounts.get(account)||{accountRef:account,credits:0,reversals:0,entryCount:0};if(amount>=0)a.credits+=amount;else a.reversals+=amount;a.entryCount++;accounts.set(account,a)}}
    if(amount>=0)credits+=amount;
    else reversals+=amount;
   }
@@ -100,6 +102,7 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
   const net=round(credits+reversals);
   return {...base,status:'READY',complete:true,total:net,earn:net,credits:round(credits),reversals:round(reversals),
    entryCount,rowCount:transactions.rows.length,pages:transactions.pages,
+   ...(includeAccounts?{accounts:[...accounts.values()].map(a=>({...a,earn:round(a.credits+a.reversals),credits:round(a.credits),reversals:round(a.reversals)}))}:{}),
    provenance:{...base.provenance,company,operatingUnit:unit,rewardPointIds,rewardDefinitionPages:definitions.pages,ignoredNonMonetary,ignoredOtherTypes,duplicates},
   };
  }catch(error){

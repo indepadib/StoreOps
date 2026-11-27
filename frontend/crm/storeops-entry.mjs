@@ -272,8 +272,8 @@ async function readWallet(){
   if(x?.accountRef!==account||x.source!=='D365/RetailLoyaltyCardRewardPointTransactionV2'||x.scope!=='APPROVED_PILOT_STORES'||x.currency!=='MAD'||x.activationEnabled!==false||x.burn!==null||x.balance!==null||x.burnStatus!=='NOT_CONNECTED'||x.balanceStatus!=='NOT_CONNECTED'||!['READY','UNAVAILABLE'].includes(x.status))throw Error('Invalid wallet');
   if(x.status==='UNAVAILABLE'){status.textContent='Wallet indisponible · '+(/^WALLET_[A-Z_]+$/.test(x.reason||'')?x.reason:'ERREUR_SOURCE');return}
   if(x.basis!=='ACCOUNT_ATTRIBUTED_MONETARY_EARN_NET'||x.coverage!=='ACCOUNT_FIELD_ONLY'||![x.earn,x.credits,x.reversals].every(validAmount)||x.credits<0||x.reversals>0||Math.abs(x.earn-x.credits-x.reversals)>0.011||!Number.isSafeInteger(x.entryCount)||x.entryCount<0)throw Error('Invalid earn');
-  metric(out,'Earn net attribué',money(x.earn));metric(out,'Gains crédités',money(x.credits));metric(out,'Annulations Earn',money(x.reversals));metric(out,'Mouvements Earn',fmt(x.entryCount));metric(out,'Burn','Non raccordé');metric(out,'Solde disponible','Non raccordé');
-  status.textContent='D365 · gains monétaires MAD attribués à ce compte sur les magasins pilotes. Les mouvements sans compte ne sont pas inclus.';
+  metric(out,x.archive?.complete===true?'Earn net · 90 jours':'Earn net attribué',money(x.earn));metric(out,'Gains crédités',money(x.credits));metric(out,'Annulations Earn',money(x.reversals));metric(out,'Mouvements Earn',fmt(x.entryCount));metric(out,'Burn','Non raccordé');metric(out,'Solde disponible','Non raccordé');
+  status.textContent=x.archive?.complete===true?'PostgreSQL · Earn sur la période archivée du '+x.archive.startDate+' au '+x.archive.endDate+' · magasins pilotes, mouvements attribués uniquement.':'D365 · gains monétaires MAD attribués à ce compte sur les magasins pilotes. Les mouvements sans compte ne sont pas inclus.';
  }catch{if(active())status.textContent='Lecture du wallet indisponible. Réessayez.'}finally{if(active())btn.disabled=false}
 }
 
