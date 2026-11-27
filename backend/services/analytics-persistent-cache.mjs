@@ -120,3 +120,5 @@ export async function crmEarnStore(){if(!crmEarnStorePromise)crmEarnStorePromise
 
 let crmBurnStorePromise;
 export async function crmBurnStore(){if(!crmBurnStorePromise)crmBurnStorePromise=(async()=>{const {createCrmBurnStore}=await import('./one-crm-burn-store.mjs');const database=await getAnalyticsDatabase();return createCrmBurnStore((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmBurnStorePromise=null;throw e});return crmBurnStorePromise;}
+
+export async function crmMarketingDraftStore(){const db=await getAnalyticsDatabase();const {createMarketingDraftStore}=await import('./one-crm-marketing-drafts.mjs');return createMarketingDraftStore((strings,...values)=>db.sql(strings,...values))}
