@@ -28,7 +28,7 @@ export async function readAnalyticsCache(key){
 }
 
 export async function writeAnalyticsCache(key,group,payload,ttlSeconds){
-  const k=clean(key),g=clean(group)||'generic',ttl=Math.max(30,Math.min(604800,Number(ttlSeconds)||300));
+  const k=clean(key),g=clean(group)||'generic',ttl=Math.max(30,Math.min(group==='crm-rfm-day-v1'?2592000:604800,Number(ttlSeconds)||300));
   if(!k||payload===undefined)return false;
   const expiresAt=now()+ttl*1000;memory.set(k,{payload,expiresAt});
   try{
@@ -86,5 +86,22 @@ export async function readAnalyticsCacheManyFresh(keys){
  if(!keys.length)return new Map();
  const database=await getAnalyticsDatabase();
  const rows=await database.sql`SELECT cache_key,payload FROM retail_intelligence_cache WHERE expires_at>NOW() AND cache_key IN (SELECT jsonb_array_elements_text(CAST(${JSON.stringify(keys)} AS JSONB)))`;
+ return new Map(rows.map(r=>[r.cache_key,r.payload]));
+}
+
+export async function readRfmSnapshotPage(key,page){
+ const database=await getAnalyticsDatabase();
+ const rows=await database.sql`SELECT (payload - 'rows') || jsonb_build_object('page',${page}::integer,'rows',COALESCE((SELECT jsonb_agg(v ORDER BY ord) FROM jsonb_array_elements(COALESCE(payload->'rows','[]'::jsonb)) WITH ORDINALITY AS a(v,ord) WHERE ord>${(page-1)*50} AND ord<=${page*50}), '[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;
+ return rows?.[0]?.payload||null;
+}
+export async function claimRfmSync(key){
+ const database=await getAnalyticsDatabase();
+ const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at) VALUES(${key},'crm-rfm-sync-lock','{}'::jsonb,NOW(),NOW()+INTERVAL '90 seconds') ON CONFLICT(cache_key) DO UPDATE SET expires_at=EXCLUDED.expires_at,generated_at=NOW() WHERE retail_intelligence_cache.expires_at<=NOW() RETURNING cache_key`;
+ return !!rows?.length;
+}
+export async function readRfmEvidenceMany(keys){
+ if(!Array.isArray(keys)||keys.length>200||keys.some(k=>typeof k!=='string'||!k)||new Set(keys).size!==keys.length)throw Error('Invalid RFM evidence keys');
+ if(!keys.length)return new Map();const database=await getAnalyticsDatabase();
+ const rows=await database.sql`SELECT cache_key,jsonb_build_object('status',payload->'status','source',payload->'source','storeId',payload->'storeId','startDate',payload->'startDate','endDate',payload->'endDate','diagnostics',payload->'diagnostics','customers',COALESCE((SELECT jsonb_agg(jsonb_build_object('customerAccount',v->'customerAccount','sales',v->'sales','tickets',v->'tickets','lastDate',v->'lastDate')) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(payload->'customers')='array' THEN payload->'customers' ELSE '[]'::jsonb END) AS a(v)),'[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE expires_at>NOW() AND jsonb_typeof(payload->'customers')='array' AND cache_key IN (SELECT jsonb_array_elements_text(CAST(${JSON.stringify(keys)} AS JSONB)))`;
  return new Map(rows.map(r=>[r.cache_key,r.payload]));
 }
