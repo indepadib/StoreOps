@@ -124,3 +124,5 @@ export async function crmBurnStore(){if(!crmBurnStorePromise)crmBurnStorePromise
 export async function readCrmPeriodWorkspace(input){const db=await getAnalyticsDatabase();const {readCrmPeriodWorkspace:read}=await import('./one-crm-period-workspace.mjs');return read((strings,...values)=>db.sql(strings,...values),input)}
 
 export async function crmMarketingDraftStore(){const db=await getAnalyticsDatabase();const {createMarketingDraftStore}=await import('./one-crm-marketing-drafts.mjs');return createMarketingDraftStore((strings,...values)=>db.sql(strings,...values))}
+
+export async function crmMarketingInsights(input){const db=await getAnalyticsDatabase();const {readMarketingInsights}=await import('./one-crm-marketing-insights.mjs');return readMarketingInsights((strings,...values)=>db.sql(strings,...values),input)}
