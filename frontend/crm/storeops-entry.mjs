@@ -26,6 +26,7 @@ export async function openCrmPilot(){
  setupCustomerDirectory();
  setupPeriodWorkspaces();
  setupMarketingDrafts();
+ setupMarketingInsights();
  setupNavigation();
  setupRfmPopulation();
  setupLiveObservation();
@@ -56,7 +57,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearMarketingDrafts();clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearMarketingDrafts();clearMarketingInsights();clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -156,7 +157,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
-  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(marketingReaders.has(id))marketingReaders.get(id)();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(marketingReaders.has(id))marketingReaders.get(id)();if(insightReaders.has(id))insightReaders.get(id)();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -476,5 +477,47 @@ function setupMarketingDrafts(){
   fresh.onclick=()=>{reset();status.textContent='Nouveau brouillon';estimate.disabled=false};reload.onclick=load;
   form.onsubmit=async e=>{e.preventDefault();if(save.disabled)return;const g=epoch,input={...editing,kind,title:name.value,objective:objective.value,segment:segment.value,channel:channel.value,message:message.value,...(trigger?{trigger:trigger.value,delayHours:Number(delay.value)}:{})};save.disabled=true;fresh.disabled=true;status.textContent='Enregistrement…';try{const x=await api('/api/crm/marketing-drafts',{method:'POST',body:JSON.stringify(input),noRetry:true,cache:'no-store'});if(!active(g))return;if(x?.status!=='SAVED'||x.activationEnabled!==false||x.draft?.kind!==kind||x.draft.activationEnabled!==false||typeof x.draft.id!=='string'||!Number.isSafeInteger(x.draft.revision))throw Error('INVALID');editing={id:x.draft.id,revision:x.draft.revision};save.textContent='Enregistrer les modifications';await load();if(active(g))status.textContent='Brouillon enregistré · version '+editing.revision+' · aucun envoi.'}catch(e){if(active(g))status.textContent=e?.status===409?'Version modifiée ailleurs. Actualisez puis rechargez le brouillon.':'Enregistrement impossible. Vos champs restent disponibles.'}finally{if(active(g)){save.disabled=false;fresh.disabled=false}}};
   marketingReaders.set(view,load);clear();
+ }
+}
+
+const insightReaders=new Map(),insightCleaners=[];
+function clearMarketingInsights(){for(const clear of insightCleaners)clear()}
+function setupMarketingInsights(){
+ const week=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+ const questions=[['base','Combien de clients sont identifiés dans le référentiel ?'],['names','Combien de noms et téléphones sont vérifiés ?'],['buyers','Combien de clients ont acheté sur la période ?'],['sales','Quel est le montant des ventes positives identifiées ?'],['basket','Quel est le panier moyen positif identifié ?'],['inactive','Combien de clients sont inactifs depuis 30 jours ?'],['vip','Combien de clients à forte valeur ?'],['contact','Quels jours les clients achètent-ils le plus ?']];
+ for(const view of ['copilot','sendtime','data']){
+  const section=el(view);if(!section)continue;
+  const panel=document.createElement('div');panel.className='panel';panel.id='crmInsights-'+view;
+  const h=document.createElement('h3');h.textContent=view==='copilot'?'Assistant des données marketing':view==='sendtime'?'Habitudes d’achat par jour':'Couverture réelle des sources';
+  const note=document.createElement('p');note.className='muted';note.textContent=view==='copilot'?'Questions guidées sur les données réelles. Ce moteur déterministe ne fabrique ni chiffre ni réponse libre.':view==='sendtime'?'Volume moyen de tickets identifiés par jour-magasin. Ce n’est pas une estimation du meilleur moment pour envoyer un message.':'Contrôlez l’exhaustivité des archives et le nombre d’identités vérifiées.';
+  const controls=document.createElement('div');controls.className='quickrow';const days=document.createElement('select');days.setAttribute('aria-label','Période');for(const n of [7,30,90]){const o=document.createElement('option');o.value=String(n);o.textContent=n+' derniers jours clôturés';days.append(o)}days.value='30';
+  const question=document.createElement('select');question.setAttribute('aria-label','Question marketing');for(const [v,label] of questions){const o=document.createElement('option');o.value=v;o.textContent=label;question.append(o)}
+  const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent=view==='copilot'?'Obtenir la réponse':'Actualiser';if(view==='copilot')controls.append(question);controls.append(days,button);
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');status.className='muted';const answer=document.createElement('div');const metrics=document.createElement('div');metrics.className='metrics';const chart=document.createElement('div');chart.style.cssText='display:grid;gap:8px;margin:16px 0';panel.append(h,note,controls,status,answer,metrics,chart);section.prepend(panel);
+  if(view!=='data')for(const old of section.querySelectorAll(':scope > .module-state,:scope > .studio-head'))old.hidden=true;
+  let seq=0;
+  const clear=()=>{seq++;answer.replaceChildren();metrics.replaceChildren();chart.replaceChildren();status.textContent='Actualisez les données.';button.disabled=false};insightCleaners.push(clear);
+  const load=async()=>{if(!document.documentElement.classList.contains('crm-pilot-open'))return;const g=++seq,choice=question.value,active=()=>g===seq&&document.documentElement.classList.contains('crm-pilot-open');button.disabled=true;answer.replaceChildren();metrics.replaceChildren();chart.replaceChildren();status.textContent='Lecture des preuves archivées…';
+   try{
+    if(view==='copilot'&&['inactive','vip'].includes(choice)){
+     const segment=choice==='inactive'?'INACTIVE_30_PLUS':'HIGH_VALUE_ACTIVE';const x=await api('/api/crm/rfm-population?'+new URLSearchParams({segment,page:'1'}),{cache:'no-store',noRetry:true});if(!active())return;
+     if(x?.status==='READY'&&x.activationEnabled===false&&Number.isSafeInteger(x.matchedAccounts)){answer.textContent=fmt(x.matchedAccounts)+' comptes dans le segment RFM observé.';status.textContent='Fenêtre RFM de 90 jours · '+(x.asOf||'')+(x.staleSnapshot?' · instantané antérieur':'')+' · aucun consentement déduit.'}else status.textContent='Segment non certifié : historique ou référentiel incomplet.';return;
+    }
+    const x=await api('/api/crm/marketing-insights?'+new URLSearchParams({days:days.value}),{cache:'no-store',noRetry:true});if(!active())return;
+    if(!x||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Number.isSafeInteger(x.coverage?.covered)||!Number.isSafeInteger(x.coverage?.expected)||!Array.isArray(x.weekdays)||!x.observed||!x.identity)throw Error('Invalid evidence');
+    const coverage=x.coverage.covered+'/'+x.coverage.expected+' jours-magasins couverts';status.textContent=x.start+' → '+x.end+' · '+coverage+(x.status==='PARTIAL'?' · résultats partiels':' · période couverte');
+    const val=v=>v==null?'Non disponible':fmt(v);const amount=v=>v==null?'Non disponible':money(v);
+    const id=x.identity,o=x.observed;
+    if(view==='data'||view==='copilot'&&['base','names'].includes(choice)){
+      metric(metrics,'Comptes du référentiel',val(id.total));metric(metrics,'Noms vérifiés (24 h)',val(id.named));metric(metrics,'Téléphones normalisés vérifiés (24 h)',val(id.phoneReady));metric(metrics,'Couverture achats',coverage);if(id.total==null)answer.textContent='Référentiel récent indisponible. Aucune identité déclarée absente.';else answer.textContent='Référentiel contrôlé le '+id.checkedAt+'. Un téléphone vérifié ne vaut pas consentement.';
+    }
+    if(view==='copilot'&&['buyers','sales','basket'].includes(choice)){const [label,value]=choice==='buyers'?['Acheteurs distincts observés',val(o.buyers)]:choice==='sales'?['Ventes TTC positives identifiées',amount(o.positiveTtc)]:['Panier moyen positif identifié',amount(o.averageBasket)];metric(metrics,label,value);answer.textContent=x.status==='PARTIAL'?'Calcul limité aux partitions disponibles. Ce n’est pas le total de la période.':'Calcul sur la période couverte, hors retours et achats anonymes.'}
+    if(view==='sendtime'||view==='copilot'&&choice==='contact'){
+      answer.textContent='Historique de contacts non raccordé : aucun créneau optimal ni taux de réponse estimé.';
+      const rows=x.weekdays.filter(r=>Number.isInteger(r.weekday)&&r.weekday>=1&&r.weekday<=7&&Number.isFinite(r.ticketsPerStoreDay)&&r.ticketsPerStoreDay>=0&&Number.isSafeInteger(r.storeDays)&&r.storeDays>0);const max=Math.max(1,...rows.map(r=>r.ticketsPerStoreDay));for(const r of rows){const line=document.createElement('div');line.style.cssText='display:grid;grid-template-columns:minmax(80px,100px) 1fr minmax(72px,100px);align-items:center;gap:8px';const l=document.createElement('span');l.textContent=week[r.weekday-1];const bg=document.createElement('div');bg.style.cssText='height:12px;border-radius:6px;background:#e5e7eb';const bar=document.createElement('div');bar.style.cssText='height:12px;border-radius:6px;background:#187b83';bar.style.width=(100*r.ticketsPerStoreDay/max)+'%';bg.append(bar);const v=document.createElement('span');v.textContent=fmt(r.ticketsPerStoreDay)+' / j';v.title=r.storeDays+' jours-magasins observés';line.append(l,bg,v);chart.append(line)}if(!rows.length)chart.textContent='Aucun jour archivé pour la période.';
+    }
+   }catch{if(active())status.textContent='Lecture indisponible. Aucun chiffre substitué.'}finally{if(active())button.disabled=false}
+  };
+  button.onclick=load;days.onchange=load;question.onchange=()=>{clear()};insightReaders.set(view,()=>{if(view!=='copilot')load()});clear();
  }
 }
