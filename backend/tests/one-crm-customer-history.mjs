@@ -57,3 +57,9 @@ const partition={id:'a',start:'2026-11-25',end:'2026-11-26',days:['2026-11-25','
 const cachedDays=new Map([[dayKey('a','2026-11-25'),dayRanges[88]],[rangeKey('a','2026-11-26','2026-11-26'),dayRanges[89]]]);
 const selectDays=()=>selectPreparedRfmDays({partitions:[partition],cached:cachedDays,dayKey,rangeKey,readyStore:()=>true});
 assert.equal(selectDays().ranges.length,2);assert.deepEqual(selectDays().missing,[]);cachedDays.delete(rangeKey('a','2026-11-26','2026-11-26'));assert.deepEqual(selectDays().missing,[{storeId:'a',date:'2026-11-26'}]);cachedDays.set(rangeKey('a',partition.start,partition.end),{...sourceRange,startDate:partition.start,endDate:partition.end});assert.equal(selectDays().ranges.length,1);assert.deepEqual(selectDays().missing,[]);
+
+import {summarizePreparedRfmEvidence,selectRfmSyncTargets} from '../services/one-crm-rfm-population.mjs';
+const previewRange={...dayRanges[89],customers:[{customerAccount:'CLT-A',sales:1200,tickets:6,lastDate:'2026-11-26'}]};
+assert.deepEqual(summarizePreparedRfmEvidence([previewRange],'2026-11-26'),{basis:'PARTIAL_OBSERVED_MINIMA_NOT_RFM',observedAccounts:1,tickets:6,positiveTtc:1200,recent:1,repeat:1,highValue:1});
+assert.deepEqual(selectRfmSyncTargets([{storeId:'a',date:'2026-11-25'},{storeId:'a',date:'2026-11-26'},{storeId:'b',date:'2026-11-26'}],new Set(['a|2026-11-26'])),[{storeId:'b',date:'2026-11-26'},{storeId:'a',date:'2026-11-25'}]);
+assert.equal(projectRfmPopulation({accounts:Array.from({length:60},(_,i)=>({accountRef:'CLT-'+i})),stores:['a'],asOf:'2026-11-26',ranges:dayRanges,allRows:true}).rows.length,60);
