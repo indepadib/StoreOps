@@ -376,20 +376,22 @@ export async function readCustomerTicketBurn(storeId,{company,tickets}){
 }
 
 // Internal bounded store-day reader; shares Analytics mapping and signed Burn calculation.
-export async function readCrmBurnDay(storeId,{company,date,tickets}){
+export async function readCrmBurnDay(storeId,{company,date,tickets}){const r=await readCrmBurnDays(storeId,{company,partitions:[{date,tickets}]});return r.status==='READY'?r.days[0]:r;}
+export async function readCrmBurnDays(storeId,{company,partitions}){
  const unavailable=reason=>({status:'UNAVAILABLE',reason});
- if(config.dynamics.mode!=='live'||company!==clean(config.dynamics.dataAreaId)||!company||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Array.isArray(tickets))return unavailable('BURN_SCOPE_INVALID');
+ if(config.dynamics.mode!=='live'||company!==clean(config.dynamics.dataAreaId)||!company||!Array.isArray(partitions)||!partitions.length||partitions.length>3||partitions.some((p,i)=>!/^\d{4}-\d{2}-\d{2}$/.test(p.date)||!Number.isFinite(Date.parse(p.date))||!Array.isArray(p.tickets)||i>0&&nextDate(partitions[i-1].date)!==p.date))return unavailable('BURN_SCOPE_INVALID');
  const schema=await discoverPaymentSchema(),f=schema.fields,companyField=config.dynamics.dataAreaField;
  if(schema.status!=='READY'||![f?.transaction,f?.terminal,f?.date,f?.store,f?.currency,f?.amount,f?.tender,companyField].every(x=>x&&validName(x)))return unavailable('BURN_MAPPING_REQUIRED');
  const expectedKind=f.store.toLowerCase().includes('channel')?'RETAIL_CHANNEL':f.store.toLowerCase().includes('store')?'STORE_NUMBER':null,identifier=salesStoreIdentifiers(storeId,f.store).find(x=>x.kind===expectedKind);
  if(!identifier)return unavailable('BURN_STORE_MAPPING_REQUIRED');
  const tenderTypes=await tenderNameMap(),walletIds=configuredWalletIds(),select=unique([f.transaction,f.terminal,f.date,f.store,f.currency,f.amount,f.tender,companyField]).join(',');
- const {projectCustomerBurnDay}=await import('./one-crm-burn-projection.mjs');
- for(const sf of storeFilters(f.store,identifier.value))for(const dv of dateVariants(f.date,date)){
+ const {projectCustomerBurnDays}=await import('./one-crm-burn-projection.mjs');
+ const start=partitions[0].date,end=partitions.at(-1).date,variants=start===end?dateVariants(f.date,start):dateRangeVariants(f.date,start,end);
+ for(const sf of storeFilters(f.store,identifier.value))for(const dv of variants){
  try{const result=await odataGetAll(schema.entity,{filter:[sf,dv.filter,companyField+" eq '"+esc(company)+"'"].join(' and '),select,extra:'cross-company=true',pageSize:500,maxRows:25000,strict:true});
- if(!Array.isArray(result.value)||result.truncated||!result.value.length&&tickets.length)continue;
- const accounts=projectCustomerBurnDay({tickets,rows:result.value,fields:f,company,companyField,storeValue:clean(identifier.value),date,isWallet:v=>isWalletValue(v,tenderTypes.map,walletIds),profile:signProfile,derive:derivedBurn});
- return {status:'READY',storeId,date,company,source:'D365/'+schema.entity,accounts};
+ if(!Array.isArray(result.value)||result.truncated||!result.value.length&&partitions.some(p=>p.tickets.length))continue;
+ const days=projectCustomerBurnDays({partitions,rows:result.value,fields:f,company,companyField,storeValue:clean(identifier.value),isWallet:v=>isWalletValue(v,tenderTypes.map,walletIds),profile:signProfile,derive:derivedBurn});
+ return {status:'READY',days:days.map(day=>({...day,status:'READY',storeId,company,source:'D365/'+schema.entity}))};
  }catch{}
  }
  return unavailable('BURN_PAYMENT_EVIDENCE_INCOMPLETE');

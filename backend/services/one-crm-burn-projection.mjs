@@ -10,3 +10,11 @@ export function projectCustomerBurnDay({tickets,rows,fields,company,companyField
  const result=[...accounts].map(([accountRef,rows])=>{const p=profile(rows,fields.amount),b=derive(p);return {accountRef,positive:p.positive,negative:p.negative,netMinor:Math.round(p.netAmount*100),burn:b.amount}});
  return result;
 }
+
+// Reject unexpected dates and reconcile each day independently, including zero-ticket days.
+export function projectCustomerBurnDays({partitions,rows,fields,...args}){
+ if(!Array.isArray(partitions)||!partitions.length||partitions.length>3||!Array.isArray(rows))throw Error('Invalid Burn batch');
+ const buckets=new Map(partitions.map(p=>[p.date,[]]));if(buckets.size!==partitions.length)throw Error('Duplicate day');
+ for(const row of rows){const date=String(row[fields.date]??'').slice(0,10);if(!buckets.has(date))throw Error('Unexpected payment date');buckets.get(date).push(row)}
+ return partitions.map(p=>({date:p.date,accounts:projectCustomerBurnDay({...args,fields,date:p.date,tickets:p.tickets,rows:buckets.get(p.date)})}));
+}
