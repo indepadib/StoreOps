@@ -132,14 +132,15 @@ export async function prepareCrmRfmDay(storeId,date){
 
 const rfmAsOf=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000));
 const rfmSnapshotKey=(stores,asOf)=>['crm-rfm-snapshot-v1',sourceDeps().company,...stores.map(s=>s.id).sort(),asOf].join('|');
-export async function readCrmRfmSnapshot(stores,page){
+export async function readCrmRfmSnapshot(stores,page,segment='ALL'){
  const {readRfmSnapshotPage}=await import('./analytics-persistent-cache.mjs');
  if(config.dynamics.mode!=='live'||!sourceDeps().company)return {status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED',activationEnabled:false};
  const asOf=rfmAsOf(),startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10),storeIds=stores.map(s=>s.id);
- const snapshot=await readRfmSnapshotPage(rfmSnapshotKey(stores,asOf),page);
- if(snapshot)return snapshot;
- const yesterday=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10),previous=await readRfmSnapshotPage(rfmSnapshotKey(stores,yesterday),page);
+ const snapshot=await readRfmSnapshotPage(rfmSnapshotKey(stores,asOf),page,segment);
+ if(snapshot?.status==='READY')return snapshot;
+ const yesterday=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10),previous=await readRfmSnapshotPage(rfmSnapshotKey(stores,yesterday),page,segment);
  if(previous?.status==='READY')return {...previous,staleSnapshot:true,missingStoreDays:[]};
+ if(snapshot)return snapshot;
  return {status:'PREPARING',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage:{expectedStoreDays:storeIds.length*90,coveredStoreDays:0},coverageUnknown:true,missingStoreDays:[],totalAccounts:null,counts:{},page,pageSize:50,rows:[],activationEnabled:false};
 }
 export async function runCrmRfmSync(stores){

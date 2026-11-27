@@ -1,0 +1,6 @@
+export const RFM_SEGMENTS=Object.freeze(['ALL','HIGH_VALUE_ACTIVE','REGULAR_ACTIVE','RECENT_SINGLE_TICKET','INACTIVE_30_PLUS','NO_RECENT_PURCHASE','OTHER_OBSERVED']);
+export async function readFilteredRfmSnapshot(sql,key,page,segment='ALL'){
+ if(typeof key!=='string'||!key||!Number.isSafeInteger(page)||page<1||page>2000||!RFM_SEGMENTS.includes(segment))throw Error('Invalid RFM selection');
+ const rows=await sql`SELECT (payload-'rows') || jsonb_build_object('page',${page}::integer,'segment',${segment}::text,'matchedAccounts',CASE WHEN payload->>'status'='READY' THEN (SELECT COUNT(*) FROM jsonb_array_elements(COALESCE(payload->'rows','[]'::jsonb)) AS a(v) WHERE ${segment}='ALL' OR COALESCE(v->'rfm'->>'segment',CASE WHEN v->>'status'='NO_PURCHASE_IN_OBSERVED_90_DAYS' THEN 'NO_RECENT_PURCHASE' END)=${segment}) ELSE NULL END,'rows',COALESCE((SELECT jsonb_agg(v ORDER BY ord) FROM (SELECT v,ord FROM jsonb_array_elements(COALESCE(payload->'rows','[]'::jsonb)) WITH ORDINALITY AS a(v,ord) WHERE ${segment}='ALL' OR COALESCE(v->'rfm'->>'segment',CASE WHEN v->>'status'='NO_PURCHASE_IN_OBSERVED_90_DAYS' THEN 'NO_RECENT_PURCHASE' END)=${segment} ORDER BY ord OFFSET ${(page-1)*50} LIMIT 50) AS matched),'[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;
+ return rows?.[0]?.payload||null;
+}

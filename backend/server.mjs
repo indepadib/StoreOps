@@ -120,11 +120,11 @@ async function api(req,res,url){
         return json(req,res,result.status==='READY'?200:result.status==='INVALID_DATE'?400:503,{...result,code:result.reason||undefined});
       }catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_DAY_PREPARATION_FAILED',code:'RFM_DAY_PREPARATION_FAILED'})}
     }
-    const page=Number(url.searchParams.get('page')||1);
-    if(!Number.isSafeInteger(page)||page<1||page>2000)return json(req,res,400,{error:'Page invalide.'});
+    const page=Number(url.searchParams.get('page')||1),segment=url.searchParams.get('segment')||'ALL';
+    const {RFM_SEGMENTS}=await import('./services/one-crm-rfm-snapshot-reader.mjs');const keys=[...url.searchParams.keys()];if(!Number.isSafeInteger(page)||page<1||page>2000||!RFM_SEGMENTS.includes(segment)||new Set(keys).size!==keys.length||keys.some(k=>!['page','segment'].includes(k)))return json(req,res,400,{error:'Sélection invalide.'});
     const {readCrmRfmSnapshot}=await import('./services/dynamics-crm-customer-master.mjs');
     res.setHeader('Cache-Control','no-store, private, max-age=0');
-    try{return json(req,res,200,await readCrmRfmSnapshot(stores.filter(s=>scope.has(s.id)),page))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
+    try{return json(req,res,200,await readCrmRfmSnapshot(stores.filter(s=>scope.has(s.id)),page,segment))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
   }
   if(path==='/api/crm/wallet-balance-sources'){
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
