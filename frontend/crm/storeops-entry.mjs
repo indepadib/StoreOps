@@ -25,6 +25,7 @@ export async function openCrmPilot(){
  if(r.status!=='AUTHORIZED')return false;
  setupCustomerDirectory();
  setupPeriodWorkspaces();
+ setupMarketingDrafts();
  setupNavigation();
  setupRfmPopulation();
  setupLiveObservation();
@@ -55,7 +56,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearMarketingDrafts();clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -155,7 +156,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
-  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(marketingReaders.has(id))marketingReaders.get(id)();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -434,5 +435,46 @@ function setupPeriodWorkspaces(){
    }catch{if(id===seq)status.textContent='Lecture impossible. Réessayez ou vérifiez la couverture des données.'}finally{if(id===seq)refresh.disabled=false}
   };
   refresh.onclick=()=>load();select.onchange=()=>load();prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);periodReaders.set(mode,()=>load());clear();
+ }
+}
+
+const marketingReaders=new Map(),marketingCleaners=[];
+function clearMarketingDrafts(){for(const clear of marketingCleaners)clear()}
+function setupMarketingDrafts(){
+ const sections={campaigns:['campaign','Préparer une campagne'],offers:['offer','Préparer une proposition commerciale'],journeys:['journey','Construire un parcours']};
+ const segments={ALL:'Tous les comptes',HIGH_VALUE_ACTIVE:'Actifs à forte valeur',REGULAR_ACTIVE:'Actifs réguliers',RECENT_SINGLE_TICKET:'Achat récent unique',INACTIVE_30_PLUS:'Inactifs > 30 jours',NO_RECENT_PURCHASE:'Aucun achat observé',OTHER_OBSERVED:'Autres profils observés'};
+ const channels={email:'Email',whatsapp:'WhatsApp',sms:'SMS',push:'Push'};
+ const triggers={manual:'Déclenchement manuel',segment_entry:'Entrée dans le segment',enrollment:'Inscription fidélité',purchase:'Achat'};
+ for(const [view,[kind,title]] of Object.entries(sections)){
+  const section=el(view);if(!section)continue;
+  const panel=document.createElement('div');panel.className='panel';panel.id='crmDraft-'+kind;
+  const h=document.createElement('h3');h.textContent=title;const note=document.createElement('p');note.className='muted';note.textContent='Brouillon privé, enregistré dans PostgreSQL. Population observée ≠ audience joignable. Aucun envoi ni déclenchement réel.';
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');const form=document.createElement('form');
+  const field=(label,control)=>{const l=document.createElement('label');l.style.cssText='display:grid;gap:6px;margin:12px 0';const span=document.createElement('span');span.textContent=label;control.style.cssText='max-width:100%;width:100%;padding:10px;border-radius:8px;border:1px solid #ccd4db;font:inherit';l.append(span,control);form.append(l);return control};
+  const input=(label,max)=>{const x=document.createElement('input');x.required=true;x.maxLength=max;return field(label,x)};
+  const select=(label,options)=>{const x=document.createElement('select');for(const [value,label] of Object.entries(options)){const o=document.createElement('option');o.value=value;o.textContent=label;x.append(o)}return field(label,x)};
+  const name=input('Nom du brouillon',120),objective=input('Objectif',300),segment=select('Segment RFM visé',segments),channel=select('Canal envisagé',channels);
+  const message=document.createElement('textarea');message.required=true;message.maxLength=2000;message.rows=4;field('Message ou proposition à valider (sans données personnelles)',message);
+  let trigger,delay;if(kind==='journey'){trigger=select('Déclencheur envisagé',triggers);delay=document.createElement('input');delay.type='number';delay.min=0;delay.max=2160;delay.step=1;delay.required=true;delay.value='24';field('Délai en heures',delay)}
+  const audience=document.createElement('p');audience.className='muted';audience.textContent='Population : non vérifiée.';
+  const button=(label,type='button')=>{const b=document.createElement('button');b.className='secondary';b.type=type;b.textContent=label;return b};
+  const estimate=button('Vérifier la population RFM'),save=button('Enregistrer le brouillon','submit'),fresh=button('Nouveau brouillon'),reload=button('Actualiser la liste');const controls=document.createElement('div');controls.className='quickrow';controls.append(save,fresh,estimate);form.append(audience,controls);
+  const listTitle=document.createElement('h4');listTitle.textContent='Mes brouillons enregistrés';const list=document.createElement('div');panel.append(h,note,form,status,listTitle,reload,list);section.prepend(panel);
+  for(const old of section.querySelectorAll(':scope > .module-state,:scope > .studio-head'))old.hidden=true;
+  let editing=null,epoch=0,listSeq=0,audienceSeq=0;
+  const active=g=>g===epoch&&document.documentElement.classList.contains('crm-pilot-open');
+  const reset=()=>{editing=null;form.reset();if(delay)delay.value='24';save.textContent='Enregistrer le brouillon';audienceSeq++;audience.textContent='Population : non vérifiée.'};
+  const clear=()=>{epoch++;listSeq++;audienceSeq++;reset();list.replaceChildren();status.textContent='Session à vérifier.';save.disabled=false;estimate.disabled=false;reload.disabled=false};marketingCleaners.push(clear);
+  const load=async()=>{const g=epoch,seq=++listSeq;if(!active(g))return;reload.disabled=true;list.replaceChildren();status.textContent='Lecture des brouillons…';
+   try{const x=await api('/api/crm/marketing-drafts?'+new URLSearchParams({kind}),{noRetry:true,cache:'no-store'});if(!active(g)||seq!==listSeq)return;if(x?.status!=='READY'||x.activationEnabled!==false||!Array.isArray(x.rows))throw Error('INVALID');
+    for(const r of x.rows){if(r.kind!==kind||r.status!=='DRAFT'||r.activationEnabled!==false||typeof r.id!=='string'||!Number.isSafeInteger(r.revision))continue;const b=button(r.title+' · '+(segments[r.segment]||r.segment)+' · '+(channels[r.channel]||r.channel));b.style.cssText='display:block;width:100%;text-align:left;margin:8px 0';b.onclick=()=>{editing={id:r.id,revision:r.revision};name.value=r.title;objective.value=r.objective;segment.value=r.segment;channel.value=r.channel;message.value=r.message;if(trigger)trigger.value=r.trigger;if(delay)delay.value=String(r.delayHours);save.textContent='Enregistrer les modifications';audienceSeq++;audience.textContent='Population : à vérifier.';status.textContent='Brouillon chargé · version '+r.revision};list.append(b)}
+    if(!list.children.length)list.textContent='Aucun brouillon enregistré.';status.textContent=x.rows.length+' brouillon(s) · aucun envoi.';
+   }catch{if(active(g)&&seq===listSeq)status.textContent='Stockage indisponible. Aucun brouillon fictif.'}finally{if(active(g)&&seq===listSeq)reload.disabled=false}
+  };
+  segment.onchange=()=>{audienceSeq++;audience.textContent='Population : à vérifier.';estimate.disabled=false};
+  estimate.onclick=async()=>{const g=epoch,seq=++audienceSeq,selected=segment.value;estimate.disabled=true;audience.textContent='Lecture du segment…';try{const x=await api('/api/crm/rfm-population?'+new URLSearchParams({segment:selected,page:'1'}),{cache:'no-store',noRetry:true});if(!active(g)||seq!==audienceSeq)return;audience.textContent=x?.status==='READY'&&x.activationEnabled===false&&Number.isSafeInteger(x.matchedAccounts)?fmt(x.matchedAccounts)+' comptes observés · consentements et contactabilité non vérifiés.':'Population non certifiée pour le moment.'}catch{if(active(g)&&seq===audienceSeq)audience.textContent='Population indisponible.'}finally{if(active(g)&&seq===audienceSeq)estimate.disabled=false}};
+  fresh.onclick=()=>{reset();status.textContent='Nouveau brouillon';estimate.disabled=false};reload.onclick=load;
+  form.onsubmit=async e=>{e.preventDefault();if(save.disabled)return;const g=epoch,input={...editing,kind,title:name.value,objective:objective.value,segment:segment.value,channel:channel.value,message:message.value,...(trigger?{trigger:trigger.value,delayHours:Number(delay.value)}:{})};save.disabled=true;fresh.disabled=true;status.textContent='Enregistrement…';try{const x=await api('/api/crm/marketing-drafts',{method:'POST',body:JSON.stringify(input),noRetry:true,cache:'no-store'});if(!active(g))return;if(x?.status!=='SAVED'||x.activationEnabled!==false||x.draft?.kind!==kind||x.draft.activationEnabled!==false||typeof x.draft.id!=='string'||!Number.isSafeInteger(x.draft.revision))throw Error('INVALID');editing={id:x.draft.id,revision:x.draft.revision};save.textContent='Enregistrer les modifications';await load();if(active(g))status.textContent='Brouillon enregistré · version '+editing.revision+' · aucun envoi.'}catch(e){if(active(g))status.textContent=e?.status===409?'Version modifiée ailleurs. Actualisez puis rechargez le brouillon.':'Enregistrement impossible. Vos champs restent disponibles.'}finally{if(active(g)){save.disabled=false;fresh.disabled=false}}};
+  marketingReaders.set(view,load);clear();
  }
 }
