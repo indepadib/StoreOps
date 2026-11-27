@@ -40,3 +40,20 @@ export function projectRfmPopulation({accounts,stores,ranges,asOf,page=1}){
 export function isPreparedRfmRange(r,id,start,end){
  return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
 }
+
+// Daily customer-only aggregation, using the same eligible-sale and TTC functions as Analytics.
+export function projectRfmDayRows(rows,{storeId,date,company,storeNumber,fields,eligible,amount,ticketKey}){
+ const customers=new Map(),owners=new Map();
+ for(const row of rows){
+  if(String(row.dataAreaId??'').trim()!==company||String(row.store??'').trim()!==storeNumber||String(row[fields.date]??'').slice(0,10)!==date)throw Error('Invalid daily partition');
+  if(!eligible(row))continue;
+  const account=String(row[fields.customer]??'').trim();if(anonymous.has(account.toUpperCase()))continue;
+  if(!/^CLT/i.test(account))continue;
+  if(!String(row.terminalId??'').trim()||!String(row.transactionId??'').trim())throw Error('Missing ticket identity');
+  const key=ticketKey(row),value=amount(row);
+  if(!key||!Number.isFinite(value)||value<=0||!Number.isSafeInteger(Math.round(value*100)))throw Error('Invalid daily sale');
+  if(owners.has(key)&&owners.get(key)!==account)throw Error('Conflicting account on ticket');owners.set(key,account);
+  const c=customers.get(account)||{customerAccount:account,sales:0,ticketIds:new Set(),lastDate:date};c.sales+=value;c.ticketIds.add(key);customers.set(account,c);
+ }
+ return [...customers.values()].map(({ticketIds,...c})=>({...c,sales:round(c.sales),tickets:ticketIds.size}));
+}

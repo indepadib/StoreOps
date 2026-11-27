@@ -785,3 +785,26 @@ export async function readCrmCustomerHistory(row,stores,page){
  const {readCustomerTicketBurn}=await import('./dynamics-tender.mjs');
  return readCustomerPositiveHistory({accountRef:row.accountRef,company:clean(config.dynamics.dataAreaId),stores,page},{readCollection:readCompleteCollection,salesConfig:salesIntegrationConfig,settings:storeOperationalSettings,amount:retailDisplaySalesAmount,eligible:includedRetailSaleRow,readTicketBurn:readCustomerTicketBurn});
 }
+
+// RFM only needs the identified positive purchases. Avoid cost/UOM probes, margin,
+// taxonomy, hourly/store dashboard and basket association computations.
+export async function readStoreRfmDay(storeId,date){
+ const c=salesIntegrationConfig(storeId),f=c.fields,d=storeOperationalSettings(storeId)?.d365,company=clean(config.dynamics.dataAreaId),storeNumber=clean(d?.storeNumber);
+ const unavailable=reason=>({status:'UNAVAILABLE',reason,storeId,startDate:date,endDate:date});
+ if(!c.ready||c.entity!=='RetailTransactionSalesTransBIEntities'||f.store!=='store'||!company||clean(d?.legalEntityId)!==company||!storeNumber||![f.customer,f.net,f.date].every(validField))return unavailable('RFM_SALES_MAPPING_REQUIRED');
+ const {projectRfmDayRows}=await import('./one-crm-rfm-population.mjs');
+ const select=[...new Set([...Object.values(retailParentIdentityFields),f.customer,f.date,f.net,f.taxAmount,f.status,f.returnNoSale,f.taxItemGroup].filter(Boolean))].join(',');
+ const base=["store eq '"+esc(storeNumber)+"'","dataAreaId eq '"+esc(company)+"'"];
+ for(const mode of [...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])]){
+  try{
+   const filters=[...base,dateRangeFilter(f.date,date,date,mode)];
+   const signFilter=c.sign<0?f.net+' lt 0 and '+f.net+' gt -100000':f.net+' gt 0 and '+f.net+' lt 100000';
+   const result=await odataGetAll(c.entity,{filter:[...filters,signFilter].join(' and '),select,extra:'cross-company=true',pageSize:c.pageSize,maxRows:c.maxRows});
+   if(!Array.isArray(result.value)||result.truncated)return unavailable('RFM_SALES_TRUNCATED');
+   const rows=await validateParentSales(result.value,c,filters);
+   const customers=projectRfmDayRows(rows,{storeId,date,company,storeNumber,fields:f,eligible:r=>includedRetailSaleRow(r,c),amount:r=>retailDisplaySalesAmount(r,c),ticketKey:r=>salesTicketKey(r,f)});
+   return {status:'READY',source:'D365/'+c.entity,storeId,startDate:date,endDate:date,diagnostics:{truncated:false,filterCoverage:{parentTransaction:true},mappedFields:{customer:true}},customers};
+  }catch(e){if(Number(e?.details?.httpStatus)!==400)return unavailable(e?.code==='D365_REQUEST_TIMEOUT'?'D365_REQUEST_TIMEOUT':'RFM_SALES_READ_FAILED')}
+ }
+ return unavailable('RFM_DATE_MAPPING_REQUIRED');
+}

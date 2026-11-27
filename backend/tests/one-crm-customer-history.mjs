@@ -45,3 +45,9 @@ const dailyPopulation=projectRfmPopulation({accounts:populationAccounts,stores:[
 assert.equal(projectRfmPopulation({accounts:populationAccounts,stores:['a'],asOf:'2026-11-26',ranges:dayRanges.slice(1)}).status,'PARTIAL');
 
 assert.equal(population.segmentCounts.HIGH_VALUE_ACTIVE,1);assert.equal(population.segmentCounts.INACTIVE_30_PLUS,1);assert.equal(population.segmentCounts.NO_RECENT_PURCHASE,1);assert.deepEqual(incomplete.segmentCounts,{});
+
+import {projectRfmDayRows} from '../services/one-crm-rfm-population.mjs';
+const dailyArgs={storeId:'a',date:'2026-11-26',company:'C1',storeNumber:'A',fields:{date:'businessDate',customer:'custAccount'},eligible:r=>r.net>0,amount:r=>r.net,ticketKey:r=>JSON.stringify([r.terminalId,r.transactionId])};
+const dailyRow=(tx,account,net=10)=>({...row('A',tx,net,'2026-11-26'),custAccount:account});
+assert.deepEqual(projectRfmDayRows([dailyRow('1','CLT-A'),dailyRow('1','CLT-A',5),dailyRow('2','CLT-A'),dailyRow('3','CASH'),dailyRow('4','CLT-A',-3)],dailyArgs),[{customerAccount:'CLT-A',sales:25,lastDate:'2026-11-26',tickets:2}]);
+assert.throws(()=>projectRfmDayRows([dailyRow('1','CLT-A'),dailyRow('1','CLT-B')],dailyArgs));assert.throws(()=>projectRfmDayRows([{...dailyRow('1','CLT-A'),store:'B'}],dailyArgs));
