@@ -105,9 +105,9 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  let cached=new Map();try{for(let i=0;i<keys.length;i+=200){for(const [key,value] of await readRfmEvidenceMany(keys.slice(i,i+200)))cached.set(key,value)}}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
  let archive,archived;try{archive=await crmPurchaseArchive();archived=await archive.read(sourceDeps().company,storeIds,startDate,asOf)}catch(e){const code=String(e?.code||e?.cause?.code||'');console.warn('CRM archive read failed',/^[A-Z0-9_]{1,50}$/.test(code)?code:'UNCLASSIFIED');return {status:'UNAVAILABLE',reason:'RFM_ARCHIVE_READ_FAILED',activationEnabled:false}}
  const archiveByKey=new Map(archived.map(a=>[dayKey(a.store_id,a.day),a]));
- const detailPending=[];for(const p of partitions)for(const date of p.days){const saved=archiveByKey.get(dayKey(p.id,date)),recent=date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);if(!saved?.detailed||recent&&Date.now()-Date.parse(saved.captured_at)>=10800000)detailPending.push({storeId:p.id,date})}
+ const detailPending=[];for(const p of partitions)for(const date of p.days){const saved=archiveByKey.get(dayKey(p.id,date));if(!saved?.detailed)detailPending.push({storeId:p.id,date})}
  // Promote daily evidence already fetched by the old system before it expires.
- const promote=[];for(const p of partitions)for(const date of p.days){const key=dayKey(p.id,date),saved=archiveByKey.get(key),recent=date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);if(saved&&(!recent||Date.now()-Date.parse(saved.captured_at)<10800000)){cached.set(key,saved.evidence);continue}const existing=cached.get(key)||cached.get(rangeKey(p.id,date,date));if(!saved&&isPreparedRfmRange(existing,p.id,date,date))promote.push(existing);}
+ const promote=[];for(const p of partitions)for(const date of p.days){const key=dayKey(p.id,date),saved=archiveByKey.get(key);if(saved){cached.set(key,saved.evidence);continue}const existing=cached.get(key)||cached.get(rangeKey(p.id,date,date));if(!saved&&isPreparedRfmRange(existing,p.id,date,date))promote.push(existing);}
  // A failed promotion must not erase available evidence or prevent new source reads.
  const promotionFailures=[];for(let i=0;i<promote.length;i+=8){const batch=promote.slice(i,i+8),outcomes=await Promise.allSettled(batch.map(x=>archive.put(sourceDeps().company,x)));for(let j=0;j<outcomes.length;j++)if(outcomes[j].status==='rejected')promotionFailures.push({storeId:batch[j].storeId,date:batch[j].startDate})}if(promotionFailures.length)console.warn('CRM archive promotion failures',promotionFailures.length);
  const {ranges,missing,unmappedStores}=selectPreparedRfmDays({partitions,cached,dayKey,rangeKey,readyStore:id=>{const cfg=salesIntegrationConfig(id);return cfg.ready&&cfg.entity==='RetailTransactionSalesTransBIEntities'}});
@@ -145,8 +145,7 @@ export async function readCrmRfmSnapshot(stores,page,segment='ALL'){
  const asOf=rfmAsOf(),startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10),storeIds=stores.map(s=>s.id);
  const snapshot=await readRfmSnapshotPage(rfmSnapshotKey(stores,asOf),page,segment);
  if(snapshot?.status==='READY')return snapshot;
- const yesterday=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10),previous=await readRfmSnapshotPage(rfmSnapshotKey(stores,yesterday),page,segment);
- if(previous?.status==='READY')return {...previous,staleSnapshot:true,missingStoreDays:[]};
+ for(let lag=1;lag<=7;lag++){const day=new Date(Date.parse(asOf+'T00:00:00Z')-lag*86400000).toISOString().slice(0,10),previous=await readRfmSnapshotPage(rfmSnapshotKey(stores,day),page,segment);if(previous?.status==='READY')return {...previous,staleSnapshot:true,missingStoreDays:[]};}
  if(snapshot)return snapshot;
  return {status:'PREPARING',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage:{expectedStoreDays:storeIds.length*90,coveredStoreDays:0},coverageUnknown:true,missingStoreDays:[],totalAccounts:null,counts:{},page,pageSize:50,rows:[],activationEnabled:false};
 }
@@ -156,13 +155,13 @@ export async function runCrmRfmSync(stores){
  if(config.dynamics.mode!=='live'||!sourceDeps().company||!stores.length)return {status:'DISABLED'};
  const key=rfmSnapshotKey(stores,rfmAsOf()),lock=await claimRfmSync(key+'|lock');if(!lock)return {status:'BUSY'};
  try{
- const last=await readRfmSnapshotPage(key,1);if(last?.status==='READY'&&!last.detailPending?.length&&Date.now()-Date.parse(last.snapshotAt)<900000)return {status:'READY',reused:true};
+ const last=await readRfmSnapshotPage(key,1);if(last?.status==='READY'&&!last.detailPending?.length&&Date.now()-Date.parse(last.snapshotAt)<86400000)return {status:'READY',reused:true};
  const result=await readCrmRfmPopulation(stores,1,{allRows:true});
  if(!['READY','PREPARING','MASTER_UNAVAILABLE'].includes(result.status)){const reason=result.reason||'RFM_SOURCE_UNAVAILABLE';console.warn('CRM RFM sync unavailable',reason);return {status:'UNAVAILABLE',reason}};
- if(last?.status!=='READY'||result.status==='READY'){if(!await writeAnalyticsCache(key,'crm-rfm-snapshot-v1',{...result,snapshotAt:new Date().toISOString()},172800))return {status:'UNAVAILABLE',reason:'RFM_SNAPSHOT_STORAGE_FAILED'}}
+ if(last?.status!=='READY'||result.status==='READY'){if(!await writeAnalyticsCache(key,'crm-rfm-snapshot-v1',{...result,snapshotAt:new Date().toISOString()},691200))return {status:'UNAVAILABLE',reason:'RFM_SNAPSHOT_STORAGE_FAILED'}}
  const missing=result.missingStoreDays?.length?result.missingStoreDays:result.detailPending||[],failureKey=x=>key+'|retry|'+x.storeId+'|'+x.date,blocked=new Set();
  for(let i=0;i<missing.length;i+=200){const failed=await readAnalyticsCacheManyFresh(missing.slice(i,i+200).map(failureKey));for(const x of missing.slice(i,i+200))if(failed.has(failureKey(x)))blocked.add(x.storeId+'|'+x.date)}
- const groups=planRfmBackfill(missing,blocked,5,2);
+ const groups=planRfmBackfill(missing,blocked,2,2);
  const outcomes=await Promise.all(groups.map(async group=>{
   let outcome;try{outcome=await prepareCrmRfmBatch(group.storeId,group.dates)}catch{outcome={prepared:[],failed:group.dates,reason:'RFM_BATCH_FAILED'}}
   // If a grouped read fails, try the newest single day in a subsequent run;
@@ -172,6 +171,8 @@ export async function runCrmRfmSync(stores){
   return {prepared:outcome.prepared.length,failed:outcome.failed.length,reason:outcome.reason};
  }));
  const prepared=outcomes.reduce((n,x)=>n+x.prepared,0),failed=outcomes.reduce((n,x)=>n+x.failed,0);
+ // Archive commits precede projection. If a read times out, the next daily run still reuses the saved days.
+ if(prepared>0){const refreshed=await readCrmRfmPopulation(stores,1,{allRows:true});if(refreshed.status==='READY')await writeAnalyticsCache(key,'crm-rfm-snapshot-v1',{...refreshed,snapshotAt:new Date().toISOString()},691200);}
  const report={status:result.status,coveredStoreDays:result.coverage?.coveredStoreDays,expectedStoreDays:result.coverage?.expectedStoreDays,detailedStoreDays:result.archiveCoverage?.detailedStoreDays,prepared,failed,errors:outcomes.filter(x=>x.failed).map(x=>x.reason)};
  console.info('CRM RFM sync',JSON.stringify(report));
  return report;
@@ -224,7 +225,7 @@ export async function runCrmIdentitySync(){const deps=sourceDeps();if(config.dyn
 export async function runCrmEarnSync(stores){
  const company=sourceDeps().company;if(config.dynamics.mode!=='live'||!company||!stores.length)return {status:'DISABLED'};
  const {crmEarnStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheManyFresh,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readStoreWalletEarn}=await import('./dynamics-wallet-earn.mjs');const {planRfmBackfill}=await import('./one-crm-rfm-population.mjs');const asOf=rfmAsOf(),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10),key=JSON.stringify(['crm-earn-lock',company,...stores.map(s=>s.id).sort()]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
- try{const store=await crmEarnStore(),saved=await store.coverage(company,stores.map(s=>s.id),start,asOf),byDay=new Map(saved.map(r=>[r.store_id+'|'+r.day,r])),missing=[];for(let i=0;i<90;i++){const date=new Date(Date.parse(asOf+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);for(const s of stores){const r=byDay.get(s.id+'|'+date);if(!r||i<2&&Date.now()-Date.parse(r.captured_at)>10800000)missing.push({storeId:s.id,date})}}
+ try{const store=await crmEarnStore(),saved=await store.coverage(company,stores.map(s=>s.id),start,asOf),byDay=new Map(saved.map(r=>[r.store_id+'|'+r.day,r])),missing=[];for(let i=0;i<90;i++){const date=new Date(Date.parse(asOf+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);for(const s of stores){const r=byDay.get(s.id+'|'+date);if(!r)missing.push({storeId:s.id,date})}}
  const retry=x=>JSON.stringify(['crm-earn-retry',company,x.storeId,x.date]);const failed=await readAnalyticsCacheManyFresh(missing.map(retry));const blocked=new Set(missing.filter(x=>failed.has(retry(x))).map(x=>x.storeId+'|'+x.date)),groups=planRfmBackfill(missing,blocked,3,2);
  const outcomes=(await Promise.all(groups.map(async g=>{const dates=[...g.dates].sort();try{const r=await readStoreWalletEarn(g.storeId,{startDate:dates[0],endDate:dates.at(-1)},{includeAccounts:true,includeDaily:true});if(r.status!=='READY'||!Array.isArray(r.days)||r.days.length!==dates.length||r.days.some((x,i)=>x.startDate!==dates[i]||x.endDate!==dates[i])||r.days.reduce((n,x)=>n+x.entryCount,0)!==r.entryCount)throw Error('Earn batch incomplete');return await Promise.all(r.days.map(async d=>{try{await store.put(company,g.storeId,d.startDate,d);return true}catch{await writeAnalyticsCache(retry({storeId:g.storeId,date:d.startDate}),'crm-earn-retry',{failed:true},900);return false}}))}catch{await Promise.all(g.dates.slice(g.dates.length>1?1:0).map(date=>writeAnalyticsCache(retry({storeId:g.storeId,date}),'crm-earn-retry',{failed:true},g.dates.length>1?120:900)));return dates.map(()=>false)}}))).flat();
  const report={status:missing.length?'PREPARING':'READY',coveredStoreDays:saved.length,expectedStoreDays:stores.length*90,prepared:outcomes.filter(Boolean).length,failed:outcomes.filter(x=>!x).length};console.info('CRM Earn sync',JSON.stringify(report));return report;}finally{await releaseRfmSync(key,token).catch(()=>{})}
