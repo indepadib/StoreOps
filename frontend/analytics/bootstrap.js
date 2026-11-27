@@ -38,7 +38,7 @@ async function start(){
       'promotions','decision','supplier-purchases','sales-proof','workspace-bi',
       'article-reference','decision-studio','customer-research','companion-dictionary',
       'basket-direction','loss-inventory','detention-views','detention-sales',
-      'replenishment','experience-navigation','table-column-tools','assortment-opportunities'
+      'replenishment','experience-navigation','table-column-tools','assortment-opportunities','payment-history'
     ].map(name=>analyticsAsset('/analytics/'+name+'.js')));
 
     await import(analyticsAsset('/analytics/tenants.js'));
@@ -65,6 +65,7 @@ async function start(){
     await import(analyticsAsset('/analytics/replenishment.js'));
     await import(analyticsAsset('/analytics/experience-navigation.js'));
     await import(analyticsAsset('/analytics/table-column-tools.js'));
+    await import(analyticsAsset('/analytics/payment-history.js'));
 
   }catch(error){
     console.error('Retail Intelligence bootstrap failure',error);

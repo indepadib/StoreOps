@@ -7,6 +7,7 @@ import {dataDestinations,rankDestinations} from './data-destinations.js';
 const el=id=>document.getElementById(id);
 const node=(tag,cls,text)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(text!=null)n.textContent=String(text);return n};
 const sections=[
+ {id:'payments',label:'Paiements',description:'Lire les règlements carte/TPE depuis le premier journal accessible, par mois ou semaine.',search:'paiements carte tpe cb encaissement remboursement reglement banque'},
  {id:'overview',label:'Vue exécutive',description:'Les résultats essentiels et les décisions à prendre.',search:'accueil synthese direction performance prioritaires'},
  {id:'sales',label:'Ventes',description:'Comprendre les variations du chiffre d’affaires, des tickets et des paniers.',search:'ca chiffre affaires panier horaire ventes marges évolution'},
  {id:'network',label:'Réseau & magasins',description:'Comparer les magasins et identifier les écarts à investiguer.',search:'magasin benchmark val fleuri trefle réseau'},
@@ -23,12 +24,13 @@ const sections=[
 ];
 const byId=Object.fromEntries(sections.map(s=>[s.id,s]));
 const navGroups=[
- ['PILOTAGE',['overview','sales','network']],
+ ['PILOTAGE',['overview','sales','payments','network']],
  ['COMMERCE',['categories','suppliers','promotions']],
  ['RELATION CLIENT',['crm','loyalty','cashiers']],
  ['EXÉCUTION & DONNÉES',['inventory','detention','replenishment','reference']]
 ];
 const pageActions={
+ payments:[],
  overview:[['Comparer les magasins','store-comparison'],['Comprendre la variation du CA','turnover']],
  sales:[['Voir le CA et le panier moyen','turnover'],['Voir les articles qui expliquent les ventes','category']],
  network:[['Voir les écarts entre magasins','store-comparison'],['Vérifier les ruptures','availability']],
@@ -97,6 +99,7 @@ function updateWorkspaceScope(){
  const pair=(a,b)=>a&&b?(a===b?a:a+' au '+b):null;
  const period=pair(start,end),comparison=pair(previousStart,previousEnd);
  if(section==='reference')label.textContent='Société · fiche article actuelle';
+ else if(section==='payments')label.textContent=[store,'Historique accessible des règlements POS'].filter(Boolean).join(' · ');
  else if(section==='replenishment')label.textContent='Périmètre à choisir ci-dessous · stock actuel et 28 jours de ventes clos';
  else if(section==='detention')label.textContent=[store,'Stock actuel et réceptions historiques'].filter(Boolean).join(' · ');
  else label.textContent=[store,period,comparison&&'comparé au '+comparison].filter(Boolean).join(' · ');
