@@ -1,0 +1,1 @@
+CREATE TABLE IF NOT EXISTS crm_purchase_day_archive (company TEXT NOT NULL, store_id TEXT NOT NULL, business_day DATE NOT NULL, evidence JSONB NOT NULL, purchase_lines JSONB, captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(company,store_id,business_day));

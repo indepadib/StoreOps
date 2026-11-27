@@ -109,4 +109,4 @@ export async function readRfmEvidenceMany(keys){
 }
 
 let crmArchivePromise;
-export async function crmPurchaseArchive(){if(!crmArchivePromise)crmArchivePromise=(async()=>{const {createCrmArchive}=await import('./one-crm-purchase-archive.mjs');const database=await getAnalyticsDatabase();return createCrmArchive(database.sql.bind(database))})().catch(e=>{crmArchivePromise=null;throw e});return crmArchivePromise;}
+export async function crmPurchaseArchive(){if(!crmArchivePromise)crmArchivePromise=(async()=>{const {createCrmArchive}=await import('./one-crm-purchase-archive.mjs');const database=await getAnalyticsDatabase();return createCrmArchive((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmArchivePromise=null;throw e});return crmArchivePromise;}

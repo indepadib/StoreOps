@@ -98,7 +98,7 @@ async function api(req,res,url){
     if(!expected.length||provided.length!==expected.length||!timingSafeEqual(expected,provided))return json(req,res,403,{error:'Monitor non autorisé.'});
     const {parseObservedPilotStores}=await import('./services/one-crm-observed-sales.mjs');const scope=parseObservedPilotStores(process.env.ONE_CRM_PILOT_STORE_IDS||'');const stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all().filter(x=>scope.has(x.id));
     if(!scope.size||stores.length!==scope.size)return json(req,res,200,{status:'DISABLED'});
-    try{const {runCrmRfmSync}=await import('./services/dynamics-crm-customer-master.mjs');return json(req,res,200,await runCrmRfmSync(stores))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SYNC_FAILED'})}
+    try{const {runCrmRfmSync}=await import('./services/dynamics-crm-customer-master.mjs');return json(req,res,200,await runCrmRfmSync(stores))}catch(e){const code=String(e?.code||e?.cause?.code||'');console.warn('CRM RFM sync failed',/^[A-Z0-9_]{1,50}$/.test(code)?code:'UNCLASSIFIED');return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SYNC_FAILED'})}
   }
   const session=await sessionFromRequest(req),user=session.user;
   if(path==='/api/crm/rfm-population'||path==='/api/crm/rfm-prepare-day'){
