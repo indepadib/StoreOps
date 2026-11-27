@@ -374,3 +374,23 @@ export async function readCustomerTicketBurn(storeId,{company,tickets}){
   return {...base,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount,signMode:derived.signMode,walletTransactions:walletRows.length,receiptCount:tickets.length,receipts:tickets.map(t=>{const profile=signProfile(byKey.get(ticketKey(t.terminal,t.transactionRef,t.date)).filter(row=>isWalletValue(row[f.tender],tenderTypes.map,resolvedWalletIds)),f.amount),derived=derivedBurn(profile);return {terminal:t.terminal,transactionRef:t.transactionRef,date:t.date,status:derived.amount===null?'SIGN_VALIDATION_REQUIRED':'READY',burn:derived.amount}})};
  }catch{return base}
 }
+
+// Internal bounded store-day reader; shares Analytics mapping and signed Burn calculation.
+export async function readCrmBurnDay(storeId,{company,date,tickets}){
+ const unavailable=reason=>({status:'UNAVAILABLE',reason});
+ if(config.dynamics.mode!=='live'||company!==clean(config.dynamics.dataAreaId)||!company||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Array.isArray(tickets))return unavailable('BURN_SCOPE_INVALID');
+ const schema=await discoverPaymentSchema(),f=schema.fields,companyField=config.dynamics.dataAreaField;
+ if(schema.status!=='READY'||![f?.transaction,f?.terminal,f?.date,f?.store,f?.currency,f?.amount,f?.tender,companyField].every(x=>x&&validName(x)))return unavailable('BURN_MAPPING_REQUIRED');
+ const expectedKind=f.store.toLowerCase().includes('channel')?'RETAIL_CHANNEL':f.store.toLowerCase().includes('store')?'STORE_NUMBER':null,identifier=salesStoreIdentifiers(storeId,f.store).find(x=>x.kind===expectedKind);
+ if(!identifier)return unavailable('BURN_STORE_MAPPING_REQUIRED');
+ const tenderTypes=await tenderNameMap(),walletIds=configuredWalletIds(),select=unique([f.transaction,f.terminal,f.date,f.store,f.currency,f.amount,f.tender,companyField]).join(',');
+ const {projectCustomerBurnDay}=await import('./one-crm-burn-projection.mjs');
+ for(const sf of storeFilters(f.store,identifier.value))for(const dv of dateVariants(f.date,date)){
+ try{const result=await odataGetAll(schema.entity,{filter:[sf,dv.filter,companyField+" eq '"+esc(company)+"'"].join(' and '),select,extra:'cross-company=true',pageSize:500,maxRows:25000,strict:true});
+ if(!Array.isArray(result.value)||result.truncated||!result.value.length&&tickets.length)continue;
+ const accounts=projectCustomerBurnDay({tickets,rows:result.value,fields:f,company,companyField,storeValue:clean(identifier.value),date,isWallet:v=>isWalletValue(v,tenderTypes.map,walletIds),profile:signProfile,derive:derivedBurn});
+ return {status:'READY',storeId,date,company,source:'D365/'+schema.entity,accounts};
+ }catch{}
+ }
+ return unavailable('BURN_PAYMENT_EVIDENCE_INCOMPLETE');
+}

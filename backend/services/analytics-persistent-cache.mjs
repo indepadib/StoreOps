@@ -119,3 +119,6 @@ export async function crmIdentityStore(){if(!crmIdentityStorePromise)crmIdentity
 
 let crmEarnStorePromise;
 export async function crmEarnStore(){if(!crmEarnStorePromise)crmEarnStorePromise=(async()=>{const {createCrmEarnStore}=await import('./one-crm-earn-store.mjs');const database=await getAnalyticsDatabase();return createCrmEarnStore((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmEarnStorePromise=null;throw e});return crmEarnStorePromise;}
+
+let crmBurnStorePromise;
+export async function crmBurnStore(){if(!crmBurnStorePromise)crmBurnStorePromise=(async()=>{const {createCrmBurnStore}=await import('./one-crm-burn-store.mjs');const database=await getAnalyticsDatabase();return createCrmBurnStore((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmBurnStorePromise=null;throw e});return crmBurnStorePromise;}
