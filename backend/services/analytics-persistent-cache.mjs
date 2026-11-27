@@ -107,3 +107,6 @@ export async function readRfmEvidenceMany(keys){
  const rows=await database.sql`SELECT cache_key,jsonb_build_object('status',payload->'status','source',payload->'source','storeId',payload->'storeId','startDate',payload->'startDate','endDate',payload->'endDate','diagnostics',payload->'diagnostics','customers',COALESCE((SELECT jsonb_agg(jsonb_build_object('customerAccount',v->'customerAccount','sales',v->'sales','tickets',v->'tickets','lastDate',v->'lastDate')) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(payload->'customers')='array' THEN payload->'customers' ELSE '[]'::jsonb END) AS a(v)),'[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE expires_at>NOW() AND jsonb_typeof(payload->'customers')='array' AND cache_key IN (SELECT jsonb_array_elements_text(CAST(${JSON.stringify(keys)} AS JSONB)))`;
  return new Map(rows.map(r=>[r.cache_key,r.payload]));
 }
+
+let crmArchivePromise;
+export async function crmPurchaseArchive(){if(!crmArchivePromise)crmArchivePromise=(async()=>{const {createCrmArchive}=await import('./one-crm-purchase-archive.mjs');const database=await getAnalyticsDatabase();return createCrmArchive(database.sql.bind(database))})().catch(e=>{crmArchivePromise=null;throw e});return crmArchivePromise;}

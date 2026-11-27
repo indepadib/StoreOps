@@ -82,7 +82,7 @@ export async function searchCrmCustomerIdentity({query,by,page}){
 /** Reuse already prepared Analytics ranges; never launch a network-wide live scan on page load. */
 export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),allRows=false}={}){
  const {projectRfmPopulation,selectPreparedRfmDays,summarizePreparedRfmEvidence}=await import('./one-crm-rfm-population.mjs');
- const {analyticsCacheKey,readRfmEvidenceMany}=await import('./analytics-persistent-cache.mjs');
+ const {analyticsCacheKey,readRfmEvidenceMany,crmPurchaseArchive}=await import('./analytics-persistent-cache.mjs');
  const {salesIntegrationConfig}=await import('./dynamics-sales.mjs');
  if(config.dynamics.mode!=='live'||!sourceDeps().company)return {status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED',activationEnabled:false};
  const storeIds=stores.map(s=>s.id),startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
@@ -90,6 +90,11 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  const dayKey=(id,date)=>analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,id,date]),rangeKey=(id,start,end)=>analyticsCacheKey('sales-range-v32',[id,start,end]);
  const keys=[...new Set(partitions.flatMap(p=>[rangeKey(p.id,p.start,p.end),...p.days.flatMap(d=>[dayKey(p.id,d),rangeKey(p.id,d,d)])]))];
  let cached=new Map();try{for(let i=0;i<keys.length;i+=200){for(const [key,value] of await readRfmEvidenceMany(keys.slice(i,i+200)))cached.set(key,value)}}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
+ const archive=await crmPurchaseArchive(),archived=await archive.read(sourceDeps().company,storeIds,startDate,asOf);
+ const archiveByKey=new Map(archived.map(a=>[dayKey(a.store_id,a.day),a]));
+ // Promote daily evidence already fetched by the old system before it expires.
+ const promote=[];for(const p of partitions)for(const date of p.days){const key=dayKey(p.id,date),saved=archiveByKey.get(key),recent=date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);if(saved&&(!recent||Date.now()-Date.parse(saved.captured_at)<10800000)){cached.set(key,saved.evidence);continue}const existing=cached.get(key)||cached.get(rangeKey(p.id,date,date));if(!saved&&isPreparedRfmRange(existing,p.id,date,date))promote.push(existing);}
+ for(let i=0;i<promote.length;i+=8)await Promise.all(promote.slice(i,i+8).map(x=>archive.put(sourceDeps().company,x)));
  const {ranges,missing,unmappedStores}=selectPreparedRfmDays({partitions,cached,dayKey,rangeKey,readyStore:id=>{const cfg=salesIntegrationConfig(id);return cfg.ready&&cfg.entity==='RetailTransactionSalesTransBIEntities'}});
  const coveredStoreDays=ranges.reduce((n,r)=>n+Math.round((Date.parse(r.endDate)-Date.parse(r.startDate))/86400000)+1,0),expectedStoreDays=storeIds.length*90;
  const coverage={expectedStoreDays,coveredStoreDays,rejectedRanges:0,unmatchedPurchaseAccounts:null},progress={basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage,nextMissing:missing[0]||null,missingStoreDays:missing,unmappedStores,preview:summarizePreparedRfmEvidence(ranges,asOf),activationEnabled:false};
@@ -104,7 +109,7 @@ export async function prepareCrmRfmDay(storeId,date){
  const asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||date<start||date>asOf||!Number.isFinite(Date.parse(date))||new Date(Date.parse(date)).toISOString().slice(0,10)!==date)return {status:'INVALID_DATE'};
  const {readStoreRfmDay}=await import('./dynamics-sales.mjs');
- const {analyticsCacheKey,readAnalyticsCacheFresh,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const {analyticsCacheKey,readAnalyticsCacheFresh,writeAnalyticsCache,crmPurchaseArchive}=await import('./analytics-persistent-cache.mjs');
  const key=analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,storeId,date]);
  if(isPreparedRfmRange(await readAnalyticsCacheFresh(key,{strict:true}),storeId,date,date))return {status:'READY',storeId,date,reused:true};
  const analytics=await readAnalyticsCacheFresh(analyticsCacheKey('sales-range-v32',[storeId,date,date]),{strict:true});
@@ -112,6 +117,7 @@ export async function prepareCrmRfmDay(storeId,date){
  const r=await readStoreRfmDay(storeId,date);
  if(!isPreparedRfmRange(r,storeId,date,date))return {status:'UNAVAILABLE',reason:r.reason||'DAY_SOURCE_INCOMPLETE'};
  const {status,source,startDate,endDate,diagnostics}=r,customers=r.customers.map(({customerAccount,sales,tickets,lastDate})=>({customerAccount,sales,tickets,lastDate}));
+ await (await crmPurchaseArchive()).put(sourceDeps().company,{status,source,storeId,startDate,endDate,diagnostics,customers});
  const stored=await writeAnalyticsCache(key,'crm-rfm-day-v1',{status,source,storeId,startDate,endDate,diagnostics:{truncated:diagnostics.truncated,filterCoverage:{parentTransaction:diagnostics.filterCoverage.parentTransaction},mappedFields:{customer:diagnostics.mappedFields.customer}},customers},date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10)?10800:2592000);
  return stored?{status:'READY',storeId,date}:{status:'UNAVAILABLE',reason:'DAY_STORAGE_UNAVAILABLE'};
 }
@@ -157,10 +163,9 @@ export async function runCrmRfmSync(stores){
 }
 
 async function prepareCrmRfmBatch(storeId,dates){
- const {readStoreRfmDays}=await import('./dynamics-sales.mjs');const {analyticsCacheKey,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const {readStoreRfmDays}=await import('./dynamics-sales.mjs');const {crmPurchaseArchive}=await import('./analytics-persistent-cache.mjs');
  const sorted=[...dates].sort(),result=await readStoreRfmDays(storeId,sorted);
  if(result.status!=='READY'||!Array.isArray(result.days)||result.days.length!==sorted.length||result.days.some((r,i)=>!isPreparedRfmRange(r,storeId,sorted[i],sorted[i])))return {prepared:[],failed:dates,reason:result.reason||'RFM_BATCH_INCOMPLETE'};
- const asOf=rfmAsOf(),recent=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);
- const outcomes=await Promise.all(result.days.map(async r=>({date:r.startDate,ok:await writeAnalyticsCache(analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,storeId,r.startDate]),'crm-rfm-day-v1',r,r.startDate>=recent?10800:2592000)})));
+ const archive=await crmPurchaseArchive();const outcomes=await Promise.all(result.days.map(async r=>{try{await archive.put(sourceDeps().company,r);return {date:r.startDate,ok:true}}catch{return {date:r.startDate,ok:false}}}));
  return {prepared:outcomes.filter(x=>x.ok).map(x=>x.date),failed:outcomes.filter(x=>!x.ok).map(x=>x.date),reason:'RFM_BATCH_STORAGE_FAILED'};
 }

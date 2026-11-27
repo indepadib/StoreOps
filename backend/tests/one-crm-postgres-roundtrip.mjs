@@ -29,5 +29,9 @@ try{
  await pool.query('UPDATE one_crm.ticket_items SET net_minor=-2500 WHERE tenant_id=$1 AND ticket_id=$2',[scope.tenantId,'b']);
  await pool.query("UPDATE one_crm.customers SET status='quarantined' WHERE tenant_id=$1",[scope.tenantId]);
  await assert.rejects(()=>reader(scope),/Inactive/);
+ const {createCrmArchive}=await import('../services/one-crm-purchase-archive.mjs');
+ const sql=async(strings,...values)=>(await pool.query(strings.reduce((s,v,i)=>s+(i?'$'+i:'')+v,''),values)).rows;
+ const archive=createCrmArchive(sql),evidence={status:'READY',source:'D365/RetailTransactionSalesTransBIEntities',storeId:'A',startDate:scope.date,endDate:scope.date,diagnostics:{truncated:false,filterCoverage:{parentTransaction:true},mappedFields:{customer:true}},customers:[{customerAccount:'CLT-1',sales:10,tickets:1,lastDate:scope.date}]};
+ await archive.put('C1',evidence);assert.equal((await archive.read('C1',['A'],scope.date,scope.date))[0].detailed,false);await archive.put('C1',{...evidence,purchaseLines:[{account:'CLT-1',terminal:'T1',transaction:'TX1',product:'P1',positiveTtcMinor:1000}]});await archive.put('C1',evidence);assert.equal((await archive.read('C1',['A'],scope.date,scope.date))[0].detailed,true);assert.equal((await archive.read('C2',['A'],scope.date,scope.date)).length,0);await assert.rejects(()=>archive.put('C1',{...evidence,purchaseLines:[]}),/reconciliation/);
  console.log('CRM PostgreSQL import/read/segment roundtrip passed');
 }finally{await pool.end()}
