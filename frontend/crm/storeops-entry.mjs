@@ -342,7 +342,7 @@ function renderBehavior(x){
 }
 
 let rfmGeneration=0;
-function clearRfmPopulation(){rfmGeneration++;el('crmRfmRows')?.replaceChildren();if(el('crmRfmStatus'))el('crmRfmStatus').textContent='Actualisez la couverture des données.';if(el('crmRfmPrev'))el('crmRfmPrev').disabled=true;if(el('crmRfmNext'))el('crmRfmNext').disabled=true;if(el('crmRfmRead'))el('crmRfmRead').disabled=false;if(el('crmRfmPrepare'))el('crmRfmPrepare').disabled=true;if(el('crmRfmStop'))el('crmRfmStop').disabled=true}
+function clearRfmPopulation(){rfmGeneration++;el('crmRfmRows')?.replaceChildren();el('crmRfmSegmentMetrics')?.replaceChildren();if(el('crmRfmStatus'))el('crmRfmStatus').textContent='Actualisez la couverture des données.';if(el('crmRfmPrev'))el('crmRfmPrev').disabled=true;if(el('crmRfmNext'))el('crmRfmNext').disabled=true;if(el('crmRfmRead'))el('crmRfmRead').disabled=false;if(el('crmRfmPrepare'))el('crmRfmPrepare').disabled=true;if(el('crmRfmStop'))el('crmRfmStop').disabled=true}
 function setupRfmPopulation(){
  const section=el('segments');if(!section)return;
  const panel=document.createElement('div');panel.className='panel';
@@ -352,7 +352,7 @@ function setupRfmPopulation(){
  const read=button('crmRfmRead','Actualiser la couverture RFM'),prev=button('crmRfmPrev','Précédent'),next=button('crmRfmNext','Suivant'),status=document.createElement('p');status.id='crmRfmStatus';status.setAttribute('aria-live','polite');status.textContent='Actualisez la couverture des données.';
  const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr'),rows=document.createElement('tbody');wrap.className='tablewrap';rows.id='crmRfmRows';for(const label of ['Compte','Récence (j)','Fréquence 90 j','TTC positif 90 j','Segment']){const th=document.createElement('th');th.textContent=label;tr.append(th)}head.append(tr);table.append(head,rows);wrap.append(table);panel.append(read,status,wrap,prev,next);section.append(panel);
  const prepare=button('crmRfmPrepare','Compléter les journées manquantes'),stop=button('crmRfmStop','Arrêter après la journée en cours');prepare.disabled=true;stop.disabled=true;panel.insertBefore(prepare,status);panel.insertBefore(stop,status);
- const segmentLabels={HIGH_VALUE_ACTIVE:'Actifs à forte valeur',REGULAR_ACTIVE:'Actifs réguliers',RECENT_SINGLE_TICKET:'Achat récent unique',INACTIVE_30_PLUS:'Inactifs > 30 j',NO_RECENT_PURCHASE:'Aucun achat sur 90 j',OTHER_OBSERVED:'Autres profils observés'};const segmentMetrics=document.createElement('div');segmentMetrics.className='metrics';panel.insertBefore(segmentMetrics,wrap);
+ const segmentLabels={HIGH_VALUE_ACTIVE:'Actifs à forte valeur',REGULAR_ACTIVE:'Actifs réguliers',RECENT_SINGLE_TICKET:'Achat récent unique',INACTIVE_30_PLUS:'Inactifs > 30 j',NO_RECENT_PURCHASE:'Aucun achat sur 90 j',OTHER_OBSERVED:'Autres profils observés'};const segmentMetrics=document.createElement('div');segmentMetrics.id='crmRfmSegmentMetrics';segmentMetrics.className='metrics';panel.insertBefore(segmentMetrics,wrap);
  let missing=null,queue=[],page=1,stopped=false;
  const load=async n=>{
   const g=++rfmGeneration;read.disabled=true;prepare.disabled=true;stop.disabled=true;missing=null;queue=[];prev.disabled=true;next.disabled=true;rows.replaceChildren();segmentMetrics.replaceChildren();status.textContent='Vérification des journées Dynamics déjà préparées…';
