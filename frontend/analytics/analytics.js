@@ -1399,6 +1399,7 @@
   }
 
   async function exportCsv() {
+    if(state.section==='payments'){document.dispatchEvent(new CustomEvent('retail-intelligence:export-payments',{detail:{excel:false}}));return;}
     if(state.section==='reference'||state.section==='detention'){document.dispatchEvent(new CustomEvent('retail-intelligence:export-'+state.section));return;}
     let rows=visibleTableRows();
     if(!rows.length)rows=decisionFallbackRows();

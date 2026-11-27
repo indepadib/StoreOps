@@ -13,6 +13,7 @@ assert.equal(calls,4);assert.match(el('[data-total]').textContent,/235/);assert.
 el('[data-grain]').value='week';el('[data-grain]').onchange();assert.match(el('tbody').textContent,/2026-S01/);assert.equal(calls,4,'regrouping never rereads D365');
 el('[data-manual]').checked=false;el('[data-manual]').onchange();assert.match(el('[data-total]').textContent,/230/);
 await el('[data-csv]').onclick();const csv=await blob.text();assert.match(csv,/Journal POS/);assert.equal(csv.split('\r\n').length,3);
+document.dispatchEvent(new window.CustomEvent('retail-intelligence:export-payments',{detail:{excel:false}}));assert.match(await blob.text(),/Journal POS/,'global CSV exports payments rather than sales');
 await el('[data-xlsx]').onclick();assert.equal(Buffer.from(await blob.arrayBuffer()).readUInt32LE(0),0x04034b50);
 wrongScope=true;await el('[data-load]').onclick();assert.equal(el('[data-total]').textContent,'');assert.match(el('[data-status]').textContent,/suspendu/);
 console.log('PASS payments page auto-read, full-network completion, monthly/ISO-week regrouping without extra reads, manual-card option, exports and wrong-scope suppression');

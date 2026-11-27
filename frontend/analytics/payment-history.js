@@ -50,6 +50,7 @@ export function mountPaymentHistory(){
  el('[data-load]').onclick=load;el('[data-cancel]').onclick=()=>{clear();el('[data-status]').textContent='Lecture annulée, aucun total incomplet publié.'};el('[data-end]').onchange=clear;
  for(const q of ['grain','manual','methods','stores','start'])el(`[data-${q}]`).onchange=()=>{limit=300;render()};
  for(const [q,excel] of [['csv',false],['xlsx',true]])el(`[data-${q}]`).onclick=()=>download(excel).catch(error=>el('[data-status]').textContent=error.message);
+ document.addEventListener('retail-intelligence:export-payments',event=>{if(core.getState().section!=='payments')return;if(!reports.length){el('[data-status]').textContent='Lire tout l’historique avant de générer le fichier.';return}download(!!event.detail?.excel).catch(error=>el('[data-status]').textContent=error.message)});
  function sync(){panel.hidden=core.getState().section!=='payments';if(scopeKey!==scope()){scopeKey=scope();clear()}el('[data-scope]').textContent='Magasins : '+stores().map(s=>s.name).join(' + ')+'. La période de ventes globale ne limite pas cet historique ; seule la date de fin ci-dessus s’applique.';
   if(!panel.hidden&&!autoStarted&&stores().length&&new URLSearchParams(location.search).get('read')==='1'){autoStarted=true;load()}}
  document.addEventListener('retail-intelligence:section',sync);document.addEventListener('retail-intelligence:period',sync);sync();

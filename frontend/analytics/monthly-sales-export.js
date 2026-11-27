@@ -167,6 +167,7 @@ async function readPage(jobId,page,total){
  throw new Error('La page Excel est momentanément indisponible.')
 }
 async function run(){
+ if(core?.getState?.()?.section==='payments'){document.dispatchEvent(new CustomEvent('retail-intelligence:export-payments',{detail:{excel:true}}));return;}
  if(!core||!button)return;
  const state=core.getState(),days=daysBetween(state.periodStart,state.periodEnd),comparisonDays=daysBetween(state.compareStart,state.compareEnd);
  if(!days||days>31||!comparisonDays||comparisonDays>31){toast('Choisis deux périodes valides de 1 à 31 jours.');return}
