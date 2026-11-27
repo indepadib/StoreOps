@@ -45,12 +45,14 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
  mode=config.dynamics.mode,
  maxRows=100000,
  includeAccounts=false,
+ includeDaily=false,
 }={}){
  const base={storeId,startDate,endDate,currency:'MAD',total:null,earn:null,credits:null,reversals:null,complete:false,
   source:'D365/'+transactionEntity,
   provenance:{entity:transactionEntity,rewardEntity,dateField:'EntryDate',dateBasis:'BUSINESS_DATE',entryType:'Earn',amountField:'RewardPointAmountQty'},
  };
  if(!validDay(startDate)||!validDay(endDate)||startDate>endDate)return {...base,status:'UNAVAILABLE',reason:'WALLET_EARN_INVALID_PERIOD'};
+ if(includeDaily&&(!includeAccounts||(Date.parse(endDate)-Date.parse(startDate))/86400000>=5))return {...base,status:'UNAVAILABLE',reason:'WALLET_EARN_INVALID_BATCH'};
  if(mode!=='live')return {...base,status:'UNAVAILABLE',reason:'WALLET_EARN_NOT_LIVE'};
  const store=settings(storeId),unit=clean(store?.d365?.operatingUnitNumber),company=clean(store?.d365?.legalEntityId||config.dynamics.dataAreaId);
  if(!unit||!company)return {...base,status:'UNAVAILABLE',reason:'WALLET_EARN_STORE_UNMAPPED'};
@@ -77,7 +79,8 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
    extra:'cross-company=true',
   },get,maxRows);
   let credits=0,reversals=0,entryCount=0,ignoredNonMonetary=0,ignoredOtherTypes=0,duplicates=0;
-  const seen=new Map(),accounts=new Map();
+  const seen=new Map(),accounts=new Map(),daily=new Map();if(includeDaily)for(let d=startDate;d<=endDate;d=dayAfter(d))daily.set(d,{credits:0,reversals:0,entryCount:0,accounts:new Map()});
+  const add=(map,account,amount)=>{const a=map.get(account)||{accountRef:account,credits:0,reversals:0,entryCount:0};if(amount>=0)a.credits+=amount;else a.reversals+=amount;a.entryCount++;map.set(account,a)};
   for(const row of transactions.rows){
    const entryDay=clean(row.EntryDate).slice(0,10);
    if(clean(row.LoyaltyTransactionCompany)!==company||clean(row.OperatingUnitNumber)!==unit||!validDay(entryDay)||entryDay<startDate||entryDay>endDate)throw failure('WALLET_EARN_SCOPE_MISMATCH');
@@ -94,15 +97,17 @@ export async function readStoreWalletEarn(storeId,{startDate,endDate}={},{
     duplicates++;continue;
    }
    seen.set(identity,amount);entryCount++;
-   if(includeAccounts){const account=clean(row.CustomerAccount);if(/^CLT/i.test(account)&&account.length<=160&&!/[\x00-\x1f]/.test(account)){const a=accounts.get(account)||{accountRef:account,credits:0,reversals:0,entryCount:0};if(amount>=0)a.credits+=amount;else a.reversals+=amount;a.entryCount++;accounts.set(account,a)}}
+   if(includeDaily){const d=daily.get(entryDay);if(!d)throw failure('WALLET_EARN_SCOPE_MISMATCH');d.entryCount++;if(amount>=0)d.credits+=amount;else d.reversals+=amount}
+   if(includeAccounts){const account=clean(row.CustomerAccount);if(/^CLT/i.test(account)&&account.length<=160&&!/[\x00-\x1f]/.test(account)){add(accounts,account,amount);if(includeDaily)add(daily.get(entryDay).accounts,account,amount)}}
    if(amount>=0)credits+=amount;
    else reversals+=amount;
   }
   const round=value=>Math.round((value+Number.EPSILON)*100)/100;
-  const net=round(credits+reversals);
+  const net=round(credits+reversals),project=map=>[...map.values()].map(a=>({...a,earn:round(a.credits+a.reversals),credits:round(a.credits),reversals:round(a.reversals)}));
   return {...base,status:'READY',complete:true,total:net,earn:net,credits:round(credits),reversals:round(reversals),
    entryCount,rowCount:transactions.rows.length,pages:transactions.pages,
-   ...(includeAccounts?{accounts:[...accounts.values()].map(a=>({...a,earn:round(a.credits+a.reversals),credits:round(a.credits),reversals:round(a.reversals)}))}:{}),
+   ...(includeAccounts?{accounts:project(accounts)}:{}),
+   ...(includeDaily?{days:[...daily].map(([date,d])=>({...base,startDate:date,endDate:date,status:'READY',complete:true,total:round(d.credits+d.reversals),earn:round(d.credits+d.reversals),credits:round(d.credits),reversals:round(d.reversals),entryCount:d.entryCount,accounts:project(d.accounts),provenance:{...base.provenance,company,operatingUnit:unit,rewardPointIds}}))}:{}),
    provenance:{...base.provenance,company,operatingUnit:unit,rewardPointIds,rewardDefinitionPages:definitions.pages,ignoredNonMonetary,ignoredOtherTypes,duplicates},
   };
  }catch(error){
