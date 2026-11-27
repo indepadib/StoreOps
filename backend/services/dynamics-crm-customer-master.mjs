@@ -49,10 +49,11 @@ export async function readCustomerProfile(row){
 
 import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount} from './one-crm-customer-source.mjs';
 const sourceDeps=()=>({company:String(config.dynamics.dataAreaId||'').trim(),read:odataGet});
-export const readCustomerPage=(page,search)=>readDirectorySourcePage({...sourceDeps(),page,search});
+export async function readCustomerPage(page,search){const deps=sourceDeps();try{const {crmMasterStore}=await import('./analytics-persistent-cache.mjs');const saved=await (await crmMasterStore()).page(deps.company,page,search);if(saved)return saved}catch{}return readDirectorySourcePage({...deps,page,search});}
 let countCache=null;
 export async function readCustomerCount(){
  const deps=sourceDeps(),key=JSON.stringify([config.dynamics.baseUrl,deps.company]);
+ try{const {crmMasterStore}=await import('./analytics-persistent-cache.mjs');const saved=await (await crmMasterStore()).count(deps.company);if(saved)return saved}catch{}
  if(countCache?.key===key&&countCache.expires>Date.now())return countCache.value;
  const value=await readDirectorySourceCount(deps);countCache={key,value,expires:Date.now()+300000};return value;
 }
@@ -102,7 +103,7 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  const coverage={expectedStoreDays,coveredStoreDays,rejectedRanges:0,unmatchedPurchaseAccounts:null},progress={basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage,nextMissing:missing[0]||null,missingStoreDays:missing,detailPending,archiveCoverage:{detailedStoreDays:archived.filter(a=>a.detailed).length,expectedStoreDays},unmappedStores,preview:summarizePreparedRfmEvidence(ranges,asOf),activationEnabled:false};
  // Do not read the entire customer master or names until coverage is ready.
  if(coveredStoreDays!==expectedStoreDays)return {...progress,status:'PREPARING',totalAccounts:null,counts:{},page,pageSize:50,rows:[]};
- let master;try{master=await readCustomerMaster()}catch{return {...progress,status:'MASTER_UNAVAILABLE',reason:'RFM_CUSTOMER_MASTER_UNAVAILABLE',totalAccounts:null,counts:{},page,pageSize:50,rows:[]}};
+ let master;try{const {crmMasterStore}=await import('./analytics-persistent-cache.mjs');master=await (await crmMasterStore()).read(sourceDeps().company);if(!master)throw Error('Master refresh pending')}catch{return {...progress,status:'MASTER_UNAVAILABLE',reason:'RFM_CUSTOMER_MASTER_UNAVAILABLE',totalAccounts:null,counts:{},page,pageSize:50,rows:[]}};
  const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page,allRows});
  return {...population,nextMissing:null,missingStoreDays:[],detailPending,archiveCoverage:progress.archiveCoverage,unmappedStores};
 }
@@ -173,3 +174,10 @@ async function prepareCrmRfmBatch(storeId,dates){
 }
 
 export async function readCrmArchivedHistory(row,stores,page){const {crmPurchaseArchive}=await import('./analytics-persistent-cache.mjs');const {readArchivedCustomerHistory}=await import('./one-crm-archived-history.mjs');const archive=await crmPurchaseArchive();return readArchivedCustomerHistory({accountRef:row.accountRef,company:sourceDeps().company,stores,page,asOf:rfmAsOf(),readCustomerLines:archive.readCustomerLines});}
+
+// Complete verified replacement until a Dynamics modification/deletion watermark is proven.
+export async function runCrmMasterSync(){
+ const {crmMasterStore,claimRfmSync,releaseRfmSync}=await import('./analytics-persistent-cache.mjs');const company=sourceDeps().company;if(config.dynamics.mode!=='live'||!company)return {status:'DISABLED'};
+ const store=await crmMasterStore(),key=JSON.stringify(['crm-master-lock',company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
+ try{const saved=await store.count(company);if(saved&&Date.now()-Date.parse(saved.checkedAt)<600000)return {status:'READY',reused:true,totalAccounts:saved.totalAccounts};const master=await readCustomerMaster();await store.put(company,master);const report={status:'READY',totalAccounts:master.rows.length,checkedAt:master.checkedAt};console.info('CRM master sync',JSON.stringify(report));return report;}finally{await releaseRfmSync(key,token).catch(()=>{})}
+}
