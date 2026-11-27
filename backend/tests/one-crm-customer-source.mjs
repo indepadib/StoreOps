@@ -34,3 +34,19 @@ const {readMasterImportPage,advanceMasterImport}=await import('../services/one-c
 const rawMaster=[{AccountNum:'CLT-1',SysDataAreaId:'C1',SysCreatedDateTime:'2025-01-01'},{AccountNum:'CLT-2',SysDataAreaId:'C1',SysCreatedDateTime:'2025-01-01'}];const inputMaster={company:'C1',batch:1,read:async(entity,options)=>({value:rawMaster.slice(Number(options.extra.split('$skip=')[1]),Number(options.extra.split('$skip=')[1])+1)})};let stateMaster={offset:0,rows:[],complete:false};stateMaster=advanceMasterImport(stateMaster,await readMasterImportPage({...inputMaster,offset:stateMaster.offset}));assert.equal(stateMaster.complete,false);stateMaster=advanceMasterImport(stateMaster,await readMasterImportPage({...inputMaster,offset:stateMaster.offset}));stateMaster=advanceMasterImport(stateMaster,await readMasterImportPage({...inputMaster,offset:stateMaster.offset}));assert.equal(stateMaster.complete,true);assert.equal(stateMaster.rows.length,2);assert.throws(()=>advanceMasterImport({offset:1,rows:stateMaster.rows},{nextOffset:2,rows:[stateMaster.rows[0]],complete:false}));await assert.rejects(()=>readMasterImportPage({...inputMaster,read:async()=>({value:[{...rawMaster[0],SysDataAreaId:'C2'}]})}));
 
 const {readMasterImportControl}=await import('../services/one-crm-customer-source.mjs');assert.equal(await readMasterImportControl({company:'C1',mode:'RETAIL',read:async()=>({'@odata.count':3,value:[{AccountNum:'CASH',SysDataAreaId:'C1'}]})}),3);await assert.rejects(()=>readMasterImportControl({company:'C1',mode:'CLT',read:async()=>({'@odata.count':3,value:[{AccountNum:'CASH',SysDataAreaId:'C1'}]})}));
+
+const {readNamesThroughStore}=await import('../services/one-crm-customer-identity-source.mjs');
+const cacheIdentity=new Map(),identityAccount='CLT-1',identityRecord={accountRef:identityAccount,displayName:'Synthetic Customer',partyType:'PERSON',phone:null,phoneNormalized:null,phoneStatus:'MISSING',status:'READY'};
+let identitySourceReads=0,identityWrites=0;
+const identityStore={names:async(c,accounts)=>{assert.equal(c,'C1');return new Map(accounts.filter(a=>cacheIdentity.has(a)).map(a=>[a,cacheIdentity.get(a)]))},put:async(c,rs)=>{assert.equal(c,'C1');identityWrites++;for(const r of rs)cacheIdentity.set(r.accountRef,r)}};
+const readIdentitySource=async accounts=>{identitySourceReads++;return {rows:accounts.map(a=>a===identityAccount?identityRecord:{accountRef:a,status:'NOT_FOUND'})}};
+const identityInput={company:'C1',accounts:[identityAccount],store:identityStore,readSource:readIdentitySource};
+assert.equal((await readNamesThroughStore(identityInput)).status,'READY');
+assert.equal((await readNamesThroughStore(identityInput)).rows[0].displayName,identityRecord.displayName);
+assert.equal(identitySourceReads,1);assert.equal(identityWrites,1);
+const identityMixed=await readNamesThroughStore({...identityInput,accounts:[identityAccount,'CLT-2']});
+assert.equal(identityMixed.status,'PARTIAL');assert.equal(identityWrites,1);assert.equal(cacheIdentity.has('CLT-2'),false);
+assert.equal((await readNamesThroughStore({...identityInput,accounts:['CASH']})).status,'UNAVAILABLE');
+const identityNoCache=await readNamesThroughStore({...identityInput,store:{names:async()=>{throw Error('read unavailable')},put:async()=>{throw Error('write unavailable')}}});
+assert.equal(identityNoCache.status,'READY');
+console.log('CRM identity read-through regression passed');

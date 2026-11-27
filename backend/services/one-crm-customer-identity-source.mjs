@@ -87,3 +87,21 @@ export async function searchCustomerIdentity({company,query,by,page=1,read}){
   return {...base,status:'READY',rows:rows.slice(0,50),hasMore:rows.length>50||!!raw['@odata.nextLink']};
  }catch(e){return fail(e?.code==='D365_REQUEST_TIMEOUT'?'IDENTITY_SEARCH_TIMEOUT':'IDENTITY_SEARCH_SOURCE_UNAVAILABLE')}
 }
+
+/** Persist verified identity cache misses so another directory visit need not query D365 again. */
+export async function readNamesThroughStore({company,accounts,store,readSource}){
+ const base={source:SOURCE,scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false};
+ if(!safe(company)||!Array.isArray(accounts)||accounts.length>50||accounts.some(a=>!safe(a)||!isLoyaltyCustomerAccount(a)||a!==a.trim())||new Set(accounts).size!==accounts.length)return {...base,status:'UNAVAILABLE',rows:[]};
+ let stored=new Map();
+ if(store)try{stored=await store.names(company,accounts)}catch{}
+ const missing=accounts.filter(a=>!stored.has(a));
+ if(!missing.length)return {...base,status:'READY',rows:accounts.map(a=>stored.get(a))};
+ const result=await readSource(missing);
+ const fetched=new Map(result.rows.filter(r=>missing.includes(r.accountRef)).map(r=>[r.accountRef,r]));
+ const verified=[...fetched.values()].filter(r=>r.status==='READY');
+ // The store independently verifies the current legal-entity master and phone normalization.
+ // A database failure must not hide the already verified source response.
+ if(store&&verified.length)try{await store.put(company,verified)}catch{}
+ const rows=accounts.map(a=>stored.get(a)||fetched.get(a)||{accountRef:a,displayName:null,partyType:null,status:'UNAVAILABLE'});
+ return {...base,status:rows.every(r=>r.status==='READY')?'READY':'PARTIAL',rows};
+}

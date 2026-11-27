@@ -74,10 +74,9 @@ export async function readCrmCustomerWallet(row,stores){
 }
 
 export async function readCrmCustomerNames(accounts){
- const {readCustomerNames}=await import('./one-crm-customer-identity-source.mjs');
- const deps=sourceDeps();let stored;try{const {crmIdentityStore}=await import('./analytics-persistent-cache.mjs');stored=await (await crmIdentityStore()).names(deps.company,accounts)}catch{stored=new Map()}
- const missing=accounts.filter(a=>!stored.has(a));if(!missing.length)return {source:'D365/CustomersV3',scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false,status:'READY',rows:accounts.map(a=>stored.get(a))};
- const result=await readCustomerNames({...deps,accounts:missing});const fetched=new Map(result.rows.map(r=>[r.accountRef,r]));const rows=accounts.map(a=>stored.get(a)||fetched.get(a)||{accountRef:a,displayName:null,partyType:null,status:'UNAVAILABLE'});return {...result,status:rows.every(r=>r.status==='READY')?'READY':'PARTIAL',rows};
+ const {readCustomerNames,readNamesThroughStore}=await import('./one-crm-customer-identity-source.mjs');
+ const deps=sourceDeps();let store=null;try{const {crmIdentityStore}=await import('./analytics-persistent-cache.mjs');store=await crmIdentityStore()}catch{}
+ return readNamesThroughStore({company:deps.company,accounts,store,readSource:missing=>readCustomerNames({...deps,accounts:missing})});
 }
 
 export async function searchCrmCustomerIdentity({query,by,page}){
