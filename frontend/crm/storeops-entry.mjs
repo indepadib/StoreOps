@@ -211,14 +211,15 @@ async function readDirectoryCount(g,pageText){
 async function readProfile(row){
  if(!document.documentElement.classList.contains('crm-pilot-open'))return;
  clearProfile();profileAccount=row.accountRef;const g=++profileGeneration,box=el('crmCustomerProfile'),out=el('crmProfileMetrics'),status=el('crmProfileStatus');box.hidden=false;box.scrollIntoView({block:'start',behavior:'instant'});el('crmProfilePhone').textContent=row.phoneNormalized||row.phone||'Vérification du téléphone…';out.replaceChildren();el('crmProfileTitle').textContent=row.displayName?row.displayName+' · '+row.accountRef:'Compte '+row.accountRef;status.textContent='Lecture du lien fidélité Dynamics…';
+ // Every section has its own authorized backend check and generation guard.
+ // A slow loyalty-card lookup must not prevent identity, history or wallet from loading.
+ const related=Promise.allSettled([readIdentity(),readHistory(1,'archive'),readWallet()]);
  try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({accountRef:row.accountRef}),{noRetry:true,cache:'no-store'});if(g!==profileGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
   const l=x?.loyalty;
   if(x?.status!=='READY'||x.accountRef!==row.accountRef||(row.createdAt!==undefined&&x.createdAt!==row.createdAt)||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!['READY','UNVERIFIED','UNAVAILABLE'].includes(l?.status)||!(l.status==='READY'?Number.isSafeInteger(l.cardCount)&&l.cardCount>=0&&(l.cardCount===0?l.firstEnrollmentAt===null:Number.isFinite(Date.parse(l.firstEnrollmentAt))):l.cardCount===null&&l.firstEnrollmentAt===null))throw Error('Invalid profile');
   const date=v=>v?new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(v)):'Non disponible';
   if(x.createdAt!==null&&!Number.isFinite(Date.parse(x.createdAt)))throw Error('Invalid creation date');metric(out,'Création du compte',date(x.createdAt));metric(out,'Cartes liées',l.cardCount===null?'Non vérifié':fmt(l.cardCount));metric(out,'Première inscription connue',l.firstEnrollmentAt?date(l.firstEnrollmentAt):'Non disponible');status.textContent=l.status==='READY'?'Lien compte → Party → cartes vérifié dans les sources.':'Lien fidélité indisponible ou non vérifié.';
-  // Load only the selected and verified account, progressively; never fan out across the directory.
-  const stillSelected=()=>g===profileGeneration&&profileAccount===row.accountRef&&document.documentElement.classList.contains('crm-pilot-open');
-  if(stillSelected())await Promise.allSettled([readIdentity(),readHistory(1,'archive'),readWallet()]);
+  await related;
 
  }catch{if(g===profileGeneration){out.replaceChildren();status.textContent='Lecture de la fiche indisponible. Réessayez.'}}
 }
