@@ -89,10 +89,8 @@ export async function readAnalyticsCacheManyFresh(keys){
  return new Map(rows.map(r=>[r.cache_key,r.payload]));
 }
 
-export async function readRfmSnapshotPage(key,page){
- const database=await getAnalyticsDatabase();
- const rows=await database.sql`SELECT (payload - 'rows') || jsonb_build_object('page',${page}::integer,'rows',COALESCE((SELECT jsonb_agg(v ORDER BY ord) FROM jsonb_array_elements(COALESCE(payload->'rows','[]'::jsonb)) WITH ORDINALITY AS a(v,ord) WHERE ord>${(page-1)*50} AND ord<=${page*50}), '[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE cache_key=${key} AND expires_at>NOW() LIMIT 1`;
- return rows?.[0]?.payload||null;
+export async function readRfmSnapshotPage(key,page,segment='ALL'){
+ const database=await getAnalyticsDatabase();const {readFilteredRfmSnapshot}=await import('./one-crm-rfm-snapshot-reader.mjs');return readFilteredRfmSnapshot((strings,...values)=>database.sql(strings,...values),key,page,segment);
 }
 export async function claimRfmSync(key){
  const {randomUUID}=await import('node:crypto');const token=randomUUID();
