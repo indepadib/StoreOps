@@ -72,7 +72,9 @@ export async function readCrmCustomerWallet(row,stores){
 
 export async function readCrmCustomerNames(accounts){
  const {readCustomerNames}=await import('./one-crm-customer-identity-source.mjs');
- return readCustomerNames({...sourceDeps(),accounts});
+ const deps=sourceDeps();let stored;try{const {crmIdentityStore}=await import('./analytics-persistent-cache.mjs');stored=await (await crmIdentityStore()).names(deps.company,accounts)}catch{stored=new Map()}
+ const missing=accounts.filter(a=>!stored.has(a));if(!missing.length)return {source:'D365/CustomersV3',scope:'LEGAL_ENTITY_RETAIL',activationEnabled:false,status:'READY',rows:accounts.map(a=>stored.get(a))};
+ const result=await readCustomerNames({...deps,accounts:missing});const fetched=new Map(result.rows.map(r=>[r.accountRef,r]));const rows=accounts.map(a=>stored.get(a)||fetched.get(a)||{accountRef:a,displayName:null,partyType:null,status:'UNAVAILABLE'});return {...result,status:rows.every(r=>r.status==='READY')?'READY':'PARTIAL',rows};
 }
 
 export async function searchCrmCustomerIdentity({query,by,page}){
@@ -181,3 +183,6 @@ export async function runCrmMasterSync(){
  const store=await crmMasterStore(),key=JSON.stringify(['crm-master-lock',company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
  try{const saved=await store.count(company);if(saved&&Date.now()-Date.parse(saved.checkedAt)<600000)return {status:'READY',reused:true,totalAccounts:saved.totalAccounts};const master=await readCustomerMaster();await store.put(company,master);const report={status:'READY',totalAccounts:master.rows.length,checkedAt:master.checkedAt};console.info('CRM master sync',JSON.stringify(report));return report;}finally{await releaseRfmSync(key,token).catch(()=>{})}
 }
+
+export async function runCrmIdentitySync(){const deps=sourceDeps();if(config.dynamics.mode!=='live'||!deps.company)return {status:'DISABLED'};const {crmIdentityStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheManyFresh,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readCustomerNames}=await import('./one-crm-customer-identity-source.mjs');const store=await crmIdentityStore(),key=JSON.stringify(['crm-identity-lock',deps.company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
+ try{const pending=await store.pending(deps.company,100);if(!pending.length)return {status:'READY',prepared:0};const attempts=await readAnalyticsCacheManyFresh(pending.map(a=>JSON.stringify(['crm-identity-retry',deps.company,a])));const ids=pending.filter(a=>!attempts.has(JSON.stringify(['crm-identity-retry',deps.company,a]))).slice(0,50);if(!ids.length)return {status:'COOLDOWN',prepared:0};const result=await readCustomerNames({...deps,accounts:ids});const prepared=await store.put(deps.company,result.rows);for(const r of result.rows.filter(r=>r.status!=='READY'))await writeAnalyticsCache(JSON.stringify(['crm-identity-retry',deps.company,r.accountRef]),'crm-identity-retry',{failed:true},900);const report={status:'PREPARING',requested:ids.length,prepared};console.info('CRM identity sync',JSON.stringify(report));return report;}finally{await releaseRfmSync(key,token).catch(()=>{})}}
