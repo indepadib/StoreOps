@@ -126,6 +126,19 @@ async function api(req,res,url){
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     try{return json(req,res,200,await readCrmRfmSnapshot(stores.filter(s=>scope.has(s.id)),page,segment))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
   }
+  if(path==='/api/crm/period-workspace'){
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
+    const {parseObservedPilotStores}=await import('./services/one-crm-observed-sales.mjs');
+    const scope=parseObservedPilotStores(process.env.ONE_CRM_PILOT_STORE_IDS||''),stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all();
+    if(!scope.size||!stores.length||stores.some(s=>!canAccessStore(user,s.id))||[...scope].some(id=>!stores.some(s=>s.id===id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    if(config.dynamics.mode!=='live')return json(req,res,503,{status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED'});
+    const keys=[...url.searchParams.keys()],mode=url.searchParams.get('mode'),days=Number(url.searchParams.get('days')||30),page=Number(url.searchParams.get('page')||1);
+    if(new Set(keys).size!==keys.length||keys.some(k=>!['mode','days','page'].includes(k))||!['transactions','loyalty','churn','purchase','basket','agent'].includes(mode)||![7,30,90].includes(days)||!Number.isSafeInteger(page)||page<1||page>1000)return json(req,res,400,{status:'INVALID_SCOPE'});
+    const end=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(end+'T00:00:00Z')-(days-1)*86400000).toISOString().slice(0,10);
+    try{const {readCrmPeriodWorkspace}=await import('./services/analytics-persistent-cache.mjs');return json(req,res,200,await readCrmPeriodWorkspace({company:String(config.dynamics.dataAreaId||'').trim(),stores:stores.filter(s=>scope.has(s.id)).map(s=>s.id),start,end,mode,page}))}catch(e){console.warn('CRM period workspace failed',mode);return json(req,res,503,{status:'UNAVAILABLE',reason:'PERIOD_WORKSPACE_UNAVAILABLE',activationEnabled:false})}
+  }
   if(path==='/api/crm/wallet-balance-sources'){
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
     if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});

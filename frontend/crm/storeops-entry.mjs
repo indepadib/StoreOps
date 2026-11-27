@@ -24,6 +24,7 @@ export async function openCrmPilot(){
  const r=await check();setGate(r.status);
  if(r.status!=='AUTHORIZED')return false;
  setupCustomerDirectory();
+ setupPeriodWorkspaces();
  setupNavigation();
  setupRfmPopulation();
  setupLiveObservation();
@@ -54,7 +55,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -154,7 +155,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
-  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -188,15 +189,20 @@ async function readDirectory(page){
  }catch(e){if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent=e.status===403?'Accès réseau refusé (403). Vérifiez votre habilitation CRM.':e.status===503?'Source Dynamics indisponible (503) · '+safeDirectoryCode(e.code):'Lecture du référentiel impossible. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
 }
 async function readDirectoryNames(g,page,search,rows){
- const status=el('crmNamesStatus');if(!rows.length){status.textContent='';return}status.textContent='Rattachement des noms Dynamics…';
+ const status=el('crmNamesStatus');if(!rows.length){status.textContent='';return}status.textContent='Rattachement progressif des noms Dynamics…';
  const active=()=>g===directoryGeneration&&document.documentElement.classList.contains('crm-pilot-open');
- try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({names:'1',page:String(page),...(search?{q:search}:{})}),{noRetry:true,cache:'no-store'});if(!active())return;
-  if(x?.source!=='D365/CustomersV3'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Array.isArray(x.rows)||x.rows.length>50||new Set(x.rows.map(r=>r.accountRef)).size!==x.rows.length||x.rows.some(r=>typeof r.accountRef!=='string'||!['READY','NOT_FOUND','NOT_VERIFIED','TIMEOUT','UNAVAILABLE'].includes(r.status)||!(r.displayName===null||typeof r.displayName==='string'&&r.displayName.length>0&&r.displayName.length<=321)))throw Error('Invalid names');
-  const matches=new Map(x.rows.map(r=>[r.accountRef,r]));let linked=0;
-  for(const r of rows){const n=matches.get(r.accountRef);r.phone=typeof n?.phone==='string'?n.phone:null;r.phoneNormalized=typeof n?.phoneNormalized==='string'?n.phoneNormalized:null;r.phoneCell.textContent=r.phoneNormalized||r.phone||(n?.phoneStatus==='MISSING'?'Manquant · à corriger':'Non vérifié');if(profileAccount===r.accountRef&&r.phone)el('crmProfilePhone').textContent=r.phoneNormalized||r.phone;if(n?.status==='READY'&&n.displayName){r.displayName=n.displayName;r.nameCell.textContent=n.displayName;linked++;if(profileAccount===r.accountRef)el('crmProfileTitle').textContent=n.displayName+' · '+r.accountRef}else r.nameCell.textContent=n?.status==='NOT_FOUND'?'Non trouvé':'Non vérifié'}
-  status.textContent=fmt(linked)+' / '+fmt(rows.length)+' noms rattachés sur cette page. Les comptes restent disponibles.';
- }catch{if(active()){for(const r of rows){r.nameCell.textContent='Non disponible';r.phoneCell.textContent='Non vérifié'}status.textContent='Source des noms indisponible. Le référentiel des comptes reste accessible.'}}
+ let linked=0,failed=0,processed=0;const chunks=Array.from({length:Math.ceil(rows.length/10)},(_,i)=>rows.slice(i*10,i*10+10));
+ for(let i=0;i<chunks.length;i++){
+  if(!active())return;const chunk=chunks[i];
+  try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({names:'1',page:String(page),...(search?{q:search}:{}),...(rows.length>10?{offset:String(i*10)}:{})}),{noRetry:true,cache:'no-store'});if(!active())return;
+   if(x?.source!=='D365/CustomersV3'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Array.isArray(x.rows)||x.rows.length>10||new Set(x.rows.map(r=>r.accountRef)).size!==x.rows.length||x.rows.some(r=>typeof r.accountRef!=='string'||!['READY','NOT_FOUND','NOT_VERIFIED','TIMEOUT','UNAVAILABLE'].includes(r.status)||!(r.displayName===null||typeof r.displayName==='string'&&r.displayName.length>0&&r.displayName.length<=321)))throw Error('Invalid names');
+   const matches=new Map(x.rows.map(r=>[r.accountRef,r]));
+   for(const r of chunk){const n=matches.get(r.accountRef);r.phone=typeof n?.phone==='string'?n.phone:null;r.phoneNormalized=typeof n?.phoneNormalized==='string'?n.phoneNormalized:null;r.phoneCell.textContent=r.phoneNormalized||r.phone||(n?.phoneStatus==='MISSING'?'Manquant · à corriger':'Non vérifié');if(profileAccount===r.accountRef&&r.phone)el('crmProfilePhone').textContent=r.phoneNormalized||r.phone;if(n?.status==='READY'&&n.displayName){r.displayName=n.displayName;r.nameCell.textContent=n.displayName;linked++;if(profileAccount===r.accountRef)el('crmProfileTitle').textContent=n.displayName+' · '+r.accountRef}else r.nameCell.textContent=n?.status==='NOT_FOUND'?'Non trouvé':n?.status==='TIMEOUT'?'Délai source dépassé':'Non vérifié'}
+  }catch{if(!active())return;failed++;for(const r of chunk){r.nameCell.textContent='Non disponible';r.phoneCell.textContent='Non vérifié'}}
+  processed+=chunk.length;status.textContent=fmt(linked)+' / '+fmt(rows.length)+' noms vérifiés · '+fmt(processed)+' comptes traités'+(failed?' · '+failed+' lots indisponibles':'')+'.';
+ }
 }
+
 function safeDirectoryCode(code){return typeof code==='string'&&/^(CRM_[A-Z0-9_]+|D365_REQUEST_TIMEOUT|D365_CONTINUATION_INVALID|CUSTOMER_MASTER_READ_FAILED)$/.test(code)?code:'ERREUR_SOURCE'}
 async function readDirectoryCount(g,pageText){
  try{
@@ -210,14 +216,15 @@ async function readDirectoryCount(g,pageText){
 async function readProfile(row){
  if(!document.documentElement.classList.contains('crm-pilot-open'))return;
  clearProfile();profileAccount=row.accountRef;const g=++profileGeneration,box=el('crmCustomerProfile'),out=el('crmProfileMetrics'),status=el('crmProfileStatus');box.hidden=false;box.scrollIntoView({block:'start',behavior:'instant'});el('crmProfilePhone').textContent=row.phoneNormalized||row.phone||'Vérification du téléphone…';out.replaceChildren();el('crmProfileTitle').textContent=row.displayName?row.displayName+' · '+row.accountRef:'Compte '+row.accountRef;status.textContent='Lecture du lien fidélité Dynamics…';
+ // Every section has its own authorized backend check and generation guard.
+ // A slow loyalty-card lookup must not prevent identity, history or wallet from loading.
+ const related=Promise.allSettled([readIdentity(),readHistory(1,'archive'),readWallet()]);
  try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({accountRef:row.accountRef}),{noRetry:true,cache:'no-store'});if(g!==profileGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
   const l=x?.loyalty;
   if(x?.status!=='READY'||x.accountRef!==row.accountRef||(row.createdAt!==undefined&&x.createdAt!==row.createdAt)||x.source!=='D365/CustTableCDREntities'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.historyStatus!=='NOT_CONNECTED'||x.activationEnabled!==false||!['READY','UNVERIFIED','UNAVAILABLE'].includes(l?.status)||!(l.status==='READY'?Number.isSafeInteger(l.cardCount)&&l.cardCount>=0&&(l.cardCount===0?l.firstEnrollmentAt===null:Number.isFinite(Date.parse(l.firstEnrollmentAt))):l.cardCount===null&&l.firstEnrollmentAt===null))throw Error('Invalid profile');
   const date=v=>v?new Intl.DateTimeFormat('fr-MA',{timeZone:'Africa/Casablanca'}).format(new Date(v)):'Non disponible';
   if(x.createdAt!==null&&!Number.isFinite(Date.parse(x.createdAt)))throw Error('Invalid creation date');metric(out,'Création du compte',date(x.createdAt));metric(out,'Cartes liées',l.cardCount===null?'Non vérifié':fmt(l.cardCount));metric(out,'Première inscription connue',l.firstEnrollmentAt?date(l.firstEnrollmentAt):'Non disponible');status.textContent=l.status==='READY'?'Lien compte → Party → cartes vérifié dans les sources.':'Lien fidélité indisponible ou non vérifié.';
-  // Load only the selected and verified account, progressively; never fan out across the directory.
-  const stillSelected=()=>g===profileGeneration&&profileAccount===row.accountRef&&document.documentElement.classList.contains('crm-pilot-open');
-  if(stillSelected())await Promise.allSettled([readIdentity(),readHistory(1,'archive'),readWallet()]);
+  await related;
 
  }catch{if(g===profileGeneration){out.replaceChildren();status.textContent='Lecture de la fiche indisponible. Réessayez.'}}
 }
@@ -390,4 +397,42 @@ function setupRfmPopulation(){
   }catch{if(active()){await load(page);status.textContent+=' · Préparation interrompue après '+completed+' journée(s) ; relance possible.'}}finally{if(g===rfmGeneration){stop.disabled=true;read.disabled=false;prepare.disabled=!queue.length}}
  };
  filter.onchange=()=>load(1);read.onclick=()=>load(1);prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);prev.disabled=true;next.disabled=true;
+}
+
+const periodReaders=new Map(),periodCleaners=[];
+function clearPeriodWorkspaces(){for(const clear of periodCleaners)clear()}
+function setupPeriodWorkspaces(){
+ const descriptions={
+ transactions:['Achats identifiés sur la période','Ventes positives archivées, hors retours et clients anonymes. Détail journalier disponible ci-dessous.', ['Date','Magasin','Tickets identifiés','TTC positif','Clients du jour']],
+ loyalty:['Fidélité sur la période','Earn et Burn des archives. Solde Wallet et recrutements historiques non déduits.',[]],
+ basket:['Associations sur plusieurs journées','Paires dans un même ticket, au moins dix clients distincts.', ['Article A','Article B','Tickets communs','Clients distincts']],
+ churn:['Clients en retard sur leur cadence','Retard ≥ 1,5 × intervalle moyen, au moins 3 jours d’achat. Pas une probabilité validée.', ['Compte / nom vérifié','Dernier achat','Jours d’achat','Cadence (j)','Récence (j)','Retard ×']],
+ purchase:['Estimation du prochain achat','Dernier achat + intervalle moyen observé. Au moins 3 jours d’achat ; estimation indicative.', ['Compte / nom vérifié','Dernier achat','Jours d’achat','Cadence (j)','Date indicative']],
+ agent:['Décisions à examiner','Clients dont la cadence est dépassée. Examiner la fiche ; aucun contact déclenché.', ['Compte / nom vérifié','Dernier achat','Retard ×','TTC observé']]
+ };
+ for(const [mode,[title,description,columns]] of Object.entries(descriptions)){
+  const section=el(mode);if(!section)continue;
+  const panel=document.createElement('div');panel.className='panel';panel.style.marginBottom='16px';
+  const heading=document.createElement('h3');heading.textContent=title;const note=document.createElement('p');note.className='muted';note.textContent=description;
+  const controls=document.createElement('div');controls.className='quickrow';const select=document.createElement('select');select.setAttribute('aria-label','Période');for(const n of (mode==='basket'?[7,30]:[7,30,90])){const option=document.createElement('option');option.value=String(n);option.textContent=n+' derniers jours clôturés';select.append(option)}select.value=mode==='basket'?'7':(['churn','purchase','agent'].includes(mode)?'90':'30');
+  const button=(label)=>{const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent=label;return b};const refresh=button('Actualiser'),prev=button('Précédent'),next=button('Suivant');prev.disabled=true;next.disabled=true;controls.append(select,refresh);
+  const status=document.createElement('p');status.setAttribute('aria-live','polite');status.className='muted';const metrics=document.createElement('div');metrics.className='metrics';const wrap=document.createElement('div');wrap.className='tablewrap';const table=document.createElement('table'),head=document.createElement('thead'),hr=document.createElement('tr'),body=document.createElement('tbody');
+  for(const column of columns){const th=document.createElement('th');th.textContent=column;hr.append(th)}head.append(hr);table.append(head,body);wrap.append(table);wrap.hidden=!columns.length;
+  const pager=document.createElement('div');pager.className='quickrow';pager.append(prev,next);pager.hidden=!['churn','purchase','agent'].includes(mode);panel.append(heading,note,controls,status,metrics,wrap,pager);section.prepend(panel);
+  if(['churn','purchase','agent'].includes(mode))for(const old of section.querySelectorAll(':scope > .module-state,:scope > .studio-head'))old.hidden=true;
+  let page=1,seq=0;
+  const clear=()=>{seq++;metrics.replaceChildren();body.replaceChildren();status.textContent='Actualisez les données de cette période.';prev.disabled=true;next.disabled=true;refresh.disabled=false};periodCleaners.push(clear);
+  const load=async(n=1)=>{if(!document.documentElement.classList.contains('crm-pilot-open'))return;const id=++seq;const days=Number(select.value);metrics.replaceChildren();body.replaceChildren();refresh.disabled=true;prev.disabled=true;next.disabled=true;status.textContent='Lecture de l’archive PostgreSQL…';
+   try{const x=await api('/api/crm/period-workspace?'+new URLSearchParams({mode,days:String(days),page:String(n)}),{cache:'no-store',noRetry:true});if(id!==seq||!document.documentElement.classList.contains('crm-pilot-open'))return;
+    if(!x||x.activationEnabled!==false||x.mode!==mode||!['READY','PARTIAL','UNAVAILABLE'].includes(x.status)||!Array.isArray(x.rows)||!Number.isSafeInteger(x.coverage?.covered)||!Number.isSafeInteger(x.coverage?.expected))throw Error('Invalid period evidence');
+    status.textContent=x.start+' → '+x.end+' · '+x.coverage.covered+'/'+x.coverage.expected+' jours-magasins d’achats couverts · '+(x.status==='READY'?'Données disponibles':x.reason==='MASTER_UNAVAILABLE'?'Référentiel à actualiser':'Couverture incomplète ou analyse indisponible');
+    if(mode==='transactions'){metric(metrics,'Tickets identifiés observés',fmt(x.rows.reduce((a,r)=>a+Number(r.tickets),0)));metric(metrics,'TTC positif observé',money(x.rows.reduce((a,r)=>a+Number(r.amount),0)))}
+    if(mode==='loyalty'){for(const [label,r] of [['Earn net',x.earn],['Burn',x.burn]]){metric(metrics,label,r?.amount==null?'Non disponible':money(r.amount));metric(metrics,label+' · couverture',r?.covered+'/'+r?.expected)}metric(metrics,'Solde Wallet','Non vérifié');if(x.burn?.signConflict)status.textContent+=' · Signe du Burn à valider.'}
+    for(const r of x.rows){let values;if(mode==='transactions')values=[r.day,r.store_id,fmt(r.tickets),money(r.amount),fmt(r.accounts)];else if(mode==='basket')values=[r.productA,r.productB,fmt(r.together),fmt(r.customers)];else if(mode==='churn')values=[r.displayName?r.displayName+' · '+r.accountRef:r.accountRef,r.lastPurchase,fmt(r.visits),fmt(r.cadence),fmt(r.recency),fmt(r.delayRatio)];else if(mode==='purchase')values=[r.displayName?r.displayName+' · '+r.accountRef:r.accountRef,r.lastPurchase,fmt(r.visits),fmt(r.cadence),r.nextPurchase];else values=[r.displayName?r.displayName+' · '+r.accountRef:r.accountRef,r.lastPurchase,fmt(r.delayRatio),money(r.amount)];const tr=document.createElement('tr');for(const [i,v] of values.entries()){const td=document.createElement('td');if(i===0&&['churn','purchase','agent'].includes(mode)&&typeof r.accountRef==='string'){const b=button(String(v));b.onclick=()=>{document.querySelector('nav button[data-view="customers"]')?.click();readProfile({accountRef:r.accountRef,displayName:r.displayName})};td.append(b)}else td.textContent=String(v);tr.append(td)}body.append(tr)}
+    if(columns.length&&!x.rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=columns.length;td.textContent=x.status==='READY'?'Aucun résultat répondant aux critères.':'Analyse non disponible pour cette couverture.';tr.append(td);body.append(tr)}
+    page=n;prev.disabled=page<=1;next.disabled=!x.hasMore;
+   }catch{if(id===seq)status.textContent='Lecture impossible. Réessayez ou vérifiez la couverture des données.'}finally{if(id===seq)refresh.disabled=false}
+  };
+  refresh.onclick=()=>load();select.onchange=()=>load();prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);periodReaders.set(mode,()=>load());clear();
+ }
 }
