@@ -94,6 +94,7 @@ jobs:
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < netlify/database/migrations/20261127014200_crm-loyalty-earn/migration.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < netlify/database/migrations/20261127014700_crm-wallet-burn/migration.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < netlify/database/migrations/20261127013500_crm-customer-identity/migration.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < netlify/database/migrations/20261127033000_crm-marketing-drafts/migration.sql
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
