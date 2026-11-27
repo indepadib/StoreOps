@@ -92,17 +92,18 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  let cached=new Map();try{for(let i=0;i<keys.length;i+=200){for(const [key,value] of await readRfmEvidenceMany(keys.slice(i,i+200)))cached.set(key,value)}}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
  const archive=await crmPurchaseArchive(),archived=await archive.read(sourceDeps().company,storeIds,startDate,asOf);
  const archiveByKey=new Map(archived.map(a=>[dayKey(a.store_id,a.day),a]));
+ const detailPending=[];for(const p of partitions)for(const date of p.days){const saved=archiveByKey.get(dayKey(p.id,date)),recent=date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);if(!saved?.detailed||recent&&Date.now()-Date.parse(saved.captured_at)>=10800000)detailPending.push({storeId:p.id,date})}
  // Promote daily evidence already fetched by the old system before it expires.
  const promote=[];for(const p of partitions)for(const date of p.days){const key=dayKey(p.id,date),saved=archiveByKey.get(key),recent=date>=new Date(Date.parse(asOf+'T00:00:00Z')-86400000).toISOString().slice(0,10);if(saved&&(!recent||Date.now()-Date.parse(saved.captured_at)<10800000)){cached.set(key,saved.evidence);continue}const existing=cached.get(key)||cached.get(rangeKey(p.id,date,date));if(!saved&&isPreparedRfmRange(existing,p.id,date,date))promote.push(existing);}
  for(let i=0;i<promote.length;i+=8)await Promise.all(promote.slice(i,i+8).map(x=>archive.put(sourceDeps().company,x)));
  const {ranges,missing,unmappedStores}=selectPreparedRfmDays({partitions,cached,dayKey,rangeKey,readyStore:id=>{const cfg=salesIntegrationConfig(id);return cfg.ready&&cfg.entity==='RetailTransactionSalesTransBIEntities'}});
  const coveredStoreDays=ranges.reduce((n,r)=>n+Math.round((Date.parse(r.endDate)-Date.parse(r.startDate))/86400000)+1,0),expectedStoreDays=storeIds.length*90;
- const coverage={expectedStoreDays,coveredStoreDays,rejectedRanges:0,unmatchedPurchaseAccounts:null},progress={basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage,nextMissing:missing[0]||null,missingStoreDays:missing,unmappedStores,preview:summarizePreparedRfmEvidence(ranges,asOf),activationEnabled:false};
+ const coverage={expectedStoreDays,coveredStoreDays,rejectedRanges:0,unmatchedPurchaseAccounts:null},progress={basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage,nextMissing:missing[0]||null,missingStoreDays:missing,detailPending,archiveCoverage:{detailedStoreDays:archived.filter(a=>a.detailed).length,expectedStoreDays},unmappedStores,preview:summarizePreparedRfmEvidence(ranges,asOf),activationEnabled:false};
  // Do not read the entire customer master or names until coverage is ready.
  if(coveredStoreDays!==expectedStoreDays)return {...progress,status:'PREPARING',totalAccounts:null,counts:{},page,pageSize:50,rows:[]};
  let master;try{master=await readCustomerMaster()}catch{return {...progress,status:'MASTER_UNAVAILABLE',reason:'RFM_CUSTOMER_MASTER_UNAVAILABLE',totalAccounts:null,counts:{},page,pageSize:50,rows:[]}};
  const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page,allRows});
- return {...population,nextMissing:null,missingStoreDays:[],unmappedStores};
+ return {...population,nextMissing:null,missingStoreDays:[],detailPending,archiveCoverage:progress.archiveCoverage,unmappedStores};
 }
 
 export async function prepareCrmRfmDay(storeId,date){
@@ -140,11 +141,11 @@ export async function runCrmRfmSync(stores){
  if(config.dynamics.mode!=='live'||!sourceDeps().company||!stores.length)return {status:'DISABLED'};
  const key=rfmSnapshotKey(stores,rfmAsOf()),lock=await claimRfmSync(key+'|lock');if(!lock)return {status:'BUSY'};
  try{
- const last=await readRfmSnapshotPage(key,1);if(last?.status==='READY'&&Date.now()-Date.parse(last.snapshotAt)<900000)return {status:'READY',reused:true};
+ const last=await readRfmSnapshotPage(key,1);if(last?.status==='READY'&&!last.detailPending?.length&&Date.now()-Date.parse(last.snapshotAt)<900000)return {status:'READY',reused:true};
  const result=await readCrmRfmPopulation(stores,1,{allRows:true});
  if(!['READY','PREPARING','MASTER_UNAVAILABLE'].includes(result.status))return {status:'UNAVAILABLE',reason:result.reason||'RFM_SOURCE_UNAVAILABLE'};
  if(last?.status!=='READY'||result.status==='READY'){if(!await writeAnalyticsCache(key,'crm-rfm-snapshot-v1',{...result,snapshotAt:new Date().toISOString()},172800))return {status:'UNAVAILABLE',reason:'RFM_SNAPSHOT_STORAGE_FAILED'}}
- const missing=result.missingStoreDays||[],failureKey=x=>key+'|retry|'+x.storeId+'|'+x.date,blocked=new Set();
+ const missing=result.missingStoreDays?.length?result.missingStoreDays:result.detailPending||[],failureKey=x=>key+'|retry|'+x.storeId+'|'+x.date,blocked=new Set();
  for(let i=0;i<missing.length;i+=200){const failed=await readAnalyticsCacheManyFresh(missing.slice(i,i+200).map(failureKey));for(const x of missing.slice(i,i+200))if(failed.has(failureKey(x)))blocked.add(x.storeId+'|'+x.date)}
  const groups=planRfmBackfill(missing,blocked,5,2);
  const outcomes=await Promise.all(groups.map(async group=>{
@@ -156,7 +157,7 @@ export async function runCrmRfmSync(stores){
   return {prepared:outcome.prepared.length,failed:outcome.failed.length,reason:outcome.reason};
  }));
  const prepared=outcomes.reduce((n,x)=>n+x.prepared,0),failed=outcomes.reduce((n,x)=>n+x.failed,0);
- const report={status:result.status,coveredStoreDays:result.coverage?.coveredStoreDays,expectedStoreDays:result.coverage?.expectedStoreDays,prepared,failed};
+ const report={status:result.status,coveredStoreDays:result.coverage?.coveredStoreDays,expectedStoreDays:result.coverage?.expectedStoreDays,detailedStoreDays:result.archiveCoverage?.detailedStoreDays,prepared,failed,errors:outcomes.filter(x=>x.failed).map(x=>x.reason)};
  console.info('CRM RFM sync',JSON.stringify(report));
  return report;
  }finally{await releaseRfmSync(key+'|lock',lock).catch(()=>{})}
