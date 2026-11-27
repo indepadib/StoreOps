@@ -87,7 +87,9 @@ export async function readCrmCustomerNames(accounts){
 
 export async function searchCrmCustomerIdentity({query,by,page}){
  const {searchCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
- return searchCustomerIdentity({...sourceDeps(),query,by,page});
+ const deps=sourceDeps();
+ try{const {crmIdentityStore}=await import('./analytics-persistent-cache.mjs');const local=await (await crmIdentityStore()).search(deps.company,{query,by,page});if(local)return local}catch{}
+ return searchCustomerIdentity({...deps,query,by,page});
 }
 
 /** Reuse already prepared Analytics ranges; never launch a network-wide live scan on page load. */
