@@ -82,37 +82,26 @@ export async function searchCrmCustomerIdentity({query,by,page}){
 /** Reuse already prepared Analytics ranges; never launch a network-wide live scan on page load. */
 export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000))}={}){
  const {projectRfmPopulation}=await import('./one-crm-rfm-population.mjs');
- const {analyticsCacheKey,readAnalyticsCache}=await import('./analytics-persistent-cache.mjs');
+ const {analyticsCacheKey,readAnalyticsCacheManyFresh}=await import('./analytics-persistent-cache.mjs');
  const {salesIntegrationConfig}=await import('./dynamics-sales.mjs');
- const [master,count]=await Promise.all([readCustomerMaster(),readCustomerCount()]);
- if(count.totalAccounts!==master.rows.length)return {status:'UNAVAILABLE',reason:'CUSTOMER_MASTER_COUNT_MISMATCH',activationEnabled:false};
- const storeIds=stores.map(s=>s.id);
- const dates=Array.from({length:3},(_,i)=>{const end=Date.parse(asOf+'T00:00:00Z')-(2-i)*30*86400000;return [new Date(end-29*86400000).toISOString().slice(0,10),new Date(end).toISOString().slice(0,10)]});
- const ranges=[];
- for(const id of storeIds){
-  const cfg=salesIntegrationConfig(id);
-  if(!cfg.ready||cfg.entity!=='RetailTransactionSalesTransBIEntities')continue;
-  for(const [start,end] of dates){
-   const range=await readAnalyticsCache(analyticsCacheKey('sales-range-v32',[id,start,end]));
-   if(isPreparedRfmRange(range,id,start,end)){ranges.push(range);continue}
-   const dates=Array.from({length:30},(_,i)=>new Date(Date.parse(start+'T00:00:00Z')+i*86400000).toISOString().slice(0,10));
-   for(let i=0;i<dates.length;i+=8){
-    const daily=await Promise.all(dates.slice(i,i+8).map(date=>readAnalyticsCache(analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,id,date]))));
-    for(let j=0;j<daily.length;j++){const date=dates[i+j];if(isPreparedRfmRange(daily[j],id,date,date))ranges.push(daily[j])}
-   }
-  }
+ if(config.dynamics.mode!=='live'||!sourceDeps().company)return {status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED',activationEnabled:false};
+ const storeIds=stores.map(s=>s.id),startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
+ const partitions=[];for(const id of storeIds){for(let i=0;i<3;i++){const start=new Date(Date.parse(startDate+'T00:00:00Z')+i*30*86400000).toISOString().slice(0,10),end=new Date(Date.parse(start+'T00:00:00Z')+29*86400000).toISOString().slice(0,10);partitions.push({id,start,end,days:Array.from({length:30},(_,j)=>new Date(Date.parse(start+'T00:00:00Z')+j*86400000).toISOString().slice(0,10))})}}
+ const dayKey=(id,date)=>analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,id,date]),rangeKey=(id,start,end)=>analyticsCacheKey('sales-range-v32',[id,start,end]);
+ const keys=partitions.flatMap(p=>[rangeKey(p.id,p.start,p.end),...p.days.map(d=>dayKey(p.id,d))]);
+ let cached;try{cached=await readAnalyticsCacheManyFresh(keys)}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
+ const ranges=[],missing=[],unmappedStores=[];
+ for(const p of partitions){const cfg=salesIntegrationConfig(p.id);if(!cfg.ready||cfg.entity!=='RetailTransactionSalesTransBIEntities'){if(!unmappedStores.includes(p.id))unmappedStores.push(p.id);continue}
+  const range=cached.get(rangeKey(p.id,p.start,p.end));if(isPreparedRfmRange(range,p.id,p.start,p.end)){ranges.push(range);continue}
+  for(const date of p.days){const daily=cached.get(dayKey(p.id,date));if(isPreparedRfmRange(daily,p.id,date,date))ranges.push(daily);else missing.push({storeId:p.id,date})}
  }
+ const coveredStoreDays=ranges.reduce((n,r)=>n+Math.round((Date.parse(r.endDate)-Date.parse(r.startDate))/86400000)+1,0),expectedStoreDays=storeIds.length*90;
+ const coverage={expectedStoreDays,coveredStoreDays,rejectedRanges:0,unmatchedPurchaseAccounts:null},progress={basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate,storeIds,coverage,nextMissing:missing[0]||null,missingStoreDays:missing,unmappedStores,activationEnabled:false};
+ // Do not read the entire customer master or names until coverage is ready.
+ if(coveredStoreDays!==expectedStoreDays)return {...progress,status:'PREPARING',totalAccounts:null,counts:{},page,pageSize:50,rows:[]};
+ let master;try{master=await readCustomerMaster()}catch{return {...progress,status:'MASTER_UNAVAILABLE',reason:'RFM_CUSTOMER_MASTER_UNAVAILABLE',totalAccounts:null,counts:{},page,pageSize:50,rows:[]}};
  const population=projectRfmPopulation({accounts:master.rows,stores:storeIds,ranges,asOf,page});
- const covered=new Set();for(const r of ranges){for(let t=Date.parse(r.startDate+'T00:00:00Z');t<=Date.parse(r.endDate+'T00:00:00Z');t+=86400000)covered.add(JSON.stringify([r.storeId,new Date(t).toISOString().slice(0,10)]))}
- const missing=[];for(const id of storeIds)for(let i=89;i>=0;i--){const date=new Date(Date.parse(asOf+'T00:00:00Z')-i*86400000).toISOString().slice(0,10);if(!covered.has(JSON.stringify([id,date])))missing.push({storeId:id,date})}
- population.nextMissing=missing[0]||null;
- population.missingStoreDays=missing.slice(0,180);
-
- try{
-  const names=await readCrmCustomerNames(population.rows.map(r=>r.accountRef)),byAccount=new Map((names.rows||[]).map(r=>[r.accountRef,r]));
-  return {...population,rows:population.rows.map(r=>({...r,displayName:byAccount.get(r.accountRef)?.displayName||null,nameStatus:byAccount.get(r.accountRef)?.status||'UNAVAILABLE'}))};
- }catch{return population}
-
+ return {...population,nextMissing:null,missingStoreDays:[],unmappedStores};
 }
 
 export async function prepareCrmRfmDay(storeId,date){

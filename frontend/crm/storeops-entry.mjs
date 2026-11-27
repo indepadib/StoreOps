@@ -154,7 +154,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
-  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -350,39 +350,40 @@ function setupRfmPopulation(){
  const p=document.createElement('p');p.className='muted';p.textContent='Achats positifs attribués sur les 90 derniers jours clôturés, magasins pilotes. Les périodes manquantes ne sont jamais assimilées à zéro.';panel.append(p);
  const button=(id,label)=>{const b=document.createElement('button');b.id=id;b.type='button';b.className='secondary';b.textContent=label;return b};
  const read=button('crmRfmRead','Actualiser la couverture RFM'),prev=button('crmRfmPrev','Précédent'),next=button('crmRfmNext','Suivant'),status=document.createElement('p');status.id='crmRfmStatus';status.setAttribute('aria-live','polite');status.textContent='Actualisez la couverture des données.';
- const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr'),rows=document.createElement('tbody');wrap.className='tablewrap';rows.id='crmRfmRows';for(const label of ['Compte','Récence (j)','Fréquence 90 j','TTC positif 90 j','État']){const th=document.createElement('th');th.textContent=label;tr.append(th)}head.append(tr);table.append(head,rows);wrap.append(table);panel.append(read,status,wrap,prev,next);section.append(panel);
+ const wrap=document.createElement('div'),table=document.createElement('table'),head=document.createElement('thead'),tr=document.createElement('tr'),rows=document.createElement('tbody');wrap.className='tablewrap';rows.id='crmRfmRows';for(const label of ['Compte','Récence (j)','Fréquence 90 j','TTC positif 90 j','Segment']){const th=document.createElement('th');th.textContent=label;tr.append(th)}head.append(tr);table.append(head,rows);wrap.append(table);panel.append(read,status,wrap,prev,next);section.append(panel);
  const prepare=button('crmRfmPrepare','Compléter les journées manquantes'),stop=button('crmRfmStop','Arrêter après la journée en cours');prepare.disabled=true;stop.disabled=true;panel.insertBefore(prepare,status);panel.insertBefore(stop,status);
+ const segmentLabels={HIGH_VALUE_ACTIVE:'Actifs à forte valeur',REGULAR_ACTIVE:'Actifs réguliers',RECENT_SINGLE_TICKET:'Achat récent unique',INACTIVE_30_PLUS:'Inactifs > 30 j',NO_RECENT_PURCHASE:'Aucun achat sur 90 j',OTHER_OBSERVED:'Autres profils observés'};const segmentMetrics=document.createElement('div');segmentMetrics.className='metrics';panel.insertBefore(segmentMetrics,wrap);
  let missing=null,queue=[],page=1,stopped=false;
  const load=async n=>{
-  const g=++rfmGeneration;read.disabled=true;prepare.disabled=true;stop.disabled=true;missing=null;queue=[];prev.disabled=true;next.disabled=true;rows.replaceChildren();status.textContent='Vérification du référentiel et des périodes Analytics…';
+  const g=++rfmGeneration;read.disabled=true;prepare.disabled=true;stop.disabled=true;missing=null;queue=[];prev.disabled=true;next.disabled=true;rows.replaceChildren();segmentMetrics.replaceChildren();status.textContent='Vérification des journées Dynamics déjà préparées…';
   try{
    const x=await api('/api/crm/rfm-population?'+new URLSearchParams({page:String(n)}),{cache:'no-store',noRetry:true});
    if(g!==rfmGeneration||!document.documentElement.classList.contains('crm-pilot-open'))return;
+   if(x?.status==='PREPARING'||x?.status==='MASTER_UNAVAILABLE'){if(x.basis!=='OBSERVED_POSITIVE_90_DAY_PILOT_RANGES'||x.activationEnabled!==false||!Number.isSafeInteger(x.coverage?.coveredStoreDays)||!Number.isSafeInteger(x.coverage?.expectedStoreDays))throw Error('Invalid preparation');queue=Array.isArray(x.missingStoreDays)?x.missingStoreDays.filter(t=>typeof t?.storeId==='string'&&/^\\d{4}-\\d{2}-\\d{2}$/.test(t.date)).slice(0,180):[];page=1;status.textContent=x.coverage.coveredStoreDays+' / '+x.coverage.expectedStoreDays+' jours-magasins couverts · '+(x.status==='MASTER_UNAVAILABLE'?'Référentiel CLT indisponible : réessayez.':queue.length?'Cliquez sur Compléter les journées manquantes pour préparer la segmentation.':'Magasin non raccordé : vérifiez la configuration.');prepare.disabled=!queue.length;return}
+   if(x?.status==='UNAVAILABLE')throw Object.assign(Error('RFM'),{code:x.reason});
    if(!['READY','PARTIAL'].includes(x?.status)||x.basis!=='OBSERVED_POSITIVE_90_DAY_PILOT_RANGES'||x.activationEnabled!==false||x.page!==n||!Number.isSafeInteger(x.totalAccounts)||x.totalAccounts<0||!Array.isArray(x.rows)||x.rows.length>50||!Number.isSafeInteger(x.coverage?.coveredStoreDays)||!Number.isSafeInteger(x.coverage?.expectedStoreDays))throw Error('Invalid RFM result');
    status.textContent=fmt(x.totalAccounts)+' comptes · '+x.coverage.coveredStoreDays+' / '+x.coverage.expectedStoreDays+' jours-magasins couverts · au '+x.asOf+(x.status==='PARTIAL'?' · historique incomplet : scores non publiés':' · couverture pilote disponible');
+   if(x.status==='READY'&&x.segmentCounts)for(const [key,label] of Object.entries(segmentLabels)){const n=x.segmentCounts[key]??0;if(Number.isSafeInteger(n)&&n>=0)metric(segmentMetrics,label,fmt(n))}
    for(const r of x.rows){if(typeof r.accountRef!=='string')continue;const line=document.createElement('tr');const td=document.createElement('td');td.textContent=typeof r.displayName==='string'&&r.displayName.trim()?r.displayName+' · '+r.accountRef:r.accountRef+' · Nom '+(r.nameStatus==='NOT_FOUND'?'non renseigné':'non vérifié');line.append(td);
     const q=r.rfm,labels={OBSERVED_90_DAY_RFM:'RFM observé',NO_PURCHASE_IN_OBSERVED_90_DAYS:'Aucun achat observé sur 90 j',HISTORY_INCOMPLETE:'Historique incomplet',EXCLUDED_ANONYMOUS_ACCOUNT:'Compte anonyme exclu'};
-    for(const v of [q?fmt(q.recencyDays):r.recencyLowerBoundDays===90?'≥ 90 (observé)':'—',q?fmt(q.tickets90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?'0':'—',q?money(q.positiveTtc90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?money(0):'—',labels[r.status]||'Non vérifié']){const td=document.createElement('td');td.textContent=v;line.append(td)}rows.append(line)
+    for(const v of [q?fmt(q.recencyDays):r.recencyLowerBoundDays===90?'≥ 90 (observé)':'—',q?fmt(q.tickets90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?'0':'—',q?money(q.positiveTtc90):r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?money(0):'—',(q&&segmentLabels[q.segment])||labels[r.status]||'Non vérifié']){const td=document.createElement('td');td.textContent=v;line.append(td)}rows.append(line)
    }
    page=n;prev.disabled=n===1;next.disabled=n*50>=x.totalAccounts;missing=x.nextMissing&&typeof x.nextMissing.storeId==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(x.nextMissing.date)?x.nextMissing:null;queue=Array.isArray(x.missingStoreDays)?x.missingStoreDays.filter(t=>typeof t?.storeId==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(t.date)).slice(0,180):missing?[missing]:[];prepare.disabled=!queue.length;
-  }catch{if(g===rfmGeneration)status.textContent='RFM indisponible : le référentiel individuel reste accessible.'}finally{if(g===rfmGeneration)read.disabled=false}
+  }catch(e){if(g===rfmGeneration)status.textContent='RFM indisponible · '+(typeof e.code==='string'&&/^[A-Z0-9_]+$/.test(e.code)?e.code:e.status?'HTTP '+e.status:'Réponse non conforme')+' · Réessayez.'}finally{if(g===rfmGeneration)read.disabled=false}
  };
  stop.onclick=()=>{stopped=true;stop.disabled=true;status.textContent='Arrêt demandé après la journée en cours…'};
  prepare.onclick=async()=>{
   if(!queue.length||!document.documentElement.classList.contains('crm-pilot-open'))return;
   const targets=queue.slice(),g=++rfmGeneration;stopped=false;prepare.disabled=true;stop.disabled=false;read.disabled=true;prev.disabled=true;next.disabled=true;
-  let completed=0;
+  let completed=0,failed=0,lastFailure='';
   const active=()=>g===rfmGeneration&&document.documentElement.classList.contains('crm-pilot-open')&&!document.hidden;
   try{
    for(const target of targets){
     if(stopped||!active())break;
-    status.textContent='Préparation Dynamics · '+(completed+1)+' / '+targets.length+' · '+target.storeId+' · '+target.date+'…';
-    const result=await api('/api/crm/rfm-prepare-day',{method:'POST',body:JSON.stringify(target),noRetry:true,cache:'no-store'});
-    if(!active())return;
-    if(result?.status!=='READY'||result.storeId!==target.storeId||result.date!==target.date)throw Error('Incomplete day');
-    completed++;
+    status.textContent='Préparation Dynamics · '+(completed+failed+1)+' / '+targets.length+' · '+target.storeId+' · '+target.date+'…';
+    try{const result=await api('/api/crm/rfm-prepare-day',{method:'POST',body:target,noRetry:true,cache:'no-store'});if(!active())return;if(result?.status!=='READY'||result.storeId!==target.storeId||result.date!==target.date)throw Error('Incomplete day');completed++}catch(e){failed++;lastFailure=typeof e.code==='string'&&/^[A-Z0-9_]+$/.test(e.code)?e.code:e.status?'HTTP '+e.status:'Lecture incomplète';if(failed>=3)break}
    }
-   if(active())await load(page);
+   if(active()){await load(1);if(failed)status.textContent+=' · '+completed+' préparée(s), '+failed+' échec(s) · '+lastFailure+' · relance possible.'}
   }catch{if(active()){await load(page);status.textContent+=' · Préparation interrompue après '+completed+' journée(s) ; relance possible.'}}finally{if(g===rfmGeneration){stop.disabled=true;read.disabled=false;prepare.disabled=!queue.length}}
  };
  read.onclick=()=>load(1);prev.onclick=()=>load(page-1);next.onclick=()=>load(page+1);prev.disabled=true;next.disabled=true;

@@ -107,14 +107,14 @@ async function api(req,res,url){
         if(!input||Object.keys(input).some(k=>!['storeId','date'].includes(k))||!scope.has(input.storeId)||typeof input.date!=='string')return json(req,res,400,{status:'INVALID_SCOPE'});
         const {prepareCrmRfmDay}=await import('./services/dynamics-crm-customer-master.mjs');
         const result=await prepareCrmRfmDay(input.storeId,input.date);
-        return json(req,res,result.status==='READY'?200:result.status==='INVALID_DATE'?400:503,result);
-      }catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_DAY_PREPARATION_FAILED'})}
+        return json(req,res,result.status==='READY'?200:result.status==='INVALID_DATE'?400:503,{...result,code:result.reason||undefined});
+      }catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_DAY_PREPARATION_FAILED',code:'RFM_DAY_PREPARATION_FAILED'})}
     }
     const page=Number(url.searchParams.get('page')||1);
     if(!Number.isSafeInteger(page)||page<1||page>2000)return json(req,res,400,{error:'Page invalide.'});
     const {readCrmRfmPopulation}=await import('./services/dynamics-crm-customer-master.mjs');
     res.setHeader('Cache-Control','no-store, private, max-age=0');
-    try{return json(req,res,200,await readCrmRfmPopulation(stores.filter(s=>scope.has(s.id)),page))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
+    try{return json(req,res,200,await readCrmRfmPopulation(stores.filter(s=>scope.has(s.id)),page))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
   }
   if(path==='/api/crm/wallet-balance-sources'){
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});

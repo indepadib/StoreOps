@@ -79,3 +79,12 @@ export async function compareAnalyticsCache(key,payload,expectedRevision){
  }catch{const old=memoryRead(key);if((old?.revision??null)!==expectedRevision)return false}
  memory.set(key,{payload,expiresAt:now()+900000});return true;
 }
+
+// One persisted read for a bounded set of exact cache keys; never substitute memory for coverage.
+export async function readAnalyticsCacheManyFresh(keys){
+ if(!Array.isArray(keys)||keys.length>250||keys.some(k=>typeof k!=='string'||!k)||new Set(keys).size!==keys.length)throw Error('Invalid cache keys');
+ if(!keys.length)return new Map();
+ const database=await getAnalyticsDatabase();
+ const rows=await database.sql`SELECT cache_key,payload FROM retail_intelligence_cache WHERE expires_at>NOW() AND cache_key IN (SELECT jsonb_array_elements_text(CAST(${JSON.stringify(keys)} AS JSONB)))`;
+ return new Map(rows.map(r=>[r.cache_key,r.payload]));
+}
