@@ -57,3 +57,15 @@ export function projectRfmDayRows(rows,{storeId,date,company,storeNumber,fields,
  }
  return [...customers.values()].map(({ticketIds,...c})=>({...c,sales:round(c.sales),tickets:ticketIds.size}));
 }
+
+// Prefer complete non-overlapping 30-day evidence; otherwise reuse exact daily
+// Analytics evidence before asking Dynamics for missing data.
+export function selectPreparedRfmDays({partitions,cached,dayKey,rangeKey,readyStore}){
+ const ranges=[],missing=[],unmappedStores=[];
+ for(const p of partitions){
+  if(!readyStore(p.id)){if(!unmappedStores.includes(p.id))unmappedStores.push(p.id);continue}
+  const range=cached.get(rangeKey(p.id,p.start,p.end));if(isPreparedRfmRange(range,p.id,p.start,p.end)){ranges.push(range);continue}
+  for(const date of p.days){const daily=cached.get(dayKey(p.id,date)),analytics=cached.get(rangeKey(p.id,date,date));if(isPreparedRfmRange(daily,p.id,date,date))ranges.push(daily);else if(isPreparedRfmRange(analytics,p.id,date,date))ranges.push(analytics);else missing.push({storeId:p.id,date})}
+ }
+ return {ranges,missing,unmappedStores};
+}
