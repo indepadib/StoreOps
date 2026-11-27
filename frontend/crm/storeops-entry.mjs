@@ -189,15 +189,20 @@ async function readDirectory(page){
  }catch(e){if(g===directoryGeneration){directoryLoaded=false;for(const id of ['crmDirectoryTotal','crmMasterKpi'])el(id).textContent='—';status.textContent=e.status===403?'Accès réseau refusé (403). Vérifiez votre habilitation CRM.':e.status===503?'Source Dynamics indisponible (503) · '+safeDirectoryCode(e.code):'Lecture du référentiel impossible. Aucune base fictive substituée.'}}finally{if(g===directoryGeneration){directoryBusy=false;btn.disabled=false}}
 }
 async function readDirectoryNames(g,page,search,rows){
- const status=el('crmNamesStatus');if(!rows.length){status.textContent='';return}status.textContent='Rattachement des noms Dynamics…';
+ const status=el('crmNamesStatus');if(!rows.length){status.textContent='';return}status.textContent='Rattachement progressif des noms Dynamics…';
  const active=()=>g===directoryGeneration&&document.documentElement.classList.contains('crm-pilot-open');
- try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({names:'1',page:String(page),...(search?{q:search}:{})}),{noRetry:true,cache:'no-store'});if(!active())return;
-  if(x?.source!=='D365/CustomersV3'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Array.isArray(x.rows)||x.rows.length>50||new Set(x.rows.map(r=>r.accountRef)).size!==x.rows.length||x.rows.some(r=>typeof r.accountRef!=='string'||!['READY','NOT_FOUND','NOT_VERIFIED','TIMEOUT','UNAVAILABLE'].includes(r.status)||!(r.displayName===null||typeof r.displayName==='string'&&r.displayName.length>0&&r.displayName.length<=321)))throw Error('Invalid names');
-  const matches=new Map(x.rows.map(r=>[r.accountRef,r]));let linked=0;
-  for(const r of rows){const n=matches.get(r.accountRef);r.phone=typeof n?.phone==='string'?n.phone:null;r.phoneNormalized=typeof n?.phoneNormalized==='string'?n.phoneNormalized:null;r.phoneCell.textContent=r.phoneNormalized||r.phone||(n?.phoneStatus==='MISSING'?'Manquant · à corriger':'Non vérifié');if(profileAccount===r.accountRef&&r.phone)el('crmProfilePhone').textContent=r.phoneNormalized||r.phone;if(n?.status==='READY'&&n.displayName){r.displayName=n.displayName;r.nameCell.textContent=n.displayName;linked++;if(profileAccount===r.accountRef)el('crmProfileTitle').textContent=n.displayName+' · '+r.accountRef}else r.nameCell.textContent=n?.status==='NOT_FOUND'?'Non trouvé':'Non vérifié'}
-  status.textContent=fmt(linked)+' / '+fmt(rows.length)+' noms rattachés sur cette page. Les comptes restent disponibles.';
- }catch{if(active()){for(const r of rows){r.nameCell.textContent='Non disponible';r.phoneCell.textContent='Non vérifié'}status.textContent='Source des noms indisponible. Le référentiel des comptes reste accessible.'}}
+ let linked=0,failed=0,processed=0;const chunks=Array.from({length:Math.ceil(rows.length/10)},(_,i)=>rows.slice(i*10,i*10+10));
+ for(let i=0;i<chunks.length;i++){
+  if(!active())return;const chunk=chunks[i];
+  try{const x=await api('/api/crm/customer-directory?'+new URLSearchParams({names:'1',page:String(page),...(search?{q:search}:{}),...(rows.length>10?{offset:String(i*10)}:{})}),{noRetry:true,cache:'no-store'});if(!active())return;
+   if(x?.source!=='D365/CustomersV3'||x.scope!=='LEGAL_ENTITY_RETAIL'||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Array.isArray(x.rows)||x.rows.length>10||new Set(x.rows.map(r=>r.accountRef)).size!==x.rows.length||x.rows.some(r=>typeof r.accountRef!=='string'||!['READY','NOT_FOUND','NOT_VERIFIED','TIMEOUT','UNAVAILABLE'].includes(r.status)||!(r.displayName===null||typeof r.displayName==='string'&&r.displayName.length>0&&r.displayName.length<=321)))throw Error('Invalid names');
+   const matches=new Map(x.rows.map(r=>[r.accountRef,r]));
+   for(const r of chunk){const n=matches.get(r.accountRef);r.phone=typeof n?.phone==='string'?n.phone:null;r.phoneNormalized=typeof n?.phoneNormalized==='string'?n.phoneNormalized:null;r.phoneCell.textContent=r.phoneNormalized||r.phone||(n?.phoneStatus==='MISSING'?'Manquant · à corriger':'Non vérifié');if(profileAccount===r.accountRef&&r.phone)el('crmProfilePhone').textContent=r.phoneNormalized||r.phone;if(n?.status==='READY'&&n.displayName){r.displayName=n.displayName;r.nameCell.textContent=n.displayName;linked++;if(profileAccount===r.accountRef)el('crmProfileTitle').textContent=n.displayName+' · '+r.accountRef}else r.nameCell.textContent=n?.status==='NOT_FOUND'?'Non trouvé':n?.status==='TIMEOUT'?'Délai source dépassé':'Non vérifié'}
+  }catch{if(!active())return;failed++;for(const r of chunk){r.nameCell.textContent='Non disponible';r.phoneCell.textContent='Non vérifié'}}
+  processed+=chunk.length;status.textContent=fmt(linked)+' / '+fmt(rows.length)+' noms vérifiés · '+fmt(processed)+' comptes traités'+(failed?' · '+failed+' lots indisponibles':'')+'.';
+ }
 }
+
 function safeDirectoryCode(code){return typeof code==='string'&&/^(CRM_[A-Z0-9_]+|D365_REQUEST_TIMEOUT|D365_CONTINUATION_INVALID|CUSTOMER_MASTER_READ_FAILED)$/.test(code)?code:'ERREUR_SOURCE'}
 async function readDirectoryCount(g,pageText){
  try{
