@@ -179,7 +179,7 @@ export async function readCrmArchivedHistory(row,stores,page){const {crmPurchase
 
 // Complete verified replacement until a Dynamics modification/deletion watermark is proven.
 export async function runCrmMasterSync(){
- const {crmMasterStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheFresh,writeAnalyticsCache,deleteAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readMasterImportPage,advanceMasterImport}=await import('./one-crm-customer-source.mjs');const deps=sourceDeps(),company=deps.company;if(config.dynamics.mode!=='live'||!company)return {status:'DISABLED'};
+ const {crmMasterStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheFresh,writeAnalyticsCache,deleteAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readMasterImportPage,advanceMasterImport,readMasterImportControl}=await import('./one-crm-customer-source.mjs');const deps=sourceDeps(),company=deps.company;if(config.dynamics.mode!=='live'||!company)return {status:'DISABLED'};
  const store=await crmMasterStore(),key=JSON.stringify(['crm-master-lock',company]),stateKey=JSON.stringify(['crm-master-import-v1',company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
  const init=(mode='CLT',batch=250)=>({mode,batch,offset:0,rows:[],startedAt:new Date().toISOString(),complete:false});
  const save=async state=>{if(!await writeAnalyticsCache(stateKey,'crm-master-import',state,7200))throw Error('Master cursor persistence failed')};
@@ -201,8 +201,8 @@ export async function runCrmMasterSync(){
   if(!state.complete){const report={status:'PREPARING',scanned:state.offset,accounts:state.rows.length,batch:state.batch};console.info('CRM master sync',JSON.stringify(report));return report}
   // Reconcile the CLT count before replacing the authoritative snapshot. A mismatch
   // indicates source movement or an incomplete scan; retry without publishing it.
-  const control=await readDirectorySourceCount(deps);
-  if(control.totalAccounts!==state.rows.length){await deleteAnalyticsCache(stateKey);return {status:'UNAVAILABLE',reason:'MASTER_COUNT_MISMATCH'}}
+  const control=await readMasterImportControl({...deps,mode:state.mode});
+  if(control!==state.offset){await deleteAnalyticsCache(stateKey);return {status:'UNAVAILABLE',reason:'MASTER_COUNT_MISMATCH'}}
   const master={source:'D365/CustTableCDREntities',scope:'LEGAL_ENTITY_RETAIL',checkedAt:new Date().toISOString(),rows:state.rows};await store.put(company,master);await deleteAnalyticsCache(stateKey);const report={status:'READY',totalAccounts:master.rows.length,checkedAt:master.checkedAt};console.info('CRM master sync',JSON.stringify(report));return report;
  }finally{await releaseRfmSync(key,token).catch(()=>{})}
 }
