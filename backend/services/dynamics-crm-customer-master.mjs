@@ -101,10 +101,11 @@ export async function readCrmRfmPopulation(stores,page,{asOf=new Intl.DateTimeFo
  const storeIds=stores.map(s=>s.id),startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
  const partitions=[];for(const id of storeIds){for(let i=0;i<3;i++){const start=new Date(Date.parse(startDate+'T00:00:00Z')+i*30*86400000).toISOString().slice(0,10),end=new Date(Date.parse(start+'T00:00:00Z')+29*86400000).toISOString().slice(0,10);partitions.push({id,start,end,days:Array.from({length:30},(_,j)=>new Date(Date.parse(start+'T00:00:00Z')+j*86400000).toISOString().slice(0,10))})}}
  const dayKey=(id,date)=>analyticsCacheKey('crm-rfm-day-v1',[sourceDeps().company,id,date]),rangeKey=(id,start,end)=>analyticsCacheKey('sales-range-v32',[id,start,end]);
- const keys=[...new Set(partitions.flatMap(p=>[rangeKey(p.id,p.start,p.end),...p.days.flatMap(d=>[dayKey(p.id,d),rangeKey(p.id,d,d)])]))];
- let cached=new Map();try{for(let i=0;i<keys.length;i+=200){for(const [key,value] of await readRfmEvidenceMany(keys.slice(i,i+200)))cached.set(key,value)}}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
  let archive,archived;try{archive=await crmPurchaseArchive();archived=await archive.read(sourceDeps().company,storeIds,startDate,asOf)}catch(e){const code=String(e?.code||e?.cause?.code||'');console.warn('CRM archive read failed',/^[A-Z0-9_]{1,50}$/.test(code)?code:'UNCLASSIFIED');return {status:'UNAVAILABLE',reason:'RFM_ARCHIVE_READ_FAILED',activationEnabled:false}}
  const archiveByKey=new Map(archived.map(a=>[dayKey(a.store_id,a.day),a]));
+ // Only fetch legacy Analytics evidence for days not already in the durable CRM archive.
+ const keys=[...new Set(partitions.flatMap(p=>{const absent=p.days.filter(d=>!archiveByKey.has(dayKey(p.id,d)));return absent.flatMap(d=>[dayKey(p.id,d),rangeKey(p.id,d,d)])}))];
+ const cached=new Map();try{for(let i=0;i<keys.length;i+=200){for(const [key,value] of await readRfmEvidenceMany(keys.slice(i,i+200)))cached.set(key,value)}}catch{return {status:'UNAVAILABLE',reason:'RFM_CACHE_UNAVAILABLE',activationEnabled:false}};
  const detailPending=[];for(const p of partitions)for(const date of p.days){const saved=archiveByKey.get(dayKey(p.id,date));if(!saved?.detailed)detailPending.push({storeId:p.id,date})}
  // Promote daily evidence already fetched by the old system before it expires.
  const promote=[];for(const p of partitions)for(const date of p.days){const key=dayKey(p.id,date),saved=archiveByKey.get(key);if(saved){cached.set(key,saved.evidence);continue}const existing=cached.get(key)||cached.get(rangeKey(p.id,date,date));if(!saved&&isPreparedRfmRange(existing,p.id,date,date))promote.push(existing);}
