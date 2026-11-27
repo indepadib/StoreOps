@@ -45,3 +45,15 @@ const dailyPopulation=projectRfmPopulation({accounts:populationAccounts,stores:[
 assert.equal(projectRfmPopulation({accounts:populationAccounts,stores:['a'],asOf:'2026-11-26',ranges:dayRanges.slice(1)}).status,'PARTIAL');
 
 assert.equal(population.segmentCounts.HIGH_VALUE_ACTIVE,1);assert.equal(population.segmentCounts.INACTIVE_30_PLUS,1);assert.equal(population.segmentCounts.NO_RECENT_PURCHASE,1);assert.deepEqual(incomplete.segmentCounts,{});
+
+import {projectRfmDayRows} from '../services/one-crm-rfm-population.mjs';
+const dailyArgs={storeId:'a',date:'2026-11-26',company:'C1',storeNumber:'A',fields:{date:'businessDate',customer:'custAccount'},eligible:r=>r.net>0,amount:r=>r.net,ticketKey:r=>JSON.stringify([r.terminalId,r.transactionId])};
+const dailyRow=(tx,account,net=10)=>({...row('A',tx,net,'2026-11-26'),custAccount:account});
+assert.deepEqual(projectRfmDayRows([dailyRow('1','CLT-A'),dailyRow('1','CLT-A',5),dailyRow('2','CLT-A'),dailyRow('3','CASH'),dailyRow('4','CLT-A',-3)],dailyArgs),[{customerAccount:'CLT-A',sales:25,lastDate:'2026-11-26',tickets:2}]);
+assert.throws(()=>projectRfmDayRows([dailyRow('1','CLT-A'),dailyRow('1','CLT-B')],dailyArgs));assert.throws(()=>projectRfmDayRows([{...dailyRow('1','CLT-A'),store:'B'}],dailyArgs));
+
+import {selectPreparedRfmDays} from '../services/one-crm-rfm-population.mjs';
+const partition={id:'a',start:'2026-11-25',end:'2026-11-26',days:['2026-11-25','2026-11-26']},dayKey=(id,d)=>['crm',id,d].join('|'),rangeKey=(id,s,e)=>['analytics',id,s,e].join('|');
+const cachedDays=new Map([[dayKey('a','2026-11-25'),dayRanges[88]],[rangeKey('a','2026-11-26','2026-11-26'),dayRanges[89]]]);
+const selectDays=()=>selectPreparedRfmDays({partitions:[partition],cached:cachedDays,dayKey,rangeKey,readyStore:()=>true});
+assert.equal(selectDays().ranges.length,2);assert.deepEqual(selectDays().missing,[]);cachedDays.delete(rangeKey('a','2026-11-26','2026-11-26'));assert.deepEqual(selectDays().missing,[{storeId:'a',date:'2026-11-26'}]);cachedDays.set(rangeKey('a',partition.start,partition.end),{...sourceRange,startDate:partition.start,endDate:partition.end});assert.equal(selectDays().ranges.length,1);assert.deepEqual(selectDays().missing,[]);
