@@ -43,3 +43,5 @@ const dayRanges=Array.from({length:90},(_,i)=>{const date=new Date(Date.parse('2
 assert.ok(isPreparedRfmRange(dayRanges[0],'a','2026-08-29','2026-08-29'));assert.ok(!isPreparedRfmRange(dayRanges[0],'b','2026-08-29','2026-08-29'));assert.ok(!isPreparedRfmRange({...dayRanges[0],diagnostics:{...dayRanges[0].diagnostics,truncated:true}},'a','2026-08-29','2026-08-29'));
 const dailyPopulation=projectRfmPopulation({accounts:populationAccounts,stores:['a'],asOf:'2026-11-26',ranges:dayRanges});assert.equal(dailyPopulation.status,'READY');assert.equal(dailyPopulation.rows[0].rfm.positiveTtc90,25);assert.equal(dailyPopulation.rows[1].status,'NO_PURCHASE_IN_OBSERVED_90_DAYS');
 assert.equal(projectRfmPopulation({accounts:populationAccounts,stores:['a'],asOf:'2026-11-26',ranges:dayRanges.slice(1)}).status,'PARTIAL');
+
+assert.equal(population.segmentCounts.HIGH_VALUE_ACTIVE,1);assert.equal(population.segmentCounts.INACTIVE_30_PLUS,1);assert.equal(population.segmentCounts.NO_RECENT_PURCHASE,1);assert.deepEqual(incomplete.segmentCounts,{});
