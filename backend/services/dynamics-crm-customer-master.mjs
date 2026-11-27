@@ -179,9 +179,32 @@ export async function readCrmArchivedHistory(row,stores,page){const {crmPurchase
 
 // Complete verified replacement until a Dynamics modification/deletion watermark is proven.
 export async function runCrmMasterSync(){
- const {crmMasterStore,claimRfmSync,releaseRfmSync}=await import('./analytics-persistent-cache.mjs');const company=sourceDeps().company;if(config.dynamics.mode!=='live'||!company)return {status:'DISABLED'};
- const store=await crmMasterStore(),key=JSON.stringify(['crm-master-lock',company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
- try{const saved=await store.count(company);if(saved&&Date.now()-Date.parse(saved.checkedAt)<600000)return {status:'READY',reused:true,totalAccounts:saved.totalAccounts};const master=await readCustomerMaster();await store.put(company,master);const report={status:'READY',totalAccounts:master.rows.length,checkedAt:master.checkedAt};console.info('CRM master sync',JSON.stringify(report));return report;}finally{await releaseRfmSync(key,token).catch(()=>{})}
+ const {crmMasterStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheFresh,writeAnalyticsCache,deleteAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readMasterImportPage,advanceMasterImport}=await import('./one-crm-customer-source.mjs');const deps=sourceDeps(),company=deps.company;if(config.dynamics.mode!=='live'||!company)return {status:'DISABLED'};
+ const store=await crmMasterStore(),key=JSON.stringify(['crm-master-lock',company]),stateKey=JSON.stringify(['crm-master-import-v1',company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
+ const init=(mode='CLT',batch=250)=>({mode,batch,offset:0,rows:[],startedAt:new Date().toISOString(),complete:false});
+ const save=async state=>{if(!await writeAnalyticsCache(stateKey,'crm-master-import',state,7200))throw Error('Master cursor persistence failed')};
+ try{
+  const saved=await store.count(company);let state=await readAnalyticsCacheFresh(stateKey,{strict:true});
+  if(saved&&Date.now()-Date.parse(saved.checkedAt)<600000&&!state)return {status:'READY',reused:true,totalAccounts:saved.totalAccounts};
+  if(!state||Date.now()-Date.parse(state.startedAt)>7200000)state=init();
+  const started=Date.now();
+  for(let i=0;i<3&&!state.complete&&Date.now()-started<8500;i++){
+   let part;try{part=await readMasterImportPage({...deps,offset:state.offset,batch:state.batch,mode:state.mode})}catch(e){
+    if(state.mode==='CLT'&&(isCltFilterRejected(e)||e.code==='CRM_CUSTOMER_PARTITION_INVALID')){state=init('RETAIL',state.batch);await save(state);break}
+    if(e.code==='D365_REQUEST_TIMEOUT'&&state.batch>50){state={...state,batch:Math.max(50,Math.floor(state.batch/2))};await save(state);break}
+    throw e;
+   }
+   if(state.mode==='CLT'&&state.offset===0&&part.complete&&!part.rows.length){state=init('RETAIL',state.batch);await save(state);break}
+   try{state=advanceMasterImport(state,part)}catch(e){if(e.code==='CRM_CUSTOMER_DUPLICATE_PAGE'){state=init(state.mode,state.batch);await save(state)}throw e}
+   await save(state);
+  }
+  if(!state.complete){const report={status:'PREPARING',scanned:state.offset,accounts:state.rows.length,batch:state.batch};console.info('CRM master sync',JSON.stringify(report));return report}
+  // Reconcile the CLT count before replacing the authoritative snapshot. A mismatch
+  // indicates source movement or an incomplete scan; retry without publishing it.
+  const control=await readDirectorySourceCount(deps);
+  if(control.totalAccounts!==state.rows.length){await deleteAnalyticsCache(stateKey);return {status:'UNAVAILABLE',reason:'MASTER_COUNT_MISMATCH'}}
+  const master={source:'D365/CustTableCDREntities',scope:'LEGAL_ENTITY_RETAIL',checkedAt:new Date().toISOString(),rows:state.rows};await store.put(company,master);await deleteAnalyticsCache(stateKey);const report={status:'READY',totalAccounts:master.rows.length,checkedAt:master.checkedAt};console.info('CRM master sync',JSON.stringify(report));return report;
+ }finally{await releaseRfmSync(key,token).catch(()=>{})}
 }
 
 export async function runCrmIdentitySync(){const deps=sourceDeps();if(config.dynamics.mode!=='live'||!deps.company)return {status:'DISABLED'};const {crmIdentityStore,claimRfmSync,releaseRfmSync,readAnalyticsCacheManyFresh,writeAnalyticsCache}=await import('./analytics-persistent-cache.mjs');const {readCustomerNames}=await import('./one-crm-customer-identity-source.mjs');const store=await crmIdentityStore(),key=JSON.stringify(['crm-identity-lock',deps.company]),token=await claimRfmSync(key);if(!token)return {status:'BUSY'};
