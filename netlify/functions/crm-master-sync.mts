@@ -8,4 +8,4 @@ export default async()=>{
  if(!response.ok)throw new Error('CRM master sync failed: '+response.status);
  return new Response(await response.text(),{status:200,headers:{'content-type':'application/json'}});
 };
-export const config:Config={schedule:'*/5 * * * *'};
+export const config:Config={schedule:'* * * * *'};

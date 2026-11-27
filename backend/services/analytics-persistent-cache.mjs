@@ -113,3 +113,6 @@ export async function crmPurchaseArchive(){if(!crmArchivePromise)crmArchivePromi
 
 let crmMasterStorePromise;
 export async function crmMasterStore(){if(!crmMasterStorePromise)crmMasterStorePromise=(async()=>{const {createCrmMasterStore}=await import('./one-crm-master-store.mjs');const database=await getAnalyticsDatabase();return createCrmMasterStore((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmMasterStorePromise=null;throw e});return crmMasterStorePromise;}
+
+let crmIdentityStorePromise;
+export async function crmIdentityStore(){if(!crmIdentityStorePromise)crmIdentityStorePromise=(async()=>{const {createCrmIdentityStore}=await import('./one-crm-identity-store.mjs');const database=await getAnalyticsDatabase();return createCrmIdentityStore((strings,...values)=>database.sql(strings,...values))})().catch(e=>{crmIdentityStorePromise=null;throw e});return crmIdentityStorePromise;}

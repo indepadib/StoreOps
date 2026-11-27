@@ -86,3 +86,17 @@ export function customerSourceError(e){
  if(e?.code==='D365_REQUEST_FAILED'&&[400,401,403,404,429,500,502,503,504].includes(Number(e?.details?.httpStatus)))return 'CRM_D365_HTTP_'+Number(e.details.httpStatus);
  return 'CUSTOMER_MASTER_READ_FAILED';
 }
+
+// One bounded master page. Persist the cursor between invocations; never publish partial results.
+export async function readMasterImportPage({company,read,offset=0,batch=250,mode='CLT'}){
+ check(company);if(!Number.isSafeInteger(offset)||offset<0||offset>=100000||!Number.isSafeInteger(batch)||batch<1||batch>500||!['CLT','RETAIL'].includes(mode))throw fail('CRM_CUSTOMER_PAGE_INCOMPLETE');
+ const filter=mode==='CLT'?baseFilter(company):"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail'";
+ const raw=await read(ENTITY,{filter,select,top:batch,extra:'cross-company=true&$orderby=AccountNum%20asc&$skip='+offset});
+ if(!Array.isArray(raw?.value)||raw.value.length>batch||!raw.value.length&&raw['@odata.nextLink'])throw fail('CRM_CUSTOMER_RESPONSE_INVALID');
+ const seen=new Set(),rows=[];for(const r of raw.value){const accountRef=clean(r?.AccountNum),area=clean(r?.SysDataAreaId??r?.dataAreaId);if(!accountRef||accountRef.length>160||/[\x00-\x1f]/.test(accountRef)||area!==company||seen.has(accountRef))throw fail('CRM_CUSTOMER_PARTITION_INVALID');seen.add(accountRef);if(isLoyaltyCustomerAccount(accountRef))rows.push(row(r,company));else if(mode==='CLT')throw fail('CRM_CUSTOMER_PARTITION_INVALID')}
+ return {rows,nextOffset:offset+raw.value.length,complete:raw.value.length<batch&&!raw['@odata.nextLink']};
+}
+export function advanceMasterImport(state,part){if(!state||!Array.isArray(state.rows)||!Array.isArray(part.rows)||!Number.isSafeInteger(part.nextOffset)||part.nextOffset<state.offset||part.nextOffset>=100000||!part.complete&&part.nextOffset===state.offset)throw fail('CRM_CUSTOMER_PAGE_INCOMPLETE');const rows=[...state.rows,...part.rows];if(new Set(rows.map(r=>r.accountRef)).size!==rows.length)throw fail('CRM_CUSTOMER_DUPLICATE_PAGE');return {...state,offset:part.nextOffset,rows,complete:part.complete};}
+
+// Count the same source partition used by the cursor, without another full scan.
+export async function readMasterImportControl({company,read,mode}){check(company);if(!['CLT','RETAIL'].includes(mode))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');const filter=mode==='CLT'?baseFilter(company):"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail'";const raw=await read(ENTITY,{filter,select:'AccountNum,SysDataAreaId',top:1,extra:'cross-company=true&$count=true'});const n=raw?.['@odata.count'];if(!Array.isArray(raw?.value)||raw.value.length>1||!(typeof n==='number'||typeof n==='string'&&/^\d+$/.test(n))||!Number.isSafeInteger(Number(n))||Number(n)<raw.value.length||(Number(n)>0&&!raw.value.length)||raw.value.some(r=>clean(r.SysDataAreaId??r.dataAreaId)!==company||!clean(r.AccountNum)||mode==='CLT'&&!isLoyaltyCustomerAccount(clean(r.AccountNum))))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');return Number(n);}
