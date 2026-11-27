@@ -305,8 +305,12 @@ export default async(request:Request)=>{
       return await serveBuyingGroup(request,database,user);
     }catch(error){console.error('Buying Group auth/bootstrap failed',error);return errorResponse(error)}
   }
-  const analyticalRead=request.method==='POST'&&['/api/analytics/assistant','/api/analytics/monthly-export/jobs'].includes(new URL(request.url).pathname);
-  try{return (READ_METHODS.has(request.method)||analyticalRead)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
+  const pathname=new URL(request.url).pathname;
+  // CRM syncs persist their own Postgres partitions. They must not enter the
+  // SQLite snapshot write transaction. Keep existing backend auth and scope checks.
+  const crmSyncRead=request.method==='POST'&&['/api/internal/crm/rfm-sync','/api/internal/crm/master-sync','/api/internal/crm/identity-sync','/api/internal/crm/earn-sync','/api/internal/crm/burn-sync'].includes(pathname);
+  const analyticalRead=request.method==='POST'&&['/api/analytics/assistant','/api/analytics/monthly-export/jobs'].includes(pathname);
+  try{return (READ_METHODS.has(request.method)||analyticalRead||crmSyncRead)?await serveRead(request,database):await serveWrite(request,database)}catch(error){console.error('StoreOps public API failure',error);return errorResponse(error)}
 };
 
 export const config:Config={path:'/api/*'};

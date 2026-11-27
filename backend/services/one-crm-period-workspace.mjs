@@ -28,7 +28,7 @@ export async function readCrmPeriodWorkspace(sql,{company,stores,start,end,mode,
   ) SELECT * FROM pairs ORDER BY together DESC,"productA","productB" LIMIT 30`;
   return {...base,rows};
  }
- const master=await sql`SELECT 1 AS ready FROM crm_customer_master_snapshot WHERE company=${company} AND checked_at>NOW()-INTERVAL '30 minutes'`;
+ const master=await sql`SELECT 1 AS ready FROM crm_customer_master_snapshot WHERE company=${company} AND checked_at>NOW()-INTERVAL '8 days'`;
  if(!master.length)return {...base,status:'PARTIAL',rows:[],reason:'MASTER_UNAVAILABLE'};
  // Empirical cadence, not a trained propensity model. At least three distinct purchase days.
  const rows=await sql`WITH visits AS (
@@ -37,6 +37,6 @@ export async function readCrmPeriodWorkspace(sql,{company,stores,start,end,mode,
  SELECT account,COUNT(*)::int AS visits,MAX(business_day) AS last_day,SUM(sales)::float8 AS amount,((MAX(business_day)-MIN(business_day))::numeric/(COUNT(*)-1)) AS gap_days FROM visits GROUP BY account HAVING COUNT(*)>=3
  ), scored AS (
  SELECT account,visits,last_day,amount,ROUND(gap_days,1)::float8 AS cadence,(${end}::date-last_day)::int AS recency,(last_day+GREATEST(1,ROUND(gap_days)::int))::text AS next_day,ROUND((${end}::date-last_day)/GREATEST(1,gap_days),2)::float8 AS delay_ratio FROM cadence
- ) SELECT s.account AS "accountRef",s.visits,s.last_day::text AS "lastPurchase",s.amount,s.cadence,s.recency,s.next_day AS "nextPurchase",s.delay_ratio AS "delayRatio",i.identity->>'displayName' AS "displayName" FROM scored s LEFT JOIN crm_customer_identity_snapshot i ON i.company=${company} AND i.account_ref=s.account AND i.checked_at>NOW()-INTERVAL '24 hours' JOIN crm_customer_master_snapshot m ON m.company=${company} AND m.checked_at>NOW()-INTERVAL '30 minutes' AND m.accounts @> jsonb_build_array(jsonb_build_object('accountRef',s.account)) WHERE (${mode}::text='purchase' OR s.delay_ratio>=1.5) ORDER BY CASE WHEN ${mode}::text='purchase' THEN s.next_day END ASC,s.delay_ratio DESC,s.account OFFSET ${(page-1)*50} LIMIT 51`;
+ ) SELECT s.account AS "accountRef",s.visits,s.last_day::text AS "lastPurchase",s.amount,s.cadence,s.recency,s.next_day AS "nextPurchase",s.delay_ratio AS "delayRatio",i.identity->>'displayName' AS "displayName" FROM scored s LEFT JOIN crm_customer_identity_snapshot i ON i.company=${company} AND i.account_ref=s.account AND i.checked_at>NOW()-INTERVAL '24 hours' JOIN crm_customer_master_snapshot m ON m.company=${company} AND m.checked_at>NOW()-INTERVAL '8 days' AND m.accounts @> jsonb_build_array(jsonb_build_object('accountRef',s.account)) WHERE (${mode}::text='purchase' OR s.delay_ratio>=1.5) ORDER BY CASE WHEN ${mode}::text='purchase' THEN s.next_day END ASC,s.delay_ratio DESC,s.account OFFSET ${(page-1)*50} LIMIT 51`;
  return {...base,basis:'OBSERVED_PURCHASE_DAY_CADENCE_NOT_VALIDATED_PREDICTION',page,hasMore:rows.length>50,rows:rows.slice(0,50)};
 }

@@ -53,6 +53,9 @@ assert.doesNotMatch(readBlock,/persistSnapshot\(/,'GET/HEAD/OPTIONS must never r
 assert.doesNotMatch(readBlock,/pg_advisory_xact_lock/,'warm fast reads must not take the global advisory lock');
 assert.match(writeBlock,/pg_advisory_xact_lock/,'writes must keep the global advisory lock');
 assert.match(writeBlock,/persistSnapshot\(/,'writes must persist the central SQLite snapshot');
+assert.match(fn,/const crmSyncRead=request\.method==='POST'&&\[/,'CRM sync must be explicitly routed');
+for(const name of ['rfm','master','identity','earn','burn'])assert.ok(fn.includes(`/api/internal/crm/${name}-sync`));
+assert.match(fn,/analyticalRead\|\|crmSyncRead\)\?await serveRead/,'CRM sync must bypass SQLite snapshot writes');
 assert.match(fn,/path:'\/api\/\*'/,'Netlify function must own /api/*');
 assert.match(fn,/Netlify\.env\.get/,'Netlify runtime must read deployment values via Netlify.env');
 assert.doesNotMatch(fn,/client_secret\s*[:=]\s*['"][^'"]+/i,'no client secret may be committed in the Function');

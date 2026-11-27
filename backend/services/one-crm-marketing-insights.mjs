@@ -13,7 +13,7 @@ export async function readMarketingInsights(sql,{company,stores,start,end}){
  ), week AS (
   SELECT EXTRACT(ISODOW FROM business_day)::int AS weekday,COUNT(*)::int AS store_days,SUM(tickets)::float8 AS tickets,SUM(sales)::float8 AS sales FROM day_stats GROUP BY 1
  ), master AS (
-  SELECT accounts,checked_at FROM crm_customer_master_snapshot WHERE company=${company} AND checked_at>NOW()-INTERVAL '30 minutes'
+  SELECT accounts,checked_at FROM crm_customer_master_snapshot WHERE company=${company} AND checked_at>NOW()-INTERVAL '8 days'
  ), identities AS (
   SELECT COUNT(*)::int AS named,COUNT(*) FILTER(WHERE i.identity->>'phoneStatus'='READY')::int AS phone_ready FROM master m CROSS JOIN LATERAL jsonb_array_elements(m.accounts) a(v) JOIN crm_customer_identity_snapshot i ON i.company=${company} AND i.account_ref=a.v->>'accountRef' AND i.checked_at>NOW()-INTERVAL '24 hours' AND i.identity->>'status'='READY'
  )
