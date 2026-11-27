@@ -67,5 +67,11 @@ await pool.query("UPDATE crm_customer_identity_snapshot SET checked_at=NOW()-INT
  assert.equal(await drafts.save('C1','entra:test',{...draft,id:first.id,revision:1}),null);assert.equal(await drafts.save('C1','entra:other',{...draft,id:first.id,revision:2}),null);
  assert.throws(()=>projectMarketingDraft({...draft,activationEnabled:true}));assert.throws(()=>projectMarketingDraft({...draft,segment:'UNKNOWN'}));
  const journey=await drafts.save('C1','entra:test',{...draft,kind:'journey',trigger:'segment_entry',delayHours:24});assert.equal(journey.delayHours,24);assert.equal(journey.activationEnabled,false);
+
+ const {readMarketingInsights}=await import('../services/one-crm-marketing-insights.mjs');
+ const insights=await readMarketingInsights(sql,{company:'P1',stores:['A'],start:'2026-11-16',end:'2026-11-20'});
+ assert.equal(insights.status,'READY');assert.equal(insights.observed.buyers,1);assert.equal(insights.observed.tickets,3);assert.equal(insights.observed.positiveTtc,30);assert.equal(insights.observed.averageBasket,10);assert.equal(insights.identity.total,1);assert.equal(insights.identity.named,0);assert.equal(insights.weekdays.length,5);assert.equal(insights.weekdays[0].ticketsPerStoreDay,1);assert.equal(insights.weekdays[4].ticketsPerStoreDay,0);assert.equal(insights.contactHistory.recommendation,null);
+ const partialInsights=await readMarketingInsights(sql,{company:'P1',stores:['A'],start:'2026-11-16',end:'2026-11-21'});assert.equal(partialInsights.status,'PARTIAL');assert.equal(partialInsights.coverage.covered,5);
+ const noInsights=await readMarketingInsights(sql,{company:'C2',stores:['A'],start:'2026-11-16',end:'2026-11-20'});assert.equal(noInsights.observed.buyers,null);assert.equal(noInsights.identity.total,null);assert.deepEqual(noInsights.weekdays,[]);
  console.log('CRM PostgreSQL import/read/segment roundtrip passed');
 }finally{await pool.end()}
