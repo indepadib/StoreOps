@@ -50,3 +50,14 @@ assert.equal((await readNamesThroughStore({...identityInput,accounts:['CASH']}))
 const identityNoCache=await readNamesThroughStore({...identityInput,store:{names:async()=>{throw Error('read unavailable')},put:async()=>{throw Error('write unavailable')}}});
 assert.equal(identityNoCache.status,'READY');
 console.log('CRM identity read-through regression passed');
+
+const {createCustomerAccountSingleFlight}=await import('../services/one-crm-customer-source.mjs');
+let exactReads=0;let unblock;const waitForLookup=new Promise(r=>{unblock=r});
+const exactLookup=createCustomerAccountSingleFlight(async({company,accountRef})=>{exactReads++;await waitForLookup;if(company==='FAIL')throw Error('synthetic failure');return {company,accountRef}});
+const p1=exactLookup({company:'C1',accountRef:'CLT-1'}),p2=exactLookup({company:'C1',accountRef:'CLT-1'}),p3=exactLookup({company:'C2',accountRef:'CLT-1'}),p4=exactLookup({company:'C1',accountRef:'CLT-2'});
+assert.equal(p1,p2);assert.notEqual(p1,p3);assert.notEqual(p1,p4);unblock();
+assert.equal((await p1).company,'C1');await Promise.all([p2,p3,p4]);assert.equal(exactReads,3);
+await exactLookup({company:'C1',accountRef:'CLT-1'});assert.equal(exactReads,4);
+assert.equal(await exactLookup({company:'C1',accountRef:'CASH'}),null);assert.equal(exactReads,4);
+await assert.rejects(()=>exactLookup({company:'FAIL',accountRef:'CLT-1'}));await assert.rejects(()=>exactLookup({company:'FAIL',accountRef:'CLT-1'}));assert.equal(exactReads,6);
+console.log('CRM concurrent account lookup and failure cleanup passed');
