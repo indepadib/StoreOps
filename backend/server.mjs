@@ -139,6 +139,19 @@ async function api(req,res,url){
     const end=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(end+'T00:00:00Z')-(days-1)*86400000).toISOString().slice(0,10);
     try{const {readCrmPeriodWorkspace}=await import('./services/analytics-persistent-cache.mjs');return json(req,res,200,await readCrmPeriodWorkspace({company:String(config.dynamics.dataAreaId||'').trim(),stores:stores.filter(s=>scope.has(s.id)).map(s=>s.id),start,end,mode,page}))}catch(e){console.warn('CRM period workspace failed',mode);return json(req,res,503,{status:'UNAVAILABLE',reason:'PERIOD_WORKSPACE_UNAVAILABLE',activationEnabled:false})}
   }
+  if(path==='/api/crm/marketing-insights'){
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
+    const {parseObservedPilotStores}=await import('./services/one-crm-observed-sales.mjs');
+    const scope=parseObservedPilotStores(process.env.ONE_CRM_PILOT_STORE_IDS||''),stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all();
+    if(!scope.size||!stores.length||stores.some(s=>!canAccessStore(user,s.id))||[...scope].some(id=>!stores.some(s=>s.id===id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    if(config.dynamics.mode!=='live')return json(req,res,503,{status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED'});
+    const keys=[...url.searchParams.keys()],days=Number(url.searchParams.get('days')||30);
+    if(keys.length>1||keys.some(k=>k!=='days')||![7,30,90].includes(days))return json(req,res,400,{status:'INVALID_SCOPE'});
+    const end=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date(Date.now()-86400000)),start=new Date(Date.parse(end+'T00:00:00Z')-(days-1)*86400000).toISOString().slice(0,10);
+    try{const {crmMarketingInsights}=await import('./services/analytics-persistent-cache.mjs');return json(req,res,200,await crmMarketingInsights({company:String(config.dynamics.dataAreaId||'').trim(),stores:stores.filter(s=>scope.has(s.id)).map(s=>s.id),start,end}))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'MARKETING_INSIGHTS_UNAVAILABLE',activationEnabled:false})}
+  }
   if(path==='/api/crm/marketing-drafts'){
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     if(!['GET','POST'].includes(req.method))return json(req,res,405,{error:'Méthode non autorisée.'});
