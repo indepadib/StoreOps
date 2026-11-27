@@ -89,6 +89,7 @@ jobs:
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-ticket-items.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/003-memberships.draft.sql
           docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < backend/crm-schema/test-memberships.sql
+          docker exec -i ${{ job.services.postgres.id }} psql -U postgres -d crm_test -v ON_ERROR_STOP=1 < netlify/database/migrations/20261127012500_crm-purchase-archive/migration.sql
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
