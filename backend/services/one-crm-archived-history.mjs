@@ -1,0 +1,19 @@
+import {summarizeCustomerBehavior} from './one-crm-customer-behavior.mjs';
+import {isLoyaltyCustomerAccount} from './one-crm-customer-source.mjs';
+const day=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(Date.parse(v)).toISOString().slice(0,10)===v;
+const text=v=>typeof v==='string'&&v.length>0&&v.length<=160;
+const unavailable=reason=>({status:'UNAVAILABLE',reason,activationEnabled:false});
+export async function readArchivedCustomerHistory({accountRef,company,stores,page,asOf,readCustomerLines,now=()=>new Date().toISOString()}){
+ if(!isLoyaltyCustomerAccount(accountRef)||!text(company)||!day(asOf)||!Array.isArray(stores)||!stores.length||stores.length>2||!Number.isSafeInteger(page)||page<1)return unavailable('INVALID_ARCHIVE_SCOPE');
+ const storeIds=stores.map(s=>s.id);if(new Set(storeIds).size!==storeIds.length||!storeIds.every(text))return unavailable('INVALID_ARCHIVE_SCOPE');
+ const startDate=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10),expectedStoreDays=storeIds.length*90;
+ try{
+  const partitions=await readCustomerLines(company,storeIds,startDate,asOf,accountRef),seen=new Set(),tickets=[];if(!Array.isArray(partitions)||partitions.length>expectedStoreDays)throw Error('Archive partitions');
+  for(const p of partitions){const partition=JSON.stringify([p.store_id,p.day]);if(!storeIds.includes(p.store_id)||!day(p.day)||p.day<startDate||p.day>asOf||seen.has(partition)||!Number.isFinite(Date.parse(p.captured_at))||!Array.isArray(p.lines))throw Error('Archive partition');seen.add(partition);const groups=new Map();
+   for(const l of p.lines){if(l.account!==accountRef||![l.terminal,l.transaction,l.product].every(text)||!Number.isSafeInteger(l.positiveTtcMinor)||l.positiveTtcMinor<=0||!(l.quantity==null||typeof l.quantity==='number'&&Number.isFinite(l.quantity)&&l.quantity>=0)||!(l.unit==null||text(l.unit))||!(l.productName==null||text(l.productName)))throw Error('Archive line');const key=JSON.stringify([l.terminal,l.transaction]),t=groups.get(key)||{storeId:p.store_id,date:p.day,terminal:l.terminal,transactionRef:l.transaction,minor:0,items:new Map()};const ik=JSON.stringify([l.product,l.unit??null]),item=t.items.get(ik)||{productNumber:l.product,productName:l.productName??null,unit:l.unit??null,quantity:0,minor:0};item.minor+=l.positiveTtcMinor;item.quantity=item.quantity==null||l.quantity==null?null:item.quantity+l.quantity;t.minor+=l.positiveTtcMinor;t.items.set(ik,item);groups.set(key,t)}
+   for(const t of groups.values()){if(!Number.isSafeInteger(t.minor)||t.items.size>500)throw Error('Archive ticket');tickets.push({...t,positiveTtc:t.minor/100,items:[...t.items.values()].map(({minor,...i})=>({...i,positiveTtc:minor/100}))})}
+  }
+  tickets.sort((a,b)=>b.date.localeCompare(a.date)||a.storeId.localeCompare(b.storeId)||a.transactionRef.localeCompare(b.transactionRef)||a.terminal.localeCompare(b.terminal));const totalTickets=tickets.length,minor=tickets.reduce((n,t)=>n+t.minor,0);if(!Number.isSafeInteger(minor)||page>Math.max(1,Math.ceil(totalTickets/20)))return unavailable('ARCHIVE_PAGE_UNAVAILABLE');
+  const complete=seen.size===expectedStoreDays,checkedAt=now();return {status:'READY',accountRef,source:'D365/RetailTransactionSalesTransBIEntities',storage:'POSTGRES_ARCHIVE',archiveCoverage:{startDate,asOf,coveredStoreDays:seen.size,expectedStoreDays,complete},scope:'APPROVED_PILOT_STORES',storeIds,basis:'POSITIVE_ACCOUNT_LINES_EXCLUDES_RETURNS',currency:'MAD',financialReconciliation:'NOT_VERIFIED',checkedAt,behavior:complete?summarizeCustomerBehavior(tickets,asOf+'T12:00:00Z'):null,totalTickets,positiveTtc:minor/100,firstPurchase:totalTickets?tickets.at(-1).date:null,lastPurchase:totalTickets?tickets[0].date:null,page,pageSize:20,rows:tickets.slice((page-1)*20,page*20).map(({terminal,minor,...t})=>t),activationEnabled:false};
+ }catch{return unavailable('ARCHIVE_SOURCE_UNAVAILABLE')}
+}

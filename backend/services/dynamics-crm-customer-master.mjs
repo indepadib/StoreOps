@@ -170,3 +170,5 @@ async function prepareCrmRfmBatch(storeId,dates){
  const archive=await crmPurchaseArchive();const outcomes=await Promise.all(result.days.map(async r=>{try{await archive.put(sourceDeps().company,r);return {date:r.startDate,ok:true}}catch{return {date:r.startDate,ok:false}}}));
  return {prepared:outcomes.filter(x=>x.ok).map(x=>x.date),failed:outcomes.filter(x=>!x.ok).map(x=>x.date),reason:'RFM_BATCH_STORAGE_FAILED'};
 }
+
+export async function readCrmArchivedHistory(row,stores,page){const {crmPurchaseArchive}=await import('./analytics-persistent-cache.mjs');const {readArchivedCustomerHistory}=await import('./one-crm-archived-history.mjs');const archive=await crmPurchaseArchive();return readArchivedCustomerHistory({accountRef:row.accountRef,company:sourceDeps().company,stores,page,asOf:rfmAsOf(),readCustomerLines:archive.readCustomerLines});}
