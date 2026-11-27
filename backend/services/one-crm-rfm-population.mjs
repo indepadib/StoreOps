@@ -32,9 +32,9 @@ export function projectRfmPopulation({accounts,stores,ranges,asOf,page=1}){
   const recencyDays=(stamp(asOf)-stamp(a.lastDate))/dayMs,positiveTtc90=round(a.positiveTtc90);
   return {accountRef:a.accountRef,status:'OBSERVED_90_DAY_RFM',lastPurchase:a.lastDate,rfm:scoreObservedRfm({recencyDays,tickets90:a.tickets90,positiveTtc90})};
  });
- const totalAccounts=rows.length,counts=rows.reduce((m,r)=>(m[r.status]=(m[r.status]||0)+1,m),{});
+ const totalAccounts=rows.length,counts=rows.reduce((m,r)=>(m[r.status]=(m[r.status]||0)+1,m),{}),segmentCounts=rows.reduce((m,r)=>{const key=r.rfm?.segment||(r.status==='NO_PURCHASE_IN_OBSERVED_90_DAYS'?'NO_RECENT_PURCHASE':null);if(key)m[key]=(m[key]||0)+1;return m},{});
  if(page>Math.max(1,Math.ceil(totalAccounts/50)))throw Error('Page out of range');
- return {status:complete?'READY':'PARTIAL',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate:start,storeIds:stores,coverage:{expectedStoreDays:expected,coveredStoreDays:covered.size,rejectedRanges,unmatchedPurchaseAccounts:unmatched.size},totalAccounts,counts,page,pageSize:50,rows:rows.slice((page-1)*50,page*50),activationEnabled:false};
+ return {status:complete?'READY':'PARTIAL',basis:'OBSERVED_POSITIVE_90_DAY_PILOT_RANGES',asOf,startDate:start,storeIds:stores,coverage:{expectedStoreDays:expected,coveredStoreDays:covered.size,rejectedRanges,unmatchedPurchaseAccounts:unmatched.size},totalAccounts,counts,segmentCounts,page,pageSize:50,rows:rows.slice((page-1)*50,page*50),activationEnabled:false};
 }
 
 export function isPreparedRfmRange(r,id,start,end){
