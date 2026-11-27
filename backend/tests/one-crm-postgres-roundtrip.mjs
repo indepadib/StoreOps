@@ -60,5 +60,12 @@ await pool.query("UPDATE crm_customer_identity_snapshot SET checked_at=NOW()-INT
  assert.equal((await readCrmPeriodWorkspace(sql,{...cadencePeriod,mode:'agent'})).rows[0].accountRef,'CLT-1');
  assert.equal((await readCrmPeriodWorkspace(sql,{...cadencePeriod,end:'2026-11-21'})).status,'PARTIAL');
  await assert.rejects(()=>readCrmPeriodWorkspace(sql,{...period,stores:[]}));
+ const {createMarketingDraftStore,projectMarketingDraft}=await import('../services/one-crm-marketing-drafts.mjs');const drafts=createMarketingDraftStore(sql);
+ const draft={kind:'campaign',title:'Relance test',segment:'INACTIVE_30_PLUS',channel:'email',message:'Message test',objective:'Réactivation'};
+ const first=await drafts.save('C1','entra:test',draft);assert.equal(first.revision,1);assert.equal(first.activationEnabled,false);assert.equal((await drafts.list('C1','entra:test','campaign')).length,1);assert.deepEqual(await drafts.list('C2','entra:test','campaign'),[]);assert.deepEqual(await drafts.list('C1','entra:other','campaign'),[]);assert.deepEqual(await drafts.list('C1','entra:test','offer'),[]);
+ const edited=await drafts.save('C1','entra:test',{...draft,id:first.id,revision:1,title:'Version 2'});assert.equal(edited.revision,2);assert.equal(edited.title,'Version 2');
+ assert.equal(await drafts.save('C1','entra:test',{...draft,id:first.id,revision:1}),null);assert.equal(await drafts.save('C1','entra:other',{...draft,id:first.id,revision:2}),null);
+ assert.throws(()=>projectMarketingDraft({...draft,activationEnabled:true}));assert.throws(()=>projectMarketingDraft({...draft,segment:'UNKNOWN'}));
+ const journey=await drafts.save('C1','entra:test',{...draft,kind:'journey',trigger:'segment_entry',delayHours:24});assert.equal(journey.delayHours,24);assert.equal(journey.activationEnabled,false);
  console.log('CRM PostgreSQL import/read/segment roundtrip passed');
 }finally{await pool.end()}
