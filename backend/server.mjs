@@ -126,6 +126,28 @@ async function api(req,res,url){
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     try{return json(req,res,200,await readCrmRfmSnapshot(stores.filter(s=>scope.has(s.id)),page,segment))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
   }
+  if(path==='/api/crm/marketing-drafts'){
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    if(!['GET','POST'].includes(req.method))return json(req,res,405,{error:'Méthode non autorisée.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin')||!user?.id)return json(req,res,403,{error:'Accès professionnel requis.'});
+    const stores=db.prepare('SELECT id FROM stores WHERE active=1 ORDER BY id').all();
+    if(!stores.length||stores.some(s=>!canAccessStore(user,s.id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    const company=String(config.dynamics.dataAreaId||'').trim(),owner=session.mode+':'+String(user.id);
+    if(config.dynamics.mode!=='live'||!company)return json(req,res,503,{status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED'});
+    const {crmMarketingDraftStore}=await import('./services/analytics-persistent-cache.mjs');
+    try{
+      if(req.method==='GET'){
+        const keys=[...url.searchParams.keys()],kind=url.searchParams.get('kind');
+        if(keys.length!==1||keys[0]!=='kind'||!['campaign','journey','offer'].includes(kind))return json(req,res,400,{status:'INVALID_DRAFT'});
+        const store=await crmMarketingDraftStore();return json(req,res,200,{status:'READY',rows:await store.list(company,owner,kind),activationEnabled:false});
+      }
+      if([...url.searchParams.keys()].length)return json(req,res,400,{status:'INVALID_DRAFT'});
+      const input=await body(req),{projectMarketingDraft}=await import('./services/one-crm-marketing-drafts.mjs');
+      projectMarketingDraft(input);
+      const store=await crmMarketingDraftStore(),draft=await store.save(company,owner,input);
+      return draft?json(req,res,200,{status:'SAVED',draft,activationEnabled:false}):json(req,res,409,{status:'DRAFT_CONFLICT',activationEnabled:false});
+    }catch(e){if(e?.message==='INVALID_DRAFT')return json(req,res,400,{status:'INVALID_DRAFT'});return json(req,res,503,{status:'UNAVAILABLE',reason:'DRAFT_STORAGE_UNAVAILABLE',activationEnabled:false})}
+  }
   if(path==='/api/crm/wallet-balance-sources'){
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});
     if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
