@@ -93,6 +93,7 @@ async function api(req,res,url){
   const glovoPartner=await handleGlovoPartnerApi({req,url});if(glovoPartner)return json(req,res,glovoPartner.status,glovoPartner.data);
   const markdownInternal=await handleDlcMarkdownInternalApi({req,url});if(markdownInternal)return json(req,res,markdownInternal.status,markdownInternal.data);
   if(path==='/api/internal/crm/rfm-sync'){
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
     if(req.method!=='POST')return json(req,res,405,{error:'Méthode non autorisée.'});
     const expected=Buffer.from(process.env.STOREOPS_MONITOR_SECRET||''),provided=Buffer.from(String(req.headers['x-storeops-monitor-secret']||''));
     if(!expected.length||provided.length!==expected.length||!timingSafeEqual(expected,provided))return json(req,res,403,{error:'Monitor non autorisé.'});
@@ -113,7 +114,7 @@ async function api(req,res,url){
       if(config.dynamics.mode!=='live')return json(req,res,503,{status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED'});
       try{
         const input=await body(req);
-        if(!input||Object.keys(input).some(k=>!['storeId','date'].includes(k))||!scope.has(input.storeId)||typeof input.date!=='string')return json(req,res,400,{status:'INVALID_SCOPE'});
+        if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==2||Object.keys(input).some(k=>!['storeId','date'].includes(k))||!scope.has(input.storeId)||typeof input.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(input.date))return json(req,res,400,{status:'INVALID_SCOPE'});
         const {prepareCrmRfmDay}=await import('./services/dynamics-crm-customer-master.mjs');
         const result=await prepareCrmRfmDay(input.storeId,input.date);
         return json(req,res,result.status==='READY'?200:result.status==='INVALID_DATE'?400:503,{...result,code:result.reason||undefined});

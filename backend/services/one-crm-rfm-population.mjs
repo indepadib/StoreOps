@@ -38,7 +38,7 @@ export function projectRfmPopulation({accounts,stores,ranges,asOf,page=1,allRows
 }
 
 export function isPreparedRfmRange(r,id,start,end){
- return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers);
+ return r?.status==='READY'&&r.source==='D365/RetailTransactionSalesTransBIEntities'&&r.storeId===id&&r.startDate===start&&r.endDate===end&&r.diagnostics?.truncated===false&&r.diagnostics?.filterCoverage?.parentTransaction===true&&r.diagnostics?.mappedFields?.customer===true&&Array.isArray(r.customers)&&validPreparedRfmCustomers(r.customers,start,end);
 }
 
 // Daily customer-only aggregation, using the same eligible-sale and TTC functions as Analytics.
@@ -94,4 +94,10 @@ export function projectRfmMultiDayRows(rows,dates,args){
 // within a complete store-day replacement; do not invent a line identifier.
 export function projectArchivedPurchaseLines(rows,{date,fields,eligible,amount}){
  const out=[];for(const row of rows){if(String(row[fields.date]??'').slice(0,10)!==date||!eligible(row))continue;const account=String(row[fields.customer]??'').trim();if(!/^CLT/i.test(account))continue;const product=String(row[fields.product]??'').trim(),terminal=String(row.terminalId??'').trim(),transaction=String(row.transactionId??'').trim(),value=amount(row);const raw=row[fields.quantity],qty=raw==null||String(raw).trim()===''?null:Math.abs(Number(raw));if(!product||!terminal||!transaction||!Number.isSafeInteger(Math.round(value*100))||value<=0||qty!==null&&!Number.isFinite(qty))throw Error('Invalid archive line');out.push({account,terminal,transaction,product,quantity:qty,unit:String(row[fields.salesUnit||'unit']??'').trim()||null,productName:fields.name?String(row[fields.name]??'').trim()||null:null,positiveTtcMinor:Math.round(value*100)})}return out;
+}
+
+// Fail closed on invalid evidence before it enters coverage or durable storage.
+export function validPreparedRfmCustomers(customers,start,end){
+ if(!Array.isArray(customers)||!day(start)||!day(end)||start>end)return false;
+ const seen=new Set();for(const c of customers){if(typeof c?.customerAccount!=='string'||!c.customerAccount.trim()||c.customerAccount!==c.customerAccount.trim()||c.customerAccount.length>160||/[\x00-\x1f]/.test(c.customerAccount)||anonymous.has(c.customerAccount.toUpperCase())||seen.has(c.customerAccount)||!Number.isSafeInteger(c.tickets)||c.tickets<1||!Number.isFinite(c.sales)||c.sales<=0||!Number.isSafeInteger(Math.round(c.sales*100))||!day(c.lastDate)||c.lastDate<start||c.lastDate>end)return false;seen.add(c.customerAccount)}return true;
 }
