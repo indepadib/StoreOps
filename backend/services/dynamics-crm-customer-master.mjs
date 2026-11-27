@@ -47,7 +47,7 @@ export async function readCustomerProfile(row){
  }catch{return {...base,loyalty:unavailable}}
 }
 
-import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount} from './one-crm-customer-source.mjs';
+import {readDirectorySourcePage,readDirectorySourceCount,findDirectorySourceAccount,createCustomerAccountSingleFlight} from './one-crm-customer-source.mjs';
 const sourceDeps=()=>({company:String(config.dynamics.dataAreaId||'').trim(),read:odataGet});
 export async function readCustomerPage(page,search){const deps=sourceDeps();try{const {crmMasterStore}=await import('./analytics-persistent-cache.mjs');const saved=await (await crmMasterStore()).page(deps.company,page,search);if(saved)return saved}catch{}return readDirectorySourcePage({...deps,page,search});}
 let countCache=null;
@@ -57,7 +57,8 @@ export async function readCustomerCount(){
  if(countCache?.key===key&&countCache.expires>Date.now())return countCache.value;
  const value=await readDirectorySourceCount(deps);countCache={key,value,expires:Date.now()+300000};return value;
 }
-export const findCustomerAccount=accountRef=>findDirectorySourceAccount({...sourceDeps(),accountRef});
+const readExactAccount=createCustomerAccountSingleFlight(findDirectorySourceAccount);
+export const findCustomerAccount=accountRef=>readExactAccount({...sourceDeps(),accountRef});
 
 export async function readCrmCustomerIdentity(row){
  const {readCustomerIdentity}=await import('./one-crm-customer-identity-source.mjs');
@@ -68,8 +69,13 @@ export async function readCrmCustomerWallet(row,stores){
  const {readCustomerWallet}=await import('./one-crm-customer-wallet.mjs');
  const {storeOperationalSettings}=await import('./store-settings.mjs');
  const company=sourceDeps().company,asOf=rfmAsOf(),start=new Date(Date.parse(asOf+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
- let burnArchive=null;try{const {crmBurnStore}=await import('./analytics-persistent-cache.mjs');burnArchive=await (await crmBurnStore()).readAccount(company,stores.map(s=>s.id),start,asOf,row.accountRef)}catch{}
- try{const {crmEarnStore}=await import('./analytics-persistent-cache.mjs');const archive=await (await crmEarnStore()).readAccount(company,stores.map(s=>s.id),start,asOf,row.accountRef);if(archive.complete)return {accountRef:row.accountRef,source:'D365/RetailLoyaltyCardRewardPointTransactionV2',scope:'APPROVED_PILOT_STORES',currency:'MAD',activationEnabled:false,burn:null,balance:null,burnStatus:'NOT_CONNECTED',balanceStatus:'NOT_CONNECTED',status:'READY',reason:null,earn:archive.earn,credits:archive.credits,reversals:archive.reversals,entryCount:archive.entryCount,storeIds:stores.map(s=>s.id),checkedAt:new Date().toISOString(),basis:'ACCOUNT_ATTRIBUTED_MONETARY_EARN_NET',coverage:'ACCOUNT_FIELD_ONLY',archive,burnArchive};}catch{}
+ const {crmBurnStore,crmEarnStore}=await import('./analytics-persistent-cache.mjs');
+ const storeIds=stores.map(s=>s.id);
+ const [burnArchive,archive]=await Promise.all([
+  Promise.resolve().then(async()=> (await crmBurnStore()).readAccount(company,storeIds,start,asOf,row.accountRef)).catch(()=>null),
+  Promise.resolve().then(async()=> (await crmEarnStore()).readAccount(company,storeIds,start,asOf,row.accountRef)).catch(()=>null)
+ ]);
+ if(archive?.complete)return {accountRef:row.accountRef,source:'D365/RetailLoyaltyCardRewardPointTransactionV2',scope:'APPROVED_PILOT_STORES',currency:'MAD',activationEnabled:false,burn:null,balance:null,burnStatus:'NOT_CONNECTED',balanceStatus:'NOT_CONNECTED',status:'READY',reason:null,earn:archive.earn,credits:archive.credits,reversals:archive.reversals,entryCount:archive.entryCount,storeIds:stores.map(s=>s.id),checkedAt:new Date().toISOString(),basis:'ACCOUNT_ATTRIBUTED_MONETARY_EARN_NET',coverage:'ACCOUNT_FIELD_ONLY',archive,burnArchive};
  return {...await readCustomerWallet({accountRef:row.accountRef,company,stores,settings:storeOperationalSettings,readCollection:readCompleteCollection}),burnArchive};
 }
 
