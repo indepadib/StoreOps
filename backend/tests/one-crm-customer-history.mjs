@@ -63,3 +63,12 @@ const previewRange={...dayRanges[89],customers:[{customerAccount:'CLT-A',sales:1
 assert.deepEqual(summarizePreparedRfmEvidence([previewRange],'2026-11-26'),{basis:'PARTIAL_OBSERVED_MINIMA_NOT_RFM',observedAccounts:1,tickets:6,positiveTtc:1200,recent:1,repeat:1,highValue:1});
 assert.deepEqual(selectRfmSyncTargets([{storeId:'a',date:'2026-11-25'},{storeId:'a',date:'2026-11-26'},{storeId:'b',date:'2026-11-26'}],new Set(['a|2026-11-26'])),[{storeId:'b',date:'2026-11-26'},{storeId:'a',date:'2026-11-25'}]);
 assert.equal(projectRfmPopulation({accounts:Array.from({length:60},(_,i)=>({accountRef:'CLT-'+i})),stores:['a'],asOf:'2026-11-26',ranges:dayRanges,allRows:true}).rows.length,60);
+
+import {planRfmBackfill,projectRfmMultiDayRows} from '../services/one-crm-rfm-population.mjs';
+const missingBatch=['a','b'].flatMap(storeId=>Array.from({length:7},(_,i)=>({storeId,date:new Date(Date.parse('2026-11-26')-i*86400000).toISOString().slice(0,10)})));
+assert.deepEqual(planRfmBackfill(missingBatch).map(g=>[g.storeId,g.dates.length]),[['a',5],['b',5]]);
+assert.deepEqual(planRfmBackfill(missingBatch,new Set(['a|2026-11-25'])).find(g=>g.storeId==='a').dates,['2026-11-26']);
+const grouped=projectRfmMultiDayRows([dailyRow('1','CLT-A'),{...dailyRow('2','CLT-A',5),businessDate:'2026-11-25'}],['2026-11-25','2026-11-26'],dailyArgs);assert.equal(grouped[0].customers[0].sales,5);assert.equal(grouped[1].customers[0].sales,10);assert.throws(()=>projectRfmMultiDayRows([dailyRow('1','CLT-A')],['2026-11-25'],dailyArgs));
+
+import {projectArchivedPurchaseLines} from '../services/one-crm-rfm-population.mjs';
+const archivedLines=projectArchivedPurchaseLines([{...dailyRow('1','CLT-A'),itemId:'P1',qty:-2},{...dailyRow('1','CLT-A',5),itemId:'P1',qty:-1}],{...dailyArgs,fields:{...dailyArgs.fields,product:'itemId',quantity:'qty'}});assert.equal(archivedLines.length,2);assert.equal(archivedLines[0].positiveTtcMinor,1000);assert.equal(archivedLines[0].quantity,2);

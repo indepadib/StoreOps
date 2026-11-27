@@ -95,13 +95,18 @@ export async function readRfmSnapshotPage(key,page){
  return rows?.[0]?.payload||null;
 }
 export async function claimRfmSync(key){
+ const {randomUUID}=await import('node:crypto');const token=randomUUID();
  const database=await getAnalyticsDatabase();
- const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at) VALUES(${key},'crm-rfm-sync-lock','{}'::jsonb,NOW(),NOW()+INTERVAL '90 seconds') ON CONFLICT(cache_key) DO UPDATE SET expires_at=EXCLUDED.expires_at,generated_at=NOW() WHERE retail_intelligence_cache.expires_at<=NOW() RETURNING cache_key`;
- return !!rows?.length;
+ const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at) VALUES(${key},'crm-rfm-sync-lock',jsonb_build_object('token',${token}::text),NOW(),NOW()+INTERVAL '90 seconds') ON CONFLICT(cache_key) DO UPDATE SET payload=EXCLUDED.payload,expires_at=EXCLUDED.expires_at,generated_at=NOW() WHERE retail_intelligence_cache.expires_at<=NOW() RETURNING cache_key`;
+ return rows?.length?token:null;
 }
+export async function releaseRfmSync(key,token){const database=await getAnalyticsDatabase();await database.sql`DELETE FROM retail_intelligence_cache WHERE cache_key=${key} AND payload->>'token'=${token}`;}
 export async function readRfmEvidenceMany(keys){
  if(!Array.isArray(keys)||keys.length>200||keys.some(k=>typeof k!=='string'||!k)||new Set(keys).size!==keys.length)throw Error('Invalid RFM evidence keys');
  if(!keys.length)return new Map();const database=await getAnalyticsDatabase();
  const rows=await database.sql`SELECT cache_key,jsonb_build_object('status',payload->'status','source',payload->'source','storeId',payload->'storeId','startDate',payload->'startDate','endDate',payload->'endDate','diagnostics',payload->'diagnostics','customers',COALESCE((SELECT jsonb_agg(jsonb_build_object('customerAccount',v->'customerAccount','sales',v->'sales','tickets',v->'tickets','lastDate',v->'lastDate')) FROM jsonb_array_elements(CASE WHEN jsonb_typeof(payload->'customers')='array' THEN payload->'customers' ELSE '[]'::jsonb END) AS a(v)),'[]'::jsonb)) AS payload FROM retail_intelligence_cache WHERE expires_at>NOW() AND jsonb_typeof(payload->'customers')='array' AND cache_key IN (SELECT jsonb_array_elements_text(CAST(${JSON.stringify(keys)} AS JSONB)))`;
  return new Map(rows.map(r=>[r.cache_key,r.payload]));
 }
+
+let crmArchivePromise;
+export async function crmPurchaseArchive(){if(!crmArchivePromise)crmArchivePromise=(async()=>{const {createCrmArchive}=await import('./one-crm-purchase-archive.mjs');const database=await getAnalyticsDatabase();return createCrmArchive(database.sql.bind(database))})().catch(e=>{crmArchivePromise=null;throw e});return crmArchivePromise;}

@@ -77,3 +77,21 @@ export function summarizePreparedRfmEvidence(ranges,asOf){
  return {basis:'PARTIAL_OBSERVED_MINIMA_NOT_RFM',observedAccounts:accounts.size,tickets,positiveTtc:round(positiveTtc),recent,repeat,highValue};
 }
 export function selectRfmSyncTargets(missing,blocked=new Set(),limit=2){return [...missing].filter(x=>!blocked.has(x.storeId+'|'+x.date)).sort((a,b)=>b.date.localeCompare(a.date)||a.storeId.localeCompare(b.storeId)).slice(0,limit)}
+
+// Group only missing consecutive days in the same store; never overlap existing evidence.
+export function planRfmBackfill(missing,blocked=new Set(),maxDays=5,maxGroups=2){
+ const available=selectRfmSyncTargets(missing,blocked,missing.length),groups=[];
+ for(const target of available){let group=groups.find(g=>g.storeId===target.storeId&&g.dates.length<maxDays&&stamp(g.dates.at(-1))-stamp(target.date)===dayMs);if(group){group.dates.push(target.date);continue}if(groups.length<maxGroups)groups.push({storeId:target.storeId,dates:[target.date]})}
+ return groups;
+}
+export function projectRfmMultiDayRows(rows,dates,args){
+ const buckets=new Map(dates.map(date=>[date,[]]));
+ for(const row of rows){const date=String(row[args.fields.date]??'').slice(0,10);if(!buckets.has(date))throw Error('Invalid range partition');buckets.get(date).push(row)}
+ return dates.map(date=>({date,customers:projectRfmDayRows(buckets.get(date),{...args,date})}));
+}
+
+// Positive identified sale lines, not a financial ledger. Preserve repeated source lines
+// within a complete store-day replacement; do not invent a line identifier.
+export function projectArchivedPurchaseLines(rows,{date,fields,eligible,amount}){
+ const out=[];for(const row of rows){if(String(row[fields.date]??'').slice(0,10)!==date||!eligible(row))continue;const account=String(row[fields.customer]??'').trim();if(!/^CLT/i.test(account))continue;const product=String(row[fields.product]??'').trim(),terminal=String(row.terminalId??'').trim(),transaction=String(row.transactionId??'').trim(),value=amount(row);const raw=row[fields.quantity],qty=raw==null||String(raw).trim()===''?null:Math.abs(Number(raw));if(!product||!terminal||!transaction||!Number.isSafeInteger(Math.round(value*100))||value<=0||qty!==null&&!Number.isFinite(qty))throw Error('Invalid archive line');out.push({account,terminal,transaction,product,quantity:qty,unit:String(row[fields.salesUnit||'unit']??'').trim()||null,productName:fields.name?String(row[fields.name]??'').trim()||null:null,positiveTtcMinor:Math.round(value*100)})}return out;
+}
