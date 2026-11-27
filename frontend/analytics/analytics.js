@@ -8,6 +8,7 @@
   const SECTION_WIDGETS = {
     overview: ['executiveOnePager'],
     sales: ['decisionSales','customerBi','pricingLab'],
+    payments: ['paymentsPanel'],
     network: ['storeBenchmark','decisionStudio'],
     categories: ['productPerformance','decisionStudio'],
     reference: ['articleReference'],
@@ -324,7 +325,7 @@
     const targetStores = selectedStores();
 
     const decisionSections = new Set(['overview','sales','network','categories','suppliers','crm','loyalty','cashiers']);
-    const snapshotSections = new Set(['inventory','promotions','reference','detention','replenishment']);
+    const snapshotSections = new Set(['inventory','promotions','reference','detention','replenishment','payments']);
     if (decisionSections.has(state.section) || snapshotSections.has(state.section)) {
       state.pulses = [];
       const scope = storeScopeLabel();

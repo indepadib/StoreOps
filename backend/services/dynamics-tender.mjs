@@ -69,7 +69,7 @@ function paymentFieldMap(row={}){
 function mappingComplete(fields={}){
   return !!(fields.store&&fields.date&&fields.amount&&fields.tender);
 }
-async function discoverPaymentSchema(){
+export async function discoverPaymentSchema(){
   if(paymentSchemaPromise)return paymentSchemaPromise;
   paymentSchemaPromise=(async()=>{
     const cacheKey=analyticsCacheKey('tender-schema-v2',['payment']);
@@ -118,7 +118,7 @@ const DEFAULT_TENDER_NAMES=new Map([
  ['10','CARTE FID'],['11','GLOVO'],['12','SODEXO'],['13','JUMIA'],['14','PLUXEE'],['15','TOOKEEZ'],['16','AVOIR'],['17','EQDOM'],['18','VIREMENT'],['19','CHEQUE A ECHEANCE'],
  ['20','ACOMPTE'],['21','MOBILE PAYMENT'],['22','CB Manual'],['23','Wallet']
 ]);
-async function tenderNameMap(){
+export async function tenderNameMap(){
   if(tenderMapPromise)return tenderMapPromise;
   tenderMapPromise=(async()=>{
     const cacheKey=analyticsCacheKey('tender-types-v2',['map']),cached=await readAnalyticsCache(cacheKey).catch(()=>null);

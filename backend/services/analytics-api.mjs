@@ -16,6 +16,7 @@ import { readMonthlySalesExport } from './analytics-monthly-export.mjs';
 import { handleAnalyticsExportJobApi } from './analytics-export-jobs.mjs';
 import { semanticPublicModel } from './analytics-semantic-model.mjs';
 import {readSupplierInvoicePage} from './analytics-supplier-purchases.mjs';
+import {readPaymentHistory} from './analytics-payment-history.mjs';
 
 const clean = value => String(value ?? '').trim();
 
@@ -52,6 +53,12 @@ function safeError(error){
 }
 
 export async function handleAnalyticsApi({ req, url, user }){
+  if(req.method==='GET'&&url.pathname==='/api/analytics/payments/history'){
+    const storeId=clean(url.searchParams.get('storeId')),end=clean(url.searchParams.get('end'));
+    if(!canAccessStore(user,storeId))return{status:403,data:{error:'Magasin interdit.'}};
+    if(!db.prepare('SELECT id FROM stores WHERE id=? AND active=1').get(storeId))return{status:404,data:{error:'Magasin introuvable.'}};
+    try{return{status:200,data:await readPaymentHistory({userId:user.id,storeId,end,cursor:url.searchParams.get('cursor')||null,force:url.searchParams.get('force')==='1'})}}catch(error){return{status:error.status||502,data:{error:error.message,code:error.code||'PAYMENT_HISTORY_FAILED'}}}
+  }
   if(req.method==='GET'&&url.pathname==='/api/analytics/supplier-purchases'){
     if(!user||!(user.role==='ops_director'||isPlatformAdmin(user)))return{status:403,data:{error:'Les achats société sont réservés à la Direction. Le périmètre magasin ne donne pas accès aux factures de toute la société.'}};
     try{return{status:200,data:await readSupplierInvoicePage({userId:user.id,start:clean(url.searchParams.get('start')),end:clean(url.searchParams.get('end')),cursor:url.searchParams.get('cursor')||null})}}catch(error){return{status:error.status||502,data:{error:error.message,code:error.code||'SUPPLIER_PURCHASE_READ_FAILED'}}}

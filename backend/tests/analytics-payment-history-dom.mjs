@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+const {parseHTML}=await import(process.env.STOREOPS_TEST_DOM_MODULE||'linkedom');
+const {window,document}=parseHTML('<html><head></head><body><main></main></body></html>');
+Object.defineProperty(window.HTMLSelectElement.prototype,'value',{configurable:true,get(){return [...this.querySelectorAll('option')].find(o=>o.hasAttribute('selected'))?.value||this.querySelector('option')?.value||''},set(value){for(const o of this.querySelectorAll('option'))o.toggleAttribute('selected',o.value===value)}});
+globalThis.document=document;globalThis.window=window;globalThis.location={search:'?section=payments&read=1'};
+let blob,calls=0,wrongScope=false;URL.createObjectURL=value=>{blob=value;return'blob:test'};URL.revokeObjectURL=()=>{};
+const stores=[{id:'VF',name:'Val Fleuri'},{id:'TR',name:'Trèfle'}],state={section:'payments',tenant:'franprix'};
+const bucket=(date,positive,negative=0,kind='CARD_TPE')=>({date,currency:'MAD',tender:kind==='CARD_MANUAL'?'22':'3',label:kind==='CARD_MANUAL'?'CB Manual':'CB',kind,positiveMinor:positive,negativeMinor:negative,netMinor:positive-negative,lines:2});
+window.RETAIL_INTELLIGENCE={getState:()=>state,getSelectedStores:()=>stores,api:async path=>{calls++;const q=new URL(path,'https://test').searchParams,storeId=q.get('storeId'),end=q.get('end');if(!q.get('cursor'))return{status:'PREPARING',storeId,end,scanned:10,nextCursor:'next'};return{status:'READY',storeId:wrongScope?'WRONG':storeId,end,firstDate:'2026-01-01',scanned:20,unmapped:0,unverifiedStatus:0,voided:1,source:'D365/Payments',amountField:'Amount',tenderSource:'Types',checkedAt:'2026-11-27',rows:storeId==='VF'?[bucket('2026-01-01',10000,2000),bucket('2026-02-03',500,0,'CARD_MANUAL')]:[bucket('2026-01-02',20000,5000)]}}};
+await import('../../frontend/analytics/payment-history.js');await new Promise(r=>setTimeout(r,10));
+const el=q=>document.querySelector(q);
+assert.equal(calls,4);assert.match(el('[data-total]').textContent,/235/);assert.equal(el('tbody').children.length,3);
+el('[data-grain]').value='week';el('[data-grain]').onchange();assert.match(el('tbody').textContent,/2026-S01/);assert.equal(calls,4,'regrouping never rereads D365');
+el('[data-manual]').checked=false;el('[data-manual]').onchange();assert.match(el('[data-total]').textContent,/230/);
+await el('[data-csv]').onclick();const csv=await blob.text();assert.match(csv,/Journal POS/);assert.equal(csv.split('\r\n').length,3);
+await el('[data-xlsx]').onclick();assert.equal(Buffer.from(await blob.arrayBuffer()).readUInt32LE(0),0x04034b50);
+wrongScope=true;await el('[data-load]').onclick();assert.equal(el('[data-total]').textContent,'');assert.match(el('[data-status]').textContent,/suspendu/);
+console.log('PASS payments page auto-read, full-network completion, monthly/ISO-week regrouping without extra reads, manual-card option, exports and wrong-scope suppression');
