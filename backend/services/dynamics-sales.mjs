@@ -808,3 +808,26 @@ export async function readStoreRfmDay(storeId,date){
  }
  return unavailable('RFM_DATE_MAPPING_REQUIRED');
 }
+
+// Bounded contiguous backfill: reuse sales and parent reads across up to five days.
+export async function readStoreRfmDays(storeId,dates){
+ const c=salesIntegrationConfig(storeId),f=c.fields,d=storeOperationalSettings(storeId)?.d365,company=clean(config.dynamics.dataAreaId),storeNumber=clean(d?.storeNumber);
+ const unavailable=reason=>({status:'UNAVAILABLE',reason});
+ if(!Array.isArray(dates)||!dates.length||dates.length>5||dates.some((date,i)=>!/^\\d{4}-\\d{2}-\\d{2}$/.test(date)||!Number.isFinite(Date.parse(date))||i>0&&nextDate(dates[i-1])!==date))return unavailable('RFM_INVALID_BATCH');
+ if(!c.ready||c.entity!=='RetailTransactionSalesTransBIEntities'||f.store!=='store'||!company||clean(d?.legalEntityId)!==company||!storeNumber||![f.customer,f.net,f.date].every(validField))return unavailable('RFM_SALES_MAPPING_REQUIRED');
+ const {projectRfmMultiDayRows}=await import('./one-crm-rfm-population.mjs');
+ const select=[...new Set([...Object.values(retailParentIdentityFields),f.customer,f.date,f.net,f.taxAmount,f.status,f.returnNoSale,f.taxItemGroup].filter(Boolean))].join(',');
+ const base=["store eq '"+esc(storeNumber)+"'","dataAreaId eq '"+esc(company)+"'"];
+ for(const mode of [...new Set([c.dateFilterMode,c.dateFilterMode==='date'?'datetime':'date'])]){
+  try{
+   const filters=[...base,dateRangeFilter(f.date,dates[0],dates.at(-1),mode)];
+   const signFilter=c.sign<0?f.net+' lt 0 and '+f.net+' gt -100000':f.net+' gt 0 and '+f.net+' lt 100000';
+   const result=await odataGetAll(c.entity,{filter:[...filters,signFilter].join(' and '),select,extra:'cross-company=true',pageSize:c.pageSize,maxRows:c.maxRows});
+   if(!Array.isArray(result.value)||result.truncated)return unavailable('RFM_SALES_TRUNCATED');
+   const rows=await validateParentSales(result.value,c,filters);
+   const days=projectRfmMultiDayRows(rows,dates,{storeId,company,storeNumber,fields:f,eligible:r=>includedRetailSaleRow(r,c),amount:r=>retailDisplaySalesAmount(r,c),ticketKey:r=>salesTicketKey(r,f)});
+   return {status:'READY',days:days.map(({date,customers})=>({status:'READY',source:'D365/'+c.entity,storeId,startDate:date,endDate:date,diagnostics:{truncated:false,filterCoverage:{parentTransaction:true},mappedFields:{customer:true}},customers}))};
+  }catch(e){if(Number(e?.details?.httpStatus)!==400)return unavailable(e?.code==='D365_REQUEST_TIMEOUT'?'D365_REQUEST_TIMEOUT':'RFM_SALES_READ_FAILED')}
+ }
+ return unavailable('RFM_DATE_MAPPING_REQUIRED');
+}

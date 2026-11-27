@@ -95,10 +95,12 @@ export async function readRfmSnapshotPage(key,page){
  return rows?.[0]?.payload||null;
 }
 export async function claimRfmSync(key){
+ const {randomUUID}=await import('node:crypto');const token=randomUUID();
  const database=await getAnalyticsDatabase();
- const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at) VALUES(${key},'crm-rfm-sync-lock','{}'::jsonb,NOW(),NOW()+INTERVAL '90 seconds') ON CONFLICT(cache_key) DO UPDATE SET expires_at=EXCLUDED.expires_at,generated_at=NOW() WHERE retail_intelligence_cache.expires_at<=NOW() RETURNING cache_key`;
- return !!rows?.length;
+ const rows=await database.sql`INSERT INTO retail_intelligence_cache(cache_key,cache_group,payload,generated_at,expires_at) VALUES(${key},'crm-rfm-sync-lock',jsonb_build_object('token',${token}::text),NOW(),NOW()+INTERVAL '90 seconds') ON CONFLICT(cache_key) DO UPDATE SET payload=EXCLUDED.payload,expires_at=EXCLUDED.expires_at,generated_at=NOW() WHERE retail_intelligence_cache.expires_at<=NOW() RETURNING cache_key`;
+ return rows?.length?token:null;
 }
+export async function releaseRfmSync(key,token){const database=await getAnalyticsDatabase();await database.sql`DELETE FROM retail_intelligence_cache WHERE cache_key=${key} AND payload->>'token'=${token}`;}
 export async function readRfmEvidenceMany(keys){
  if(!Array.isArray(keys)||keys.length>200||keys.some(k=>typeof k!=='string'||!k)||new Set(keys).size!==keys.length)throw Error('Invalid RFM evidence keys');
  if(!keys.length)return new Map();const database=await getAnalyticsDatabase();

@@ -77,3 +77,15 @@ export function summarizePreparedRfmEvidence(ranges,asOf){
  return {basis:'PARTIAL_OBSERVED_MINIMA_NOT_RFM',observedAccounts:accounts.size,tickets,positiveTtc:round(positiveTtc),recent,repeat,highValue};
 }
 export function selectRfmSyncTargets(missing,blocked=new Set(),limit=2){return [...missing].filter(x=>!blocked.has(x.storeId+'|'+x.date)).sort((a,b)=>b.date.localeCompare(a.date)||a.storeId.localeCompare(b.storeId)).slice(0,limit)}
+
+// Group only missing consecutive days in the same store; never overlap existing evidence.
+export function planRfmBackfill(missing,blocked=new Set(),maxDays=5,maxGroups=2){
+ const available=selectRfmSyncTargets(missing,blocked,missing.length),groups=[];
+ for(const target of available){let group=groups.find(g=>g.storeId===target.storeId&&g.dates.length<maxDays&&stamp(g.dates.at(-1))-stamp(target.date)===dayMs);if(group){group.dates.push(target.date);continue}if(groups.length<maxGroups)groups.push({storeId:target.storeId,dates:[target.date]})}
+ return groups;
+}
+export function projectRfmMultiDayRows(rows,dates,args){
+ const buckets=new Map(dates.map(date=>[date,[]]));
+ for(const row of rows){const date=String(row[args.fields.date]??'').slice(0,10);if(!buckets.has(date))throw Error('Invalid range partition');buckets.get(date).push(row)}
+ return dates.map(date=>({date,customers:projectRfmDayRows(buckets.get(date),{...args,date})}));
+}
