@@ -100,3 +100,15 @@ export function advanceMasterImport(state,part){if(!state||!Array.isArray(state.
 
 // Count the same source partition used by the cursor, without another full scan.
 export async function readMasterImportControl({company,read,mode}){check(company);if(!['CLT','RETAIL'].includes(mode))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');const filter=mode==='CLT'?baseFilter(company):"SysDataAreaId eq "+quote(company)+" and CustGroup eq 'Retail'";const raw=await read(ENTITY,{filter,select:'AccountNum,SysDataAreaId',top:1,extra:'cross-company=true&$count=true'});const n=raw?.['@odata.count'];if(!Array.isArray(raw?.value)||raw.value.length>1||!(typeof n==='number'||typeof n==='string'&&/^\d+$/.test(n))||!Number.isSafeInteger(Number(n))||Number(n)<raw.value.length||(Number(n)>0&&!raw.value.length)||raw.value.some(r=>clean(r.SysDataAreaId??r.dataAreaId)!==company||!clean(r.AccountNum)||mode==='CLT'&&!isLoyaltyCustomerAccount(clean(r.AccountNum))))throw fail('CRM_CUSTOMER_COUNT_UNAVAILABLE');return Number(n);}
+
+/** Coalesce only concurrent exact account reads; never cache a completed authorization lookup. */
+export function createCustomerAccountSingleFlight(readAccount){
+ const inflight=new Map();
+ return ({company,accountRef,...options})=>{
+  if(!isLoyaltyCustomerAccount(accountRef))return Promise.resolve(null);
+  const key=JSON.stringify([company,accountRef]);
+  if(inflight.has(key))return inflight.get(key);
+  const task=Promise.resolve().then(()=>readAccount({company,accountRef,...options})).finally(()=>{if(inflight.get(key)===task)inflight.delete(key)});
+  inflight.set(key,task);return task;
+ };
+}
