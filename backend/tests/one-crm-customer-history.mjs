@@ -72,3 +72,6 @@ const grouped=projectRfmMultiDayRows([dailyRow('1','CLT-A'),{...dailyRow('2','CL
 
 import {projectArchivedPurchaseLines} from '../services/one-crm-rfm-population.mjs';
 const archivedLines=projectArchivedPurchaseLines([{...dailyRow('1','CLT-A'),itemId:'P1',qty:-2},{...dailyRow('1','CLT-A',5),itemId:'P1',qty:-1}],{...dailyArgs,fields:{...dailyArgs.fields,product:'itemId',quantity:'qty'}});assert.equal(archivedLines.length,2);assert.equal(archivedLines[0].positiveTtcMinor,1000);assert.equal(archivedLines[0].quantity,2);
+
+import {validPreparedRfmCustomers} from '../services/one-crm-rfm-population.mjs';
+const verifiedBuyer={customerAccount:'CLT-A',tickets:1,sales:10,lastDate:'2026-11-26'};assert.equal(validPreparedRfmCustomers([verifiedBuyer],'2026-11-26','2026-11-26'),true);for(const invalid of [{...verifiedBuyer,sales:-1},{...verifiedBuyer,tickets:0},{...verifiedBuyer,lastDate:'2026-11-27'},{...verifiedBuyer,customerAccount:'CASH'}])assert.equal(validPreparedRfmCustomers([invalid],'2026-11-26','2026-11-26'),false);assert.equal(validPreparedRfmCustomers([verifiedBuyer,verifiedBuyer],'2026-11-26','2026-11-26'),false);
