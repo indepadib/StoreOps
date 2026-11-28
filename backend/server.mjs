@@ -126,6 +126,23 @@ async function api(req,res,url){
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     try{return json(req,res,200,await readCrmRfmSnapshot(stores.filter(s=>scope.has(s.id)),page,segment))}catch{return json(req,res,503,{status:'UNAVAILABLE',reason:'RFM_SOURCE_UNAVAILABLE',code:'RFM_SOURCE_UNAVAILABLE',activationEnabled:false})}
   }
+  if(path==='/api/crm/ticket-explorer'){
+    res.setHeader('Cache-Control','no-store, private, max-age=0');
+    if(req.method!=='POST')return json(req,res,405,{error:'Méthode non autorisée.'});
+    if(!['entra','local'].includes(session?.mode)||!(user?.role==='ops_director'||user?.permissions_profile==='platform_admin'))return json(req,res,403,{error:'Accès professionnel requis.'});
+    const {parseObservedPilotStores}=await import('./services/one-crm-observed-sales.mjs');
+    const scope=parseObservedPilotStores(process.env.ONE_CRM_PILOT_STORE_IDS||''),stores=db.prepare('SELECT id,name FROM stores WHERE active=1 ORDER BY name').all();
+    if(!scope.size||!stores.length||stores.some(s=>!canAccessStore(user,s.id))||[...scope].some(id=>!stores.some(s=>s.id===id)))return json(req,res,403,{error:'Accès réseau complet requis.'});
+    if(config.dynamics.mode!=='live')return json(req,res,503,{status:'UNAVAILABLE',reason:'LIVE_SOURCE_REQUIRED'});
+    const approved=stores.filter(s=>scope.has(s.id)),today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date()),last=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10),earliest=new Date(Date.parse(last+'T00:00:00Z')-89*86400000).toISOString().slice(0,10);
+    try{
+      const input=await body(req);
+      if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!['start','end','store','search','page'].includes(k))||[...url.searchParams.keys()].length||typeof input.start!=='string'||typeof input.end!=='string'||input.start<earliest||input.end>last||input.start>input.end||input.store!=null&&!scope.has(input.store)||typeof (input.search??'')!=='string'||(input.search??'').length>160||!Number.isSafeInteger(input.page)||input.page<1||input.page>5000)return json(req,res,400,{status:'INVALID_SCOPE'});
+      const {crmTicketExplorer}=await import('./services/analytics-persistent-cache.mjs');
+      const result=await crmTicketExplorer({company:String(config.dynamics.dataAreaId||'').trim(),stores:approved.map(s=>s.id),start:input.start,end:input.end,store:input.store??null,search:(input.search??'').trim(),page:input.page});
+      return json(req,res,200,{...result,stores:approved});
+    }catch(e){return json(req,res,e?.message==='Invalid explorer scope'?400:503,{status:'UNAVAILABLE',reason:'TICKET_EXPLORER_UNAVAILABLE',activationEnabled:false})}
+  }
   if(path==='/api/crm/period-workspace'){
     res.setHeader('Cache-Control','no-store, private, max-age=0');
     if(req.method!=='GET')return json(req,res,405,{error:'Lecture uniquement.'});

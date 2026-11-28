@@ -25,6 +25,7 @@ export async function openCrmPilot(){
  if(r.status!=='AUTHORIZED')return false;
  setupCustomerDirectory();
  setupPeriodWorkspaces();
+ setupTicketExplorer();
  setupMarketingDrafts();
  setupMarketingInsights();
  setupNavigation();
@@ -57,7 +58,7 @@ function clearDetails(){
  if(el('crmLoyaltyStatus'))el('crmLoyaltyStatus').textContent='Sélectionnez le magasin et la date.';
  if(el('crmLoyaltyRead'))el('crmLoyaltyRead').disabled=true;
 }
-function clearLiveObservation(){clearMarketingDrafts();clearMarketingInsights();clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
+function clearLiveObservation(){clearMarketingDrafts();clearTicketExplorer?.();clearMarketingInsights();clearPeriodWorkspaces();clearRfmPopulation();clearDirectory();generation++;el('crmLiveMetrics')?.replaceChildren();el('crmLiveStore')?.replaceChildren();if(el('crmLiveRead'))el('crmLiveRead').disabled=true;clearDetails();if(liveStatus())liveStatus().textContent='Session à vérifier. Actualisez les magasins.'}
 function validateTicketPage(x,{storeId,date,page,checkedAt,tickets}){
  if(x?.status!=='READY'||x.storeId!==storeId||x.date!==date||x.page!==page||x.pageSize!==20||x.totalTickets!==tickets||x.checkedAt!==checkedAt||x.source!=='D365/RetailTransactionSalesTransBIEntities'||x.basis!=='POSITIVE_SALES_TTC_OBSERVED_EXCLUDES_RETURNS'||x.financialReconciliation!=='NOT_VERIFIED'||x.currency!=='MAD'||x.activationEnabled!==false||!Array.isArray(x.rows)||x.rows.length!==Math.min(20,tickets-(page-1)*20))return false;
  const numeric=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0;
@@ -157,7 +158,7 @@ function setupNavigation(){
   for(const b of buttons){b.classList.toggle('active',b===button);if(b===button)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')}
   for(const v of views)v.hidden=v.dataset.liveView!==id;
   const label=button.textContent.trim();el('heading').textContent=label;el('activeCrumb').textContent=label;el('subtitle').textContent=descriptions[id]||'';
-  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(marketingReaders.has(id))marketingReaders.get(id)();if(insightReaders.has(id))insightReaders.get(id)();if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
+  el('crmLiveObservation').hidden=!['transactions','loyalty','basket'].includes(id);if(id==='customers'||id==='overview')loadDirectoryIfNeeded();if(marketingReaders.has(id))marketingReaders.get(id)();if(insightReaders.has(id))insightReaders.get(id)();if(id==='transactions')ticketExplorerRead?.();else if(periodReaders.has(id))periodReaders.get(id)();if(id==='segments'&&el('crmRfmRead')&&!el('crmRfmRead').disabled)el('crmRfmRead').click();
   el('topAction').hidden=id!=='overview';if(dialog.open)dialog.close();window.scrollTo({top:0,behavior:'instant'});
  }
  for(const b of buttons)b.onclick=()=>go(b.dataset.view);
@@ -520,4 +521,45 @@ function setupMarketingInsights(){
   };
   button.onclick=load;days.onchange=load;question.onchange=()=>{clear()};insightReaders.set(view,()=>{if(view!=='copilot')load()});clear();
  }
+}
+
+let ticketExplorerRead=null,clearTicketExplorer=null;
+function setupTicketExplorer(){
+ const section=el('transactions');if(!section)return;
+ const previous=section.querySelector(':scope > .panel');if(previous)previous.hidden=true;
+ const root=document.createElement('div');root.id='crmTicketExplorer';root.className='panel';root.style.cssText='padding:20px;margin-bottom:18px;display:grid;gap:16px';
+ const head=document.createElement('div');head.className='studio-head';const intro=document.createElement('div'),title=document.createElement('h3'),note=document.createElement('p');title.textContent='Journal des achats clients';note.className='muted';note.textContent='Tickets identifiés archivés · hors retours et achats anonymes';intro.append(title,note);head.append(intro);
+ const form=document.createElement('form');form.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;align-items:end';
+ const field=(label,node)=>{const l=document.createElement('label'),t=document.createElement('span');t.textContent=label;l.style.cssText='display:grid;gap:6px;min-width:0';node.style.cssText='width:100%;min-width:0;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit';l.append(t,node);form.append(l);return node};
+ const from=field('Du',document.createElement('input')),to=field('Au',document.createElement('input'));from.type=to.type='date';from.required=to.required=true;
+ const store=field('Magasin',document.createElement('select'));const all=document.createElement('option');all.value='';all.textContent='Tous les magasins pilotes';store.append(all);
+ const search=field('Ticket, compte ou article',document.createElement('input'));search.type='search';search.maxLength=160;search.placeholder='Ex. CLT…, référence article';
+ const button=(label,type='button')=>{const b=document.createElement('button');b.className='secondary';b.type=type;b.textContent=label;return b};const apply=button('Rechercher','submit');form.append(apply);
+ const date=offset=>new Date(Date.parse(new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Casablanca'}).format(new Date())+'T00:00:00Z')-offset*86400000).toISOString().slice(0,10);
+ from.min=to.min=date(90);from.max=to.max=date(1);from.value=date(7);to.value=date(1);
+ const presets=document.createElement('div');presets.className='quickrow';for(const n of [7,30,90]){const b=button(n+' jours');b.onclick=()=>{from.value=date(n);to.value=date(1);load(1)};presets.append(b)}
+ const status=document.createElement('p');status.className='muted';status.setAttribute('aria-live','polite');const metrics=document.createElement('div');metrics.className='metrics';metrics.id='crmExplorerMetrics';
+ const wrap=document.createElement('div');wrap.className='tablewrap';const table=document.createElement('table'),thead=document.createElement('thead'),hr=document.createElement('tr'),tbody=document.createElement('tbody');tbody.id='crmExplorerRows';for(const label of ['Date / magasin','Ticket','Client','Articles','TTC positif','Détail']){const th=document.createElement('th');th.textContent=label;hr.append(th)}thead.append(hr);table.append(thead,tbody);wrap.append(table);
+ const pager=document.createElement('div');pager.className='quickrow';const prev=button('Précédent'),next=button('Suivant'),pageLabel=document.createElement('span');pager.append(prev,pageLabel,next);prev.disabled=next.disabled=true;
+ const detail=document.createElement('dialog');detail.style.cssText='width:min(680px,94vw);max-height:85vh;overflow:auto;border:1px solid #d5dbe2;border-radius:14px;padding:20px';const detailTitle=document.createElement('h3'),detailBody=document.createElement('div'),close=button('Fermer');close.onclick=()=>detail.close();detail.append(close,detailTitle,detailBody);
+ root.append(head,form,presets,status,metrics,wrap,pager,detail);section.prepend(root);
+ let seq=0,current=1,applied=null,storeLabels=new Map();
+ const active=g=>g===seq&&document.documentElement.classList.contains('crm-pilot-open');
+ const show=r=>{detailBody.replaceChildren();detailTitle.textContent='Ticket '+r.transactionRef+' · '+money(r.positiveTtc);const p=document.createElement('p');p.textContent=r.date+' · '+(storeLabels.get(r.storeId)||r.storeId)+' · '+(r.displayName||r.accountRef);detailBody.append(p);if(!Array.isArray(r.items)){const note=document.createElement('p');note.textContent='Ticket trop volumineux : détail non affiché.';detailBody.append(note)}else{const t=document.createElement('table'),tb=document.createElement('tbody');for(const item of r.items){const tr=document.createElement('tr');for(const v of [item.name?item.name+' · '+item.product:item.product,item.quantity==null?'—':fmt(item.quantity)+(item.unit?' '+item.unit:''),money(item.positiveTtc)]){const td=document.createElement('td');td.textContent=v;tr.append(td)}tb.append(tr)}t.append(tb);detailBody.append(t)}const profile=button('Ouvrir la fiche client');profile.onclick=()=>{detail.close();document.querySelector('nav button[data-view="customers"]')?.click();readProfile({accountRef:r.accountRef,displayName:r.displayName})};detailBody.append(profile);detail.showModal()};
+ clearTicketExplorer=()=>{seq++;tbody.replaceChildren();metrics.replaceChildren();detailBody.replaceChildren();if(detail.open)detail.close();status.textContent='Actualisez le journal.';search.value='';applied=null;apply.disabled=false;prev.disabled=next.disabled=true;pageLabel.textContent=''};
+ async function load(page=1,reuse=false){
+  if(!document.documentElement.classList.contains('crm-pilot-open'))return;
+  if(!reuse){if(!form.reportValidity()||from.value>to.value){status.textContent='Vérifiez les dates sélectionnées.';return}applied={start:from.value,end:to.value,store:store.value||null,search:search.value.trim()}}
+  if(!applied)return;const g=++seq;apply.disabled=true;prev.disabled=next.disabled=true;metrics.replaceChildren();tbody.replaceChildren();status.textContent='Recherche dans les achats archivés…';
+  try{const x=await api('/api/crm/ticket-explorer',{method:'POST',body:{...applied,page},noRetry:true,cache:'no-store'});if(!active(g))return;
+   if(!x||x.activationEnabled!==false||!['READY','PARTIAL'].includes(x.status)||!Array.isArray(x.rows)||x.rows.length>25||!Number.isSafeInteger(x.totalTickets)||x.totalTickets<0||!Number.isFinite(x.positiveTtc)||!Number.isSafeInteger(x.coverage?.covered)||!Number.isSafeInteger(x.coverage?.expected)||x.page!==page||x.start!==applied.start||x.end!==applied.end)throw Error('Invalid evidence');
+   if(Array.isArray(x.stores)){const selected=store.value;storeLabels=new Map(x.stores.map(s=>[s.id,s.name]));store.replaceChildren(all);for(const [id,name] of storeLabels){const o=document.createElement('option');o.value=id;o.textContent=name;store.append(o)}store.value=selected}
+   metric(metrics,'Tickets correspondant aux filtres',fmt(x.totalTickets));metric(metrics,'TTC positif observé',money(x.positiveTtc));metric(metrics,'Jours-magasins couverts',x.coverage.covered+'/'+x.coverage.expected);
+   status.textContent=x.status==='READY'?'Période couverte · achats identifiés uniquement.':'Archive incomplète : résultats limités aux jours disponibles.';
+   for(const r of x.rows){if(typeof r.accountRef!=='string'||typeof r.transactionRef!=='string'||!Number.isFinite(r.positiveTtc)||!Number.isSafeInteger(r.products))throw Error('Invalid ticket');const tr=document.createElement('tr');const vals=[r.date+' · '+(storeLabels.get(r.storeId)||r.storeId),r.transactionRef,r.displayName?r.displayName+' · '+r.accountRef:r.accountRef,fmt(r.products),money(r.positiveTtc)];for(const v of vals){const td=document.createElement('td');td.textContent=v;tr.append(td)}const td=document.createElement('td'),b=button('Voir le panier');b.onclick=()=>show(r);td.append(b);tr.append(td);tbody.append(tr)}
+   if(!x.rows.length){const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=6;td.textContent=x.status==='READY'?'Aucun ticket correspondant.':'Aucun ticket disponible dans les partitions couvertes.';tr.append(td);tbody.append(tr)}
+   current=page;const max=Math.max(1,Math.ceil(x.totalTickets/25));pageLabel.textContent='Page '+page+' / '+max;prev.disabled=page<=1;next.disabled=page>=max;
+  }catch{if(active(g)){metrics.replaceChildren();tbody.replaceChildren();status.textContent='Journal indisponible. Réessayez sans modifier les données.'}}finally{if(active(g))apply.disabled=false}
+ }
+ form.onsubmit=e=>{e.preventDefault();load(1)};prev.onclick=()=>load(current-1,true);next.onclick=()=>load(current+1,true);ticketExplorerRead=()=>load(1);clearTicketExplorer();
 }
