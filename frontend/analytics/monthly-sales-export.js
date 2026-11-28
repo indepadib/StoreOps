@@ -2,7 +2,7 @@ import { createXlsxBlob } from './xlsx-workbook.js';
 
 const core=window.RETAIL_INTELLIGENCE;
 const button=document.getElementById('fullExportBtn');
-const SESSION_KEY='retail-intelligence:monthly-export-job:v2';
+const SESSION_KEY='retail-intelligence:monthly-export-job:v3';
 const MAX_VISIBLE_WAIT_MS=90_000;
 const progressBanner=document.getElementById('fullExportStatus');
 function report(message,{ready=false}={}){
@@ -42,13 +42,14 @@ async function saveXlsx(blob,filename){
  setTimeout(()=>URL.revokeObjectURL(url),15000);return 'DOWNLOADED'
 }
 function buildSheets(job,rows){
+ const basketIssue=code=>!code?'OK':({BASKET_NOT_PREPARED:'Paniers non préparés',BASKET_COLLECTION_UNAVAILABLE:'Source panier indisponible',BASKET_IDENTITY_INCOMPLETE:'Identité de certains tickets incomplète',BASKET_INVALID_SALES:'Montants panier inexploitables',BASKET_TICKETS_MISMATCH:'Nombre de tickets différent de la source ventes',BASKET_SALES_MISMATCH:'CA des paniers différent de la source ventes'}[code]||'Source panier indisponible');
  const columns=job.columns||[],keys=columns.map(c=>c.key),headers=columns.map(c=>c.label);
  const find=key=>keys.indexOf(key);
  const get=(row,key)=>{const i=find(key);return i<0?null:row[i]};
  const network=rows.filter(r=>get(r,'scope_type')==='NETWORK');
  const stores=rows.filter(r=>get(r,'scope_type')==='STORE');
  const sum=(set,key)=>round(set.reduce((acc,row)=>acc+n(get(row,key)),0));
- const detailColumns=['store_code','store_name','product_number','product_name','department','rayon','family','subfamily','status_vs_n1','ca_n','ca_n1','ca_delta','ca_evolution_pct','quantity_n','quantity_n1','quantity_unit','ca_weight_pct','rank_ca_n','abc_class_n','basket_penetration_pct','sales_source_status_n','basket_source_status_n'];
+ const detailColumns=['store_code','store_name','product_number','product_name','department','rayon','family','subfamily','status_vs_n1','ca_n','ca_n1','ca_delta','ca_evolution_pct','quantity_n','quantity_unit_n','quantity_n1','quantity_unit_n1','ca_weight_pct','rank_ca_n','abc_class_n','basket_penetration_pct','sales_source_status_n','basket_source_status_n'];
  const storeGroups=new Map();
  for(const row of stores){
   const key=String(get(row,'store_id')||get(row,'store_code')||'');
@@ -66,7 +67,7 @@ function buildSheets(job,rows){
  const storeReconciliation=round(sum(stores,'ca_n')-totalCurrent);
  const qualityRows=[
   ['Source','StoreOps Analytics / Dynamics 365','Lecture des ventes selon le périmètre sélectionné'],
-  ['Statut export',job.dataStatus||'INCONNU',job.dataStatus==='READY'?'Sources de ventes annoncées complètes':'Vérifier les anomalies et éventuelles périodes partielles'],
+  ['Statut export',job.dataStatus||'INCONNU',job.dataStatus==='READY'?'Ventes complètes et paniers rapprochés sur tous les magasins':'Vérifier les sources manquantes ou les paniers non rapprochés'],
   ['Magasins sélectionnés',job.summary?.stores||0,'Val Fleuri / Trèfle selon filtre'],
   ['Articles réseau',network.length,'Dédoublonnés par code article'],
   ['Lignes magasin',stores.length,'Une ligne par magasin et par article'],
@@ -76,13 +77,13 @@ function buildSheets(job,rows){
   ['Baskets comparaison disponibles',job.diagnostics?.basketComparisonReady??null,'Ne pas transformer une donnée manquante en zéro'],
   ['Marge','NON PUBLIÉE','COGS et conversions KG/G à valider avec la comptabilité'],
   ['Périmètre fiscal','CA TTC','La base des indicateurs doit être rapprochée avec Retail & Commerce'],
-  ...(job.diagnostics?.basketErrors||[]).map(e=>['Indicateurs panier '+e.storeId,e.current||'OK','Comparaison : '+(e.comparison||'OK')])
+  ...(job.diagnostics?.basketErrors||[]).map(e=>['Indicateurs panier '+e.storeId,basketIssue(e.current),'Comparaison : '+basketIssue(e.comparison)])
  ];
  const summaryRows=[
   ['RETAIL INTELLIGENCE — RAPPORT VENTES','', 'Synthèse de la période choisie'],
   ['Période',job.period?.startDate+' au '+job.period?.endDate,'Dates inclusives'],
   ['Comparaison',job.comparison?.startDate+' au '+job.comparison?.endDate,job.comparison?.label||''],
-  ['Statut des données',job.dataStatus||'INCONNU','READY = source ventes déclarée complète'],
+  ['Statut des données',job.dataStatus||'INCONNU','READY = ventes complètes et paniers rapprochés sur tout le périmètre'],
   ['CA période TTC',totalCurrent,'DH'],
   ['CA comparaison TTC',totalPrevious,'DH'],
   ['Écart CA',round(totalCurrent-totalPrevious),'DH'],

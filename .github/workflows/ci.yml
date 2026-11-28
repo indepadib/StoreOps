@@ -83,6 +83,7 @@ jobs:
       - name: Analytics complete monthly N/N-1 export contract
         run: |
           node backend/tests/analytics-monthly-export-contract.mjs
+          node backend/tests/analytics-export-evidence-quality.mjs
           node backend/tests/analytics-xlsx-workbook.mjs
       - name: Assortment comparison DOM and full export acceptance
         # Test-only dependency, absent from the deployed application's dependencies.
